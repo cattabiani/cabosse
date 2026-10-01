@@ -4,8 +4,9 @@ Design documents that the code is checked against.
 
 Planned contents:
 
-- `numerics.md`: the numerics spec (formats, rounding, summation order, special-value
-  handling (M1). The golden model and the RTL both implement this document.
+- `numerics.md`: the numerics spec, i.e. the contract: formats, rounding,
+  summation order, special values, function approximations (M1). The golden
+  model and the RTL both implement it.
 - `architecture.md`: block diagram, interfaces, memory map, command format,
   and data layouts (M2).
 - `perf-model.md`: first-order performance model and its assumptions (M2).
