@@ -142,9 +142,10 @@ tiny configs. Compared against `transformers` in FP32 and in BF16.
 **Why:** everything later is verified against this model. The summation
 order depends on the lane design (M2), so it is a parameter here.
 **Done when:**
-- Teacher-forced over ≥ 10 prompts × 256 positions, top-1 agreement with FP32
-  `transformers` is ≥ 99%, and the error is no worse than `transformers`'
-  own BF16 run.
+- Teacher-forced over ≥ 10 prompts × 256 positions, the golden model is no
+  worse than `transformers`' own BF16 run, measured against FP32
+  `transformers` on both top-1 agreement and logit error. (No fixed
+  percentage: a first check showed BF16 `transformers` itself at 98.1% top-1.)
 - Greedy decode text is saved as a regression fixture.
 - The model is deterministic. One SmolLM2 token takes ≤ 10 s.
 - Day-one check (done 2026-10-01, all 2³² inputs): torch's FP32→BF16
