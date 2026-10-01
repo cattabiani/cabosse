@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextStreamer
 
 REPO = Path(__file__).resolve().parent.parent
 DEFAULT_MODEL = Path(os.environ.get("CABOSSE_WEIGHTS", REPO / "weights")) / "SmolLM2-135M"
@@ -36,6 +36,7 @@ def main() -> None:
     model.eval()
 
     inputs = tok(args.prompt, return_tensors="pt")
+    streamer = TextStreamer(tok, skip_special_tokens=True)  # prints tokens as they come
     n_prompt = inputs["input_ids"].shape[1]
     t0 = time.perf_counter()
     with torch.no_grad():
@@ -44,11 +45,11 @@ def main() -> None:
             max_new_tokens=args.max_new_tokens,
             do_sample=args.sample,
             pad_token_id=tok.eos_token_id,
+            streamer=streamer,
         )
     dt = time.perf_counter() - t0
     n_new = out.shape[1] - n_prompt
 
-    print(tok.decode(out[0], skip_special_tokens=True))
     print(f"\n[{args.model.name}, {args.dtype}, {'sampled' if args.sample else 'greedy'}] "
           f"{n_prompt} prompt + {n_new} new tokens in {dt:.2f} s "
           f"({n_new / dt:.1f} tokens/s)")
