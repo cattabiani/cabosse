@@ -1,0 +1,96 @@
+# Convention: tool outputs go into a build/ (or runs/) directory next to
+# the thing being built. The patterns below are a safety net for tools that
+# write next to their inputs anyway.
+
+# --- OS / editors ---
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+*.swp
+*~
+.idea/
+.vscode/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+.venv/
+venv/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# --- Model weights and tokenizers (downloaded, never committed) ---
+/weights/
+*.safetensors
+*.pt
+*.pth
+*.gguf
+*.bin
+
+# --- Generic build outputs ---
+build/
+out/
+runs/
+
+# --- Verilator / cocotb ---
+obj_dir/
+sim_build/
+results.xml
+*.vlt.d
+
+# --- Waveforms ---
+*.vcd
+*.fst
+*.fst.hier
+*.ghw
+*.lxt
+*.lxt2
+*.vpd
+*.wlf
+*.fsdb
+
+# --- AMD Vivado (AWS F2) ---
+.Xil/
+*.jou
+*.log
+*.str
+*.dcp
+*.bit
+*.ltx
+*.runs/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.gen/
+usage_statistics_webtalk.*
+webtalk*
+vivado_pid*.zip
+
+# --- Yosys / nextpnr / ECP5 ---
+*.config
+*.svf
+*.asc
+*.rpt
+
+# --- ASIC flow (OpenROAD / OpenLane / LibreLane, Magic, KLayout, Netgen) ---
+# Final tapeout artifacts, if ever committed, must be force-added on purpose.
+*.gds
+*.gds.gz
+*.oas
+*.odb
+*.def
+*.spef
+*.sdf
+*.magic.drc
