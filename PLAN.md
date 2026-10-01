@@ -147,8 +147,10 @@ order depends on the lane design (M2), so it is a parameter here.
   own BF16 run.
 - Greedy decode text is saved as a regression fixture.
 - The model is deterministic. One SmolLM2 token takes ≤ 10 s.
-- Day-one check: does torch's FP32→BF16 conversion behave the same on this
-  CPU (which has AVX512-BF16) as its documented software path?
+- Day-one check (done 2026-10-01, all 2³² inputs): torch's FP32→BF16
+  conversion on this CPU matches software RNE exactly for every non-NaN input,
+  including subnormals. NaNs become `0xFFFF`, not `0x7FC0`, so tests compare
+  NaNs by class, not by bits.
 
 ### M2 — Architecture spec and performance model
 **What:** `docs/architecture.md` (block diagram, register map, memory map,
