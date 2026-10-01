@@ -100,7 +100,7 @@ pinned `requirements.txt`. (The owner's local `direnv` setup is not part of
 the repo.) *Why:* newest Python
 with wheels for torch, cocotb, and ml_dtypes.
 
-**D-014 (2026-10-01) — Model ladder** (supersedes D-007). Tiny random-weight
+**D-014 (2026-10-01) — Model ladder** (supersedes D-007; absorbs D-018). Tiny random-weight
 Llama configs (fast RTL tests) → **SmolLM2-135M-Instruct** (our model) →
 Qwen2.5-0.5B. The reference is Hugging Face `transformers`. *Why:*
 SmolLM2-135M-Instruct is an official Llama-architecture chat model, and people
@@ -126,6 +126,23 @@ gives one tensor library and the same dtype semantics as the reference. The
 golden model still does every addition explicitly in hardware order. It never
 uses `matmul`/`sum`, whose order is unspecified. BF16 rounding is our own
 small helper, checked against torch's conversion.
+
+**D-019 (2026-10-01) — Fused multiply-add (FMA) everywhere.** Every
+multiply followed by an add is one FMA with a single rounding: in the
+dot-product lanes (BF16×BF16 + FP32) and in the vector unit (FP32). *Why:*
+it is never less accurate than a separate multiply and add, and one unit does
+the work of two. In the lanes it costs nothing, because the BF16×BF16 product
+is exact anyway.
+
+**D-020 (2026-10-01) — Nonlinear functions.** RoPE sin/cos are FP32 tables
+computed by the host as `transformers` does. 1/√x and 1/x use a bit-trick
+first guess (Quake 3 style: magic constant minus the shifted bit pattern)
+plus Newton steps. exp uses range reduction: 2ⁱ written into the exponent
+field, and a short polynomial for 2ᶠ. Constants, number of Newton steps, and
+polynomial degree are parameters fixed by measurement in M1. *Why:* no
+lookup tables, only integer ops and FP32 FMAs that the vector unit already
+has. Results are rounded to BF16 before every multiplier input, so
+BF16-level accuracy is enough.
 
 ## Milestones
 
@@ -242,7 +259,7 @@ checkpoint.
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
 | Q-04 | Vivado builds for F2: local machine or AWS build instance? | Before M8. Local needs the right Vivado version and a license for the F2 device. |
-| Q-08 | Algorithms for exp, reciprocal, rsqrt, sigmoid, sin/cos. | M1 spec, area in M6. |
+| Q-08 | Constants, Newton steps, polynomial degree for D-020. | Measured in M1; area checked in M6. |
 | Q-10 | How many HBM ports the engine reads in parallel, and how weights are spread across them. | M2. This sets the bandwidth bound. |
 | Q-11 | Attention p·V: store V transposed, or add an engine mode for `Σ pᵢ·vᵢ`? | M2. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
