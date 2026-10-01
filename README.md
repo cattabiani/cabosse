@@ -17,7 +17,7 @@ plan to get there in three steps:
    through a multi-project shuttle.
 
 The first target workload is single-stream decode (one token at a time) of
-small models, starting with Karpathy's `stories260K`. Numerics are BF16
+small models, starting with SmolLM2-135M. Numerics are BF16
 multiplies with FP32 accumulation, and models load directly from their published
 checkpoints.
 

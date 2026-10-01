@@ -35,7 +35,9 @@ one is wrong, say so and explain why, and let the owner decide.
 - **Verification:** the Python golden model reproduces the hardware's exact
   formats and summation order and is the bit-exact reference. Comparisons
   against PyTorch use stated tolerances.
-- **Model ladder:** stories260K → stories15M → SmolLM2-135M / Qwen2.5-0.5B.
+- **Model ladder:** tiny random-weight Llama configs (fast RTL tests) →
+  SmolLM2-135M (first real model) → Qwen2.5-0.5B. Reference: Hugging Face
+  `transformers`.
 - **Baseline:** Gemmini + Rocket on F2, 29.8 MHz, 9.0 tokens/s on
   stories260K. Data movement and orchestration dominated, not the matmul.
   Gemmini is not reused.
