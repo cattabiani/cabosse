@@ -29,7 +29,8 @@ one is wrong, say so and explain why, and let the owner decide.
 - **System:** host CPU + accelerator as a PCIe device, AWS F2 first. The core
   exposes AXI-Lite (control) + AXI (memory). Thin wrappers in `platforms/`
   target F2, Lattice ECP5, and an ASIC.
-- **Languages/tools:** SystemVerilog (no Chisel), Verilator, cocotb, numpy.
+- **Languages/tools:** SystemVerilog (no Chisel), Verilator, cocotb. The golden
+  model is written in PyTorch (torch tensors, explicit operations).
   Development happens on Linux.
 - **Verification:** the Python golden model reproduces the hardware's exact
   formats and summation order and is the bit-exact reference. Comparisons
@@ -61,9 +62,10 @@ one is wrong, say so and explain why, and let the owner decide.
    start the next milestone.
 6. **Do not add dependencies** (Python packages, tools, vendored IP) without
    asking. Every dependency needs a license compatible with the project.
-   **Never install programs yourself.** If a tool is missing, say what it is
-   and why it is needed, and suggest the install command (apt or other). The
-   owner installs it.
+   Python packages may be installed into the project's `.venv` and must be
+   pinned in `requirements.txt`. **Never install anything outside `.venv`**
+   (apt, system-wide, tarballs). If a program is missing, say what it is and
+   why it is needed, and suggest the install command. The owner installs it.
 7. **Never commit model weights, waveforms, or build outputs.** Weights go in
    the git-ignored `weights/` directory.
 8. **Numerics changes go through the spec.** Any change to formats, rounding,

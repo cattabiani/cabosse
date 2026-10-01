@@ -119,6 +119,13 @@ source of divergence. *Cost:* extra logic in each FP unit, measured in M3.
 The golden model keeps a flush-to-zero switch in case that cost turns out to
 be too high.
 
+**D-017 (2026-10-01) — Golden model in torch** (supersedes "numpy" in D-005).
+*Why:* torch is already needed for the `transformers` reference. That
+gives one tensor library and the same dtype semantics as the reference. The
+golden model still does every addition explicitly in hardware order. It never
+uses `matmul`/`sum`, whose order is unspecified. BF16 rounding is our own
+small helper, checked against torch's conversion.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -232,7 +239,6 @@ checkpoint.
 |------|----------|----------------|
 | Q-04 | Vivado builds for F2: local machine or AWS build instance? | Before M8. Local needs the right Vivado version and a license for the F2 device. |
 | Q-08 | Algorithms for exp, reciprocal, rsqrt, sigmoid, sin/cos. | M1 spec, area in M6. |
-| Q-09 | Golden model in numpy or torch? BF16 helpers: own code or borrowed? | Leaning torch (already a dependency), with our own ~10-line BF16 rounding checked against torch's. |
 | Q-10 | How many HBM ports the engine reads in parallel, and how weights are spread across them. | M2. This sets the bandwidth bound. |
 | Q-11 | Attention p·V: store V transposed, or add an engine mode for `Σ pᵢ·vᵢ`? | M2. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |

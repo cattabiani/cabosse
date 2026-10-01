@@ -1,0 +1,9 @@
+# Python dependencies for Cabosse (install into .venv; see .envrc).
+# torch comes from the CPU-only index to avoid downloading CUDA libraries.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+transformers==5.18.0
+safetensors==0.8.0
+huggingface_hub==1.33.0
+numpy==2.5.3
+pytest==9.1.1

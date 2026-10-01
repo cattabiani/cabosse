@@ -88,3 +88,6 @@ vivado_pid*.zip
 *.spef
 *.sdf
 *.magic.drc
+
+# --- direnv ---
+.direnv/
