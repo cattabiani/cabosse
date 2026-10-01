@@ -3,12 +3,12 @@
 """Chat with SmolLM2-135M-Instruct as is, with `transformers` on the CPU.
 
 This is the unmodified reference behaviour that Cabosse is compared against.
-Output is streamed token by token. Models with a chat template (Instruct
-models) run as a chat that remembers the conversation; base models continue
-the text. Examples:
+Output is streamed token by token. The Instruct variant runs as a chat that
+remembers the conversation; the base variant continues the text. Examples:
     python scripts/run_smollm.py                     # interactive chat
     python scripts/run_smollm.py --prompt "Hi, who are you?"
     python scripts/run_smollm.py --greedy            # deterministic
+    python scripts/run_smollm.py --variant base      # base model, text continuation
 """
 
 import argparse
@@ -21,7 +21,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, TextStreamer
 
 REPO = Path(__file__).resolve().parent.parent
 WEIGHTS = Path(os.environ.get("CABOSSE_WEIGHTS", REPO / "weights"))
-DEFAULT_MODEL = WEIGHTS / "SmolLM2-135M-Instruct"
+VARIANTS = {"instruct": "SmolLM2-135M-Instruct", "base": "SmolLM2-135M"}
 
 
 def generate(model, tok, input_ids: torch.Tensor, args) -> torch.Tensor:
@@ -49,7 +49,8 @@ def generate(model, tok, input_ids: torch.Tensor, args) -> torch.Tensor:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--model", type=Path, default=DEFAULT_MODEL, help="checkpoint directory")
+    ap.add_argument("--variant", choices=VARIANTS, default="instruct",
+                    help="instruct = chat model (default), base = plain text continuation")
     ap.add_argument("--prompt", help="run once with this prompt (default: interactive)")
     ap.add_argument("--max-new-tokens", type=int, default=256)
     ap.add_argument("--dtype", choices=["float32", "bfloat16"], default="float32")
@@ -60,6 +61,7 @@ def main() -> None:
                     help="always pick the most likely token (deterministic)")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    args.model = WEIGHTS / VARIANTS[args.variant]
 
     torch.manual_seed(args.seed)
     tok = AutoTokenizer.from_pretrained(args.model)
