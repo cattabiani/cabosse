@@ -30,15 +30,13 @@ decisions, milestones, and open questions.
 
 | Path         | Contents                                                   |
 |--------------|------------------------------------------------------------|
-| `docs/`      | Architecture, numerics spec, glossary                      |
+| `docs/`      | Architecture, numerics spec                                |
 | `model/`     | Python golden model and performance model                  |
 | `rtl/`       | Synthesizable SystemVerilog                                |
 | `verif/`     | cocotb testbenches                                         |
 | `sw/`        | Host runtime, driver, PyTorch integration                  |
 | `platforms/` | Thin wrappers for AWS F2, Lattice ECP5, and ASIC           |
 | `scripts/`   | Developer tooling                                          |
-
-New to hardware terms? See [docs/glossary.md](docs/glossary.md).
 
 ## License
 

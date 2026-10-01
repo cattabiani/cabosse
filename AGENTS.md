@@ -10,8 +10,7 @@ design and all software are open source. The aim is to show that open AI
 hardware is real and reproducible. The path is simulation → FPGA (AWS F2) →
 a small real chip on an open-source process (shuttle run). The project owner
 is a software engineer and numerical scientist who is new to hardware. Explain
-hardware concepts when you use them, and add new terms to
-[docs/glossary.md](docs/glossary.md).
+hardware concepts briefly when you use them.
 
 ## Decisions already made
 
@@ -62,6 +61,9 @@ one is wrong, say so and explain why, and let the owner decide.
    start the next milestone.
 6. **Do not add dependencies** (Python packages, tools, vendored IP) without
    asking. Every dependency needs a license compatible with the project.
+   **Never install programs yourself.** If a tool is missing, say what it is
+   and why it is needed, and suggest the install command (apt or other). The
+   owner installs it.
 7. **Never commit model weights, waveforms, or build outputs.** Weights go in
    the git-ignored `weights/` directory.
 8. **Numerics changes go through the spec.** Any change to formats, rounding,
@@ -89,7 +91,7 @@ one is wrong, say so and explain why, and let the owner decide.
 
 ## Repository layout
 
-- `docs/`: architecture, numerics spec, perf model notes, glossary.
+- `docs/`: architecture, numerics spec, perf model notes.
 - `model/`: Python golden model and performance model.
 - `rtl/`: synthesizable SystemVerilog only (no testbenches, no platform code).
 - `verif/`: cocotb testbenches and shared test utilities.
@@ -147,4 +149,3 @@ These are proposed in M0 and will be confirmed when the first code is written
 ### Docs
 
 - Markdown. Plain sentences.
-- New hardware terms → `docs/glossary.md` in the same change.

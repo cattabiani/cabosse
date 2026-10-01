@@ -1,728 +1,247 @@
 # Cabosse plan
 
-This is a living document. Change it when we learn something. Record each
-decision in the [decision log](#decision-log) and keep each open question in
-[open questions](#open-questions) until it is resolved. Hardware terms are
-defined in [docs/glossary.md](docs/glossary.md).
+A living document: what we are going to do and why. Details belong in `docs/`
+once they exist. IDs: **M** = milestone, **D** = decision, **Q** = open
+question.
 
-Last updated: 2026-10-01 (initial draft, M0).
+Last updated: 2026-10-01.
 
----
+## Goal
 
-## 1. Goal
+An open-source accelerator for LLM inference (chip design, verification, host
+software) that anyone can rebuild, with every published number reproducible.
+The path:
 
-Build an open-source accelerator for LLM inference: chip design, verification,
-and host software. Anyone with the listed tools should be able to rebuild it
-and reproduce our numbers. The path:
+1. **Simulation:** a full decode step of a real model runs in RTL simulation
+   and matches a bit-exact Python golden model.
+2. **FPGA:** the same RTL runs on AWS F2 as a PCIe device, measured against
+   our memory-bandwidth bound and the Gemmini hackathon baseline. Then it runs
+   on a cheap FPGA with a fully open toolchain (Lattice ECP5).
+3. **ASIC:** a small slice of the design passes signoff on an open PDK. If
+   a shuttle is affordable, we submit it.
 
-1. **Simulation:** a full decode step of a small Llama-style model runs in RTL
-   simulation and matches a bit-exact Python golden model.
-2. **FPGA:** the same RTL runs on AWS F2 as a PCIe device. We measure it
-   against the hackathon baseline (Gemmini, 9.0 tokens/s on stories260K; see M9) and
-   against our own memory-bandwidth bound. Then it runs on a cheap FPGA with
-   a fully open toolchain (Lattice ECP5).
-3. **ASIC:** a small slice of the design is taken through an open PDK flow to
-   a clean, tapeout-ready layout. If a shuttle is affordable and available,
-   we submit it.
+## Non-goals (for now)
 
-Every published number must come with the commands that reproduce it.
+- Training.
+- Batched or multi-user serving: one sequence at a time.
+- Fast prefill: the prompt goes through the decode path one token at a time.
+- Beating commercial GPUs. We compare against our own bandwidth bound and our
+  baseline.
+- General programmability. It is a fixed-function decode engine driven by
+  a command stream, for Llama-style models (RMSNorm, RoPE, GQA, SwiGLU).
+- Low-precision activations or KV cache. Weight-only quantization is a
+  possible extension.
+- A fully open flow on F2, because Vivado is proprietary. The open flow is
+  ECP5 and the ASIC.
 
-## 2. Non-goals
+## Decision log
 
-These are out of scope for now. Revisit them only through the decision log.
+Entries are added, not rewritten. A new entry supersedes an old one.
 
-- Training or backpropagation.
-- Batched or multi-user serving. The design target is one sequence at a time.
-- Fast prefill. To begin with, the prompt is processed one token at a time
-  using the decode path.
-- Competing with commercial GPUs on absolute speed. The comparison points are
-  our own baseline and our own bandwidth bound.
-- General programmability (SIMT, graphics, arbitrary kernels). "Open GPU/TPU"
-  describes the role this chip plays, not its architecture. It is a
-  fixed-function LLM decode engine driven by a command stream.
-- Arbitrary model architectures. Llama-style decoder-only transformers only
-  (RMSNorm, RoPE, GQA, SwiGLU).
-- Low-precision activations or KV cache (FP8, int8 activations). Weight-only
-  quantization is a possible extension (M10).
-- A fully open toolchain on F2. The F2 flow needs AMD Vivado, which is
-  proprietary. The fully open flow is the ECP5 path (M11) and the ASIC path
-  (M12).
+**D-001 (2026-10-01) — Scope.** Open-source LLM inference accelerator. Path: simulation →
+AWS F2 → small chip on an open process via a shuttle. *Why:* each step is
+reproducible and builds confidence for the next.
 
-## 3. Decision log
+**D-002 (2026-10-01) — Numerics: BF16 × BF16 multiply, FP32 accumulate, FP32 vector
+unit.** Models load from official checkpoints without calibration.
+Weight-only int8/int4 (dequantized to BF16) must remain possible. *Why:*
+BF16 has FP32's range, so checkpoints run without calibration. A BF16×BF16
+product is exact in FP32, so all rounding happens in the additions, and the
+summation order fully determines the result.
 
-Format: `D-NNN (date) — decision. Why. Consequences.` Each decision is written
-once and not edited afterwards. To reverse one, add a new entry that says it
-supersedes the old one.
+**D-003 (2026-10-01) — Workload: single-stream decode, which is bandwidth-bound.** Blocks:
+streaming matrix-vector engine, vector unit, DMA, on-chip buffers, a
+controller running a command stream. Activations and KV cache stay in
+accelerator memory. The host is not involved in individual operations.
+*Why:* every weight is read once per token for one MAC. The baseline also
+showed that data movement and orchestration dominate.
 
-**D-001 (2026-10-01) — Project scope and path.** Open-source LLM inference
-accelerator. Path: simulation → AWS F2 FPGA → small chip on an open-source
-process via a shuttle run. *Why:* each step builds confidence for the next one,
-and each produces something others can reproduce.
+**D-004 (2026-10-01) — System: host + PCIe accelerator, AWS F2 first.** The core exposes
+AXI-Lite (control) and AXI (memory). Thin wrappers target F2, ECP5, and the
+ASIC. *Why:* one core runs on every target.
 
-**D-002 (2026-10-01) — Numerics: BF16 × BF16 multiply, FP32 accumulate, FP32
-vector unit.** Models load from their official published checkpoints with no
-conversion or calibration step. Weight-only quantization (int8/int4 weights,
-dequantized to BF16) is a possible later extension. The architecture must not
-rule it out. *Why:* BF16 has the same exponent range as FP32, so most published
-checkpoints run in it without calibration. *Consequence:* a BF16×BF16 product
-has at most 16 significant bits and fits exactly in FP32 (the only exception is
-overflow or underflow at the extremes of the exponent range). So the only
-rounding in a dot product happens in the FP32 additions, and the summation
-order fully determines the result. The golden model must reproduce that order
-exactly.
+**D-005 (2026-10-01) — Languages and tools.** SystemVerilog, Verilator, cocotb, numpy for
+the golden model. Development on Linux.
 
-**D-003 (2026-10-01) — Workload: single-stream LLM decode, which is
-memory-bandwidth bound.** Core blocks: a streaming matrix-vector engine (many
-dot-product lanes fed from memory), a vector unit (RMSNorm, softmax,
-SiLU/SwiGLU, RoPE, residual adds), DMA engines, on-chip buffers, and a small
-controller that executes a command stream. All activations and the KV cache
-stay in accelerator memory. The host is not involved in individual operations.
-*Why:* in decode, every weight is read once per token and used for only one
-multiply-accumulate, so memory bandwidth limits speed. The baseline (D-008)
-also showed that orchestration and data movement dominate.
+**D-006 (2026-10-01) — Verification.** The golden model reproduces the hardware's formats
+and summation order and is the bit-exact reference. Comparisons with
+PyTorch use stated tolerances.
 
-**D-004 (2026-10-01) — System: host CPU + accelerator as a PCIe device, AWS F2
-first.** The accelerator core exposes one standard interface: AXI-Lite for
-control and AXI for memory. Thin platform wrappers target F2, a Lattice ECP5
-board (Yosys/nextpnr), and an ASIC. *Why:* one core and several cheap wrappers
-is less work than separate designs, and it lets the same RTL run on every
-target.
+**D-007 (2026-10-01) — Model ladder** (superseded by D-014).
 
-**D-005 (2026-10-01) — Languages and tools.** SystemVerilog for hardware (no
-Chisel). Verilator for simulation. cocotb (Python) for testbenches. numpy for
-the golden model. Development happens on Linux.
+**D-008 (2026-10-01) — Baseline.** Hackathon: stories260K on Gemmini + Rocket, F2, 29.8
+MHz, 9.0 tokens/s. Per token: 4% matmul, 13% copying around matmuls, 49%
+copying/quantizing the KV cache, ~17% softmax/SwiGLU/RoPE on the CPU.
+*Lesson:* orchestration and data movement dominate. Gemmini is not reused.
 
-**D-006 (2026-10-01) — Verification philosophy.** A Python golden model that
-reproduces the hardware's exact formats and summation order is the bit-exact
-reference for RTL. Comparisons against PyTorch use stated tolerances.
+**D-009 (2026-10-01) — Licenses.** Hardware (`rtl/`, `platforms/`): Solderpad Hardware
+License 2.1. Everything else: Apache-2.0. *Why:* the goal is wide reuse, not
+blocking closed forks. Permissive licenses are the norm in open processor
+RTL, and SHL-2.1 adds explicit coverage of chip layouts.
 
-**D-007 (2026-10-01) — Model ladder.** stories260K (Karpathy, llama2.c) →
-stories15M → SmolLM2-135M / Qwen2.5-0.5B.
+**D-010 (2026-10-01) — SystemVerilog reconfirmed** (over Amaranth, Chisel, HLS). *Why:*
+generators are still RTL and add mainly metaprogramming, at the cost of
+debugging generated code. SystemVerilog is read natively by every tool, lets
+us reuse open IP, and has the largest community. HLS gives up the
+cycle-level control we need.
 
-**D-008 (2026-10-01) — Baseline and prior work.** At a hackathon we ran
-stories260K on Gemmini + Rocket on AWS F2 at 29.8 MHz and got 9.0 tokens/s.
-Time per token broke down as: 4% matmul, 13% copying data around each matmul,
-49% copying and quantizing the KV cache, ~17% softmax/SwiGLU/RoPE on the CPU.
-*Lesson:* orchestration and data movement dominate, not the matmul. Gemmini is
-not reused.
+**D-011 (2026-10-01) — Rounding points.** FP32 values are rounded to BF16 (RNE) only at:
+matrix-vector inputs `x`, `q` before q·Kᵀ, `p` before p·V, and KV cache
+writes. The residual stream, the vector unit, and the logits stay FP32.
+*Why:* the multipliers need BF16 inputs. Everything else keeps full
+precision, and a BF16 KV cache halves its memory.
 
-**D-009 (2026-10-01) — Licenses.** Hardware (`rtl/`, `platforms/`): Solderpad
-Hardware License v2.1 (`Apache-2.0 WITH SHL-2.1`). Everything else: Apache-2.0.
-*Why:* the goal is wide reuse and reproducibility, not stopping closed forks.
-Permissive licenses dominate open processor/accelerator RTL (Gemmini and the
-Berkeley stack: BSD-3; lowRISC: Apache-2.0; OpenHW: Solderpad), so reusing
-or contributing IP is easy. SHL-2.1 is Apache-2.0 plus explicit coverage of
-hardware rights (mask works, design rights), which matters for the ASIC step.
-Recipients may treat SHL-2.1 files as plain Apache-2.0. Reciprocal licenses
-(CERN-OHL-W/S) were considered and rejected because they could put off
-industry and academic contributors.
+**D-012 (2026-10-01) — Special values** (subnormal part superseded by D-016). Infinities
+propagate per IEEE 754. Every NaN becomes the canonical NaN (`0x7FC0` /
+`0x7FC00000`).
 
-**D-010 (2026-10-01) — D-005 reconfirmed: SystemVerilog, not Amaranth or
-Chisel.** Amaranth and Chisel are still RTL (same abstraction level). What they
-add is better metaprogramming. *Why we keep SystemVerilog:* every tool in our
-flows reads it directly, so we debug the code we wrote, not generated Verilog.
-It lets us reuse open IP (CVFPU, lowRISC blocks) directly, and it has the
-largest community. Its verification half (UVM) is not needed because cocotb
-does that job. HLS was ruled out because we need cycle-exact control of
-pipelines and memory traffic.
+**D-013 (2026-10-01) — Python environment.** Python 3.14, `.venv/` via `venv`,
+activated by `direnv` (`.envrc`), pinned requirements. *Why:* newest Python
+with wheels for torch, cocotb, and ml_dtypes.
 
-**D-011 (2026-10-01) — Rounding points (resolves Q-02).** Values are rounded
-from FP32 to BF16 (round to nearest, ties to even) in these places only: the
-input vector `x` of every matrix-vector product, the query `q` before q·Kᵀ, the
-attention probabilities `p` before p·V, and the K/V values written to the KV
-cache. Weights are BF16 as loaded. The residual stream, everything inside the
-vector unit, and the logits stay FP32. *Why:* the multipliers take only BF16
-inputs. Keeping everything else FP32 limits the precision loss to the places
-where it is required. A BF16 KV cache halves its memory.
+**D-014 (2026-10-01) — Model ladder.** Tiny random-weight Llama configs (fast RTL tests)
+→ SmolLM2-135M (first real model) → Qwen2.5-0.5B. stories260K only as an
+optional run to compare with the baseline. The reference is Hugging Face
+`transformers`. *Why:* SmolLM2-135M is an official `transformers` Llama with
+weights already in BF16 (269 MB), so it loads with zero conversion, and it is
+bandwidth-bound, which is what we are designing for. *Cost:* full-token
+RTL simulation is slow (~135M MACs per token), and the model does not fit
+ECP5 boards.
 
-**D-012 (2026-10-01) — Special values (resolves Q-03).** Subnormals are
-flushed to zero on inputs and outputs of every FP operation (FTZ), keeping the
-sign. Infinities propagate per IEEE 754. Every NaN result is the single
-canonical NaN (BF16 `0x7FC0`, FP32 `0x7FC00000`). *Why:* subnormal support is
-expensive in hardware, and real weights and activations almost never contain
-subnormals. The golden model emulates FTZ explicitly, because numpy keeps
-subnormals. M1 measures whether FTZ changes any result.
+**D-015 (2026-10-01) — "No conversion" = at most a cast at load time**, as
+`transformers` and vLLM do. No offline conversion step. SmolLM2-135M needs no
+cast.
 
-**D-013 (2026-10-01) — Python environment (resolves Q-07).** Python 3.14
-(installed on the dev machine; torch, cocotb and ml_dtypes all ship 3.14
-wheels, torch does not yet ship 3.15 wheels). One virtual environment in
-`.venv/` created with the standard `venv` module. It is activated
-automatically by `direnv` through a committed `.envrc`, which also sets
-project environment variables. Dependencies are pinned in a requirements
-file.
+**D-016 (2026-10-01) — Subnormals are kept (IEEE 754), as in PyTorch.** *Why:* PyTorch
+follows IEEE 754 by default on CPU and GPU. Flush-to-zero is an opt-in speed
+setting (`torch.set_flush_denormal`). Matching the reference removes one
+source of divergence. *Cost:* extra logic in each FP unit, measured in M3.
+The golden model keeps a flush-to-zero switch in case that cost turns out to
+be too high.
 
-**D-014 (2026-10-01) — Model ladder (supersedes D-007, resolves Q-06).**
-1. *Tiny random-weight Llama configs* built with `transformers.LlamaConfig`
-   (same code path as the real model, a few thousand parameters), used for
-   fast RTL tests.
-2. *SmolLM2-135M* (`HuggingFaceTB/SmolLM2-135M`, Apache-2.0) is the first
-   real model.
-3. *Qwen2.5-0.5B* comes next (M10).
+## Milestones
 
-stories260K is kept only as an optional run for direct comparison with the
-Gemmini baseline (M9). The PyTorch reference is Hugging Face `transformers`
-(`LlamaForCausalLM`), run in FP32 and in BF16.
+Each milestone ends at a **checkpoint**: work stops for the owner's review.
 
-*Why:* SmolLM2-135M is an official, native `transformers` Llama model, and its
-weights are already stored in BF16 (269 MB safetensors), so it loads with no
-conversion at all. At 269 MB of weights per token it is bandwidth-bound,
-which is the regime the design targets (D-003).
+### M0 — Repo foundation ✅
+Repository, plan, agent instructions, licenses.
 
-*Consequences:* a full SmolLM2 token is ~135M MACs. That is about 4M cycles
-at 32 lanes, so full-token RTL simulation is slow and the tiny configs carry
-most RTL testing. The Gemmini baseline ran a different model, so the comparison
-needs care (M9). The model does not fit typical ECP5 boards (M11).
-Model facts (from `config.json`): 30 layers, hidden 576, 9 query heads, 3 KV
-heads (head dim 64), FFN 1536, vocab 49152, tied embeddings, RoPE θ = 100000,
-non-interleaved RoPE.
-
-**D-015 (2026-10-01) — "No conversion" means cast-at-load at most (resolves
-Q-05).** Checkpoints are read as published. Casting weights to BF16 while
-loading counts as loading, not conversion. This matches Hugging Face
-`transformers` (`torch_dtype`) and vLLM (`--dtype`). Offline conversion steps
-(as in llama.cpp's GGUF or TensorRT-LLM engines) are not used. SmolLM2-135M
-needs no cast at all.
-
-## 4. Milestones
-
-Every milestone ends at a **checkpoint**: work stops, and the owner reviews it
-before the next milestone begins. Exit criteria must be shown with
-commands that can be rerun, not just described.
-
-| #   | Milestone                                          | Runs on              |
-|-----|----------------------------------------------------|----------------------|
-| M0  | Repo foundation                                    | —                    |
-| M1  | Numerics spec + golden model (SmolLM2-135M)        | Python               |
-| M2  | Architecture spec + performance model              | docs + Python        |
-| M3  | Toolchain + floating-point units                   | Verilator            |
-| M4  | Dot-product lane                                   | Verilator            |
-| M5  | Matrix-vector engine + simulated memory            | Verilator            |
-| M6  | Vector unit                                        | Verilator            |
-| M7  | Controller + command stream: full token in sim     | Verilator            |
-| M8  | F2 platform bring-up (no model)                    | AWS F2               |
-| M9  | SmolLM2-135M on F2, measured                       | AWS F2               |
-| M10 | Larger models (+ optional weight-only quant)       | Sim + AWS F2         |
-| M11 | Fully open FPGA flow (ECP5)                        | ECP5 board           |
-| M12 | ASIC slice on an open PDK                          | ASIC flow            |
-
-**Changes from the original outline, and why:**
-
-- **M1 now produces a written numerics spec (`docs/numerics.md`) alongside the
-  golden model.** "Bit-exact" only means something against a written
-  definition of rounding, special values, and summation order.
-- **M1 and M2 are coupled. The golden model is parameterized for this
-  reason.** The summation order depends on the lane structure (number of
-  lanes, adder pipeline depth), and that is decided in M2. So M1 builds the
-  golden model with summation order as a parameter, and M2 fixes the values.
-  The alternative was to do M2 first, but then we would be designing hardware
-  before we have a working reference.
-- **M3 is split into "toolchain + FP units" (M3) and "dot-product lane" (M4).**
-  An IEEE-correct FP32 adder is the hardest numerics RTL in the project and
-  needs its own review. Accumulating with a pipelined adder also creates a
-  feedback-loop problem that changes the summation order (see M4). That
-  deserves its own checkpoint.
-- **F2 is split into bring-up (M8) and model run (M9).** F2 has a cost per hour
-  and long build times. Proving that the host can talk to the board (register
-  read/write, DMA, memory access) before adding the accelerator keeps
-  platform problems separate from design problems.
-
----
-
-### M0 — Repo foundation
-
-**Goal:** a repository others can read, and a plan we agree on.
-
-**Deliverables:** `git init`, `.gitignore`, `README.md`, folder skeleton with
-per-folder READMEs, `AGENTS.md` + `CLAUDE.md`, `docs/glossary.md`, this
-`PLAN.md`, `LICENSE` (Apache-2.0) and `LICENSE-HARDWARE` (SHL-2.1).
-
-**Exit criteria:** owner has reviewed the plan; license chosen (done: D-009);
-first commit made by the owner or with their explicit OK.
-
-**Checkpoint:** review PLAN.md, especially the milestone split and the open
-questions marked **[needed for M1]**.
-
-**Risks / open questions:** none remaining for M0.
-
----
-
-### M1 — Numerics spec and golden model (SmolLM2-135M)
-
-**Goal:** a numpy model of SmolLM2-135M decode in hardware formats. Its error
-against PyTorch is measured, and every rounding point is written down.
-
-**Deliverables:**
-
-- `docs/numerics.md` v0. It defines:
-  - the formats at every tensor boundary (weights, activations, KV cache,
-    logits);
-  - where FP32 values are rounded to BF16, and with which rounding mode;
-  - subnormal handling (keep subnormals, or flush to zero);
-  - NaN/Inf behaviour;
-  - summation order for dot products, as a function of parameters (lanes `L`,
-    interleaved accumulators `A`, final reduction tree shape);
-  - how each nonlinear function is computed (exp, reciprocal, rsqrt, SiLU,
-    sin/cos for RoPE). The golden model must use the same algorithm as the
-    hardware, not `np.exp`.
-- `model/` golden model: loads the SmolLM2-135M safetensors as published
-  (already BF16, no cast) and any tiny random-weight Llama config. It runs
-  decode one token at a time with a KV cache.
-- A comparison harness against Hugging Face `transformers` in FP32 (BF16
-  weights upcast exactly), plus `transformers` in BF16 as a second
-  reference point.
-- Tiny random-weight test configs (D-014), with their weights saved so RTL
-  tests can reuse them.
-- A short results note: per-layer error statistics and the end-to-end metrics
-  below.
-
-**Exit criteria (proposed numbers, to confirm at the checkpoint):**
-
-- Using teacher forcing (both models are fed the same reference token
-  sequence, so one early mismatch cannot snowball), on ≥ 10 prompts × 256
-  positions:
-  - top-1 token agreement with PyTorch FP32 ≥ 99%;
-  - max |logit error| and relative error per layer are reported. Thresholds are
-    set from the observed PyTorch-BF16 vs FP32 error: the golden model should
-    not be meaningfully worse than PyTorch's own BF16 run.
-- Greedy decode of 64 tokens from 3 fixed prompts produces readable text, and
-  the output is recorded as a regression fixture.
-- The golden model is deterministic: two runs are bit-identical, and changing
-  only the summation-order parameters changes the results the way the spec
-  predicts.
-- Runtime for one SmolLM2-135M token in the golden model: ≤ 10 s on the dev
-  machine (target, to confirm). For tiny configs: well under a second.
-
-**Checkpoint:** review `docs/numerics.md`, the error report, and the list of
-rounding points.
-
-**Risks / open questions:**
-
-- Model details the golden model must get right: tied embeddings (the
-  classifier reads the whole 49152×576 embedding table every token, ~21% of
-  weight traffic), Hugging Face's non-interleaved RoPE convention, GQA with 3
-  query heads per KV head.
-- Nonlinear functions: approximations that are cheap in hardware might hurt
-  accuracy, while accurate ones might be expensive in area. The spec should
-  allow swapping the algorithm without touching the rest (Q-08).
-- numpy has no native BF16. Options: bit manipulation on `uint16`/`uint32`
-  views, or the `ml_dtypes` package (Q-09).
-- numpy float32 arithmetic is IEEE round-to-nearest-even and keeps subnormals.
-  If the hardware flushes subnormals to zero, the golden model must emulate
-  that explicitly.
-
----
+### M1 — Numerics spec and golden model
+**What:** `docs/numerics.md` (formats, rounding points, special values,
+summation order as parameters, algorithms for exp/rsqrt/reciprocal/SiLU/RoPE)
+and a golden model of SmolLM2-135M decode with a KV cache. It also runs the
+tiny configs. Compared against `transformers` in FP32 and in BF16.
+**Why:** everything later is verified against this model. The summation
+order depends on the lane design (M2), so it is a parameter here.
+**Done when:**
+- Teacher-forced over ≥ 10 prompts × 256 positions, top-1 agreement with FP32
+  `transformers` is ≥ 99%, and the error is no worse than `transformers`'
+  own BF16 run.
+- Greedy decode text is saved as a regression fixture.
+- The model is deterministic. One SmolLM2 token takes ≤ 10 s.
+- Day-one check: does torch's FP32→BF16 conversion behave the same on this
+  CPU (which has AVX512-BF16) as its documented software path?
 
 ### M2 — Architecture spec and performance model
+**What:** `docs/architecture.md` (block diagram, register map, memory map,
+data layouts, command format, one token written out as commands, lanes `L`,
+accumulators `A`, clock targets) and a first-order perf model
+(tokens/s ≈ effective bandwidth / bytes per token, plus compute and
+per-command overhead).
+**Why:** this is the most expensive thing to change later, and the perf
+model sets the targets for M9.
+**Done when:** every golden-model operation maps to a command, with no host
+work mid-token. Predicted tokens/s for SmolLM2 on F2 is written down, with
+the dominant term identified. The summation parameters are fixed and the
+golden model still passes M1.
 
-**Goal:** a written design detailed enough that M3–M7 can be implemented
-without major redesign, plus a performance model that says what tokens/s to
-expect and why.
-
-**Deliverables:**
-
-- `docs/architecture.md`:
-  - block diagram: matrix-vector engine, vector unit, DMA engines, on-chip
-    buffers, controller, AXI-Lite register file, AXI memory port(s);
-  - interfaces: AXI-Lite register map (ID/version, control, status, doorbell,
-    command-stream base address, error codes); AXI data width(s) and burst
-    behaviour;
-  - memory map: weights, KV cache, activations, command buffers, scratch;
-  - data layouts: weight matrix tiling for streaming, KV cache layout per
-    layer/head, and how attention's two products (q·Kᵀ and p·V) map onto the
-    engine (see Q-11);
-  - command format: opcodes, fields, addressing (absolute vs
-    base-register-relative), how the per-token position `pos` gets into
-    addresses and RoPE, completion/interrupt;
-  - one SmolLM2-135M layer and one full token written out as a command
-    sequence (on paper);
-  - parameter choices: lanes `L`, accumulators per lane `A`, buffer sizes,
-    clock target per platform. These fix the summation-order parameters left
-    open in M1.
-- `model/` performance model (Python), first order:
-  - `bytes_per_token ≈ 2·N_weights_streamed + KV_bytes_read(pos) +
-    activation traffic`
-  - `t_mem = bytes_per_token / BW_effective`
-  - `t_compute = MACs_per_token / (L · f_clk)`
-  - `t_overhead = n_commands · per_command_overhead`
-  - `tokens/s ≈ 1 / (max(t_mem, t_compute) + t_overhead)`, with and without
-    overlap between commands.
-  - Tables for each model in the ladder × each platform (F2, ECP5).
-- `docs/perf-model.md`: assumptions, and the numbers M9 will be judged
-  against.
-
-**Exit criteria:**
-
-- The command sequence for one SmolLM2-135M token is complete: every operation
-  in the golden model maps to a command. Nothing is handled by the host
-  mid-token.
-- The perf model gives a predicted tokens/s for SmolLM2-135M on F2 at the chosen
-  clock, and states which term dominates.
-- The golden model is updated to use the fixed summation parameters and still
-  passes the M1 criteria.
-- The M9 target (tokens/s on F2) is written down, derived from the perf
-  model. Provisional floor: ≥ 50% of the bandwidth bound for the memory ports
-  the design uses.
-
-**Checkpoint:** design review of architecture.md and the perf tables. This is
-the most important checkpoint in the plan: redesigning later costs much more.
-
-**Risks / open questions:**
-
-- Memory bandwidth: SmolLM2-135M streams ~269 MB of weights per token, so
-  tokens/s ≈ effective bandwidth / 269 MB. For example, 50 GB/s gives ~185
-  tokens/s. How many HBM ports we can feed at once matters more than anything
-  else (Q-10, Q-13).
-- What the F2 shell exposes for HBM: number of AXI ports, width, and clock.
-  This limits `BW_effective`. To verify from AWS documentation, without
-  creating cloud resources (Q-13).
-- Controller design: fixed-function sequencer vs a small RISC-V core (Q-12).
-- Leaving room for weight-only quantization: the weight path should have a
-  place for a dequant stage between memory and the lanes. Group-scale layout
-  is a later decision.
-
----
-
-### M3 — Toolchain and floating-point units
-
-**Goal:** the hardware toolchain works locally and in CI, and the two
-arithmetic primitives are proven correct.
-
-**Deliverables:**
-
-- Setup instructions for Linux: Verilator, cocotb, Python env.
-  Pinned versions.
-- A test runner (one command runs all cocotb tests) and CI on every push.
-  The CI provider is decided at the checkpoint (Q-15).
-- A lint gate: Verilator `--lint-only -Wall` clean.
-- RTL: BF16×BF16 → FP32 multiplier; FP32 adder (round-to-nearest-even,
-  subnormal policy as in the spec, NaN/Inf as in the spec).
-- cocotb tests comparing both units against the golden model's bit-level
-  functions.
-
-**Exit criteria:**
-
-- Multiplier: bit-exact on all 2³² BF16×BF16 input pairs if this finishes in
-  reasonable time in Verilator (estimate first), otherwise ≥ 10⁸ random pairs
-  plus every special-value class (±0, subnormals, ±Inf, NaN, max/min normal).
-- Adder: bit-exact on ≥ 10⁸ random pairs plus directed corner cases:
-  cancellation, rounding ties, overflow to Inf, results that become
-  subnormal, operands with very different exponents.
-- Pipeline latency and throughput (one result per cycle) documented.
-- Yosys synthesis of each unit succeeds as a smoke test, with LUT/DSP
-  counts reported. This is a portability check, not an optimization target.
-
-**Checkpoint:** review the FP unit design, the test coverage, and the
-toolchain setup on the owner's machine.
-
-**Risks / open questions:**
-
-- Write our own FP units or use an existing open one (e.g. PULP's
-  FPnew/CVFPU, SystemVerilog, Solderpad-licensed) (Q-14). Our own is more
-  work but easier to explain and match bit for bit. An existing one is
-  proven, but brings its license and its features.
-- Exhaustive multiplier testing may be too slow in simulation. Fallback:
-  exhaustive testing in a C++ Verilator harness without cocotb, documented.
-
----
+### M3 — Toolchain and FP units
+**What:** OSS CAD Suite (Verilator, Yosys with the slang SystemVerilog
+plugin, nextpnr, cocotb; owner installs), one-command test runner, CI, lint.
+RTL for the BF16×BF16 multiplier and the FP32 adder.
+**Why:** the FP adder is the hardest numerics RTL. Proving the toolchain on
+something small first.
+**Done when:** both units are bit-exact against the golden model on ≥ 10⁸
+random inputs plus every special-value class. The multiplier is tested
+exhaustively if that is fast enough. Lint is clean, and both synthesize in
+Yosys. The area cost of subnormal support is reported (D-016).
 
 ### M4 — Dot-product lane
-
-**Goal:** one lane that streams BF16 weight/activation pairs and produces an
-FP32 dot product bit-identical to the golden model.
-
-**Deliverables:** lane RTL (multiplier → accumulator(s) → final reduction),
-streaming input interface with valid/ready handshake, cocotb tests.
-
-**The key design issue:** a pipelined FP32 adder takes several cycles (`A`)
-to produce a sum. To accept one product per cycle, a lane must keep `A`
-partial sums in rotation and combine them at the end. This fixes the summation
-order. The golden model must use exactly the same scheme (parameter `A` from
-M1/M2).
-
-**Exit criteria:**
-
-- Bit-exact against the golden model on: random vectors of length 1…4096
-  (including lengths not divisible by `A`), the actual row lengths of
-  SmolLM2-135M (576 and 1536), and adversarial inputs (large cancellation, mixed
-  magnitudes).
-- Sustains 1 MAC/cycle per lane in simulation, with stalls on the input
-  handled correctly (randomized backpressure tests).
-- Report the error of the lane's summation order versus float64
-  dot products, as an accuracy sanity check (not a pass/fail gate).
-
-**Checkpoint:** review lane microarchitecture and the summation-order
-documentation.
-
-**Risks / open questions:** whether to use a different accumulation scheme
-(e.g. wider internal accumulator, or Kulisch-style exact accumulation). That
-would change D-002 and need a new decision entry.
-
----
+**What:** a lane that streams BF16 pairs into an FP32 dot product.
+**Why:** a pipelined adder needs `A` rotating partial sums to take one input
+per cycle. That fixes the summation order, which the golden model must match.
+**Done when:** bit-exact on random lengths, SmolLM2 row lengths, and
+adversarial inputs. 1 MAC/cycle sustained under randomized backpressure.
 
 ### M5 — Matrix-vector engine with simulated memory
-
-**Goal:** `y = W·x` for BF16 `W` in memory, BF16 `x` on-chip, FP32 `y`.
-Weights stream from an AXI memory model at the rate the lanes consume them.
-
-**Deliverables:**
-
-- Engine RTL: `L` lanes, input-vector buffer, output handling, weight DMA (AXI
-  read master with bursts), tiling for matrices larger than one pass.
-- AXI memory model for simulation with configurable latency and bandwidth
-  (cocotb or SV).
-- Tests over the real matrix shapes of SmolLM2-135M (576×576, 192×576,
-  1536×576, 576×1536, 49152×576) and the tiny configs.
-
-**Exit criteria:**
-
-- Bit-exact against the golden model for every SmolLM2-135M matrix shape
-  (one full layer plus the classifier) with real weights and real
-  activations taken from golden-model runs.
-- Measured utilization: with the memory model set to `BW` bytes/cycle, the
-  engine's achieved bytes/cycle is ≥ 90% of `min(BW, 2·L)` for large
-  matrices. Overhead per matrix (startup and drain cycles) is reported and
-  fed back into the perf model.
-
-**Checkpoint:** review engine design and utilization numbers vs the perf
-model.
-
-**Risks / open questions:** AXI data width vs lanes (e.g. a 512-bit bus carries
-32 BF16 values per beat); burst sizes and alignment rules; whether the
-input vector `x` is rounded to BF16 before entering the engine or inside it
-(it is BF16 either way, D-011).
-
----
+**What:** `L` lanes, weight DMA over AXI, tiling, and an AXI memory model
+with configurable bandwidth.
+**Why:** this is where bandwidth is won or lost.
+**Done when:** bit-exact on one full SmolLM2 layer and the classifier with
+real data. Achieved bytes/cycle is ≥ 90% of `min(BW, 2·L)` on large
+matrices. Verilator speed is measured, to plan M7.
 
 ### M6 — Vector unit
+**What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
+KV cache writes.
+**Done when:** each operation is bit-exact on random and real activations,
+and the perf model shows the vector unit at < 10% of token time.
 
-**Goal:** FP32 elementwise and reduction operations needed by decode.
+### M7 — Controller and a full token in simulation
+**What:** a controller that fetches and runs the command stream, a register
+file, the top level, and the `sw/` runtime driving simulation through the
+same interface as the hardware.
+**Why:** this is the main lesson from the baseline. The host only says
+"go", and everything else stays on the device.
+**Done when:** tiny configs are bit-exact for 3 prompts × 64 tokens.
+SmolLM2 is bit-exact for ≥ 8 tokens. The cycle breakdown per token is
+compared with the perf model and with the baseline profile.
 
-**Deliverables:** RTL for RMSNorm (sum of squares, rsqrt, scale), softmax
-(max, exp, sum, reciprocal, scale), SiLU and the SwiGLU product, RoPE
-(rotation using sin/cos per the spec), residual add, FP32→BF16 rounding, and
-writing results to the KV cache. cocotb tests per operation.
-
-**Exit criteria:**
-
-- Each operation is bit-exact against the golden model on random inputs and
-  on real activations from SmolLM2-135M.
-- Throughput per operation documented (elements/cycle). With the M5 numbers,
-  the perf model shows the vector unit takes < 10% of token time for
-  SmolLM2-135M (if not, record why and decide).
-
-**Checkpoint:** review the nonlinear-function implementations (area vs
-accuracy) and the accuracy numbers.
-
-**Risks / open questions:** exp/rsqrt/reciprocal implementations (Q-08);
-whether RoPE sin/cos values are precomputed tables in memory or computed on
-chip; reductions (sum, max) add another summation order to specify.
-
----
-
-### M7 — Controller and command stream: a full token in simulation
-
-**Goal:** the host writes a command buffer once. Each token, it writes the
-token ID and starts the accelerator, and reads back the result. Everything in
-between runs on the accelerator.
-
-**Deliverables:**
-
-- Controller RTL: fetches commands over AXI, dispatches them to engine,
-  vector unit, and DMA, tracks dependencies, reports completion and errors.
-- AXI-Lite register file matching architecture.md.
-- Top level with one AXI-Lite slave and the AXI master port(s).
-- `sw/` runtime for simulation: lays out weights, builds the command stream,
-  runs decode through the same register interface the hardware will use.
-- End-to-end cocotb tests: tiny configs (fast, every run) and SmolLM2-135M
-  (slow, a few tokens).
-
-**Exit criteria:**
-
-- Tiny configs: bit-exact logits against the golden model at every position,
-  3 prompts × 64 tokens.
-- SmolLM2-135M: bit-exact logits for the first ≥ 8 tokens of one prompt, and
-  the generated tokens equal the start of the M1 fixture.
-- No host interaction during a token beyond: write token ID / position, start,
-  wait for done, read logits (or argmax).
-- Simulated cycles per token are reported and compared with the perf model,
-  with differences explained. Projected tokens/s at the planned F2 clock.
-- Lint clean. Synthesizes with Yosys (generic) as a portability smoke test.
-
-**Checkpoint:** demo of end-to-end simulation; review the cycle breakdown
-(where do the cycles go: matvec, vector, DMA, controller stalls). Compare
-the breakdown with the baseline's profile.
-
-**Risks / open questions:** simulation speed. A SmolLM2-135M token is
-~135M MACs (≈ 4M cycles at 32 lanes). Measure Verilator speed in M5. If a
-token takes too long, run SmolLM2 end to end only in a nightly job.
-
----
-
-### M8 — AWS F2 platform bring-up (no model)
-
-**Goal:** prove the F2 path with no accelerator logic: host ↔ PCIe ↔ AXI-Lite
-registers, host → device DMA, device logic ↔ HBM/DDR.
-
-**Deliverables:** `platforms/f2/` wrapper with a trivial test design (register
-file + memory tester), Vivado build scripts, host-side test program using the
-`sw/` driver interface, cost and time log (build hours, instance hours, $).
-
-**Exit criteria:**
-
-- Register read/write from the host works.
-- Host can DMA ≥ 256 MB to and from device memory, verified by checksum, and
-  the throughput is measured.
-- Device-side memory read bandwidth measured per HBM/DDR port and in total,
-  then compared with the datasheet and fed into the perf model.
-- The whole flow from a clean checkout is documented step by step.
-
-**Checkpoint:** review cost log and measured bandwidth. **Before any cloud
-resource is created, the owner approves the budget and the instance types.**
-
-**Risks / open questions:** Vivado version required by the AWS F2 development
-kit; where builds run (cloud build instance vs the local Linux machine)
-(Q-04); AFI creation turnaround; cost
-control (Q-16).
-
----
+### M8 — F2 bring-up (no model)
+**What:** F2 wrapper with a trivial test design: registers, host DMA, and
+device memory bandwidth.
+**Why:** keeps platform problems apart from design problems. Cloud time costs
+money.
+**Done when:** register access and DMA work, and HBM bandwidth per port and
+in total is measured. **Cloud budget and instances are approved by the
+owner before anything is created.**
 
 ### M9 — SmolLM2-135M on F2, measured
+**Done when:** bit-exact against the golden model. Tokens/s is measured over
+≥ 1000 tokens and compared with the perf model and the bandwidth bound
+(provisional floor: ≥ 50% of it). Clock and resource use are reported.
+Compared with the Gemmini baseline either by also running stories260K, or
+with normalized figures.
 
-**Goal:** the M7 design runs on F2, gives the same answers as simulation, and
-is measured.
+### M10 — Larger models, optional weight-only quantization
+Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
+sub-milestone.
 
-**Deliverables:** F2 build of the accelerator, runtime port, benchmark
-script, results write-up in `docs/` with commands to reproduce.
-
-**Exit criteria:**
-
-- Bit-exact against the golden model on the same 3 × 64-token runs as M7.
-- Tokens/s measured over ≥ 1000 tokens and reported against: (a) the
-  perf-model prediction, (b) the memory-bandwidth bound (provisional floor:
-  ≥ 50% of it; the real target is set in M2).
-- Comparison with the Gemmini baseline. It ran stories260K (9.0 tokens/s),
-  so either also run stories260K on our design (needs a small loader for
-  llama2.c files, optional deliverable), or compare normalized figures
-  (weight bytes/s, MACs/s).
-- Clock frequency achieved (timing closure) and resource use (LUT, FF, DSP,
-  BRAM, URAM) reported.
-- A time breakdown per token from on-device cycle counters, compared with the
-  baseline profile.
-
-**Checkpoint:** review results; decide between scaling up (M10), going open
-(M11), or improving performance.
-
-**Risks / open questions:** timing closure at the target clock; PCIe round
-trip per token may become significant at high tokens/s for tiny models. If
-so, document it as host overhead rather than hide it.
-
----
-
-### M10 — Larger models and optional weight-only quantization
-
-**Goal:** climb the model ladder: Qwen2.5-0.5B, and optionally
-SmolLM2-360M. Each token streams 0.7–1 GB of weights, so bandwidth matters
-even more.
-
-**Deliverables:** golden-model support for the new models (tied embeddings,
-QKV biases in Qwen2.5, different vocab sizes and head counts, longer
-contexts). RTL/runtime changes if needed. F2 measurements. Optional:
-int8/int4 weight-only quantization with BF16 dequant, as a separate
-sub-milestone with its own checkpoint.
-
-**Exit criteria:**
-
-- Each model meets the M1-style PyTorch tolerance criteria in the golden model
-  and is bit-exact against the golden model on F2.
-- Measured tokens/s at least the same fraction of the bandwidth bound as
-  SmolLM2-135M reached in M9.
-
-**Checkpoint:** after each model, and before starting quantization.
-
-**Risks / open questions:** whether `docs/numerics.md` changes are needed for
-larger hidden sizes (longer dot products → more accumulation error);
-tokenizers for the HF models live on the host side; KV cache size at long
-contexts.
-
----
-
-### M11 — Fully open FPGA flow (Lattice ECP5)
-
-**Goal:** the same core, built only with open tools, runs a model on a
-low-cost board. SmolLM2-135M (269 MB) does not fit typical ECP5 boards, so
-this runs a tiny config or stories260K (Q-17).
-
-**Deliverables:** `platforms/ecp5/` wrapper with a host link (likely
-USB/UART-to-AXI, since typical ECP5 boards have no PCIe; Q-17), board memory
-controller (SDRAM or similar), Yosys + nextpnr build, a smaller
-configuration (fewer lanes) if needed to fit.
-
-**Exit criteria:**
-
-- The chosen model is bit-exact against the golden model on the board.
-- tokens/s measured and compared with the perf model for that board's
-  memory bandwidth.
-- The full build from source uses only open-source tools, and is documented.
-
-**Checkpoint:** review; decide on the ASIC slice scope.
-
-**Risks / open questions:** board choice (Q-17); fitting the design into the
-board's LUTs and DSP blocks; memory controller IP availability and license.
-This milestone could move earlier, before F2, as a cheap first hardware target
-(Q-18).
-
----
+### M11 — Fully open FPGA flow (ECP5)
+The same core, built with open tools only, runs a tiny config or stories260K
+on a cheap board. It may move earlier (Q-18).
 
 ### M12 — ASIC slice on an open PDK
+A few lanes with a simple test interface. DRC/LVS clean, timing met,
+gate-level simulation bit-exact. Shuttle submission is decided at this
+checkpoint.
 
-**Goal:** take a small, self-contained part of the design (e.g. a few
-dot-product lanes plus a small buffer and a simple test interface) through an
-open-source ASIC flow to a layout that passes signoff checks.
+## Open questions
 
-**Deliverables:** `platforms/asic/` flow config, a test wrapper (e.g. SPI or
-a simple serial interface), gate-level simulation, signoff reports.
-
-**Exit criteria:**
-
-- DRC and LVS clean; static timing passes at the target clock in the PDK's
-  corners.
-- Gate-level simulation of the slice is bit-exact against the golden model on
-  the M4 test vectors.
-- Area and power estimates reported.
-- Submitting to a shuttle is a separate decision (cost, schedule) and is made
-  at this checkpoint.
-
-**Checkpoint:** review signoff results; go/no-go on shuttle submission.
-
-**Risks / open questions:** PDK choice and shuttle availability (Q-19); FP
-unit area in an older process node; I/O-limited test interface.
-
----
-
-## 5. Open questions
-
-Questions marked **[needed for M1]** block the next milestone.
-
-| ID   | Question | Notes / current leaning |
-|------|----------|--------------------------|
-| Q-01 | ~~License for hardware and software.~~ | **Resolved: D-009.** |
-| Q-02 | ~~Where are FP32 values rounded to BF16?~~ | **Resolved: D-011.** |
-| Q-03 | ~~Subnormals, NaN/Inf behaviour.~~ | **Resolved: D-012.** |
-| Q-04 | Where do Vivado builds for F2 run: the local Linux machine or an AWS build instance? | Local needs the Vivado version required by the AWS F2 kit and a license that covers the F2 device. Decide before M8. |
-| Q-05 | ~~What counts as "no conversion"?~~ | **Resolved: D-015.** |
-| Q-06 | ~~Which PyTorch reference?~~ | **Resolved: D-014** (Hugging Face `transformers`). |
-| Q-07 | ~~Python version and environment.~~ | **Resolved: D-013.** |
-| Q-08 | Algorithms for exp, reciprocal, rsqrt, sigmoid, sin/cos. | Decide in M1 (spec) with area estimates in M2/M6. |
-| Q-09 | BF16 in numpy: own bit manipulation vs `ml_dtypes` dependency. | Leaning: own bit-level helpers (small, explicit), cross-checked with `ml_dtypes` in tests. |
-| Q-10 | How many HBM ports does the engine read in parallel, and how are weights spread across them? | Decide in M2. It sets the bandwidth bound. |
-| Q-11 | Attention mapping: store V transposed (q·Kᵀ and p·V are both row-dot products, but appending a token becomes a strided write), or give the engine a second mode that computes `Σ pᵢ·vᵢ`? | Decide in M2. |
-| Q-12 | Controller: fixed-function command sequencer or a small RISC-V core? | Leaning: fixed-function sequencer, with base registers so one command list serves every token. |
-| Q-13 | F2 shell specifics: HBM/DDR ports exposed to custom logic, widths, clocks, PCIe DMA mechanism. | Check AWS docs during M2 (reading only, no cloud resources). |
-| Q-14 | Write our own FP units or use an existing open IP (e.g. CVFPU/FPnew)? | Decide at M3 start. |
-| Q-15 | CI provider (GitHub Actions or other) and where the repo is hosted. | Decide at M3. |
-| Q-16 | F2 budget per month and cost controls. | Owner decision before M8. |
-| Q-17 | ECP5 board (e.g. ULX3S, OrangeCrab, or other), host link, and which model it runs. | Typical boards have tens of MB of RAM, too little for SmolLM2-135M. Run a tiny config or stories260K. Decide before M11. |
-| Q-18 | Move ECP5 earlier (before F2) as the first hardware target? | It costs no cloud time and the flow is fully open, but the board has no PCIe and much less bandwidth. Decide at M7 checkpoint. |
-| Q-19 | Open PDK and shuttle (e.g. SkyWater SKY130, GF180MCU, IHP SG13G2; Tiny Tapeout or other MPW programs). | Shuttle availability changes often. Survey at M11 checkpoint. |
-| Q-20 | Prefill: is single-token prefill acceptable long-term? | Fine for now (non-goal). Revisit after M10. |
-| Q-21 | Sampling: argmax on device, or return logits to the host? | Leaning: both supported. Argmax on device keeps PCIe traffic tiny. |
+| ID   | Question | Leaning / when |
+|------|----------|----------------|
+| Q-04 | Vivado builds for F2: local machine or AWS build instance? | Before M8. Local needs the right Vivado version and a license for the F2 device. |
+| Q-08 | Algorithms for exp, reciprocal, rsqrt, sigmoid, sin/cos. | M1 spec, area in M6. |
+| Q-09 | Golden model in numpy or torch? BF16 helpers: own code or borrowed? | Leaning torch (already a dependency), with our own ~10-line BF16 rounding checked against torch's. |
+| Q-10 | How many HBM ports the engine reads in parallel, and how weights are spread across them. | M2. This sets the bandwidth bound. |
+| Q-11 | Attention p·V: store V transposed, or add an engine mode for `Σ pᵢ·vᵢ`? | M2. |
+| Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
+| Q-13 | What the F2 shell exposes (HBM ports, widths, clocks, DMA). | M2, from AWS docs only. |
+| Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
+| Q-15 | CI provider and repo hosting. | M3. |
+| Q-16 | F2 budget and cost controls. | Before M8. |
+| Q-17 | ECP5 board and host link. | Before M11. |
+| Q-18 | Do ECP5 before F2? | M7 checkpoint. |
+| Q-19 | Open PDK and shuttle (SKY130, GF180MCU, IHP SG13G2; Tiny Tapeout, …). | M11 checkpoint. |
+| Q-20 | Is one-token-at-a-time prefill acceptable long-term? | After M10. |
+| Q-21 | Sampling: argmax on device or logits to host? | Leaning both. |
