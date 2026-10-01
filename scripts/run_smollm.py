@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""Run a Hugging Face checkpoint as is, with `transformers` on the CPU.
+"""Chat with SmolLM2-135M-Instruct as is, with `transformers` on the CPU.
 
 This is the unmodified reference behaviour that Cabosse is compared against.
 Output is streamed token by token. Models with a chat template (Instruct
 models) run as a chat that remembers the conversation; base models continue
 the text. Examples:
-    python scripts/run_hf.py                         # interactive chat
-    python scripts/run_hf.py --prompt "Hi, who are you?"
-    python scripts/run_hf.py --model weights/SmolLM2-135M --greedy
+    python scripts/run_smollm.py                     # interactive chat
+    python scripts/run_smollm.py --prompt "Hi, who are you?"
+    python scripts/run_smollm.py --greedy            # deterministic
 """
 
 import argparse

@@ -100,18 +100,18 @@ pinned `requirements.txt`. (The owner's local `direnv` setup is not part of
 the repo.) *Why:* newest Python
 with wheels for torch, cocotb, and ml_dtypes.
 
-**D-014 (2026-10-01) — Model ladder.** Tiny random-weight Llama configs (fast RTL tests)
-→ SmolLM2-135M (first real model) → Qwen2.5-0.5B. stories260K only as an
-optional run to compare with the baseline. The reference is Hugging Face
-`transformers`. *Why:* SmolLM2-135M is an official `transformers` Llama with
-weights already in BF16 (269 MB), so it loads with zero conversion, and it is
-bandwidth-bound, which is what we are designing for. *Cost:* full-token
-RTL simulation is slow (~135M MACs per token), and the model does not fit
-ECP5 boards.
+**D-014 (2026-10-01) — Model ladder** (supersedes D-007). Tiny random-weight
+Llama configs (fast RTL tests) → **SmolLM2-135M-Instruct** (our model) →
+Qwen2.5-0.5B. The reference is Hugging Face `transformers`. *Why:*
+SmolLM2-135M-Instruct is an official Llama-architecture chat model, and people
+expect a chatbot. Its weights are already in BF16 (269 MB), so it loads with
+zero conversion. It is bandwidth-bound, which is what we are designing for.
+*Cost:* full-token RTL simulation is slow (~135M MACs per token), and the
+model does not fit ECP5 boards.
 
 **D-015 (2026-10-01) — "No conversion" = at most a cast at load time**, as
-`transformers` and vLLM do. No offline conversion step. SmolLM2-135M needs no
-cast.
+`transformers` and vLLM do. No offline conversion step. SmolLM2-135M-Instruct
+needs no cast.
 
 **D-016 (2026-10-01) — Subnormals are kept (IEEE 754), as in PyTorch.** *Why:* PyTorch
 follows IEEE 754 by default on CPU and GPU. Flush-to-zero is an opt-in speed
@@ -127,12 +127,6 @@ golden model still does every addition explicitly in hardware order. It never
 uses `matmul`/`sum`, whose order is unspecified. BF16 rounding is our own
 small helper, checked against torch's conversion.
 
-**D-018 (2026-10-01) — Use SmolLM2-135M-Instruct as the demo and default
-model** (refines D-014). Same architecture, size, and BF16 format as the base
-model. Only the chat template and special-token IDs differ. *Why:* people
-expect a chatbot. The hardware and golden model see no difference. "SmolLM2"
-below means the Instruct model unless stated otherwise.
-
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -143,7 +137,7 @@ Repository, plan, agent instructions, licenses.
 ### M1 — Numerics spec and golden model
 **What:** `docs/numerics.md` (formats, rounding points, special values,
 summation order as parameters, algorithms for exp/rsqrt/reciprocal/SiLU/RoPE)
-and a golden model of SmolLM2-135M decode with a KV cache. It also runs the
+and a golden model of SmolLM2-135M-Instruct decode with a KV cache. It also runs the
 tiny configs. Compared against `transformers` in FP32 and in BF16.
 **Why:** everything later is verified against this model. The summation
 order depends on the lane design (M2), so it is a parameter here.
@@ -223,20 +217,20 @@ money.
 in total is measured. **Cloud budget and instances are approved by the
 owner before anything is created.**
 
-### M9 — SmolLM2-135M on F2, measured
+### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
 ≥ 1000 tokens and compared with the perf model and the bandwidth bound
 (provisional floor: ≥ 50% of it). Clock and resource use are reported.
-Compared with the Gemmini baseline either by also running stories260K, or
-with normalized figures.
+Compared with the Gemmini baseline (a different model) using normalized
+figures: weight bytes/s and MACs/s.
 
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
 
 ### M11 — Fully open FPGA flow (ECP5)
-The same core, built with open tools only, runs a tiny config or stories260K
-on a cheap board. It may move earlier (Q-18).
+The same core, built with open tools only, runs a tiny config on a
+cheap board. It may move earlier (Q-18).
 
 ### M12 — ASIC slice on an open PDK
 A few lanes with a simple test interface. DRC/LVS clean, timing met,
