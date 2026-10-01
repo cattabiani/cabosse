@@ -127,6 +127,12 @@ golden model still does every addition explicitly in hardware order. It never
 uses `matmul`/`sum`, whose order is unspecified. BF16 rounding is our own
 small helper, checked against torch's conversion.
 
+**D-018 (2026-10-01) — Use SmolLM2-135M-Instruct as the demo and default
+model** (refines D-014). Same architecture, size, and BF16 format as the base
+model. Only the chat template and special-token IDs differ. *Why:* people
+expect a chatbot. The hardware and golden model see no difference. "SmolLM2"
+below means the Instruct model unless stated otherwise.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.

@@ -36,7 +36,7 @@ one is wrong, say so and explain why, and let the owner decide.
   formats and summation order and is the bit-exact reference. Comparisons
   against PyTorch use stated tolerances.
 - **Model ladder:** tiny random-weight Llama configs (fast RTL tests) →
-  SmolLM2-135M (first real model) → Qwen2.5-0.5B. Reference: Hugging Face
+  SmolLM2-135M-Instruct (first real model) → Qwen2.5-0.5B. Reference: Hugging Face
   `transformers`.
 - **Baseline:** Gemmini + Rocket on F2, 29.8 MHz, 9.0 tokens/s on
   stories260K. Data movement and orchestration dominated, not the matmul.
