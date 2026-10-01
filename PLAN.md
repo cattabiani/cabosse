@@ -90,7 +90,7 @@ target.
 
 **D-005 (2026-10-01) — Languages and tools.** SystemVerilog for hardware (no
 Chisel). Verilator for simulation. cocotb (Python) for testbenches. numpy for
-the golden model. The development host is a Mac.
+the golden model. Development happens on Linux.
 
 **D-006 (2026-10-01) — Verification philosophy.** A Python golden model that
 reproduces the hardware's exact formats and summation order is the bit-exact
@@ -319,7 +319,7 @@ arithmetic primitives are proven correct.
 
 **Deliverables:**
 
-- Setup instructions for the Mac (and Linux): Verilator, cocotb, Python env.
+- Setup instructions for Linux: Verilator, cocotb, Python env.
   Pinned versions.
 - A test runner (one command runs all cocotb tests) and CI on every push.
   The CI provider is decided at the checkpoint (Q-15).
@@ -342,7 +342,7 @@ arithmetic primitives are proven correct.
   counts reported. This is a portability check, not an optimization target.
 
 **Checkpoint:** review the FP unit design, the test coverage, and the
-toolchain setup on the owner's Mac.
+toolchain setup on the owner's machine.
 
 **Risks / open questions:**
 
@@ -506,8 +506,8 @@ file + memory tester), Vivado build scripts, host-side test program using the
 resource is created, the owner approves the budget and the instance types.**
 
 **Risks / open questions:** Vivado version required by the AWS F2 development
-kit; where builds run (cloud build instance vs a local Linux machine with
-Vivado; Vivado does not run on macOS) (Q-04); AFI creation turnaround; cost
+kit; where builds run (cloud build instance vs the local Linux machine)
+(Q-04); AFI creation turnaround; cost
 control (Q-16).
 
 ---
@@ -631,7 +631,7 @@ Questions marked **[needed for M1]** block the next milestone.
 | Q-01 | ~~License for hardware and software.~~ | **Resolved: D-009.** |
 | Q-02 | **[needed for M1]** Where are FP32 values rounded to BF16? (matvec input `x`, KV cache, residual stream, attention probabilities before p·V) | Leaning: residual stream stays FP32; BF16 only at matvec inputs and the KV cache. Must be fixed in `numerics.md`. |
 | Q-03 | **[needed for M1]** Subnormals: keep them or flush to zero? Which NaN/Inf behaviour? | Flush-to-zero is cheaper in hardware. Golden model must match either way. |
-| Q-04 | Development host: the brief says Mac, and this session ran on Linux. Which OS is primary, and where do Vivado builds run? | Keep tools and scripts cross-platform. Vivado needs Linux. |
+| Q-04 | Where do Vivado builds for F2 run: the local Linux machine or an AWS build instance? | Local needs the Vivado version required by the AWS F2 kit and a license that covers the F2 device. Decide before M8. |
 | Q-05 | **[needed for M1]** Is "read llama2.c `.bin` + FP32→BF16 cast" acceptable as "no conversion" for the stories models? | Leaning yes. Treated as loading, not a separate conversion step. |
 | Q-06 | **[needed for M1]** PyTorch reference: llama2.c's `model.py`, HF transformers, or our own minimal PyTorch? | Leaning: our own minimal PyTorch reference, cross-checked against llama2.c's `run.c` output. |
 | Q-07 | Python version and package manager (pip/venv, uv, conda). | Leaning: Python ≥ 3.11, `uv` or plain venv; decide at M1 start. |

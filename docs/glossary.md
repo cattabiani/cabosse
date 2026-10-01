@@ -188,7 +188,7 @@ Grouped by topic; alphabetical within each group.
 - **URAM (UltraRAM):** larger on-chip SRAM blocks (288 Kb each) on some AMD
   UltraScale+ FPGAs.
 - **Vivado:** AMD's proprietary FPGA toolchain. It is required for F2 builds
-  and runs on Linux/Windows, not macOS.
+  and runs on Linux and Windows.
 - **Yosys:** an open-source synthesis tool. It is used for the ECP5 flow, the
   ASIC flow, and as a portability check.
 

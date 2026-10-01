@@ -2,13 +2,7 @@
 # the thing being built. The patterns below are a safety net for tools that
 # write next to their inputs anyway.
 
-# --- OS / editors ---
-.DS_Store
-.AppleDouble
-.LSOverride
-._*
-.Spotlight-V100
-.Trashes
+# --- Editors ---
 *.swp
 *~
 .idea/

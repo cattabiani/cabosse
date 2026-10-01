@@ -31,7 +31,7 @@ one is wrong, say so and explain why, and let the owner decide.
   exposes AXI-Lite (control) + AXI (memory). Thin wrappers in `platforms/`
   target F2, Lattice ECP5, and an ASIC.
 - **Languages/tools:** SystemVerilog (no Chisel), Verilator, cocotb, numpy.
-  The development host is a Mac.
+  Development happens on Linux.
 - **Verification:** the Python golden model reproduces the hardware's exact
   formats and summation order and is the bit-exact reference. Comparisons
   against PyTorch use stated tolerances.
