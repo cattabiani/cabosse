@@ -126,6 +126,31 @@ largest community. Its verification half (UVM) is not needed because cocotb
 does that job. HLS was ruled out because we need cycle-exact control of
 pipelines and memory traffic.
 
+**D-011 (2026-10-01) — Rounding points (resolves Q-02).** Values are rounded
+from FP32 to BF16 (round to nearest, ties to even) in these places only: the
+input vector `x` of every matrix-vector product, the query `q` before q·Kᵀ, the
+attention probabilities `p` before p·V, and the K/V values written to the KV
+cache. Weights are BF16 as loaded. The residual stream, everything inside the
+vector unit, and the logits stay FP32. *Why:* the multipliers take only BF16
+inputs. Keeping everything else FP32 limits the precision loss to the places
+where it is required. A BF16 KV cache halves its memory.
+
+**D-012 (2026-10-01) — Special values (resolves Q-03).** Subnormals are
+flushed to zero on inputs and outputs of every FP operation (FTZ), keeping the
+sign. Infinities propagate per IEEE 754. Every NaN result is the single
+canonical NaN (BF16 `0x7FC0`, FP32 `0x7FC00000`). *Why:* subnormal support is
+expensive in hardware, and real weights and activations almost never contain
+subnormals. The golden model emulates FTZ explicitly, because numpy keeps
+subnormals. M1 measures whether FTZ changes any result.
+
+**D-013 (2026-10-01) — Python environment (resolves Q-07).** Python 3.14
+(installed on the dev machine; torch, cocotb and ml_dtypes all ship 3.14
+wheels, torch does not yet ship 3.15 wheels). One virtual environment in
+`.venv/` created with the standard `venv` module. It is activated
+automatically by `direnv` through a committed `.envrc`, which also sets
+project environment variables. Dependencies are pinned in a requirements
+file.
+
 ## 4. Milestones
 
 Every milestone ends at a **checkpoint**: work stops, and the owner reviews it
@@ -638,12 +663,12 @@ Questions marked **[needed for M1]** block the next milestone.
 | ID   | Question | Notes / current leaning |
 |------|----------|--------------------------|
 | Q-01 | ~~License for hardware and software.~~ | **Resolved: D-009.** |
-| Q-02 | **[needed for M1]** Where are FP32 values rounded to BF16? (matvec input `x`, KV cache, residual stream, attention probabilities before p·V) | Leaning: residual stream stays FP32; BF16 only at matvec inputs and the KV cache. Must be fixed in `numerics.md`. |
-| Q-03 | **[needed for M1]** Subnormals: keep them or flush to zero? Which NaN/Inf behaviour? | Flush-to-zero is cheaper in hardware. Golden model must match either way. |
+| Q-02 | ~~Where are FP32 values rounded to BF16?~~ | **Resolved: D-011.** |
+| Q-03 | ~~Subnormals, NaN/Inf behaviour.~~ | **Resolved: D-012.** |
 | Q-04 | Where do Vivado builds for F2 run: the local Linux machine or an AWS build instance? | Local needs the Vivado version required by the AWS F2 kit and a license that covers the F2 device. Decide before M8. |
 | Q-05 | **[needed for M1]** Is "read llama2.c `.bin` + FP32→BF16 cast" acceptable as "no conversion" for the stories models? | Leaning yes. Treated as loading, not a separate conversion step. |
 | Q-06 | **[needed for M1]** PyTorch reference: llama2.c's `model.py`, HF transformers, or our own minimal PyTorch? | Leaning: our own minimal PyTorch reference, cross-checked against llama2.c's `run.c` output. |
-| Q-07 | Python version and package manager (pip/venv, uv, conda). | Leaning: Python ≥ 3.11, `uv` or plain venv; decide at M1 start. |
+| Q-07 | ~~Python version and environment.~~ | **Resolved: D-013.** |
 | Q-08 | Algorithms for exp, reciprocal, rsqrt, sigmoid, sin/cos. | Decide in M1 (spec) with area estimates in M2/M6. |
 | Q-09 | BF16 in numpy: own bit manipulation vs `ml_dtypes` dependency. | Leaning: own bit-level helpers (small, explicit), cross-checked with `ml_dtypes` in tests. |
 | Q-10 | Always stream weights from external memory, or cache small models on-chip? | Leaning: always stream. On-chip caching can be an optimization later. |
