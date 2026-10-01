@@ -1,4 +1,5 @@
-# Python dependencies for Cabosse (install into .venv; see .envrc).
+# Python dependencies for Cabosse. Install into a venv:
+#   python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
 # torch comes from the CPU-only index to avoid downloading CUDA libraries.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.14.1+cpu

@@ -96,7 +96,8 @@ propagate per IEEE 754. Every NaN becomes the canonical NaN (`0x7FC0` /
 `0x7FC00000`).
 
 **D-013 (2026-10-01) — Python environment.** Python 3.14, `.venv/` via `venv`,
-activated by `direnv` (`.envrc`), pinned requirements. *Why:* newest Python
+pinned `requirements.txt`. (The owner's local `direnv` setup is not part of
+the repo.) *Why:* newest Python
 with wheels for torch, cocotb, and ml_dtypes.
 
 **D-014 (2026-10-01) — Model ladder.** Tiny random-weight Llama configs (fast RTL tests)
