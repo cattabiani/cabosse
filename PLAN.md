@@ -117,6 +117,15 @@ Recipients may treat SHL-2.1 files as plain Apache-2.0. Reciprocal licenses
 (CERN-OHL-W/S) were considered and rejected because they could put off
 industry and academic contributors.
 
+**D-010 (2026-10-01) — D-005 reconfirmed: SystemVerilog, not Amaranth or
+Chisel.** Amaranth and Chisel are still RTL (same abstraction level). What they
+add is better metaprogramming. *Why we keep SystemVerilog:* every tool in our
+flows reads it directly, so we debug the code we wrote, not generated Verilog.
+It lets us reuse open IP (CVFPU, lowRISC blocks) directly, and it has the
+largest community. Its verification half (UVM) is not needed because cocotb
+does that job. HLS was ruled out because we need cycle-exact control of
+pipelines and memory traffic.
+
 ## 4. Milestones
 
 Every milestone ends at a **checkpoint**: work stops, and the owner reviews it
