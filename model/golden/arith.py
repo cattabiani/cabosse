@@ -6,31 +6,17 @@ Values are torch tensors: BF16 values as `torch.bfloat16`, FP32 values as
 `torch.float32`. Every operation rounds exactly once to nearest, ties to even.
 Subnormals are kept (D-016), and any NaN result is the canonical NaN (D-012).
 
-`flush_to_zero()` switches to flushing subnormal inputs and outputs to signed
+`settings.override(ftz=True)` flushes subnormal inputs and outputs to signed
 zero. It is for experiments only and is not part of the spec.
 """
 
-from collections.abc import Generator
-from contextlib import contextmanager
-
 import torch
+
+from golden import settings
 
 NAN_BF16_BITS = 0x7FC0
 NAN_F32_BITS = 0x7FC00000
 F32_MIN_NORMAL = 2.0**-126
-
-_ftz = False
-
-
-@contextmanager
-def flush_to_zero(enabled: bool = True) -> Generator[None]:
-    """Flush subnormal inputs and outputs to signed zero inside this block."""
-    global _ftz
-    old, _ftz = _ftz, enabled
-    try:
-        yield
-    finally:
-        _ftz = old
 
 
 # --- bit patterns -----------------------------------------------------------
@@ -69,7 +55,7 @@ def _check(x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
 
 def _flush_f32(x: torch.Tensor) -> torch.Tensor:
     """Subnormal -> signed zero, only when flush-to-zero is enabled."""
-    if not _ftz:
+    if not settings.current.ftz:
         return x
     subnormal = (x != 0) & (x.abs() < F32_MIN_NORMAL)
     return torch.where(subnormal, torch.copysign(torch.zeros_like(x), x), x)
@@ -90,7 +76,7 @@ def bf16(x: torch.Tensor) -> torch.Tensor:
     u = bits_f32(x)
     r = ((u + 0x7FFF + ((u >> 16) & 1)) >> 16) & 0xFFFF
     r = torch.where(torch.isnan(x), NAN_BF16_BITS, r)
-    if _ftz:
+    if settings.current.ftz:
         subnormal = ((r >> 7) & 0xFF == 0) & (r & 0x7F != 0)
         r = torch.where(subnormal, r & 0x8000, r)
     return bf16_from_bits(r)

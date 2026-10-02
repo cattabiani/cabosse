@@ -5,7 +5,7 @@
 import numpy as np
 import pytest
 import torch
-from golden import arith
+from golden import arith, settings
 from oracle import add_ref, fma_ref, mul_ref
 
 SEED = 20261002
@@ -251,9 +251,14 @@ def test_flush_to_zero() -> None:
     sub = t32(F32([2.0**-140, -(2.0**-140)]))
     one = t32(F32([1.0, 1.0]))
     assert torch.equal(arith.add(sub, sub * 0), sub)  # default: kept
-    with arith.flush_to_zero():
+    with settings.override(ftz=True):
         out = arith.add(sub, sub * 0)
         assert (out == 0).all() and torch.equal(torch.signbit(out), torch.tensor([False, True]))
         assert (arith.mul(sub, one) == 0).all()
         assert (arith.up(arith.bf16_from_bits(torch.tensor([0x0001]))) == 0).all()
     assert torch.equal(arith.mul(sub, one), sub)  # restored afterwards
+
+
+def test_override_rejects_unknown_settings() -> None:
+    with pytest.raises(AttributeError), settings.override(fzt=True):
+        pass
