@@ -47,12 +47,6 @@ def bf16_from_bits(u: torch.Tensor) -> torch.Tensor:
 # --- helpers ----------------------------------------------------------------
 
 
-def _check(x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
-    if x.dtype != dtype:
-        raise TypeError(f"expected {dtype}, got {x.dtype}")
-    return x
-
-
 def _flush_f32(x: torch.Tensor) -> torch.Tensor:
     """Subnormal -> signed zero, only when flush-to-zero is enabled."""
     if not settings.current().ftz:
@@ -72,7 +66,8 @@ def _finish_f32(x: torch.Tensor) -> torch.Tensor:
 
 def bf16(x: torch.Tensor) -> torch.Tensor:
     """FP32 -> BF16, round to nearest even. Overflow rounds to infinity."""
-    x = _flush_f32(_check(x, torch.float32))
+    assert x.dtype == torch.float32, x.dtype
+    x = _flush_f32(x)
     u = bits_f32(x)
     r = ((u + 0x7FFF + ((u >> 16) & 1)) >> 16) & 0xFFFF
     r = torch.where(torch.isnan(x), NAN_BF16_BITS, r)
@@ -84,20 +79,21 @@ def bf16(x: torch.Tensor) -> torch.Tensor:
 
 def up(b: torch.Tensor) -> torch.Tensor:
     """BF16 -> FP32, exact (the 16 low bits become zero)."""
-    u = bits_bf16(_check(b, torch.bfloat16))
+    assert b.dtype == torch.bfloat16, b.dtype
+    u = bits_bf16(b)
     return _finish_f32(f32_from_bits(u << 16))
 
 
 def add(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """FP32 a + b, one rounding."""
-    a, b = _flush_f32(_check(a, torch.float32)), _flush_f32(_check(b, torch.float32))
-    return _finish_f32(a + b)
+    assert a.dtype == b.dtype == torch.float32, (a.dtype, b.dtype)
+    return _finish_f32(_flush_f32(a) + _flush_f32(b))
 
 
 def mul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """FP32 a * b, one rounding."""
-    a, b = _flush_f32(_check(a, torch.float32)), _flush_f32(_check(b, torch.float32))
-    return _finish_f32(a * b)
+    assert a.dtype == b.dtype == torch.float32, (a.dtype, b.dtype)
+    return _finish_f32(_flush_f32(a) * _flush_f32(b))
 
 
 def fma(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
@@ -114,7 +110,8 @@ def fma(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
        Melquiond, 2008). Plain float64 would round twice and be wrong in rare
        cases.
     """
-    a, b, c = (_flush_f32(_check(t, torch.float32)) for t in (a, b, c))
+    assert a.dtype == b.dtype == c.dtype == torch.float32, (a.dtype, b.dtype, c.dtype)
+    a, b, c = _flush_f32(a), _flush_f32(b), _flush_f32(c)
     a64, b64, c64 = (t.to(torch.float64) for t in (a, b, c))
     p = a64 * b64
     s = p + c64
