@@ -144,6 +144,11 @@ lookup tables, only integer ops and FP32 FMAs that the vector unit already
 has. Results are rounded to BF16 before every multiplier input, so
 BF16-level accuracy is enough.
 
+**D-021 (2026-10-02) — Hosting and CI: GitHub (`cattabiani/cabosse`, public)
+and GitHub Actions** (resolves Q-15). Lint and fast tests run on every pull
+request and push to `main`. The exhaustive tests run on `main` and on demand.
+*Why:* that is where the code is, and Actions is free for public repos.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -265,7 +270,6 @@ checkpoint.
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
 | Q-13 | What the F2 shell exposes (HBM ports, widths, clocks, DMA). | M2, from AWS docs only. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
-| Q-15 | CI provider and repo hosting. | M3. |
 | Q-16 | F2 budget and cost controls. | Before M8. |
 | Q-17 | ECP5 board and host link. | Before M11. |
 | Q-18 | Do ECP5 before F2? | M7 checkpoint. |
