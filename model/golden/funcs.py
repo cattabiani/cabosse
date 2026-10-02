@@ -26,6 +26,9 @@ LOG2E_BITS = 0x3FB8AA3B  # f32(log2(e))
 EXP2_COEFF_BITS = (0x3F800000, 0x3F317061, 0x3E75FD26, 0x3D650E71, 0x3C1E5FB0)
 
 F32_MIN_NORMAL = 2.0**-126
+# Below this, rsqrt scales x by 2^24 first. 2^-125 rather than 2^-126 keeps
+# h = x/2 normal, so the Newton steps also work with flush-to-zero on.
+RSQRT_SCALE_BELOW = 2.0**-125
 
 
 def _f32(value: float) -> torch.Tensor:
@@ -44,10 +47,10 @@ def _nan() -> torch.Tensor:
 
 
 def rsqrt(x: torch.Tensor) -> torch.Tensor:
-    """1/sqrt(x). Subnormal x is scaled by 2^24 first and the result by 2^12."""
+    """1/sqrt(x). x < 2^-125 is scaled by 2^24 first and the result by 2^12."""
     assert x.dtype == torch.float32, x.dtype
-    x = arith._flush_f32(x)
-    small = (x > 0) & (x < F32_MIN_NORMAL)
+    x = arith.apply_ftz(x)
+    small = (x > 0) & (x < RSQRT_SCALE_BELOW)
     xs = torch.where(small, arith.mul(x, _f32(2.0**24)), x)
     y = arith.f32_from_bits((R_RSQRT - (arith.bits_f32(xs) >> 1)) & 0xFFFFFFFF)
     h = arith.mul(_f32(0.5), xs)
@@ -68,7 +71,7 @@ def recip(x: torch.Tensor) -> torch.Tensor:
     2^-24 first (and the result by the same factor), so the bit trick only
     sees [2^-126, 2^125)."""
     assert x.dtype == torch.float32, x.dtype
-    x = arith._flush_f32(x)
+    x = arith.apply_ftz(x)
     ax = x.abs()
     small, big = ax < F32_MIN_NORMAL, ax >= 2.0**125
     xs = torch.where(small, arith.mul(ax, _f32(2.0**24)), ax)
@@ -88,11 +91,13 @@ def recip(x: torch.Tensor) -> torch.Tensor:
 # --- exp --------------------------------------------------------------------------
 
 
+EXP2_COEFFS = [_from_bits(b) for b in EXP2_COEFF_BITS]
+
+
 def exp2_poly(f: torch.Tensor) -> torch.Tensor:
     """2^f for f in [-0.5, 0.5]: degree-4 polynomial, Horner's rule with FMA."""
-    coeffs = [_from_bits(b) for b in EXP2_COEFF_BITS]
-    p = coeffs[-1]
-    for c in reversed(coeffs[:-1]):
+    p = EXP2_COEFFS[-1]
+    for c in reversed(EXP2_COEFFS[:-1]):
         p = arith.fma(p, f, c)
     return p
 
@@ -104,7 +109,7 @@ def exp(x: torch.Tensor) -> torch.Tensor:
     +0 (they only occur in softmax, where they are negligible).
     """
     assert x.dtype == torch.float32, x.dtype
-    x = arith._flush_f32(x)
+    x = arith.apply_ftz(x)
     t = arith.mul(x, _from_bits(LOG2E_BITS))
     # Saturate first: any |t| > 200 is out of range anyway, and at the clamp
     # f = 0, so the exponent check below gives +inf or +0 (also for x = ±inf).

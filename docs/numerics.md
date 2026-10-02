@@ -118,8 +118,8 @@ the reverse. All arithmetic uses the primitives from section 2.
 
 - **rsqrt(x) ≈ 1/√x** (`R_RSQRT = 0x5F3759DF`, `N_RSQRT = 2`):
   ```
-  s = (x is subnormal)
-  if s: x = mul(x, 2^24)                       # exact; brings x into the normal range
+  s = (x < 2^-125)                             # subnormal x, and the lowest binade
+  if s: x = mul(x, 2^24)                       # exact; keeps h = x/2 normal (also under FTZ)
   y = float(R_RSQRT - (bits(x) >> 1))          # first guess, max error 2^-4.9
   h = mul(0.5, x)
   repeat N_RSQRT times:                        # each step roughly doubles the bits
@@ -142,7 +142,7 @@ the reverse. All arithmetic uses the primitives from section 2.
   t = mul(x, LOG2E);  t = clamp(t, -200, 200)  # saturate; NaN handled separately
   i = round_to_nearest_even(t)                 # as an integer
   f = add(t, -i)                               # f in [-0.5, 0.5], exact (Sterbenz)
-  p = ((c4·f + c3)·f + c2)·f + c1)·f + c0      # Horner, each step one fma
+  p = (((c4·f + c3)·f + c2)·f + c1)·f + c0     # Horner, each step one fma
   E = exponent_field(p) + i
   result = +Inf if E ≥ 255;  +0 if E ≤ 0;  else float(bits(p) + (i << 23))
   ```
@@ -157,7 +157,8 @@ the reverse. All arithmetic uses the primitives from section 2.
 
 **Accuracy** (measured, `model/tests/test_funcs.py`): max relative error
 2⁻¹⁷·⁷ for rsqrt and 2⁻¹⁷·² for recip (exhaustive over one period of the
-bit-trick error), and 2⁻¹⁷·¹ for exp (20M samples). exp is limited by the
+bit-trick error), and 2⁻¹⁷·⁰⁸ for exp (exhaustive over every x with a normal
+result). exp is limited by the
 rounding of `x·log₂e`, so a higher degree does not help. All three are about
 256× below the BF16 rounding (2⁻⁹) that follows every use. Note that the
 approximations are not exact even at simple points: `recip(1) = 0.9999935`.

@@ -8,7 +8,7 @@ import math
 import numpy as np
 import pytest
 import torch
-from golden import arith, funcs
+from golden import arith, funcs, settings
 from oracle import add_ref, fma_ref, mul_ref
 
 SEED = 20261002
@@ -54,7 +54,7 @@ def spec_rsqrt(x: np.float32) -> np.float32:
         return np.copysign(INF, x)
     if x == INF:
         return F32(0.0)
-    small = x < 2.0**-126
+    small = x < 2.0**-125
     xs = mul_ref(x, F32(2.0**24)) if small else x
     y = _from_bits(0x5F3759DF - (_bits(xs) >> 1))
     h = mul_ref(F32(0.5), xs)
@@ -169,11 +169,22 @@ def test_rsqrt_and_recip_accuracy_full_range() -> None:
 
 
 def test_exp_accuracy() -> None:
-    """Random x over the normal-result range. Measured max: 2^-17.1 on 20M samples;
-    the bound has a little slack for this smaller sample."""
+    """Random x over the normal-result range (the exhaustive version is below)."""
     rng = np.random.default_rng(SEED)
     x = t32(F32(rng.uniform(-87.3, 88.7, 1 << 22)))
-    assert max_rel_err(funcs.exp(x), torch.exp(x.double())) < 2**-16.5
+    assert max_rel_err(funcs.exp(x), torch.exp(x.double())) < 2**-17
+
+
+@pytest.mark.slow
+def test_exp_accuracy_exhaustive() -> None:
+    """Every FP32 x in [-87.3, 88.7] (normal results), in chunks: about 2 billion
+    inputs, a few minutes. Measured max: 2^-17.08 at x = -81.44."""
+    for sign, hi in ((1.0, 88.7), (-1.0, 87.3)):
+        top = int(np.array(hi, F32).view(np.uint32))
+        for start in range(0, top + 1, 1 << 24):
+            u = torch.arange(start, min(start + (1 << 24), top + 1), dtype=torch.int64)
+            x = arith.f32_from_bits(u) * sign
+            assert max_rel_err(funcs.exp(x), torch.exp(x.double())) < 2**-17, (sign, start)
 
 
 def test_exp_range_limits() -> None:
@@ -213,3 +224,23 @@ def test_recip_is_approximate_even_at_one() -> None:
     y = funcs.recip(t32(F32([1.0, -1.0])))
     assert abs(abs(y[0].item()) - 1) < 2**-17 and y[1].item() == -y[0].item()
     assert arith.bf16(y)[0].item() == 1.0
+
+
+def test_flush_to_zero_does_not_change_normal_results() -> None:
+    """With FTZ on, inputs and results that are normal must give the same bits:
+    no intermediate value may be subnormal. Covers the lowest binades for rsqrt,
+    where h = x/2 would otherwise be subnormal."""
+    rng = np.random.default_rng(SEED)
+    normal = log_uniform(rng, 1 << 16, -126, 126)
+    cases = [
+        (funcs.rsqrt, torch.cat([all_floats(2.0**-126, 2.0**-123), t32(normal)])),
+        (funcs.recip, t32(np.concatenate([normal, -normal]))),
+        (funcs.exp, t32(F32(rng.uniform(-87.3, 88.7, 1 << 16)))),
+    ]
+    for func, x in cases:
+        plain = func(x)
+        with settings.override(ftz=True):
+            flushed = func(x)
+        keep = plain.abs() >= 2.0**-126  # normal results only
+        same = arith.bits_f32(plain)[keep] == arith.bits_f32(flushed)[keep]
+        assert same.all(), f"{func.__name__}: {int((~same).sum())} results differ under FTZ"
