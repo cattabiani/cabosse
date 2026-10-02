@@ -12,28 +12,28 @@ The defaults are the spec. Change settings only temporarily:
 
 from collections.abc import Generator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 
 
-@dataclass
+@dataclass(frozen=True)
 class Settings:
     ftz: bool = False  # flush subnormal inputs and outputs to signed zero (D-016: off)
 
 
-current = Settings()
+_DEFAULTS = Settings()
+_current: ContextVar[Settings] = ContextVar("settings")
+
+
+def current() -> Settings:
+    return _current.get(_DEFAULTS)
 
 
 @contextmanager
 def override(**changes: object) -> Generator[None]:
     """Change settings inside a `with` block; the previous values come back after it."""
-    unknown = set(changes) - set(vars(current))
-    if unknown:
-        raise AttributeError(f"unknown settings: {sorted(unknown)}")
-    old = {name: getattr(current, name) for name in changes}
-    for name, value in changes.items():
-        setattr(current, name, value)
+    token = _current.set(replace(current(), **changes))  # unknown names raise TypeError
     try:
         yield
     finally:
-        for name, value in old.items():
-            setattr(current, name, value)
+        _current.reset(token)

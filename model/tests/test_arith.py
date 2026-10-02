@@ -260,5 +260,5 @@ def test_flush_to_zero() -> None:
 
 
 def test_override_rejects_unknown_settings() -> None:
-    with pytest.raises(AttributeError), settings.override(fzt=True):
+    with pytest.raises(TypeError), settings.override(fzt=True):
         pass

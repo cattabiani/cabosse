@@ -55,7 +55,7 @@ def _check(x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
 
 def _flush_f32(x: torch.Tensor) -> torch.Tensor:
     """Subnormal -> signed zero, only when flush-to-zero is enabled."""
-    if not settings.current.ftz:
+    if not settings.current().ftz:
         return x
     subnormal = (x != 0) & (x.abs() < F32_MIN_NORMAL)
     return torch.where(subnormal, torch.copysign(torch.zeros_like(x), x), x)
@@ -76,7 +76,7 @@ def bf16(x: torch.Tensor) -> torch.Tensor:
     u = bits_f32(x)
     r = ((u + 0x7FFF + ((u >> 16) & 1)) >> 16) & 0xFFFF
     r = torch.where(torch.isnan(x), NAN_BF16_BITS, r)
-    if settings.current.ftz:
+    if settings.current().ftz:
         subnormal = ((r >> 7) & 0xFF == 0) & (r & 0x7F != 0)
         r = torch.where(subnormal, r & 0x8000, r)
     return bf16_from_bits(r)
