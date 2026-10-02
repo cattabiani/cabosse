@@ -47,8 +47,12 @@ def bf16_from_bits(u: torch.Tensor) -> torch.Tensor:
 # --- helpers ----------------------------------------------------------------
 
 
-def _flush_f32(x: torch.Tensor) -> torch.Tensor:
-    """Subnormal -> signed zero, only when flush-to-zero is enabled."""
+def apply_ftz(x: torch.Tensor) -> torch.Tensor:
+    """FP32 subnormal -> signed zero when the flush-to-zero setting is on, else x.
+
+    Every operation applies this to its inputs and outputs. Functions built on
+    the primitives (golden.funcs) also apply it to their inputs.
+    """
     if not settings.current().ftz:
         return x
     subnormal = (x != 0) & (x.abs() < F32_MIN_NORMAL)
@@ -58,7 +62,7 @@ def _flush_f32(x: torch.Tensor) -> torch.Tensor:
 def _finish_f32(x: torch.Tensor) -> torch.Tensor:
     """Apply the output rules to an FP32 result: canonical NaN, optional FTZ."""
     nan = f32_from_bits(torch.tensor(NAN_F32_BITS, dtype=torch.int64))
-    return _flush_f32(torch.where(torch.isnan(x), nan, x))
+    return apply_ftz(torch.where(torch.isnan(x), nan, x))
 
 
 # --- primitives (docs/numerics.md, section 2) -------------------------------
@@ -67,7 +71,7 @@ def _finish_f32(x: torch.Tensor) -> torch.Tensor:
 def bf16(x: torch.Tensor) -> torch.Tensor:
     """FP32 -> BF16, round to nearest even. Overflow rounds to infinity."""
     assert x.dtype == torch.float32, x.dtype
-    x = _flush_f32(x)
+    x = apply_ftz(x)
     u = bits_f32(x)
     r = ((u + 0x7FFF + ((u >> 16) & 1)) >> 16) & 0xFFFF
     r = torch.where(torch.isnan(x), NAN_BF16_BITS, r)
@@ -87,13 +91,13 @@ def up(b: torch.Tensor) -> torch.Tensor:
 def add(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """FP32 a + b, one rounding."""
     assert a.dtype == b.dtype == torch.float32, (a.dtype, b.dtype)
-    return _finish_f32(_flush_f32(a) + _flush_f32(b))
+    return _finish_f32(apply_ftz(a) + apply_ftz(b))
 
 
 def mul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """FP32 a * b, one rounding."""
     assert a.dtype == b.dtype == torch.float32, (a.dtype, b.dtype)
-    return _finish_f32(_flush_f32(a) * _flush_f32(b))
+    return _finish_f32(apply_ftz(a) * apply_ftz(b))
 
 
 def fma(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
@@ -111,7 +115,7 @@ def fma(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
        cases.
     """
     assert a.dtype == b.dtype == c.dtype == torch.float32, (a.dtype, b.dtype, c.dtype)
-    a, b, c = _flush_f32(a), _flush_f32(b), _flush_f32(c)
+    a, b, c = apply_ftz(a), apply_ftz(b), apply_ftz(c)
     a64, b64, c64 = (t.to(torch.float64) for t in (a, b, c))
     p = a64 * b64
     s = p + c64
