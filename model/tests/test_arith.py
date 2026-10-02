@@ -222,18 +222,23 @@ def test_fma_rounds_once() -> None:
     assert arith.add(arith.mul(a, b), c).item() != exact
 
 
-def test_fma_avoids_float64_double_rounding() -> None:
-    """A case where a plain float64 FMA is wrong by one ulp.
+@pytest.mark.parametrize("sign", [0, 0x80000000], ids=["positive", "negative"])
+def test_fma_avoids_float64_double_rounding(sign: int) -> None:
+    """A case where a plain float64 FMA is wrong by one ulp, in both signs.
 
-    The exact a*b + c lies 0.4999999999999929 ulp above 0x555d95cb, a hair
-    below the tie. float64 rounds it to exactly the tie, and the second
-    rounding (ties to even) then goes up to 0x555d95cc. Correct: 0x555d95cb.
+    The exact a*b + c lies 0.4999999999999929 ulp above |result| 0x555d95cb, a
+    hair below the tie. float64 rounds it to exactly the tie, and the second
+    rounding (ties to even) then goes to 0x555d95cc. Correct: 0x555d95cb.
+    The negative case flips the signs of a and c, so the result is mirrored.
     """
-    a, b, c = (np.array([x], np.uint32).view(F32) for x in (0x41000001, 0x477FFFFE, 0x555D95CB))
+    a, b, c = (
+        np.array([x], np.uint32).view(F32)
+        for x in (0x41000001 | sign, 0x477FFFFE, 0x555D95CB | sign)
+    )
     plain = (a.astype(np.float64) * b + c).astype(F32)
-    assert bits(plain)[0] == 0x555D95CC  # the wrong answer, so the case is a real trap
-    assert int(bits(fma_ref(a[0], b[0], c[0]))) == 0x555D95CB
-    assert arith.bits_f32(arith.fma(t32(a), t32(b), t32(c))).item() == 0x555D95CB
+    assert bits(plain)[0] == 0x555D95CC | sign  # the wrong answer: the case is a real trap
+    assert int(bits(fma_ref(a[0], b[0], c[0]))) == 0x555D95CB | sign
+    assert arith.bits_f32(arith.fma(t32(a), t32(b), t32(c))).item() == 0x555D95CB | sign
 
 
 # --- mac -------------------------------------------------------------------------
