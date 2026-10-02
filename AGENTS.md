@@ -83,6 +83,9 @@ one is wrong, say so and explain why, and let the owner decide.
 - Prefer small, reviewable changes. One logical change per commit.
 - Each step of a milestone goes on its own branch and ends in a pull request
   that the owner reviews and merges. CI must pass first.
+- A pull request that changes behaviour comes with tests for it. A PR without
+  tests is incomplete unless tests make no sense for it (docs, a one-line
+  config change). Use judgement: test what could break, not trivia.
 - When you make a decision that is not already in PLAN.md, write it down:
   either as a proposed decision for the owner to confirm, or as an open
   question.
