@@ -23,7 +23,7 @@ checkpoints.
 
 ## Status
 
-**Planning.** Nothing is implemented yet. See [PLAN.md](PLAN.md) for goals,
+**M1 in progress** (numerics spec and golden model). See [PLAN.md](PLAN.md) for goals,
 decisions, milestones, and open questions.
 
 ## Repository layout
