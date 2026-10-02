@@ -10,7 +10,7 @@ import numpy as np
 
 F32 = np.float32
 _MAX = Fraction(float(np.finfo(F32).max))
-_OVERFLOW = _MAX + Fraction(2) ** 103        # max + half an ulp: rounds to inf (ties to even)
+_OVERFLOW = _MAX + Fraction(2) ** 103  # max + half an ulp: rounds to inf (ties to even)
 
 
 def _even(x: np.float32) -> bool:
@@ -27,11 +27,11 @@ def round_f32(v: Fraction, zero_sign_negative: bool = False) -> np.float32:
     if abs(v) >= _OVERFLOW:
         return F32(np.inf) if v > 0 else F32(-np.inf)
     guess = F32(min(max(float(v), -float(_MAX)), float(_MAX)))  # within 1 ulp
-    with np.errstate(over="ignore"):              # stepping past max gives inf, filtered below
+    with np.errstate(over="ignore"):  # stepping past max gives inf, filtered below
         cands = [guess, np.nextafter(guess, F32(-np.inf)), np.nextafter(guess, F32(np.inf))]
     cands = [c for c in cands if np.isfinite(c)]
     best = min(cands, key=lambda c: (abs(Fraction(float(c)) - v), not _even(c)))
-    if best == 0:                                 # underflow to zero keeps the sign of v
+    if best == 0:  # underflow to zero keeps the sign of v
         best = F32(-0.0) if v < 0 else F32(0.0)
     return best
 

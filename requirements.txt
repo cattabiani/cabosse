@@ -8,3 +8,4 @@ safetensors==0.8.0
 huggingface_hub==1.33.0
 numpy==2.5.3
 pytest==9.1.1
+ruff==0.16.10

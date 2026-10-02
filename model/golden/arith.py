@@ -37,6 +37,7 @@ def flush_to_zero(enabled: bool = True) -> Iterator[None]:
 # Bit patterns are held in int64 tensors (torch's unsigned types support few
 # operations), always in the unsigned range.
 
+
 def bits_f32(x: torch.Tensor) -> torch.Tensor:
     """FP32 values -> their 32-bit patterns, as int64 in [0, 2**32)."""
     return x.contiguous().view(torch.int32).to(torch.int64) & 0xFFFFFFFF
@@ -59,6 +60,7 @@ def bf16_from_bits(u: torch.Tensor) -> torch.Tensor:
 
 # --- helpers ----------------------------------------------------------------
 
+
 def _check(x: torch.Tensor, dtype: torch.dtype) -> torch.Tensor:
     if x.dtype != dtype:
         raise TypeError(f"expected {dtype}, got {x.dtype}")
@@ -80,6 +82,7 @@ def _finish_f32(x: torch.Tensor) -> torch.Tensor:
 
 
 # --- primitives (docs/numerics.md, section 2) -------------------------------
+
 
 def bf16(x: torch.Tensor) -> torch.Tensor:
     """FP32 -> BF16, round to nearest even. Overflow rounds to infinity."""
@@ -129,7 +132,7 @@ def fma(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
     a64, b64, c64 = (t.to(torch.float64) for t in (a, b, c))
     p = a64 * b64
     s = p + c64
-    bv = s - p                                   # TwoSum (Knuth): e = p + c - s, exactly
+    bv = s - p  # TwoSum (Knuth): e = p + c - s, exactly
     e = (p - (s - bv)) + (c64 - bv)
     inexact = torch.isfinite(s) & (e != 0)
     even = (s.view(torch.int64) & 1) == 0

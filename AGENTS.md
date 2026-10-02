@@ -137,8 +137,9 @@ These are proposed in M0 and will be confirmed when the first code is written
 
 ### Python (golden model, testbenches, runtime)
 
-- Python ≥ 3.11 (to be confirmed), type hints on public functions.
-- Formatting and linting with `ruff` (to be confirmed at M1).
+- Python 3.14, type hints on public functions.
+- Formatting and linting with `ruff` (settings in `pyproject.toml`). Run
+  `ruff format . && ruff check .` before committing.
 - Golden model: explicit dtypes everywhere. Never let float64 slip into a
   computation that models hardware. Bit-level operations on `uint16` /
   `uint32` views are preferred over implicit casts.

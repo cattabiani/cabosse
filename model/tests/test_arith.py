@@ -5,12 +5,11 @@
 import numpy as np
 import pytest
 import torch
-
 from golden import arith
 from oracle import add_ref, fma_ref, mul_ref
 
 SEED = 20261002
-N_ORACLE = 20_000          # per input family; the Fraction oracle is slow
+N_ORACLE = 20_000  # per input family; the Fraction oracle is slow
 F32 = np.float32
 
 
@@ -31,11 +30,14 @@ def assert_same_bits(got: torch.Tensor, want: np.ndarray, inputs: tuple, what: s
     if len(bad):
         i = bad[0]
         args = ", ".join(f"{np.asarray(x, F32)[i]!r} ({bits(x)[i]:#010x})" for x in inputs)
-        pytest.fail(f"{what}: {len(bad)}/{len(want)} mismatches (seed {SEED}). First: "
-                    f"{what}({args}) = {got_bits[i]:#010x}, expected {want_bits[i]:#010x}")
+        pytest.fail(
+            f"{what}: {len(bad)}/{len(want)} mismatches (seed {SEED}). First: "
+            f"{what}({args}) = {got_bits[i]:#010x}, expected {want_bits[i]:#010x}"
+        )
 
 
 # --- input families ----------------------------------------------------------
+
 
 def moderate(rng: np.random.Generator, n: int) -> np.ndarray:
     """Values around 1 with random signs: the common case."""
@@ -51,6 +53,14 @@ def any_finite(rng: np.random.Generator, n: int) -> np.ndarray:
 
 def families(rng: np.random.Generator, n: int) -> dict[str, tuple[np.ndarray, ...]]:
     """(a, b, c) triples that stress different parts of the rounding."""
+
+    def sign() -> np.ndarray:
+        return rng.choice([-1.0, 1.0], n)
+
+    def mag(lo: int, hi: int) -> np.ndarray:
+        """Random magnitudes in [2**lo, 2**hi)."""
+        return rng.uniform(1, 2, n) * 2.0 ** rng.integers(lo, hi, n)
+
     a, b, c = moderate(rng, n), moderate(rng, n), moderate(rng, n)
     fam = {"moderate": (a, b, c), "any_finite": tuple(any_finite(rng, n) for _ in range(3))}
 
@@ -61,10 +71,10 @@ def families(rng: np.random.Generator, n: int) -> dict[str, tuple[np.ndarray, ..
 
     # Exact ties: a*b is exactly half an ulp of c (a is a power of two).
     e = rng.integers(-100, 100, n)
-    c_t = F32(rng.choice([-1.0, 1.0], n) * rng.uniform(1, 2, n) * 2.0 ** e)
+    c_t = F32(sign() * rng.uniform(1, 2, n) * 2.0**e)
     i = rng.integers(-10, 11, n)
-    a_t = F32(2.0 ** i)
-    b_t = F32(rng.choice([-1.0, 1.0], n) * 2.0 ** (e - 24 - i))
+    a_t = F32(2.0**i)
+    b_t = F32(sign() * 2.0 ** (e - 24 - i))
     fam["ties"] = (a_t, b_t, c_t)
 
     # Near ties: b moved by one of its own ulps, so a*b is just above or below
@@ -74,19 +84,16 @@ def families(rng: np.random.Generator, n: int) -> dict[str, tuple[np.ndarray, ..
     # Double-rounding traps: a*b = (1 + 2**-23)(1 - 2**-23) * half-ulp(c)
     # = half-ulp(c) * (1 - 2**-46). The exact sum is a hair from a tie, closer
     # than float64 can see, so a plain float64 FMA rounds twice and fails.
-    fam["double_rounding"] = (F32((1 + 2.0**-23) * 2.0 ** i),
-                              F32(rng.choice([-1.0, 1.0], n) * (1 - 2.0**-23) * 2.0 ** (e - 24 - i)),
-                              c_t)
+    a_dr = F32((1 + 2.0**-23) * 2.0**i)
+    b_dr = F32(sign() * (1 - 2.0**-23) * 2.0 ** (e - 24 - i))
+    fam["double_rounding"] = (a_dr, b_dr, c_t)
 
     # Subnormal results and products that underflow FP32.
-    fam["tiny"] = (F32(rng.uniform(1, 2, n) * 2.0 ** rng.integers(-80, -60, n)),
-                   F32(rng.choice([-1.0, 1.0], n) * rng.uniform(1, 2, n) * 2.0 ** rng.integers(-80, -60, n)),
-                   F32(rng.choice([-1.0, 1.0], n) * 2.0 ** rng.integers(-149, -126, n)))
+    c_tiny = F32(sign() * 2.0 ** rng.integers(-149, -126, n))
+    fam["tiny"] = (F32(mag(-80, -60)), F32(sign() * mag(-80, -60)), c_tiny)
 
     # Results near the overflow threshold.
-    fam["huge"] = (F32(rng.uniform(1, 2, n) * 2.0 ** rng.integers(60, 68, n)),
-                   F32(rng.uniform(1, 2, n) * 2.0 ** rng.integers(60, 68, n)),
-                   F32(rng.choice([-1.0, 1.0], n) * 2.0 ** 127))
+    fam["huge"] = (F32(mag(60, 68)), F32(mag(60, 68)), F32(sign() * 2.0**127))
     return fam
 
 
@@ -101,11 +108,27 @@ def _step_ulps(x: np.ndarray, k: np.ndarray) -> np.ndarray:
     return out
 
 
-SPECIALS = F32([0.0, -0.0, 1.0, -1.0, np.inf, -np.inf, np.nan, 2.0**-149, -(2.0**-149),
-                2.0**-126, np.finfo(F32).max, -np.finfo(F32).max, 1.0 + 2.0**-23])
+SPECIALS = F32(
+    [
+        0.0,
+        -0.0,
+        1.0,
+        -1.0,
+        np.inf,
+        -np.inf,
+        np.nan,
+        2.0**-149,
+        -(2.0**-149),
+        2.0**-126,
+        np.finfo(F32).max,
+        -np.finfo(F32).max,
+        1.0 + 2.0**-23,
+    ]
+)
 
 
 # --- bf16 / up -----------------------------------------------------------------
+
 
 def _check_bf16(x: np.ndarray) -> None:
     got = arith.bits_bf16(arith.bf16(t32(x))).numpy()
@@ -113,15 +136,22 @@ def _check_bf16(x: np.ndarray) -> None:
     nan = np.isnan(x)
     assert (got[nan] == arith.NAN_BF16_BITS).all(), "NaN must become the canonical BF16 NaN"
     bad = np.nonzero(got[~nan] != want[~nan])[0]
-    assert not len(bad), (f"bf16 differs from torch on {len(bad)} inputs, first "
-                          f"{bits(x[~nan])[bad[0]]:#010x} (seed {SEED})")
+    assert not len(bad), (
+        f"bf16 differs from torch on {len(bad)} inputs, first "
+        f"{bits(x[~nan])[bad[0]]:#010x} (seed {SEED})"
+    )
 
 
 def test_bf16_random_and_specials() -> None:
     rng = np.random.default_rng(SEED)
-    x = np.concatenate([any_finite(rng, 1 << 22), moderate(rng, 1 << 20), SPECIALS,
-                        rng.integers(0x7F800001, 0x80000000, 1000, dtype=np.uint64)
-                        .astype(np.uint32).view(F32)])     # NaN payloads
+    x = np.concatenate(
+        [
+            any_finite(rng, 1 << 22),
+            moderate(rng, 1 << 20),
+            SPECIALS,
+            rng.integers(0x7F800001, 0x80000000, 1000, dtype=np.uint64).astype(np.uint32).view(F32),
+        ]
+    )  # NaN payloads
     _check_bf16(x)
 
 
@@ -150,21 +180,22 @@ def test_bf16_then_up_is_identity_on_bf16_values() -> None:
 
 # --- add / mul / fma against the exact oracle --------------------------------------
 
+
 @pytest.mark.parametrize("op", ["add", "mul", "fma"])
 def test_against_oracle(op: str) -> None:
     rng = np.random.default_rng(SEED)
     for name, (a, b, c) in families(rng, N_ORACLE).items():
         if op == "fma":
             got = arith.fma(t32(a), t32(b), t32(c))
-            want = [fma_ref(*t) for t in zip(a, b, c)]
+            want = [fma_ref(*t) for t in zip(a, b, c, strict=True)]
             inputs = (a, b, c)
         elif op == "mul":
             got = arith.mul(t32(a), t32(b))
-            want = [mul_ref(*t) for t in zip(a, b)]
+            want = [mul_ref(*t) for t in zip(a, b, strict=True)]
             inputs = (a, b)
         else:
             got = arith.add(t32(a), t32(c))
-            want = [add_ref(*t) for t in zip(a, c)]
+            want = [add_ref(*t) for t in zip(a, c, strict=True)]
             inputs = (a, c)
         assert_same_bits(got, np.array(want, F32), inputs, f"{op}[{name}]")
 
@@ -175,7 +206,7 @@ def test_fma_special_values() -> None:
     got = arith.fma(t32(a), t32(b), t32(c))
     finite = np.isfinite(a) & np.isfinite(b) & np.isfinite(c)
     want = np.empty_like(a)
-    want[finite] = [fma_ref(*t) for t in zip(a[finite], b[finite], c[finite])]
+    want[finite] = [fma_ref(*t) for t in zip(a[finite], b[finite], c[finite], strict=True)]
     with np.errstate(invalid="ignore", over="ignore"):
         want[~finite] = (a[~finite].astype(np.float64) * b[~finite] + c[~finite]).astype(F32)
     assert_same_bits(got, want, (a, b, c), "fma[specials]")
@@ -186,12 +217,13 @@ def test_fma_rounds_once() -> None:
     a = t32(F32([1.0 + 2.0**-12]))
     b = t32(F32([1.0 + 2.0**-12]))
     c = t32(F32([-1.0]))
-    exact = (1 + 2**-12) ** 2 - 1                   # 2**-11 + 2**-24, representable
+    exact = (1 + 2**-12) ** 2 - 1  # 2**-11 + 2**-24, representable
     assert arith.fma(a, b, c).item() == exact
     assert arith.add(arith.mul(a, b), c).item() != exact
 
 
 # --- mac -------------------------------------------------------------------------
+
 
 def test_mac_equals_fma_of_widened_inputs() -> None:
     rng = np.random.default_rng(SEED)
@@ -214,13 +246,14 @@ def test_mac_product_is_exact_for_normal_range() -> None:
 
 # --- flush to zero (experiments only) ----------------------------------------------
 
+
 def test_flush_to_zero() -> None:
     sub = t32(F32([2.0**-140, -(2.0**-140)]))
     one = t32(F32([1.0, 1.0]))
-    assert torch.equal(arith.add(sub, sub * 0), sub)               # default: kept
+    assert torch.equal(arith.add(sub, sub * 0), sub)  # default: kept
     with arith.flush_to_zero():
         out = arith.add(sub, sub * 0)
         assert (out == 0).all() and torch.equal(torch.signbit(out), torch.tensor([False, True]))
         assert (arith.mul(sub, one) == 0).all()
         assert (arith.up(arith.bf16_from_bits(torch.tensor([0x0001]))) == 0).all()
-    assert torch.equal(arith.mul(sub, one), sub)                   # restored afterwards
+    assert torch.equal(arith.mul(sub, one), sub)  # restored afterwards
