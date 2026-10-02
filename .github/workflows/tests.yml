@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: Apache-2.0
+# Lint and test the Python golden model on every push and pull request, on
+# x86 Linux, ARM Linux, and ARM macOS (different SIMD code paths in torch).
+# The exhaustive tests (minutes) run on pushes to main and on demand.
+name: tests
+
+on:
+  push:
+    branches: [main]   # branches with a PR are tested by pull_request instead
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  fast:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: ruff format --check .
+      - run: ruff check .
+      - run: pytest
+
+  exhaustive:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest -m slow

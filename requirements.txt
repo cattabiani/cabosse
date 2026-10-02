@@ -2,9 +2,11 @@
 #   python3.14 -m venv .venv && .venv/bin/pip install -r requirements.txt
 # torch comes from the CPU-only index to avoid downloading CUDA libraries.
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.14.1+cpu
+torch==2.14.1+cpu; sys_platform == "linux"     # CPU-only build (x86_64 and aarch64)
+torch==2.14.1; sys_platform == "darwin"        # macOS builds are CPU-only already
 transformers==5.18.0
 safetensors==0.8.0
 huggingface_hub==1.33.0
 numpy==2.5.3
 pytest==9.1.1
+ruff==0.16.10

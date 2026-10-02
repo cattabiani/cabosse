@@ -40,25 +40,36 @@ def generate(model, tok, input_ids: torch.Tensor, args) -> torch.Tensor:
             **sampling,
         )
     dt = time.perf_counter() - t0
-    new = out[0, input_ids.shape[1]:]
+    new = out[0, input_ids.shape[1] :]
     mode = "greedy" if args.greedy else f"T={args.temperature}, top-p={args.top_p}"
-    print(f"[{args.model.name}, {args.dtype}, {mode}] {input_ids.shape[1]} context + "
-          f"{len(new)} new tokens in {dt:.2f} s ({len(new) / dt:.1f} tokens/s)")
+    print(
+        f"[{args.model.name}, {args.dtype}, {mode}] {input_ids.shape[1]} context + "
+        f"{len(new)} new tokens in {dt:.2f} s ({len(new) / dt:.1f} tokens/s)"
+    )
     return new
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--variant", choices=VARIANTS, default="instruct",
-                    help="instruct = chat model (default), base = plain text continuation")
+    ap.add_argument(
+        "--variant",
+        choices=VARIANTS,
+        default="instruct",
+        help="instruct = chat model (default), base = plain text continuation",
+    )
     ap.add_argument("--prompt", help="run once with this prompt (default: interactive)")
     ap.add_argument("--max-new-tokens", type=int, default=256)
     ap.add_argument("--dtype", choices=["float32", "bfloat16"], default="float32")
-    ap.add_argument("--temperature", type=float, default=0.2,
-                    help="sampling temperature (default 0.2, from the SmolLM2 model card)")
+    ap.add_argument(
+        "--temperature",
+        type=float,
+        default=0.2,
+        help="sampling temperature (default 0.2, from the SmolLM2 model card)",
+    )
     ap.add_argument("--top-p", type=float, default=0.9)
-    ap.add_argument("--greedy", action="store_true",
-                    help="always pick the most likely token (deterministic)")
+    ap.add_argument(
+        "--greedy", action="store_true", help="always pick the most likely token (deterministic)"
+    )
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     args.model = WEIGHTS / VARIANTS[args.variant]
@@ -73,11 +84,16 @@ def main() -> None:
     def turn(text: str) -> None:
         if chat:
             history.append({"role": "user", "content": text})
-            ids = tok.apply_chat_template(history, add_generation_prompt=True,
-                                          return_tensors="pt", return_dict=True)["input_ids"]
+            ids = tok.apply_chat_template(
+                history, add_generation_prompt=True, return_tensors="pt", return_dict=True
+            )["input_ids"]
             reply = generate(model, tok, ids, args)
-            history.append({"role": "assistant",
-                            "content": tok.decode(reply, skip_special_tokens=True).strip()})
+            history.append(
+                {
+                    "role": "assistant",
+                    "content": tok.decode(reply, skip_special_tokens=True).strip(),
+                }
+            )
         else:
             print(text, end="", flush=True)
             generate(model, tok, tok(text, return_tensors="pt")["input_ids"], args)
@@ -91,15 +107,19 @@ def main() -> None:
     except ImportError:
         pass
     if chat:
-        print(f"{args.model.name}: chat mode. '/reset' clears the conversation, "
-              f"Ctrl-D or 'exit' quits.")
+        print(
+            f"{args.model.name}: chat mode. '/reset' clears the conversation, "
+            f"Ctrl-D or 'exit' quits."
+        )
     else:
-        print(f"{args.model.name}: base model, it continues your text (no memory between "
-              f"prompts). Ctrl-D or 'exit' quits.")
+        print(
+            f"{args.model.name}: base model, it continues your text (no memory between "
+            f"prompts). Ctrl-D or 'exit' quits."
+        )
     while True:
         try:
             text = input("\n> ").strip()
-        except (EOFError, KeyboardInterrupt):
+        except EOFError, KeyboardInterrupt:
             print()
             break
         if text in ("exit", "quit"):
