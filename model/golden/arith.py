@@ -10,7 +10,7 @@ Subnormals are kept (D-016), and any NaN result is the canonical NaN (D-012).
 zero. It is for experiments only and is not part of the spec.
 """
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 import torch
@@ -23,7 +23,7 @@ _ftz = False
 
 
 @contextmanager
-def flush_to_zero(enabled: bool = True) -> Iterator[None]:
+def flush_to_zero(enabled: bool = True) -> Generator[None]:
     """Flush subnormal inputs and outputs to signed zero inside this block."""
     global _ftz
     old, _ftz = _ftz, enabled
