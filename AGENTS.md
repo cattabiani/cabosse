@@ -81,6 +81,8 @@ one is wrong, say so and explain why, and let the owner decide.
 - Work proceeds in milestones (see PLAN.md). Each has deliverables, exit
   criteria, and a checkpoint where the owner reviews.
 - Prefer small, reviewable changes. One logical change per commit.
+- Each step of a milestone goes on its own branch and ends in a pull request
+  that the owner reviews and merges. CI must pass first.
 - When you make a decision that is not already in PLAN.md, write it down:
   either as a proposed decision for the owner to confirm, or as an open
   question.

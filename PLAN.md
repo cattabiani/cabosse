@@ -4,7 +4,7 @@ A living document: what we are going to do and why. Details belong in `docs/`
 once they exist. IDs: **M** = milestone, **D** = decision, **Q** = open
 question.
 
-Last updated: 2026-10-01.
+Last updated: 2026-10-02.
 
 ## Goal
 
@@ -170,10 +170,22 @@ order depends on the lane design (M2), so it is a parameter here.
   percentage: a first check showed BF16 `transformers` itself at 98.1% top-1.)
 - Greedy decode text is saved as a regression fixture.
 - The model is deterministic. One SmolLM2 token takes ≤ 10 s.
-- Day-one check (done 2026-10-01, all 2³² inputs): torch's FP32→BF16
-  conversion on this CPU matches software RNE exactly for every non-NaN input,
-  including subnormals. NaNs become `0xFFFF`, not `0x7FC0`, so tests compare
-  NaNs by class, not by bits.
+
+**Progress:**
+- [x] Model runs as published: `scripts/run_smollm.py` (chat, streaming).
+- [x] Day-one check: torch's FP32→BF16 conversion matches round-to-nearest-even
+  on all 2³² inputs, subnormals included. NaNs come out as `0xFFFF`, not
+  `0x7FC0`, so tests compare NaNs by class.
+- [x] `docs/numerics.md` v0 draft, with D-019 (FMA) and D-020 (function
+  approximations).
+- [x] Arithmetic primitives (`bf16`, `up`, `add`, `mul`, `fma`, `mac`) with
+  exact-oracle tests, and CI on x86 Linux, ARM Linux, and ARM macOS
+  (PR #1). The exhaustive `bf16` test passes on all three.
+- [ ] **Next:** function approximations (rsqrt, recip, exp). Pick the
+  constants, Newton steps, and polynomial degree by measurement (Q-08).
+- [ ] Golden model of SmolLM2 decode, plus the tiny configs.
+- [ ] Comparison against `transformers`, error report, greedy-decode fixture.
+- [ ] M1 checkpoint review.
 
 ### M2 — Architecture spec and performance model
 **What:** `docs/architecture.md` (block diagram, register map, memory map,
