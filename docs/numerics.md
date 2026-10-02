@@ -139,18 +139,22 @@ the reverse. All arithmetic uses the primitives from section 2.
   ```
 - **exp(x) = 2^(x·log₂e)** (`LOG2E = 0x3FB8AA3B`, degree 4):
   ```
-  t = mul(x, LOG2E);  t = clamp(t, -200, 200)  # saturate; NaN handled separately
+  t = mul(x, LOG2E);  t = clamp(t, -150, 150)  # saturate; NaN handled separately
   i = round_to_nearest_even(t)                 # as an integer
   f = add(t, -i)                               # f in [-0.5, 0.5], exact (Sterbenz)
   p = (((c4·f + c3)·f + c2)·f + c1)·f + c0     # Horner, each step one fma
   E = exponent_field(p) + i
-  result = +Inf if E ≥ 255;  +0 if E ≤ 0;  else float(bits(p) + (i << 23))
+  if E ≥ 255: result = +Inf
+  elif E ≥ 1: result = float(bits(p) + (i << 23))           # exact, normal
+  else:       result = mul(float(bits(p) + ((i + 64) << 23)), 2^-64)
+              # p·2^(i+64) is exact and normal; the multiply rounds p·2^i once
+              # into the subnormal range (or to +0)
   ```
   Coefficients of 2ᶠ on [-0.5, 0.5] (Chebyshev interpolation, rounded to
   FP32 and pinned): `c0..c4 = 0x3F800000, 0x3F317061, 0x3E75FD26, 0x3D650E71,
-  0x3C1E5FB0`. Results below the normal range become +0. This is a property
-  of this approximation, not a flush-to-zero rule: such values only appear
-  in softmax, where they are negligible.
+  0x3C1E5FB0`. The clamp at ±150 is exact: |t| > 150 means a result above
+  the FP32 range (+Inf) or below 2⁻¹⁵⁰ (rounds to +0). With E ≥ -24 after
+  the clamp, `i + 64` always gives a normal intermediate.
 - **Special inputs** (checked before the bit tricks): `rsqrt(±0) = ±Inf`,
   `rsqrt(+Inf) = +0`, `rsqrt(x < 0) = NaN`, `recip(±0) = ±Inf`,
   `recip(±Inf) = ±0`, `exp(-Inf) = +0`, `exp(+Inf) = +Inf`, NaN in → NaN out.
@@ -158,7 +162,9 @@ the reverse. All arithmetic uses the primitives from section 2.
 **Accuracy** (measured, `model/tests/test_funcs.py`): max relative error
 2⁻¹⁷·⁷ for rsqrt and 2⁻¹⁷·² for recip (exhaustive over one period of the
 bit-trick error), and 2⁻¹⁷·⁰⁸ for exp (exhaustive over every x with a normal
-result). exp is limited by the
+result). For subnormal exp results (x < -87.3), |t| ≥ 128 is rounded to a
+coarser grid and the error is 2⁻¹⁶·⁶³ (exhaustive), plus half a subnormal ulp
+from the final rounding. exp is limited by the
 rounding of `x·log₂e`, so a higher degree does not help. All three are about
 256× below the BF16 rounding (2⁻⁹) that follows every use. Note that the
 approximations are not exact even at simple points: `recip(1) = 0.9999935`.

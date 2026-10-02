@@ -182,9 +182,10 @@ order depends on the lane design (M2), so it is a parameter here.
   exact-oracle tests, and CI on x86 Linux, ARM Linux, and ARM macOS
   (PR #1). The exhaustive `bf16` test passes on all three.
 - [x] Function approximations (rsqrt, recip, exp), parameters chosen by
-  measurement (Q-08): 2 Newton steps each, exp degree 4, all errors below
-  2⁻¹⁷. Tests check them bit-exactly against an independent restatement of
-  the spec.
+  measurement (Q-08): 2 Newton steps each, exp degree 4. Errors below 2⁻¹⁷
+  (exp: 2⁻¹⁶·⁶ for subnormal results, which are now kept as in IEEE). Tests:
+  exhaustive accuracy, flush-to-zero behaviour, and bit-exact agreement with
+  an independent restatement of the spec (PR #2).
 - [ ] **Next:** golden model of SmolLM2 decode, plus the tiny configs.
 - [ ] Comparison against `transformers`, error report, greedy-decode fixture.
 - [ ] M1 checkpoint review.

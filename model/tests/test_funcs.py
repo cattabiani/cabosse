@@ -88,7 +88,7 @@ def spec_exp(x: np.float32) -> np.float32:
         return F32(np.nan)
     # inf * log2(e) is exactly inf (the oracle cannot represent inf).
     t = np.copysign(INF, x) if np.isinf(x) else mul_ref(x, _from_bits(0x3FB8AA3B))
-    t = F32(min(max(t, -200.0), 200.0))
+    t = F32(min(max(t, -150.0), 150.0))
     i = round(float(t))  # Python rounds half to even
     f = add_ref(t, F32(-i))
     p = EXP2_COEFFS[4]
@@ -97,8 +97,8 @@ def spec_exp(x: np.float32) -> np.float32:
     exponent = ((_bits(p) >> 23) & 0xFF) + i
     if exponent >= 255:
         return INF
-    if exponent <= 0:
-        return F32(0.0)
+    if exponent <= 0:  # one rounding into the subnormal range
+        return mul_ref(_from_bits(_bits(p) + ((i + 64) << 23)), F32(2.0**-64))
     return _from_bits(_bits(p) + (i << 23))
 
 
@@ -169,10 +169,25 @@ def test_rsqrt_and_recip_accuracy_full_range() -> None:
 
 
 def test_exp_accuracy() -> None:
-    """Random x over the normal-result range (the exhaustive version is below)."""
+    """Random x with normal results (the exhaustive version is below)."""
     rng = np.random.default_rng(SEED)
     x = t32(F32(rng.uniform(-87.3, 88.7, 1 << 22)))
     assert max_rel_err(funcs.exp(x), torch.exp(x.double())) < 2**-17
+
+
+def test_exp_accuracy_subnormal_results_exhaustive() -> None:
+    """Every FP32 x in [-104, -87.3] (about 2.2M inputs; results subnormal or
+    near the bottom of the normal range).
+
+    Here |t| = |x*log2(e)| >= 128, so t is rounded to a coarser grid (spacing
+    2^-16) and exp's relative error grows to 2^-16.63 (measured). Bound:
+    2^-16.5 relative plus half a subnormal ulp (2^-150) for the final rounding.
+    """
+    lo, hi = (int(np.array(v, F32).view(np.uint32)) for v in (87.3, 104.0))
+    x = -arith.f32_from_bits(torch.arange(lo, hi + 1, dtype=torch.int64))
+    ref = torch.exp(x.double())
+    err = (funcs.exp(x).double() - ref).abs()
+    assert (err <= 2**-16.5 * ref + 2**-150).all()
 
 
 @pytest.mark.slow
@@ -188,11 +203,13 @@ def test_exp_accuracy_exhaustive() -> None:
 
 
 def test_exp_range_limits() -> None:
-    x = t32(F32([88.7, 88.8, -87.3, -88.0, -1000.0, 1000.0]))
-    y = funcs.exp(x)
-    assert math.isfinite(y[0].item()) and y[1].item() == math.inf
-    assert y[2].item() > 0 and y[3].item() == 0.0  # below 2^-126: +0
-    assert y[4].item() == 0.0 and y[5].item() == math.inf
+    x = t32(F32([88.7, 88.8, -87.3, -88.0, -103.0, -104.0, -1000.0, 1000.0]))
+    y = funcs.exp(x).tolist()
+    assert math.isfinite(y[0]) and y[1] == math.inf
+    assert y[2] >= 2.0**-126  # still normal
+    assert 0 < y[3] < 2.0**-126 and 0 < y[4] < 2.0**-126  # subnormal, not flushed
+    assert y[5] == 0.0  # e^-104 < 2^-150: rounds to 0
+    assert y[6] == 0.0 and y[7] == math.inf
 
 
 # --- special values -------------------------------------------------------------------

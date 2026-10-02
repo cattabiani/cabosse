@@ -106,21 +106,25 @@ def exp(x: torch.Tensor) -> torch.Tensor:
     """e^x = 2^i * 2^f with t = x*log2(e), i = t rounded to nearest even, f = t - i.
 
     Results above the FP32 range are +inf. Results below the normal range are
-    +0 (they only occur in softmax, where they are negligible).
+    rounded once into the subnormal range (or to +0), as in IEEE arithmetic.
     """
     assert x.dtype == torch.float32, x.dtype
     x = arith.apply_ftz(x)
     t = arith.mul(x, _from_bits(LOG2E_BITS))
-    # Saturate first: any |t| > 200 is out of range anyway, and at the clamp
-    # f = 0, so the exponent check below gives +inf or +0 (also for x = ±inf).
-    t = torch.where(torch.isnan(t), _f32(0.0), t.clamp(-200.0, 200.0))
+    # Saturate: |t| > 150 means a result above the FP32 range or below 2^-150
+    # (which rounds to 0). At the clamp f = 0, so the checks below give +inf or
+    # +0, also for x = ±inf.
+    t = torch.where(torch.isnan(t), _f32(0.0), t.clamp(-150.0, 150.0))
     i = torch.round(t)  # round half to even
     f = arith.add(t, -i)  # exact (Sterbenz)
     p = exp2_poly(f)
     i_int = i.to(torch.int64)
     p_bits = arith.bits_f32(p)
-    exponent = ((p_bits >> 23) & 0xFF) + i_int
+    exponent = ((p_bits >> 23) & 0xFF) + i_int  # exponent field of p * 2^i
     y = arith.f32_from_bits((p_bits + (i_int << 23)) & 0xFFFFFFFF)
+    # Below the normal range: build p * 2^(i+64) (still normal, exact), then one
+    # multiply by 2^-64 rounds it once into the subnormal range.
+    lifted = arith.f32_from_bits((p_bits + ((i_int + 64) << 23)) & 0xFFFFFFFF)
+    y = torch.where(exponent <= 0, arith.mul(lifted, _f32(2.0**-64)), y)
     y = torch.where(exponent >= 255, _f32(torch.inf), y)
-    y = torch.where(exponent <= 0, _f32(0.0), y)
     return torch.where(torch.isnan(x), _nan(), y)
