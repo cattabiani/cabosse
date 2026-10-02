@@ -116,40 +116,52 @@ section 3: `S` interleaved partials in increasing index order, then
 `bits(x)` reinterprets an FP32 value as a 32-bit integer, and `float(i)` does
 the reverse. All arithmetic uses the primitives from section 2.
 
-- **rsqrt(x) ≈ 1/√x:**
+- **rsqrt(x) ≈ 1/√x** (`R_RSQRT = 0x5F3759DF`, `N_RSQRT = 2`):
   ```
-  y = float(R_RSQRT - (bits(x) >> 1))          # R_RSQRT [param], e.g. 0x5F375A86
-  repeat N_RSQRT times:                        # [param]
-      h = mul(0.5, x)
-      t = fma(-mul(h, y), y, 1.5)
-      y = mul(y, t)
+  s = (x is subnormal)
+  if s: x = mul(x, 2^24)                       # exact; brings x into the normal range
+  y = float(R_RSQRT - (bits(x) >> 1))          # first guess, max error 2^-4.9
+  h = mul(0.5, x)
+  repeat N_RSQRT times:                        # each step roughly doubles the bits
+      y = mul(y, fma(-mul(h, y), y, 1.5))      # unary minus is an exact sign flip
+  if s: y = mul(y, 2^12)
   ```
-- **recip(x) ≈ 1/x:**
+- **recip(x) ≈ 1/x** (`R_RECIP = 0x7EF311C3`, `N_RECIP = 2`). Works on `|x|`,
+  and the sign is restored at the end:
   ```
-  y = float(R_RECIP - bits(x))                 # R_RECIP [param], e.g. 0x7EF311C3
-  repeat N_RECIP times:                        # [param]
-      e = fma(-x, y, 1.0)
-      y = fma(y, e, y)
+  a = |x|;  k = 2^24 if a < 2^-126,  2^-24 if a ≥ 2^125,  else 1
+  if k ≠ 1: a = mul(a, k)                      # bit trick only sees [2^-126, 2^125)
+  y = float(R_RECIP - bits(a))                 # first guess, max error 2^-4.3
+  repeat N_RECIP times:
+      y = fma(y, fma(-a, y, 1.0), y)
+  if k ≠ 1: y = mul(y, k)                      # may overflow to inf or round to subnormal
+  result = y with the sign of x
   ```
-- **exp(x) = 2^(x·log₂e):**
+- **exp(x) = 2^(x·log₂e)** (`LOG2E = 0x3FB8AA3B`, degree 4):
   ```
-  t = mul(x, LOG2E)                            # LOG2E = f32(log₂ e)
-  i = round_to_nearest_even(t) as integer
+  t = mul(x, LOG2E);  t = clamp(t, -200, 200)  # saturate; NaN handled separately
+  i = round_to_nearest_even(t)                 # as an integer
   f = add(t, -i)                               # f in [-0.5, 0.5], exact (Sterbenz)
-  p = polynomial of degree D_EXP in f, Horner with fma   # coefficients [param]
-  result = float(bits(p) + (i << 23))         # multiply by 2^i via the exponent field
+  p = ((c4·f + c3)·f + c2)·f + c1)·f + c0      # Horner, each step one fma
+  E = exponent_field(p) + i
+  result = +Inf if E ≥ 255;  +0 if E ≤ 0;  else float(bits(p) + (i << 23))
   ```
-  Results that would overflow become +Inf. Results below the normal range
-  become +0. This is a property of this approximation, not a flush-to-zero
-  rule: such values only appear in softmax, where they are negligible.
-- **Special inputs:** `rsqrt(+0) = +Inf`, `rsqrt(x<0) = NaN`,
-  `recip(±0) = ±Inf`, `exp(-Inf) = +0`, `exp(+Inf) = +Inf`, NaN in → NaN out.
-  The bit tricks alone do not produce these, so they are handled explicitly.
+  Coefficients of 2ᶠ on [-0.5, 0.5] (Chebyshev interpolation, rounded to
+  FP32 and pinned): `c0..c4 = 0x3F800000, 0x3F317061, 0x3E75FD26, 0x3D650E71,
+  0x3C1E5FB0`. Results below the normal range become +0. This is a property
+  of this approximation, not a flush-to-zero rule: such values only appear
+  in softmax, where they are negligible.
+- **Special inputs** (checked before the bit tricks): `rsqrt(±0) = ±Inf`,
+  `rsqrt(+Inf) = +0`, `rsqrt(x < 0) = NaN`, `recip(±0) = ±Inf`,
+  `recip(±Inf) = ±0`, `exp(-Inf) = +0`, `exp(+Inf) = +Inf`, NaN in → NaN out.
 
-Accuracy target: about BF16 level (relative error ≲ 2⁻⁹). Every result
-passes through `bf16(·)` before it reaches a multiplier. M1 picks the smallest
-`N_RSQRT`, `N_RECIP`, `D_EXP` that keep end-to-end accuracy no worse than
-torch's BF16 run.
+**Accuracy** (measured, `model/tests/test_funcs.py`): max relative error
+2⁻¹⁷·⁷ for rsqrt and 2⁻¹⁷·² for recip (exhaustive over one period of the
+bit-trick error), and 2⁻¹⁷·¹ for exp (20M samples). exp is limited by the
+rounding of `x·log₂e`, so a higher degree does not help. All three are about
+256× below the BF16 rounding (2⁻⁹) that follows every use. Note that the
+approximations are not exact even at simple points: `recip(1) = 0.9999935`.
+The end-to-end check against `transformers` (M1) confirms these choices.
 
 ## 6. What is not bit-identical to PyTorch, by design
 
@@ -164,6 +176,6 @@ with tolerances (M1 exit criteria), never bit-exactly.
 |-------|---------|----------|
 | `A` | interleaved accumulators per lane | M2 (adder pipeline depth) |
 | `S` | vector-unit reduction width | M2 |
-| `R_RSQRT`, `N_RSQRT` | rsqrt magic constant, Newton steps | M1 |
-| `R_RECIP`, `N_RECIP` | recip magic constant, Newton steps | M1 |
-| `D_EXP`, coefficients | exp polynomial | M1 |
+| `R_RSQRT`, `N_RSQRT` | rsqrt first-guess constant, Newton steps | M1: `0x5F3759DF`, 2 |
+| `R_RECIP`, `N_RECIP` | recip first-guess constant, Newton steps | M1: `0x7EF311C3`, 2 |
+| exp degree, coefficients | 2ᶠ polynomial | M1: degree 4, section 5 |

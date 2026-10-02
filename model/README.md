@@ -17,6 +17,10 @@ Model weights are downloaded into a git-ignored directory and never committed.
 
 - `golden/arith.py`: the arithmetic primitives of `docs/numerics.md`
   section 2 (`bf16`, `up`, `add`, `mul`, `fma`, `mac`).
+- `golden/funcs.py`: the function approximations of section 5 (`rsqrt`,
+  `recip`, `exp`).
+- `golden/settings.py`: experiment switches that are not part of the spec
+  (e.g. flush-to-zero).
 - `tests/`: pytest tests. `tests/oracle.py` is an independent, exact
   (rational-arithmetic) reference used to check rounding.
 

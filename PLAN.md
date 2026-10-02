@@ -181,9 +181,11 @@ order depends on the lane design (M2), so it is a parameter here.
 - [x] Arithmetic primitives (`bf16`, `up`, `add`, `mul`, `fma`, `mac`) with
   exact-oracle tests, and CI on x86 Linux, ARM Linux, and ARM macOS
   (PR #1). The exhaustive `bf16` test passes on all three.
-- [ ] **Next:** function approximations (rsqrt, recip, exp). Pick the
-  constants, Newton steps, and polynomial degree by measurement (Q-08).
-- [ ] Golden model of SmolLM2 decode, plus the tiny configs.
+- [x] Function approximations (rsqrt, recip, exp), parameters chosen by
+  measurement (Q-08): 2 Newton steps each, exp degree 4, all errors below
+  2⁻¹⁷. Tests check them bit-exactly against an independent restatement of
+  the spec.
+- [ ] **Next:** golden model of SmolLM2 decode, plus the tiny configs.
 - [ ] Comparison against `transformers`, error report, greedy-decode fixture.
 - [ ] M1 checkpoint review.
 
@@ -276,7 +278,7 @@ checkpoint.
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
 | Q-04 | Vivado builds for F2: local machine or AWS build instance? | Before M8. Local needs the right Vivado version and a license for the F2 device. |
-| Q-08 | Constants, Newton steps, polynomial degree for D-020. | Measured in M1; area checked in M6. |
+| Q-08 | Do the D-020 parameters (2 Newton steps, exp degree 4) hold end to end? | Measured per function in M1; confirm in the end-to-end comparison; area in M6. |
 | Q-10 | How many HBM ports the engine reads in parallel, and how weights are spread across them. | M2. This sets the bandwidth bound. |
 | Q-11 | Attention p·V: store V transposed, or add an engine mode for `Σ pᵢ·vᵢ`? | M2. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
