@@ -296,3 +296,12 @@ def test_mac_fast_path_falls_back_when_product_is_inexact() -> None:
     assert torch.equal(arith.bits_f32(arith.mac(w, x, acc)), want)
     naive = arith.bits_f32(arith.add(arith.mul(a, b), acc))
     assert (naive != want).any()  # the inputs really exercise the slow path
+
+
+def test_mac_fast_path_falls_back_on_overflow() -> None:
+    """2^100 * 2^100 overflows FP32 but is finite and exact in the fma: with
+    acc = -inf the result is -inf. A multiply-then-add would give inf + -inf = NaN."""
+    big = arith.bf16(t32(F32([2.0**100])))
+    acc = t32(F32([-np.inf]))
+    assert arith.mac(big, big, acc).item() == -np.inf
+    assert torch.isnan(arith.add(arith.mul(arith.up(big), arith.up(big)), acc)).all()
