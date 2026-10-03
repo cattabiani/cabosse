@@ -73,26 +73,16 @@ v0. If M2 needs it, this section changes.
 
 All FP32 unless noted. `n ≥ 1` is the vector length.
 
-- **Reductions.** A sum over a vector uses the scheme of section 3, with `S`
-  interleaved partial sums **[param, from M2]** in place of `A` (the vector
-  unit's adder has a latency too):
-  ```
-  acc[j] = +0.0                                  for j = 0…S-1
-  for i = 0 … n-1:                               # in increasing i
-      j = i mod S
-      acc[j] = step(xᵢ, acc[j])
-  result = tree_sum(acc[0 … S-1])
-  ```
-  `sum(x)` uses `step = add(xᵢ, acc)`, and `sum_squares(x)` uses
-  `step = fma(xᵢ, xᵢ, acc)`. In a partial last group, the missing partial sums
-  keep their value, as in section 3. Here, unlike section 3, padding with +0
-  gives the same bits: a partial sum that starts at +0 can never become -0
-  (an exact zero sum is +0, an add never underflows to zero because subnormals
-  are kept, and `xᵢ·xᵢ ≥ 0`).
-  A sum of only -0 values is +0. `max(x)` is the `max` of section 2 over all
-  elements. `max` is exact, commutative and associative, so its order does not
-  matter.
-
+- **Reductions.** `sum(x)` and `sum_squares(x)` use the loop of section 3 with
+  `S` interleaved partial sums **[param, from M2]** in place of `A` (the vector
+  unit's adder has a latency too), and a step in place of
+  `mac(w[k], x[k], acc)`: `add(xᵢ, acc)` for `sum`, `fma(xᵢ, xᵢ, acc)` for
+  `sum_squares`. Unlike section 3, padding the last group with +0 gives the
+  same bits: a partial sum that starts at +0 can never become -0 (an exact zero
+  sum is +0, an add never underflows to zero because subnormals are kept, and
+  `xᵢ·xᵢ ≥ 0`). A sum of only -0 values is +0. `max(x)` is the `max` of
+  section 2 over all elements. `max` is exact, commutative and associative, so
+  its order does not matter.
 - **Embedding lookup:** `h = up(E[token])`. E is the BF16 table (tied with the
   classifier).
 - **RMSNorm** (weight `g`, BF16; `eps` = `f32(rms_norm_eps)` from the model
@@ -116,6 +106,8 @@ All FP32 unless noted. `n ≥ 1` is the vector length.
   `recip(z)` needs no scaling. A score of -Inf gets `p = 0`. A score of +Inf
   or NaN, or all scores -Inf, gives NaN everywhere (IEEE propagation). Decode
   has no masked scores, so only finite scores occur there.
+  `e` need not be stored: recomputing `exp(add(sᵢ, -m))` gives the same bits
+  (D-022).
   `p` is not exactly normalized: even for `n = 1`, `p₀ = recip(1) = 0.9999935`.
 - **RoPE** (head dim `d`, `half = d/2`, tables `C[pos]`, `S[pos]` of length
   `d`, FP32): the tables are computed on the host with the same code as

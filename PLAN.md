@@ -149,6 +149,15 @@ and GitHub Actions** (resolves Q-15). Lint and fast tests run on every pull
 request and push to `main`. The exhaustive tests run on `main` and on demand.
 *Why:* that is where the code is, and Actions is free for public repos.
 
+**D-022 (2026-10-03) — Softmax: max, sum, then normalize, without
+FlashAttention-style online rescaling.** The spec keeps the three steps of
+`docs/numerics.md` section 4. Hardware may recompute `exp` instead of storing
+it (same bits), so it needs `n` FP32 scores per head. *Why:* fewer roundings.
+Online softmax rescales the running sum and output each time the max grows,
+which adds roundings and moves the BF16 rounding of `p` (D-011) before the
+max is final. It stays a possible optimization if the perf model or hardware
+shows score storage or the extra pass is a bottleneck (M2, M6).
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -254,6 +263,8 @@ write results.
 KV cache writes.
 **Done when:** each operation is bit-exact on random and real activations,
 and the perf model shows the vector unit at < 10% of token time.
+**Possible optimization:** online softmax (D-022), only if score storage or
+the extra pass shows up as a bottleneck. It needs a spec change.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
