@@ -17,6 +17,8 @@ Model weights are downloaded into a git-ignored directory and never committed.
 
 - `golden/arith.py`: the arithmetic primitives of `docs/numerics.md`
   section 2 (`bf16`, `up`, `add`, `mul`, `fma`, `mac`).
+- `golden/dot.py`: dot products as the lanes compute them (section 3): `A`
+  interleaved accumulators and a pairwise tree.
 - `golden/funcs.py`: the function approximations of section 5 (`rsqrt`,
   `recip`, `exp`).
 - `golden/settings.py`: experiment switches that are not part of the spec

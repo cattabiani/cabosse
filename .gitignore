@@ -91,3 +91,6 @@ vivado_pid*.zip
 
 # --- direnv ---
 .direnv/
+
+# Temporary local notes
+removeme*

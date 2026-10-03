@@ -60,6 +60,12 @@ y = tree_sum(acc[0 … A-1])
 neighbours level by level:
 `tree_sum(a0,a1,a2,a3) = add(add(a0,a1), add(a2,a3))`.
 
+`K ≥ 1`: an empty dot product is not defined. In a partial last group, the
+accumulators of missing elements are not updated: they keep their value (in
+hardware, a write enable). Feeding zeros instead is not equivalent: a tiny
+negative product underflows to -0 (`mac(-2^-80, 2^-80, +0) = -0`), and then
+`mac(0, 0, -0) = +0` changes the sign bit.
+
 Splitting one dot product across several lanes (split-K) is not allowed in
 v0. If M2 needs it, this section changes.
 
@@ -181,7 +187,7 @@ with tolerances (M1 exit criteria), never bit-exactly.
 
 | Param | Meaning | Fixed by |
 |-------|---------|----------|
-| `A` | interleaved accumulators per lane | M2 (adder pipeline depth) |
+| `A` | interleaved accumulators per lane | M2 (adder pipeline depth); provisional 8 |
 | `S` | vector-unit reduction width | M2 |
 | `R_RSQRT`, `N_RSQRT` | rsqrt first-guess constant, Newton steps | M1: `0x5F3759DF`, 2 |
 | `R_RECIP`, `N_RECIP` | recip first-guess constant, Newton steps | M1: `0x7EF311C3`, 2 |

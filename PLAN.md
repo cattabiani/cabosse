@@ -186,8 +186,16 @@ order depends on the lane design (M2), so it is a parameter here.
   (exp: 2⁻¹⁶·⁶ for subnormal results, which are now kept as in IEEE). Tests:
   exhaustive accuracy, flush-to-zero behaviour, and bit-exact agreement with
   an independent restatement of the spec (PR #2).
-- [ ] **Next:** golden model of SmolLM2 decode, plus the tiny configs.
-- [ ] Comparison against `transformers`, error report, greedy-decode fixture.
+- Golden model of SmolLM2 decode, in steps (one PR each):
+  - [x] Dot product (section 3): `A` accumulators + pairwise tree, fast exact
+    `mac`. About 3 s of matrix-vector work per SmolLM2 token (measured on the
+    dev machine, Ryzen 7 7800X3D, 8 threads; machine-dependent).
+  - [ ] **Next:** reductions (sum, max), RMSNorm, softmax.
+  - [ ] RoPE, SwiGLU, residual add.
+  - [ ] Decoder: weights, KV cache, decode step, tiny configs.
+- Comparison against `transformers`:
+  - [ ] Harness and error report (teacher forcing, vs FP32 and BF16).
+  - [ ] Greedy-decode fixtures and regression tests.
 - [ ] M1 checkpoint review.
 
 ### M2 — Architecture spec and performance model
