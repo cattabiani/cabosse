@@ -128,6 +128,19 @@ def fma(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
     return _finish_f32(s.to(torch.float32))
 
 
+def maximum(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """FP32 max(a, b): exact. max(-0, +0) = +0, and NaN if a or b is NaN.
+
+    torch.maximum is not used: it returns -0 for maximum(-0, +0).
+    """
+    assert a.dtype == b.dtype == torch.float32, (a.dtype, b.dtype)
+    a, b = apply_ftz(a), apply_ftz(b)
+    y = torch.where(a > b, a, b)
+    y = torch.where((a == 0) & (b == 0) & ~torch.signbit(a), a, y)  # +0 wins over -0
+    y = torch.where(torch.isnan(a), a, y)  # a > b is false for NaN: pass it on
+    return _finish_f32(y)
+
+
 def mac(w: torch.Tensor, x: torch.Tensor, acc: torch.Tensor) -> torch.Tensor:
     """Lane step: BF16 w * BF16 x + FP32 acc, one rounding (= fma(up(w), up(x), acc)).
 
