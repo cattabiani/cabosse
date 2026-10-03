@@ -199,8 +199,13 @@ order depends on the lane design (M2), so it is a parameter here.
   - [x] Dot product (section 3): `A` accumulators + pairwise tree, fast exact
     `mac`. About 3 s of matrix-vector work per SmolLM2 token (measured on the
     dev machine, Ryzen 7 7800X3D, 8 threads; machine-dependent).
-  - [ ] **Next:** reductions (sum, max), RMSNorm, softmax.
-  - [ ] RoPE, SwiGLU, residual add.
+  - [x] Reductions (sum, sum of squares, max), RMSNorm, softmax (section 4):
+    one `interleaved_sum` shared with the dot product, `S` provisional 8.
+    Bit-exact on edge-case inputs (overflow, subnormal variance and `exp`
+    results, ties); errors against float64 2⁻¹⁷·⁷ (RMSNorm) and 2⁻¹⁶·³
+    (softmax). Softmax without online rescaling (D-022). Review checklist
+    for agents in `REVIEW.md` (PRs #4, #5).
+  - [ ] **Next:** RoPE, SwiGLU, residual add.
   - [ ] Decoder: weights, KV cache, decode step, tiny configs.
 - Comparison against `transformers`:
   - [ ] Harness and error report (teacher forcing, vs FP32 and BF16).
