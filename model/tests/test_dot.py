@@ -39,8 +39,6 @@ def extreme_bf16(rng: np.random.Generator, shape: tuple[int, ...]) -> torch.Tens
 
 
 # --- independent restatement of section 3 (scalar, exact oracle arithmetic) --------
-
-
 def spec_dot(w: np.ndarray, x: np.ndarray, accumulators: int) -> np.float32:
     """w, x: FP32 values that are exactly BF16 (the widening is exact)."""
     acc = [F32(0.0)] * accumulators

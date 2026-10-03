@@ -12,15 +12,11 @@ import pytest
 import torch
 from golden import arith, settings, vector
 from oracle import add_ref, fma_ref, mul_ref, round_f32
-from test_funcs import spec_exp, spec_recip, spec_rsqrt
+from test_funcs import max_rel_err, spec_exp, spec_recip, spec_rsqrt, t32
 
 SEED = 20261003
 F32 = np.float32
 NAN_BITS = arith.NAN_F32_BITS
-
-
-def t32(x) -> torch.Tensor:
-    return torch.from_numpy(np.ascontiguousarray(x, F32))
 
 
 def bits_of(y) -> list[int]:
@@ -218,7 +214,7 @@ def test_rmsnorm_accuracy() -> None:
     y = vector.rmsnorm(t32(x), g, eps).double()
     x64, g64 = torch.from_numpy(x).double(), g.double()
     ref = g64 * x64 / torch.sqrt((x64 * x64).mean(-1, keepdim=True) + eps)
-    assert ((y - ref).abs() / ref.abs()).max().item() <= 2.0**-16
+    assert max_rel_err(y, ref) <= 2.0**-16
 
 
 def test_rmsnorm_of_zero_vector_is_zero() -> None:
@@ -261,7 +257,7 @@ def test_softmax_accuracy() -> None:
         s = F32(rng.uniform(-15, 15, (32, n)))
         y = vector.softmax(t32(s)).double()
         ref = torch.softmax(torch.from_numpy(s).double(), -1)
-        assert ((y - ref).abs() / ref).max().item() <= 2.0**-15, f"n={n}"
+        assert max_rel_err(y, ref) <= 2.0**-15, f"n={n}"
 
 
 def test_softmax_of_largest_score_and_single_element() -> None:

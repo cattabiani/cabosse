@@ -49,15 +49,11 @@ def _finite(*xs: np.float32) -> bool:
     return all(np.isfinite(x) for x in xs)
 
 
-def _f64(x: np.float32) -> np.float64:
-    return np.float64(x)
-
-
 def fma_ref(a: np.float32, b: np.float32, c: np.float32) -> np.float32:
     """Correctly rounded a*b + c."""
     if not _finite(a, b, c):
         with np.errstate(invalid="ignore", over="ignore"):
-            return F32(_f64(a) * _f64(b) + _f64(c))
+            return F32(np.float64(a) * np.float64(b) + np.float64(c))
     p = Fraction(float(a)) * Fraction(float(b))
     v = p + Fraction(float(c))
     p_neg = _neg(a) != _neg(b)
@@ -67,7 +63,7 @@ def fma_ref(a: np.float32, b: np.float32, c: np.float32) -> np.float32:
 def add_ref(a: np.float32, b: np.float32) -> np.float32:
     if not _finite(a, b):
         with np.errstate(invalid="ignore"):
-            return F32(_f64(a) + _f64(b))
+            return F32(np.float64(a) + np.float64(b))
     v = Fraction(float(a)) + Fraction(float(b))
     return round_f32(v, zero_sign_negative=(a == 0 and b == 0 and _neg(a) and _neg(b)))
 
@@ -75,6 +71,6 @@ def add_ref(a: np.float32, b: np.float32) -> np.float32:
 def mul_ref(a: np.float32, b: np.float32) -> np.float32:
     if not _finite(a, b):
         with np.errstate(invalid="ignore", over="ignore"):
-            return F32(_f64(a) * _f64(b))
+            return F32(np.float64(a) * np.float64(b))
     v = Fraction(float(a)) * Fraction(float(b))
     return round_f32(v, zero_sign_negative=(_neg(a) != _neg(b)))

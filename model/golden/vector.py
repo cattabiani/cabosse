@@ -9,8 +9,6 @@ and ends with the pairwise tree of section 3. Functions work on the last
 dimension and treat the others as independent vectors.
 """
 
-from collections.abc import Callable
-
 import torch
 
 from golden import arith, dot, funcs
@@ -19,30 +17,17 @@ from golden import arith, dot, funcs
 # it from the adder pipeline depth; every function takes it as a parameter.
 REDUCE_WIDTH = 8
 
-Step = Callable[[torch.Tensor, torch.Tensor], torch.Tensor]
-
-
-def _reduce(x: torch.Tensor, step: Step, width: int) -> torch.Tensor:
-    """acc[i mod width] = step(x[i], acc[i mod width]) in increasing i, then the tree."""
-    assert x.dtype == torch.float32, x.dtype
-    assert width > 0 and width & (width - 1) == 0, width
-    n = x.shape[-1]
-    assert n > 0, "empty reduction (not defined by the spec)"
-    acc = torch.zeros((*x.shape[:-1], width), dtype=torch.float32)  # all +0.0
-    for start in range(0, n, width):
-        m = min(width, n - start)  # partial last group: the rest keep their value
-        acc[..., :m] = step(x[..., start : start + m], acc[..., :m])
-    return dot.tree_sum(acc)
-
 
 def reduce_sum(x: torch.Tensor, width: int = REDUCE_WIDTH) -> torch.Tensor:
     """sum(x): partial sums acc = add(x[i], acc)."""
-    return _reduce(x, arith.add, width)
+    assert x.dtype == torch.float32, x.dtype
+    return dot.interleaved_sum(arith.add, width, x)
 
 
 def reduce_sum_squares(x: torch.Tensor, width: int = REDUCE_WIDTH) -> torch.Tensor:
     """sum_squares(x): partial sums acc = fma(x[i], x[i], acc)."""
-    return _reduce(x, lambda v, acc: arith.fma(v, v, acc), width)
+    assert x.dtype == torch.float32, x.dtype
+    return dot.interleaved_sum(lambda v, acc: arith.fma(v, v, acc), width, x)
 
 
 def reduce_max(x: torch.Tensor) -> torch.Tensor:

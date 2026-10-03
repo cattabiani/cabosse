@@ -59,10 +59,12 @@ def apply_ftz(x: torch.Tensor) -> torch.Tensor:
     return torch.where(subnormal, torch.copysign(torch.zeros_like(x), x), x)
 
 
+_NAN_F32 = f32_from_bits(torch.tensor(NAN_F32_BITS, dtype=torch.int64))
+
+
 def _finish_f32(x: torch.Tensor) -> torch.Tensor:
     """Apply the output rules to an FP32 result: canonical NaN, optional FTZ."""
-    nan = f32_from_bits(torch.tensor(NAN_F32_BITS, dtype=torch.int64))
-    return apply_ftz(torch.where(torch.isnan(x), nan, x))
+    return apply_ftz(torch.where(torch.isnan(x), _NAN_F32, x))
 
 
 # --- primitives (docs/numerics.md, section 2) -------------------------------
