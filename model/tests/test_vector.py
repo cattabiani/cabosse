@@ -10,7 +10,7 @@ from fractions import Fraction
 import numpy as np
 import pytest
 import torch
-from golden import arith, vector
+from golden import arith, settings, vector
 from oracle import add_ref, fma_ref, mul_ref, round_f32
 from test_funcs import spec_exp, spec_recip, spec_rsqrt
 
@@ -227,6 +227,14 @@ def test_rmsnorm_of_zero_vector_is_zero() -> None:
     assert (y == 0).all()
 
 
+def test_rmsnorm_rejects_weight_of_wrong_shape() -> None:
+    """A [1] weight would broadcast silently over all elements."""
+    x = torch.ones(8)
+    for g in (torch.ones(1), torch.ones(4), torch.ones(2, 8)):
+        with pytest.raises(AssertionError):
+            vector.rmsnorm(x, g.to(torch.bfloat16), 1e-5)
+
+
 # --- softmax ----------------------------------------------------------------------
 
 
@@ -244,10 +252,10 @@ def test_softmax_accuracy() -> None:
     """Relative error per element <= 2^-15 against float64, for scores within
     30 of the maximum (every exp result is normal).
 
-    Bound: s - m is rounded (relative error of exp(s - m) <= 30 * 2^-24), exp
-    2^-17.08, the sum of positive terms gamma_k with k = n/S + 3 (2^-19 for
-    n = 256), recip 2^-17.2, the multiply 2^-24. Total about 2^-16; 2^-15
-    leaves a factor-2 margin."""
+    Bound: s - m is rounded (relative error of exp(s - m) <= 30 * 2^-24 =
+    2^-19.1), exp 2^-17.08, the sum of positive terms gamma_k with k = n/S + 3
+    (2^-18.9 for n = 256), recip 2^-17.2, the multiply 2^-24. Total 2^-15.8;
+    2^-15 leaves a factor-1.7 margin."""
     rng = np.random.default_rng(SEED)
     for n in (1, 7, 64, 256):
         s = F32(rng.uniform(-15, 15, (32, n)))
@@ -271,3 +279,18 @@ def test_softmax_non_finite_scores() -> None:
     assert p[0].item() == 0.0 and torch.isfinite(p).all()
     s = t32([[1.0, np.inf, 0.0], [1.0, np.nan, 0.0], [-np.inf, -np.inf, -np.inf]])
     assert torch.isnan(vector.softmax(s)).all()
+
+
+# --- flush to zero ----------------------------------------------------------------
+
+
+def test_flush_to_zero_does_not_change_normal_results() -> None:
+    """With FTZ on, inputs and results in the normal range give the same bits."""
+    rng = np.random.default_rng(SEED)
+    x, g = t32(moderate(rng, (32, 576))), bf16_weights(rng, 576)
+    s = t32(rng.uniform(-30, 30, (32, 200)))  # every exp result is normal
+    plain = (vector.rmsnorm(x, g, 1e-5), vector.softmax(s), vector.reduce_sum(x))
+    with settings.override(ftz=True):
+        flushed = (vector.rmsnorm(x, g, 1e-5), vector.softmax(s), vector.reduce_sum(x))
+    for a, b in zip(plain, flushed, strict=True):
+        assert torch.equal(arith.bits_f32(a), arith.bits_f32(b))

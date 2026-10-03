@@ -40,10 +40,9 @@ def _neg(x: np.float32) -> bool:
     return bool(np.signbit(x))
 
 
-# The exact arithmetic cannot represent inf or NaN. With a non-finite operand,
-# IEEE float64 arithmetic gives the same special result as FP32: inf/NaN rules
-# do not depend on precision, and a finite float64 result too large for FP32
-# rounds to inf as FP32 would.
+# The exact arithmetic cannot represent inf or NaN. With a non-finite operand
+# the result is inf or NaN, and IEEE float64 arithmetic gives the same one as
+# FP32: the inf/NaN rules do not depend on precision.
 
 
 def _finite(*xs: np.float32) -> bool:

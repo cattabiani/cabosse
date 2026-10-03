@@ -68,6 +68,7 @@ def rmsnorm(
     """
     assert x.dtype == torch.float32 and g.dtype == torch.bfloat16, (x.dtype, g.dtype)
     n = x.shape[-1]
+    assert g.shape == (n,), (g.shape, n)  # one weight per element, no broadcasting
     inv_n = torch.tensor(1.0, dtype=torch.float32) / n  # IEEE division: f32(1/n), one rounding
     eps32 = torch.tensor(eps, dtype=torch.float32)  # f32(eps), one rounding
     var = arith.mul(reduce_sum_squares(x, width), inv_n)

@@ -87,7 +87,8 @@ All FP32 unless noted. `n ≥ 1` is the vector length.
   `step = fma(xᵢ, xᵢ, acc)`. In a partial last group, the missing partial sums
   keep their value, as in section 3. Here, unlike section 3, padding with +0
   gives the same bits: a partial sum that starts at +0 can never become -0
-  (an exact zero sum is +0, an add never underflows to zero, and `xᵢ·xᵢ ≥ 0`).
+  (an exact zero sum is +0, an add never underflows to zero because subnormals
+  are kept, and `xᵢ·xᵢ ≥ 0`).
   A sum of only -0 values is +0. `max(x)` is the `max` of section 2 over all
   elements. `max` is exact, commutative and associative, so its order does not
   matter.
