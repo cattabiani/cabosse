@@ -45,8 +45,10 @@ Read the full diff against `main`, plus the parts of `docs/numerics.md`,
    private helpers used across modules; functions named after the hardware
    operation. Keep it simple: flag over-engineering too.
 7. **Repo rules.** SPDX headers and copyright line, Python 3.14 typing, no
-   new dependencies, no weights or build outputs, PLAN.md / decision log
-   updated if a decision was made, milestone scope respected.
+   weights or build outputs, PLAN.md / decision log updated if a decision
+   was made, milestone scope respected. A new dependency is fine when it is
+   needed and the owner agreed to it (AGENTS.md rule 6): it is pinned in
+   `requirements.txt` and its license is compatible.
 
 ## Report
 
