@@ -30,7 +30,7 @@ round to nearest, ties to even.
 | `mul(a, b)` | `f32(a · b)` |
 | `fma(a, b, c)` | `f32(a · b + c)`: one rounding (D-019) |
 | `mac(w, x, acc)` | `fma(up(w), up(x), acc)` for BF16 `w`, `x` and FP32 `acc` |
-| `max(a, b)` | the larger of a and b, with `max(-0, +0) = +0` |
+| `max(a, b)` | the larger of a and b, with `max(-0, +0) = +0`; NaN if a or b is NaN |
 | `int bit tricks` | integer add/subtract/shift on the 32-bit pattern of an FP32 value (section 5) |
 
 Special values (D-012, D-016):
@@ -71,22 +71,44 @@ v0. If M2 needs it, this section changes.
 
 ## 4. Vector unit operations
 
-All FP32 unless noted. `n` is the vector length. `S` is the vector-unit
-reduction width **[param, from M2]**. Reductions use the same scheme as
-section 3: `S` interleaved partials in increasing index order, then
-`tree_sum`.
+All FP32 unless noted. `n ≥ 1` is the vector length.
 
+- **Reductions.** `sum(x)` and `sum_squares(x)` use the loop of section 3 with
+  `S` interleaved partial sums **[param, from M2]** in place of `A` (the vector
+  unit's adder has a latency too), and a step in place of
+  `mac(w[k], x[k], acc)`: `add(xᵢ, acc)` for `sum`, `fma(xᵢ, xᵢ, acc)` for
+  `sum_squares`. Unlike section 3, padding the last group with +0 gives the
+  same bits: a partial sum that starts at +0 can never become -0 (an exact zero
+  sum is +0, an add never underflows to zero because subnormals are kept, and
+  `xᵢ·xᵢ ≥ 0`). A sum of only -0 values is +0. `max(x)` is the `max` of
+  section 2 over all elements. `max` is exact, commutative and associative, so
+  its order does not matter.
 - **Embedding lookup:** `h = up(E[token])`. E is the BF16 table (tied with the
   classifier).
-- **RMSNorm** (weight `g`, BF16; `eps` = `f32(1e-5)`):
+- **RMSNorm** (weight `g`, BF16; `eps` = `f32(rms_norm_eps)` from the model
+  config, 1e-5 for SmolLM2):
   ```
-  ss  = Σ fma(xᵢ, xᵢ, ·)                       # reduction, as above
+  ss  = sum_squares(x)
   var = mul(ss, inv_n)                         # inv_n = f32(1/n), constant
   r   = rsqrt(add(var, eps))                   # section 5
   yᵢ  = mul(up(gᵢ), mul(xᵢ, r))
   ```
   This uses a multiply by `f32(1/n)` instead of torch's divide by `n`, so it
   is not bit-identical to torch here (tolerance comparison only).
+- **Softmax** of FP32 scores `s`:
+  ```
+  m  = max(s)
+  eᵢ = exp(add(sᵢ, -m))                        # unary minus is an exact sign flip
+  z  = sum(e)
+  pᵢ = mul(eᵢ, recip(z))
+  ```
+  For finite scores the largest gives `exp(+0) = 1` exactly, so `z ≥ 1` and
+  `recip(z)` needs no scaling. A score of -Inf gets `p = 0`. A score of +Inf
+  or NaN, or all scores -Inf, gives NaN everywhere (IEEE propagation). Decode
+  has no masked scores, so only finite scores occur there.
+  `e` need not be stored: recomputing `exp(add(sᵢ, -m))` gives the same bits
+  (D-022).
+  `p` is not exactly normalized: even for `n = 1`, `p₀ = recip(1) = 0.9999935`.
 - **RoPE** (head dim `d`, `half = d/2`, tables `C[pos]`, `S[pos]` of length
   `d`, FP32): the tables are computed on the host with the same code as
   `transformers`:
@@ -101,10 +123,7 @@ section 3: `S` interleaved partials in increasing index order, then
   ```
   q̂ = bf16(RoPE(q))      K[t] = bf16(RoPE(k_t))      V[t] = bf16(v_t)
   sₜ = mul(dot(q̂, K[t]), scale)                # scale = 1/√d, exact for d = 64
-  m  = max over t of sₜ                        # order irrelevant: max is exact
-  eₜ = exp(add(sₜ, -m))
-  z  = Σ eₜ                                    # reduction
-  pₜ = bf16(mul(eₜ, recip(z)))
+  p  = bf16(softmax(s))                        # over the positions t
   oᵢ = dot over t of (pₜ, V[t][i])             # section 3, positions as k
   ```
   The KV cache stores `K[t]`, `V[t]` in BF16, written once per token.
@@ -188,7 +207,7 @@ with tolerances (M1 exit criteria), never bit-exactly.
 | Param | Meaning | Fixed by |
 |-------|---------|----------|
 | `A` | interleaved accumulators per lane | M2 (adder pipeline depth); provisional 8 |
-| `S` | vector-unit reduction width | M2 |
+| `S` | vector-unit reduction width | M2; provisional 8 |
 | `R_RSQRT`, `N_RSQRT` | rsqrt first-guess constant, Newton steps | M1: `0x5F3759DF`, 2 |
 | `R_RECIP`, `N_RECIP` | recip first-guess constant, Newton steps | M1: `0x7EF311C3`, 2 |
 | exp degree, coefficients | 2ᶠ polynomial | M1: degree 4, section 5 |

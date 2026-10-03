@@ -31,6 +31,15 @@ Read the full diff against `main`, plus the parts of `docs/numerics.md`,
      switch, but it must not break the algorithm;
    - shapes: length 1, length < the interleave width, not a multiple of it,
      empty input (must be rejected).
+
+   An operation built from other operations (RMSNorm, softmax, attention, a
+   decoder layer) needs these cases tested through the whole operation, in
+   the bit-exact test, not only in its parts. Look for the intermediate value
+   that can go wrong: a sum of squares that overflows, a variance that is
+   subnormal, `exp` results that are subnormal or zero, ties for a max,
+   `s - m` overflowing to -Inf. Then check that each test input family
+   actually reaches the case it targets (count the hits); a family that never
+   reaches its case tests nothing.
 4. **Tests can fail.** Tests compare bit-exactly against an independent
    restatement of the spec (constants copied, not imported; exact oracle in
    `model/tests/oracle.py`). For each important rule, name a plausible

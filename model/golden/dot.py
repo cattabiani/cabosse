@@ -8,9 +8,14 @@ k mod A. At the end the A partial sums are added in a fixed pairwise tree.
 This fixes the summation order, and the golden model must follow it exactly.
 """
 
+from collections.abc import Callable
+
 import torch
 
 from golden import arith
+
+# One step of a partial sum: step(*elements, acc) -> new acc.
+Step = Callable[..., torch.Tensor]
 
 # A: interleaved accumulators per lane. Provisional until M2 derives it from
 # the adder pipeline depth; every function takes it as a parameter.
@@ -28,6 +33,21 @@ def tree_sum(parts: torch.Tensor) -> torch.Tensor:
     return parts[..., 0]
 
 
+def interleaved_sum(step: Step, width: int, *operands: torch.Tensor) -> torch.Tensor:
+    """Sum over the last dimension in the order of section 3: element k goes to
+    partial sum k mod width, acc = step(*operands[..., k], acc) in increasing k,
+    then tree_sum. The operands have the same shape. Shared by the lanes (dot)
+    and the vector unit (golden.vector)."""
+    assert width > 0 and width & (width - 1) == 0, f"width must be a power of two, got {width}"
+    n = operands[0].shape[-1]
+    assert n > 0, "empty sum (not defined by the spec)"
+    acc = torch.zeros((*operands[0].shape[:-1], width), dtype=torch.float32)  # all +0.0
+    for start in range(0, n, width):
+        m = min(width, n - start)  # partial last group: the rest keep their value
+        acc[..., :m] = step(*(o[..., start : start + m] for o in operands), acc[..., :m])
+    return tree_sum(acc)
+
+
 def dot(w: torch.Tensor, x: torch.Tensor, accumulators: int = ACCUMULATORS) -> torch.Tensor:
     """Dot products over the last dimension: sum_k w[..., k] * x[..., k].
 
@@ -36,12 +56,4 @@ def dot(w: torch.Tensor, x: torch.Tensor, accumulators: int = ACCUMULATORS) -> t
     FP32 with the broadcast shape minus the last dimension.
     """
     assert w.dtype == x.dtype == torch.bfloat16, (w.dtype, x.dtype)
-    assert accumulators > 0 and accumulators & (accumulators - 1) == 0, accumulators
-    w, x = torch.broadcast_tensors(w, x)
-    k = w.shape[-1]
-    assert k > 0, "empty dot product (not defined by the spec)"
-    acc = torch.zeros((*w.shape[:-1], accumulators), dtype=torch.float32)  # all +0.0
-    for start in range(0, k, accumulators):
-        n = min(accumulators, k - start)  # partial last group: the rest keep their value
-        acc[..., :n] = arith.mac(w[..., start : start + n], x[..., start : start + n], acc[..., :n])
-    return tree_sum(acc)
+    return interleaved_sum(arith.mac, accumulators, *torch.broadcast_tensors(w, x))

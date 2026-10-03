@@ -59,10 +59,12 @@ def apply_ftz(x: torch.Tensor) -> torch.Tensor:
     return torch.where(subnormal, torch.copysign(torch.zeros_like(x), x), x)
 
 
+_NAN_F32 = f32_from_bits(torch.tensor(NAN_F32_BITS, dtype=torch.int64))
+
+
 def _finish_f32(x: torch.Tensor) -> torch.Tensor:
     """Apply the output rules to an FP32 result: canonical NaN, optional FTZ."""
-    nan = f32_from_bits(torch.tensor(NAN_F32_BITS, dtype=torch.int64))
-    return apply_ftz(torch.where(torch.isnan(x), nan, x))
+    return apply_ftz(torch.where(torch.isnan(x), _NAN_F32, x))
 
 
 # --- primitives (docs/numerics.md, section 2) -------------------------------
@@ -126,6 +128,19 @@ def fma(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
     toward = torch.where(e > 0, torch.inf, -torch.inf).to(torch.float64)
     s = torch.where(inexact & even, torch.nextafter(s, toward), s)
     return _finish_f32(s.to(torch.float32))
+
+
+def maximum(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """FP32 max(a, b): exact. max(-0, +0) = +0, and NaN if a or b is NaN.
+
+    torch.maximum is not used: it returns -0 for maximum(-0, +0).
+    """
+    assert a.dtype == b.dtype == torch.float32, (a.dtype, b.dtype)
+    a, b = apply_ftz(a), apply_ftz(b)
+    y = torch.where(a > b, a, b)
+    y = torch.where((a == 0) & (b == 0) & ~torch.signbit(a), a, y)  # +0 wins over -0
+    y = torch.where(torch.isnan(a), a, y)  # a > b is false for NaN: pass it on
+    return _finish_f32(y)
 
 
 def mac(w: torch.Tensor, x: torch.Tensor, acc: torch.Tensor) -> torch.Tensor:
