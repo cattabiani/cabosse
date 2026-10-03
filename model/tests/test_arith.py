@@ -281,3 +281,18 @@ def test_flush_to_zero() -> None:
 def test_override_rejects_unknown_settings() -> None:
     with pytest.raises(TypeError), settings.override(fzt=True):
         pass
+
+
+def test_mac_fast_path_falls_back_when_product_is_inexact() -> None:
+    """Tiny BF16 products underflow FP32 (subnormal with lost bits): there a
+    plain multiply-then-add rounds twice. mac must still equal the one-rounding fma."""
+    rng = np.random.default_rng(SEED)
+    n = 1 << 14
+    w = arith.bf16(t32(F32(rng.uniform(1, 2, n) * 2.0 ** rng.integers(-80, -70, n))))
+    x = arith.bf16(t32(F32(rng.choice([-1.0, 1.0], n) * rng.uniform(1, 2, n) * 2.0**-70)))
+    acc = t32(F32(rng.choice([-1.0, 1.0], n) * 2.0 ** rng.integers(-130, -120, n)))
+    a, b = arith.up(w), arith.up(x)
+    want = arith.bits_f32(arith.fma(a, b, acc))
+    assert torch.equal(arith.bits_f32(arith.mac(w, x, acc)), want)
+    naive = arith.bits_f32(arith.add(arith.mul(a, b), acc))
+    assert (naive != want).any()  # the inputs really exercise the slow path

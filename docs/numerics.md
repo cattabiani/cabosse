@@ -60,6 +60,10 @@ y = tree_sum(acc[0 … A-1])
 neighbours level by level:
 `tree_sum(a0,a1,a2,a3) = add(add(a0,a1), add(a2,a3))`.
 
+An accumulator can never become -0: it starts at +0, `+0 + -0 = +0`, and an
+exact cancellation also gives +0 (round to nearest). So the hardware may pad a
+partial last group with zeros: `mac(0, 0, acc) = acc` bit for bit.
+
 Splitting one dot product across several lanes (split-K) is not allowed in
 v0. If M2 needs it, this section changes.
 
@@ -181,7 +185,7 @@ with tolerances (M1 exit criteria), never bit-exactly.
 
 | Param | Meaning | Fixed by |
 |-------|---------|----------|
-| `A` | interleaved accumulators per lane | M2 (adder pipeline depth) |
+| `A` | interleaved accumulators per lane | M2 (adder pipeline depth); provisional 8 |
 | `S` | vector-unit reduction width | M2 |
 | `R_RSQRT`, `N_RSQRT` | rsqrt first-guess constant, Newton steps | M1: `0x5F3759DF`, 2 |
 | `R_RECIP`, `N_RECIP` | recip first-guess constant, Newton steps | M1: `0x7EF311C3`, 2 |
