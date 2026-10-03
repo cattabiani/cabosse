@@ -210,6 +210,15 @@ model sets the targets for M9.
 work mid-token. Predicted tokens/s for SmolLM2 on F2 is written down, with
 the dominant term identified. The summation parameters are fixed and the
 golden model still passes M1.
+**Starting points (from M1 discussion, to confirm with measurements):**
+- `A` = adder latency rounded up to a power of two (likely 4 or 8). A larger
+  `A` gives no speed, slightly better accuracy, and a longer final tree.
+- `L` = 64 divides every SmolLM2 row count (576, 192, 1536, 49152), so no lane
+  idles. `L` = 128 wastes 10–25% on some matrices. 64 lanes are a few percent
+  of the F2 FPGA (to verify); memory bandwidth, not area, limits `L`.
+- The final tree can overlap the next row with one small extra adder per
+  lane (0% overhead), or reuse the lane's adder (about 2%). The bits are the
+  same either way.
 
 ### M3 — Toolchain and FP units
 **What:** OSS CAD Suite (Verilator, Yosys with the slang SystemVerilog
@@ -235,7 +244,10 @@ with configurable bandwidth.
 **Why:** this is where bandwidth is won or lost.
 **Done when:** bit-exact on one full SmolLM2 layer and the classifier with
 real data. Achieved bytes/cycle is ≥ 90% of `min(BW, 2·L)` on large
-matrices. Verilator speed is measured, to plan M7.
+matrices. Verilator speed is measured, to plan M7. Row edge cases tested:
+rows fewer than `L`, rows not a multiple of `L` (masked last pass, e.g.
+SmolLM2's 192-row k/v with `L` = 128), a single row. Idle lanes must not
+write results.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
@@ -290,6 +302,7 @@ checkpoint.
 | Q-08 | Do the D-020 parameters (2 Newton steps, exp degree 4) hold end to end? | Measured per function in M1; confirm in the end-to-end comparison; area in M6. |
 | Q-10 | How many HBM ports the engine reads in parallel, and how weights are spread across them. | M2. This sets the bandwidth bound. |
 | Q-11 | Attention p·V: store V transposed, or add an engine mode for `Σ pᵢ·vᵢ`? | M2. |
+| Q-22 | Hide the adder latency with `A` partial sums per row (current spec), or by rotating `A` rows per lane (one running sum per row, no tree)? | M2, together with the weight memory layout. Rotating rows gives plain sequential sums; it equals `dot` with `A` = 1. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
 | Q-13 | What the F2 shell exposes (HBM ports, widths, clocks, DMA). | M2, from AWS docs only. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
