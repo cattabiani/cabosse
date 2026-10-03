@@ -186,17 +186,34 @@ def bf16_weights(rng: np.random.Generator, n: int) -> torch.Tensor:
     return arith.bf16(t32(rng.uniform(0.5, 2.0, n) * rng.choice([-1.0, 1.0], n)))
 
 
+def log_spread(rng: np.random.Generator, shape: tuple[int, ...], lo: int, hi: int) -> np.ndarray:
+    """Random signs, exponents in [lo, hi)."""
+    sign = rng.choice([-1.0, 1.0], shape)
+    return F32(sign * rng.uniform(1, 2, shape) * 2.0 ** rng.integers(lo, hi, shape))
+
+
+RMSNORM_INPUTS = {
+    "moderate": moderate,
+    "extreme": extreme,
+    # the sum of squares overflows to inf, so r = rsqrt(inf) = 0
+    "large": lambda rng, shape: log_spread(rng, shape, 60, 128),
+    # the squares and the variance are subnormal or zero; eps dominates
+    "tiny": lambda rng, shape: log_spread(rng, shape, -149, -60),
+}
+
+
+@pytest.mark.parametrize("family", list(RMSNORM_INPUTS))
 @pytest.mark.parametrize("eps", [1e-5, 1e-6])
 @pytest.mark.parametrize("width", [1, 8])
-def test_rmsnorm_matches_spec_bit_exactly(width: int, eps: float) -> None:
+def test_rmsnorm_matches_spec_bit_exactly(width: int, eps: float, family: str) -> None:
     """n = 576 is SmolLM2's hidden size (1/576 is not exact in FP32)."""
     rng = np.random.default_rng(SEED + width)
     for n in (1, 3, 8, 37, 64, 576):
-        x, g = moderate(rng, (2, n)), bf16_weights(rng, n)
+        x, g = RMSNORM_INPUTS[family](rng, (2, n)), bf16_weights(rng, n)
         got = bits_of(vector.rmsnorm(t32(x), g, eps, width))
         g32 = g.to(torch.float32).numpy()
         want = bits_of([v for row in x for v in spec_rmsnorm(row, g32, eps, width)])
-        assert got == want, f"S={width}, n={n}, eps={eps} (seed {SEED + width})"
+        assert got == want, f"{family}, S={width}, n={n}, eps={eps} (seed {SEED + width})"
 
 
 def test_rmsnorm_accuracy() -> None:
@@ -234,14 +251,26 @@ def test_rmsnorm_rejects_weight_of_wrong_shape() -> None:
 # --- softmax ----------------------------------------------------------------------
 
 
+SOFTMAX_SCORES = {
+    "moderate": lambda rng, shape: F32(rng.uniform(-30, 30, shape)),
+    # far below the max: exp results are subnormal or zero
+    "wide": lambda rng, shape: F32(rng.uniform(-200, 0, shape)),
+    # few distinct values: ties for the max
+    "ties": lambda rng, shape: F32(rng.choice([-3.0, 0.0, 1.5, 1.5], shape)),
+    # huge magnitudes: s - m overflows to -inf, exp gives 0
+    "huge": lambda rng, shape: log_spread(rng, shape, 100, 128),
+}
+
+
+@pytest.mark.parametrize("family", list(SOFTMAX_SCORES))
 @pytest.mark.parametrize("width", [1, 8])
-def test_softmax_matches_spec_bit_exactly(width: int) -> None:
+def test_softmax_matches_spec_bit_exactly(width: int, family: str) -> None:
     rng = np.random.default_rng(SEED + width)
-    for n in (1, 2, 5, 8, 33, 100):
-        s = F32(rng.uniform(-30, 30, (3, n)))
+    for n in (1, 2, 5, 8, 33, 100, 600):
+        s = SOFTMAX_SCORES[family](rng, (3, n))
         got = bits_of(vector.softmax(t32(s), width))
         want = bits_of([v for row in s for v in spec_softmax(row, width)])
-        assert got == want, f"S={width}, n={n} (seed {SEED + width})"
+        assert got == want, f"{family}, S={width}, n={n} (seed {SEED + width})"
 
 
 def test_softmax_accuracy() -> None:
