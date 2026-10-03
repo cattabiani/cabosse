@@ -39,33 +39,15 @@ def extreme_bf16(rng: np.random.Generator, shape: tuple[int, ...]) -> torch.Tens
 
 
 # --- independent restatement of section 3 (scalar, exact oracle arithmetic) --------
-# The exact oracle cannot represent inf or NaN. With a non-finite operand, IEEE
-# float64 arithmetic gives the same special result as FP32 (inf/NaN rules do not
-# depend on precision, and a finite float64 result that is too large for FP32
-# rounds to inf as FP32 would).
-
-
-def _fma(a: np.float32, b: np.float32, c: np.float32) -> np.float32:
-    if np.isfinite(a) and np.isfinite(b) and np.isfinite(c):
-        return fma_ref(a, b, c)
-    with np.errstate(invalid="ignore", over="ignore"):
-        return F32(np.float64(a) * np.float64(b) + np.float64(c))
-
-
-def _add(a: np.float32, b: np.float32) -> np.float32:
-    if np.isfinite(a) and np.isfinite(b):
-        return add_ref(a, b)
-    with np.errstate(invalid="ignore"):
-        return F32(np.float64(a) + np.float64(b))
 
 
 def spec_dot(w: np.ndarray, x: np.ndarray, accumulators: int) -> np.float32:
     """w, x: FP32 values that are exactly BF16 (the widening is exact)."""
     acc = [F32(0.0)] * accumulators
     for k in range(len(w)):
-        acc[k % accumulators] = _fma(w[k], x[k], acc[k % accumulators])
+        acc[k % accumulators] = fma_ref(w[k], x[k], acc[k % accumulators])
     while len(acc) > 1:
-        acc = [_add(acc[i], acc[i + 1]) for i in range(0, len(acc), 2)]
+        acc = [add_ref(acc[i], acc[i + 1]) for i in range(0, len(acc), 2)]
     return acc[0]
 
 
