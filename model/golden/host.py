@@ -25,3 +25,10 @@ def rope_tables(
     probe = torch.zeros(1, dtype=torch.float32)  # only its dtype and device are used
     cos, sin = rotary(probe, positions[None, :])
     return cos[0], sin[0]
+
+
+def attention_scale(head_dim: int) -> torch.Tensor:
+    """head_dim**-0.5 as `transformers` computes it (a float64 value), rounded
+    to FP32. Equal to the correctly rounded 1/sqrt(head_dim) for every
+    head_dim up to 100 000 (docs/numerics.md, attention)."""
+    return torch.tensor(head_dim**-0.5, dtype=torch.float32)
