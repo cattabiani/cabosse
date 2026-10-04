@@ -245,8 +245,14 @@ order depends on the lane design (M2), so it is a parameter here.
     mean relative logit error 6.3e-3 (1.5e-2), mean KL 1.2e-4 nats (8.6e-4).
     Golden is no worse on every metric. Full run 7 min; `decode_step` 1.4 s
     per SmolLM2 token (PR #8).
-  - [ ] **Next:** Greedy-decode fixtures and regression tests.
-- [ ] M1 checkpoint review.
+  - [x] Greedy-decode fixtures (`decoder.generate`, `model/fixtures.py`,
+    `scripts/make_fixtures.py`): tiny untied config, 3 prompts × 64 tokens
+    with logit hashes (fast suite); SmolLM2, 3 chat prompts × 64 tokens with
+    FP32 `transformers`' greedy tokens alongside (slow test). Golden and FP32
+    `transformers` agree on all 64 tokens for two prompts; the third differs
+    at token 62, a near-tie (29.883 vs 29.869). The fixtures do not catch a
+    change of `S` (BF16 outputs absorb it); per-op tests do (PR #9).
+- [ ] **Next:** M1 checkpoint review. All exit criteria met.
 
 ### M2 — Architecture spec and performance model
 **What:** `docs/architecture.md` (block diagram, register map, memory map,
