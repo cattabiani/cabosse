@@ -43,6 +43,8 @@ def spec_logits(config: LlamaConfig, state: dict, tokens: list[int]) -> torch.Te
     w = state.__getitem__
     keys = [[[] for _ in range(n_kv)] for _ in range(config.num_hidden_layers)]
     values = [[[] for _ in range(n_kv)] for _ in range(config.num_hidden_layers)]
+    tied = config.tie_word_embeddings
+    output_weight = w("model.embed_tokens.weight" if tied else "lm_head.weight")
     out = []
     for pos, token in enumerate(tokens):
         cos, sin = (t[0] for t in host.rope_tables(config, torch.tensor([pos])))
@@ -72,8 +74,7 @@ def spec_logits(config: LlamaConfig, state: dict, tokens: list[int]) -> torch.Te
             mlp = arith.bf16(vector.swiglu(a, b))
             h = arith.add(h, dot.dot(w(p + "mlp.down_proj.weight"), mlp))
         x = arith.bf16(vector.rmsnorm(h, w("model.norm.weight"), eps))
-        head = "model.embed_tokens.weight" if config.tie_word_embeddings else "lm_head.weight"
-        out.append(dot.dot(w(head), x))
+        out.append(dot.dot(output_weight, x))
     return torch.stack(out)
 
 

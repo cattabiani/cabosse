@@ -10,87 +10,61 @@ Regenerate with scripts/make_fixtures.py after a deliberate numerics change,
 and review the diff.
 """
 
-import hashlib
-import platform
-import sys
+from pathlib import Path
 
 import compare
 import torch
 from golden import arith, decoder, tiny
-from transformers import LlamaForCausalLM
+from transformers import AutoTokenizer, LlamaForCausalLM
 
-REFERENCE_PLATFORM = sys.platform == "linux" and platform.machine() == "x86_64"
 N_NEW = 64  # generated tokens per prompt
+TINY_CONFIG = {"n_kv_heads": 2, "head_dim": 16, "tied": False}
 TINY_SEED = 20261007
 TINY_PROMPT_LENGTHS = (5, 9, 16)
+# Untied output weights x4 (exact, a power of two): with random tied weights a
+# token mostly predicts itself and greedy decoding repeats it; larger logits
+# spread the choices.
+TINY_LM_HEAD_SCALE = 4
 SMOLLM2_PROMPTS = compare.PROMPTS[:3]
 
 
-def bits_sha256(*tensors: torch.Tensor) -> str:
-    """SHA-256 of the bit patterns of BF16 or FP32 tensors (little-endian)."""
-    h = hashlib.sha256()
-    for t in tensors:
-        bits = arith.bits_bf16(t) if t.dtype == torch.bfloat16 else arith.bits_f32(t)
-        width = "<u2" if t.dtype == torch.bfloat16 else "<u4"
-        h.update(bits.numpy().astype(width).tobytes())
-    return h.hexdigest()
+def greedy_run(model: decoder.Model, prompt: list[int]) -> dict:
+    tokens, logits = decoder.generate(model, prompt, N_NEW)
+    return {"prompt": prompt, "tokens": tokens, "logits_sha256": arith.bits_sha256(logits)}
 
 
-def greedy_runs(model: decoder.Model, prompts: list[list[int]]) -> list[dict]:
-    runs = []
-    for prompt in prompts:
-        tokens, logits = decoder.generate(model, prompt, N_NEW)
-        runs.append({"prompt": prompt, "tokens": tokens, "logits_sha256": bits_sha256(logits)})
-    return runs
+def tiny_state() -> dict[str, torch.Tensor]:
+    state = tiny.random_weights(tiny.tiny_config(**TINY_CONFIG), TINY_SEED)
+    state["lm_head.weight"] = state["lm_head.weight"] * TINY_LM_HEAD_SCALE
+    return state
 
 
 def tiny_fixture() -> dict:
-    """Tiny config (2 KV heads, head size 16), weights from TINY_SEED, three
-    random-token prompts. The output projection is untied: with random tied
-    weights a token mostly predicts itself, and greedy decoding repeats it."""
-    config = tiny.tiny_config(tied=False)
-    state = tiny.random_weights(config, TINY_SEED)
+    """The tiny config with weights from TINY_SEED, three random-token prompts."""
+    config, state = tiny.tiny_config(**TINY_CONFIG), tiny_state()
     gen = torch.Generator().manual_seed(TINY_SEED)
-    prompts = [
-        torch.randint(0, config.vocab_size, (n,), generator=gen).tolist()
-        for n in TINY_PROMPT_LENGTHS
-    ]
+    vocab = config.vocab_size
+    prompts = [torch.randint(0, vocab, (n,), generator=gen).tolist() for n in TINY_PROMPT_LENGTHS]
     model = decoder.from_state_dict(config, state)
     return {
-        "config": config.to_diff_dict(),
+        "config": TINY_CONFIG,
         "seed": TINY_SEED,
-        "weights_sha256": bits_sha256(*(state[k] for k in sorted(state))),
-        "runs": greedy_runs(model, prompts),
+        "weights_sha256": arith.bits_sha256(*(state[k] for k in sorted(state))),
+        "runs": [greedy_run(model, p) for p in prompts],
     }
 
 
-def transformers_greedy(model: LlamaForCausalLM, prompt: list[int]) -> list[int]:
-    """N_NEW tokens by the golden model's rule: argmax (lowest index on a
-    tie), no stopping at end of text, no token forbidden. transformers'
-    generate() would stop at, or with min_new_tokens forbid, end of text."""
-    seq = list(prompt)
-    with torch.no_grad():
-        for _ in range(N_NEW):
-            seq.append(int(model(torch.tensor([seq])).logits[0, -1].argmax()))
-    return seq[len(prompt) :]
-
-
-def smollm2_fixture(path, log=print) -> dict:
+def smollm2_fixture(path: Path) -> dict:
     """SmolLM2-135M-Instruct, three chat prompts. For information, each run
     also records FP32 `transformers`' greedy tokens and the first position
     where they differ from the golden model's (None if they never do)."""
-    from transformers import AutoTokenizer
-
     tokenizer = AutoTokenizer.from_pretrained(path)
     model = decoder.load(path)
     reference = LlamaForCausalLM.from_pretrained(path, dtype=torch.float32).eval()
     runs = []
     for text in SMOLLM2_PROMPTS:
-        prompt = tokenizer.apply_chat_template(
-            [{"role": "user", "content": text}], add_generation_prompt=True, return_dict=True
-        )["input_ids"]
-        (run,) = greedy_runs(model, [prompt])
-        theirs = transformers_greedy(reference, prompt)
+        run = greedy_run(model, compare.chat_prompt(tokenizer, text))
+        theirs = compare.transformers_greedy(reference, run["prompt"], N_NEW)
         pairs = zip(run["tokens"], theirs, strict=True)
         diverge = next((i for i, (a, b) in enumerate(pairs) if a != b), None)
         run |= {
@@ -99,5 +73,5 @@ def smollm2_fixture(path, log=print) -> dict:
             "first_difference": diverge,
         }
         runs.append(run)
-        log(f"{text!r}: first difference from transformers FP32 at {diverge}")
+        print(f"{text!r}: first difference from transformers FP32 at {diverge}")
     return {"weights": path.name, "runs": runs}

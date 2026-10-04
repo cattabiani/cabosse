@@ -10,6 +10,8 @@ Subnormals are kept (D-016), and any NaN result is the canonical NaN (D-012).
 zero. It is for experiments only and is not part of the spec.
 """
 
+import hashlib
+
 import torch
 
 from golden import settings
@@ -43,6 +45,17 @@ def bits_bf16(b: torch.Tensor) -> torch.Tensor:
 def bf16_from_bits(u: torch.Tensor) -> torch.Tensor:
     """16-bit patterns (int64 in [0, 2**16)) -> BF16 values."""
     return torch.where(u >= 2**15, u - 2**16, u).to(torch.int16).view(torch.bfloat16)
+
+
+def bits_sha256(*tensors: torch.Tensor) -> str:
+    """SHA-256 of the bit patterns of BF16 or FP32 tensors, little-endian: a
+    short fingerprint of exact values, for pinning them in tests."""
+    h = hashlib.sha256()
+    for t in tensors:
+        bf16 = t.dtype == torch.bfloat16
+        bits = bits_bf16(t) if bf16 else bits_f32(t)
+        h.update(bits.numpy().astype("<u2" if bf16 else "<u4").tobytes())
+    return h.hexdigest()
 
 
 # --- helpers ----------------------------------------------------------------

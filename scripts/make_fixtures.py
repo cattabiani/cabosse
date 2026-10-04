@@ -33,8 +33,8 @@ def main() -> None:
     parser.add_argument("--tiny", action="store_true", help="only the tiny-config fixture")
     parser.add_argument("--weights", type=Path, default=paths.SMOLLM2)
     args = parser.parse_args()
-    if not fixtures.REFERENCE_PLATFORM:
-        sys.exit("fixtures are generated on x86-64 Linux only (D-023)")
+    if not paths.REFERENCE_PLATFORM:
+        sys.exit(paths.REFERENCE_PLATFORM_NOTE)
     write("tiny_greedy.json", fixtures.tiny_fixture())
     if not args.tiny:
         write("smollm2_greedy.json", fixtures.smollm2_fixture(args.weights))

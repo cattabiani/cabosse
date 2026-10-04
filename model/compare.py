@@ -68,21 +68,24 @@ def summarize(errors: list[dict[str, torch.Tensor]]) -> Metrics:
     )
 
 
+def chat_prompt(tokenizer, text: str) -> list[int]:
+    """One user message in the model's chat template, ready for a reply."""
+    return tokenizer.apply_chat_template(
+        [{"role": "user", "content": text}], add_generation_prompt=True, return_dict=True
+    )["input_ids"]
+
+
 def chat_sequences(tokenizer, reference, prompts: list[str], n_positions: int) -> list[list[int]]:
     """Each prompt in the chat template, continued greedily by the reference
     to exactly n_positions tokens (end of text is suppressed until then)."""
     sequences = []
-    for prompt in prompts:
-        enc = tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}],
-            add_generation_prompt=True,
-            return_tensors="pt",
-            return_dict=True,
-        )
-        assert enc["input_ids"].shape[1] < n_positions, (prompt, enc["input_ids"].shape)
+    for text in prompts:
+        ids = torch.tensor([chat_prompt(tokenizer, text)])
+        assert ids.shape[1] < n_positions, (text, ids.shape)
         with torch.no_grad():
             out = reference.generate(
-                **enc,
+                ids,
+                attention_mask=torch.ones_like(ids),
                 max_length=n_positions,
                 min_length=n_positions,
                 do_sample=False,
@@ -94,6 +97,17 @@ def chat_sequences(tokenizer, reference, prompts: list[str], n_positions: int) -
 def transformers_logits(model, tokens: list[int]) -> torch.Tensor:
     with torch.no_grad():
         return model(torch.tensor([tokens])).logits[0].float()
+
+
+def transformers_greedy(model, prompt: list[int], n_new: int) -> list[int]:
+    """n_new tokens by the golden model's rule (decoder.generate): argmax with
+    the lowest index on a tie, no stopping at end of text, no token forbidden.
+    transformers' generate() would stop at end of text, or with min_length
+    forbid it."""
+    seq = list(prompt)
+    for _ in range(n_new):
+        seq.append(int(transformers_logits(model, seq)[-1].argmax()))
+    return seq[len(prompt) :]
 
 
 def compare(golden: decoder.Model, reference, bf16, sequences: list[list[int]], log=print) -> dict:

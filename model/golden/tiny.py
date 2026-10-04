@@ -58,7 +58,7 @@ def random_weights(config: LlamaConfig, seed: int) -> dict[str, torch.Tensor]:
         }
     state["model.norm.weight"] = norm(hidden)
     if not config.tie_word_embeddings:
-        state["lm_head.weight"] = matrix(config.vocab_size, hidden) * 4  # spread the logits
+        state["lm_head.weight"] = matrix(config.vocab_size, hidden)
     return state
 
 

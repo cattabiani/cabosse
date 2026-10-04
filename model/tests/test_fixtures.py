@@ -7,6 +7,7 @@ scripts/make_fixtures.py after a deliberate numerics change."""
 
 import json
 
+import compare
 import fixtures
 import paths
 import pytest
@@ -14,7 +15,7 @@ import torch
 from golden import arith, decoder, tiny
 
 reference_only = pytest.mark.skipif(
-    not fixtures.REFERENCE_PLATFORM, reason="pinned values come from x86-64 Linux only (D-023)"
+    not paths.REFERENCE_PLATFORM, reason=paths.REFERENCE_PLATFORM_NOTE
 )
 
 
@@ -55,10 +56,21 @@ def test_tiny_greedy_matches_fixture() -> None:
 @reference_only
 @pytest.mark.skipif(not paths.SMOLLM2.exists(), reason=f"needs the checkpoint in {paths.SMOLLM2}")
 def test_smollm2_greedy_matches_fixture() -> None:
-    """SmolLM2, three chat prompts x 64 tokens: tokens and logit bits. About
-    5 minutes; runs locally, not in CI."""
-    want = stored("smollm2_greedy.json")
-    got = fixtures.smollm2_fixture(paths.SMOLLM2, log=lambda _: None)
-    for g, w in zip(got["runs"], want["runs"], strict=True):
-        assert g["tokens"] == w["tokens"], w["text"]
-        assert g["logits_sha256"] == w["logits_sha256"]
+    """SmolLM2, three chat prompts x 64 tokens: tokens and logit bits.
+
+    The stored tokens are known, so one teacher-forced pass gives the same
+    logits as generating them one by one (test above), in about a fifth of
+    the time: about 70 s. A wrong token changes the logits after it, so the
+    hash still catches it. Runs locally, not in CI."""
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(paths.SMOLLM2)
+    model = decoder.load(paths.SMOLLM2)
+    for text, run in zip(
+        fixtures.SMOLLM2_PROMPTS, stored("smollm2_greedy.json")["runs"], strict=True
+    ):
+        prompt = run["prompt"]
+        assert compare.chat_prompt(tokenizer, text) == prompt
+        logits = decoder.forward(model, prompt + run["tokens"][:-1])
+        assert logits[len(prompt) - 1 :].argmax(-1).tolist() == run["tokens"], run["text"]
+        assert arith.bits_sha256(logits) == run["logits_sha256"]

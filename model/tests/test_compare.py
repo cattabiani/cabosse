@@ -95,9 +95,5 @@ def test_chat_sequences_have_the_requested_length() -> None:
     tokenizer = AutoTokenizer.from_pretrained(WEIGHTS)
     reference = LlamaForCausalLM.from_pretrained(WEIGHTS, dtype=torch.float32).eval()
     (seq,) = compare.chat_sequences(tokenizer, reference, compare.PROMPTS[:1], 60)
-    prompt = tokenizer.apply_chat_template(
-        [{"role": "user", "content": compare.PROMPTS[0]}],
-        add_generation_prompt=True,
-        return_dict=True,
-    )["input_ids"]
+    prompt = compare.chat_prompt(tokenizer, compare.PROMPTS[0])
     assert len(seq) == 60 and seq[: len(prompt)] == prompt

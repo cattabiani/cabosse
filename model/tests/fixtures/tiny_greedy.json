@@ -1,31 +1,8 @@
 {
  "config": {
-  "transformers_version": "5.18.0",
-  "vocab_size": 256,
-  "hidden_size": 64,
-  "intermediate_size": 128,
-  "num_hidden_layers": 2,
-  "num_attention_heads": 4,
-  "num_key_value_heads": 2,
-  "hidden_act": "silu",
-  "max_position_embeddings": 128,
-  "initializer_range": 0.02,
-  "rms_norm_eps": 1e-05,
-  "use_cache": true,
-  "pad_token_id": null,
-  "bos_token_id": 1,
-  "eos_token_id": 2,
-  "pretraining_tp": 1,
-  "tie_word_embeddings": false,
-  "rope_parameters": {
-   "rope_theta": 10000.0,
-   "rope_type": "default"
-  },
-  "attention_bias": false,
-  "attention_dropout": 0.0,
-  "mlp_bias": false,
+  "n_kv_heads": 2,
   "head_dim": 16,
-  "model_type": "llama"
+  "tied": false
  },
  "seed": 20261007,
  "weights_sha256": "1db22d7b74139f3593854486c32febc5766b88e5c93e89c0f31f75050f520793",
