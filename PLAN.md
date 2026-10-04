@@ -166,6 +166,19 @@ everywhere by construction, but the RoPE tables come from the platform's
 float32 cos/sin, which are not correctly rounded (D-020). Other platforms
 are there to catch errors, not to make every pinned value portable.
 
+**D-024 (2026-10-04) — KV cache: one flat array, allocated once.** K and V
+for every layer, KV head and position are preallocated up to the model's
+`max_position_embeddings` (8192 for SmolLM2). Token `pos` writes row `pos`,
+and a new conversation resets the length to 0. When the cache is full,
+decoding stops. *Why:* the model was trained on at most that many
+positions, so a cache that runs longer (circular buffer, sliding window)
+would only feed it contexts it was not trained for: a longer cache is
+useless without a model trained for it. Block paging (as in vLLM) only
+helps when many sequences share memory, and the workload is single-stream
+(D-003). A flat array is also the simplest hardware layout: the address of
+a row is arithmetic, and one head's K or V streams as one block. Q-24
+keeps the alternatives for later.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -331,6 +344,7 @@ checkpoint.
 | Q-10 | How many HBM ports the engine reads in parallel, and how weights are spread across them. | M2. This sets the bandwidth bound. |
 | Q-11 | Attention p·V: store V transposed, or add an engine mode for `Σ pᵢ·vᵢ`? | M2. |
 | Q-22 | Hide the adder latency with `A` partial sums per row (current spec), or by rotating `A` rows per lane (one running sum per row, no tree)? | M2, together with the weight memory layout. Rotating rows gives plain sequential sums; it equals `dot` with `A` = 1. |
+| Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
 | Q-13 | What the F2 shell exposes (HBM ports, widths, clocks, DMA). | M2, from AWS docs only. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |

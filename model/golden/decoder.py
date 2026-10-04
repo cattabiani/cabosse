@@ -89,7 +89,10 @@ def load(path: Path) -> Model:
 @dataclass
 class KVCache:
     """K and V in BF16, [layers, n_kv_heads, max_positions, head_dim]; `length`
-    positions are filled. The next token goes to position `length`."""
+    positions are filled. The next token goes to position `length`.
+
+    One flat array allocated once, no paging or wrap-around (D-024): the model
+    is not trained beyond max_position_embeddings anyway."""
 
     k: torch.Tensor
     v: torch.Tensor
