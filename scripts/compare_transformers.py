@@ -37,6 +37,7 @@ def main() -> None:
     parser.add_argument("--positions", type=int, default=256, help="tokens per sequence")
     parser.add_argument("--out", type=Path, default=paths.RUNS)
     args = parser.parse_args()
+    args.out.mkdir(parents=True, exist_ok=True)  # before the run, not after
 
     tokenizer = AutoTokenizer.from_pretrained(args.weights)
     reference = LlamaForCausalLM.from_pretrained(args.weights, dtype=torch.float32).eval()
@@ -51,7 +52,6 @@ def main() -> None:
 
     text = compare.report(result)
     print(f"\n{text}\n\n({minutes:.1f} min)")
-    args.out.mkdir(exist_ok=True)
     stem = args.out / time.strftime("compare-%Y%m%d-%H%M%S")
     stem.with_suffix(".md").write_text(text + "\n")
     raw = compare.as_json(result) | {

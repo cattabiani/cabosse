@@ -74,6 +74,16 @@ def test_compare_end_to_end_on_tiny_config() -> None:
     assert compare.as_json(result)["golden"]["positions"] == 24
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+def test_tiny_transformers_model_keeps_rope_frequencies_in_fp32(dtype: torch.dtype) -> None:
+    """As from_pretrained(dtype=bfloat16) does: weights in dtype, RoPE
+    frequencies in FP32. Rounding them to BF16 would weaken the baseline."""
+    config = tiny.tiny_config()
+    model = tiny.transformers_model(config, tiny.random_weights(config, SEED), dtype)
+    assert model.model.layers[0].self_attn.q_proj.weight.dtype == dtype
+    assert model.model.rotary_emb.inv_freq.dtype == torch.float32
+
+
 def test_prompts_are_distinct() -> None:
     assert len(compare.PROMPTS) == 10 and len(set(compare.PROMPTS)) == 10
 
