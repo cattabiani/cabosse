@@ -17,6 +17,7 @@ from golden import settings
 NAN_BF16_BITS = 0x7FC0
 NAN_F32_BITS = 0x7FC00000
 F32_MIN_NORMAL = 2.0**-126
+_NAN_F32 = torch.tensor(NAN_F32_BITS, dtype=torch.int32).view(torch.float32)
 
 
 # --- bit patterns -----------------------------------------------------------
@@ -59,9 +60,6 @@ def apply_ftz(x: torch.Tensor) -> torch.Tensor:
     return torch.where(subnormal, torch.copysign(torch.zeros_like(x), x), x)
 
 
-_NAN_F32 = f32_from_bits(torch.tensor(NAN_F32_BITS, dtype=torch.int64))
-
-
 def _finish_f32(x: torch.Tensor) -> torch.Tensor:
     """Apply the output rules to an FP32 result: canonical NaN, optional FTZ."""
     return apply_ftz(torch.where(torch.isnan(x), _NAN_F32, x))
@@ -84,10 +82,10 @@ def bf16(x: torch.Tensor) -> torch.Tensor:
 
 
 def up(b: torch.Tensor) -> torch.Tensor:
-    """BF16 -> FP32, exact (the 16 low bits become zero)."""
+    """BF16 -> FP32, exact (the 16 low bits become zero). torch's conversion is
+    that bit shift; NaNs are then made canonical."""
     assert b.dtype == torch.bfloat16, b.dtype
-    u = bits_bf16(b)
-    return _finish_f32(f32_from_bits(u << 16))
+    return _finish_f32(b.to(torch.float32))
 
 
 def add(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -144,16 +142,26 @@ def maximum(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 
 def mac(w: torch.Tensor, x: torch.Tensor, acc: torch.Tensor) -> torch.Tensor:
-    """Lane step: BF16 w * BF16 x + FP32 acc, one rounding (= fma(up(w), up(x), acc)).
+    """Lane step: BF16 w * BF16 x + FP32 acc, one rounding (= fma(up(w), up(x), acc))."""
+    return mac_f32(up(w), up(x), acc)
+
+
+def mac_f32(a: torch.Tensor, b: torch.Tensor, acc: torch.Tensor) -> torch.Tensor:
+    """mac on inputs already widened: a and b are FP32 values that are exactly
+    BF16 (outputs of up). Lets a caller widen once and reuse the result.
 
     Fast path: a BF16 x BF16 product has at most 16 significant bits, so the
     FP32 product is exact unless it underflows or overflows. When it is exact,
     a plain FP32 add rounds the exact sum once, which is what fma does. The
-    slow fma emulation runs only for the rare inexact products.
+    slow fma emulation runs only for products that may be inexact.
+
+    The product is certainly exact when p is finite and |p| >= 2^-133: then
+    the exact product is at least 2^-134, and 16 bits from there down stay at
+    or above 2^-149, the smallest subnormal step. A zero factor with a finite
+    p also gives an exact (signed) zero. Anything else takes the slow path.
     """
-    a, b = up(w), up(x)
     p = mul(a, b)
-    exact = p.to(torch.float64) == a.to(torch.float64) * b.to(torch.float64)
+    exact = torch.isfinite(p) & ((p.abs() >= 2.0**-133) | (a == 0) | (b == 0))
     fast = add(p, acc)
     if bool(exact.all()):
         return fast

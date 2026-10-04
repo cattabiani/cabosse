@@ -153,3 +153,36 @@ def test_rejects_bad_arguments() -> None:
         dot.dot(w, w, accumulators=6)  # not a power of two: fails before the loop
     with pytest.raises(AssertionError):
         dot.dot(w[:0], w[:0])  # K = 0 is not defined
+
+
+@pytest.mark.parametrize("rows, block_rows, block", [(37, 2048, 1 << 20), (37, 8, 20), (37, 5, 1)])
+def test_matvec_equals_one_dot_per_vector(
+    rows: int, block_rows: int, block: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Blocking over rows and vectors does not change any element."""
+    monkeypatch.setattr(dot, "MATVEC_ROWS", block_rows)
+    monkeypatch.setattr(dot, "MATVEC_BLOCK", block)
+    rng = np.random.default_rng(SEED)
+    w, x = random_bf16(rng, (rows, 50)), random_bf16(rng, (9, 50))
+    want = torch.stack([dot.dot(w, x[t]) for t in range(9)])
+    assert torch.equal(arith.bits_f32(dot.matvec(w, x)), arith.bits_f32(want))
+
+
+def test_valid_mask_equals_truncation() -> None:
+    """Masked elements keep the partial sums (a write enable), so a masked
+    vector gives the bits of its valid prefix. Includes the case where zero
+    padding would differ (-0 turning into +0) and infinities in the masked
+    part (0 * inf would be NaN)."""
+    w = arith.bf16(torch.full((9,), -(2.0**-80)))
+    x = arith.bf16(torch.full((9,), 2.0**-80))
+    pad_w = arith.bf16(torch.tensor([1.0, np.inf, 0.0, 3.0, -np.inf, 0.0, np.nan]))
+    pad_x = arith.bf16(torch.tensor([np.inf, 2.0, 0.0, 0.0, 1.0, -np.inf, 1.0]))
+    valid = torch.arange(16) < 9
+    got = dot.dot(torch.cat([w, pad_w]), torch.cat([x, pad_x]), 8, valid=valid)
+    assert arith.bits_f32(got).item() == 0x80000000  # -0, as dot(w, x)
+    rng = np.random.default_rng(SEED)
+    for length in (1, 7, 8, 13, 40):
+        w, x = extreme_bf16(rng, (4, 48)), extreme_bf16(rng, (4, 48))
+        valid = torch.arange(48) < length
+        want = arith.bits_f32(dot.dot(w[:, :length], x[:, :length]))
+        assert torch.equal(arith.bits_f32(dot.dot(w, x, valid=valid)), want), length

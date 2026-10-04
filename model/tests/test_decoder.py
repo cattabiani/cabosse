@@ -4,16 +4,17 @@
 "Decode step" of docs/numerics.md section 4, a wiring check against
 `transformers`, the KV cache, and loading checkpoints."""
 
-import os
 from pathlib import Path
 
+import compare
+import paths
 import pytest
 import torch
 from golden import arith, decoder, dot, host, tiny, vector
 from transformers import LlamaConfig, LlamaForCausalLM
 
 SEED = 20261005
-WEIGHTS = Path(os.environ.get("CABOSSE_WEIGHTS", "weights")) / "SmolLM2-135M-Instruct"
+WEIGHTS = paths.SMOLLM2
 
 
 def random_tokens(n: int, vocab: int, seed: int = SEED) -> list[int]:
@@ -27,14 +28,9 @@ def golden_logits(model: decoder.Model, tokens: list[int]) -> torch.Tensor:
 
 def transformers_logits(config: LlamaConfig, state: dict, tokens: list[int]) -> torch.Tensor:
     """FP32 reference: the same BF16 weights, widened, in LlamaForCausalLM."""
-    ref = LlamaForCausalLM(config).eval()
-    missing, unexpected = ref.load_state_dict(
-        {k: v.float() for k, v in state.items()}, strict=False
+    return compare.transformers_logits(
+        tiny.transformers_model(config, state, torch.float32), tokens
     )
-    assert unexpected == [] and set(missing) <= {"lm_head.weight"}, (missing, unexpected)
-    ref.tie_weights()
-    with torch.no_grad():
-        return ref(torch.tensor([tokens])).logits[0]
 
 
 # --- restatement of the "Decode step" (written from the spec, per head and per
@@ -147,6 +143,30 @@ def test_attention_scale_is_correctly_rounded() -> None:
         mid_up = (Fraction(float(y)) + Fraction(float(up))) / 2
         mid_down = (Fraction(float(y)) + Fraction(float(down))) / 2
         assert mid_up**2 * d > 1 and mid_down**2 * d < 1, f"d={d}"
+
+
+@pytest.mark.parametrize("n_kv_heads", [1, 2, 4])
+@pytest.mark.parametrize("small_blocks", [False, True])
+def test_forward_equals_decode_steps(
+    n_kv_heads: int, small_blocks: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Teacher forcing gives the logits of one decode_step per token, bit for
+    bit, and so does a prompt run in two parts. Small blocks: matvec splits
+    rows and vectors into many blocks, attention splits positions."""
+    if small_blocks:
+        monkeypatch.setattr(dot, "MATVEC_ROWS", 24)
+        monkeypatch.setattr(dot, "MATVEC_BLOCK", 100)
+        monkeypatch.setattr(decoder, "ATTENTION_BLOCK", 7)
+    config = tiny.tiny_config(n_kv_heads)
+    model = decoder.from_state_dict(config, tiny.random_weights(config, SEED + n_kv_heads))
+    tokens = random_tokens(30, config.vocab_size)
+    want = arith.bits_f32(golden_logits(model, tokens))
+    assert torch.equal(arith.bits_f32(decoder.forward(model, tokens)), want)
+    cache = decoder.KVCache.empty(model, 30)
+    parts = torch.cat(
+        [decoder.step(model, cache, tokens[:11]), decoder.step(model, cache, tokens[11:])]
+    )
+    assert torch.equal(arith.bits_f32(parts), want) and cache.length == 30
 
 
 # --- wiring check against transformers ------------------------------------------

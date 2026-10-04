@@ -4,7 +4,7 @@
 for the RTL later (PLAN.md, model ladder)."""
 
 import torch
-from transformers import LlamaConfig
+from transformers import AutoModelForCausalLM, LlamaConfig, LlamaForCausalLM
 
 
 def tiny_config(n_kv_heads: int = 2, head_dim: int = 16) -> LlamaConfig:
@@ -57,3 +57,21 @@ def random_weights(config: LlamaConfig, seed: int) -> dict[str, torch.Tensor]:
         }
     state["model.norm.weight"] = norm(hidden)
     return state
+
+
+def transformers_model(
+    config: LlamaConfig, state: dict[str, torch.Tensor], dtype: torch.dtype
+) -> LlamaForCausalLM:
+    """The same weights in `transformers`' LlamaForCausalLM, in FP32 (widened,
+    exact) or BF16, for comparisons. Checks that every weight was loaded.
+
+    Built the way from_pretrained builds a BF16 model: the weights in dtype,
+    the RoPE frequency buffers in FP32 (a plain .to(dtype) would round those
+    to BF16 too and make the BF16 baseline worse than the real one)."""
+    model = AutoModelForCausalLM.from_config(config, dtype=dtype).eval()
+    missing, unexpected = model.load_state_dict(
+        {k: v.to(dtype) for k, v in state.items()}, strict=False
+    )
+    assert unexpected == [] and set(missing) <= {"lm_head.weight"}, (missing, unexpected)
+    model.tie_weights()
+    return model

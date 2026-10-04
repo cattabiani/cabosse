@@ -11,6 +11,23 @@ from oracle import add_ref, fma_ref, mul_ref
 SEED = 20261002
 N_ORACLE = 20_000  # per input family; the Fraction oracle is slow
 F32 = np.float32
+SPECIALS = F32(
+    [
+        0.0,
+        -0.0,
+        1.0,
+        -1.0,
+        np.inf,
+        -np.inf,
+        np.nan,
+        2.0**-149,
+        -(2.0**-149),
+        2.0**-126,
+        np.finfo(F32).max,
+        -np.finfo(F32).max,
+        1.0 + 2.0**-23,
+    ]
+)
 
 
 def bits(x: np.ndarray) -> np.ndarray:
@@ -106,25 +123,6 @@ def _step_ulps(x: np.ndarray, k: np.ndarray) -> np.ndarray:
             out[m] = np.nextafter(out[m], F32(direction * np.inf))
             k = np.where(m, k - direction, k)
     return out
-
-
-SPECIALS = F32(
-    [
-        0.0,
-        -0.0,
-        1.0,
-        -1.0,
-        np.inf,
-        -np.inf,
-        np.nan,
-        2.0**-149,
-        -(2.0**-149),
-        2.0**-126,
-        np.finfo(F32).max,
-        -np.finfo(F32).max,
-        1.0 + 2.0**-23,
-    ]
-)
 
 
 # --- bf16 / up -----------------------------------------------------------------
@@ -305,3 +303,21 @@ def test_mac_fast_path_falls_back_on_overflow() -> None:
     acc = t32(F32([-np.inf]))
     assert arith.mac(big, big, acc).item() == -np.inf
     assert torch.isnan(arith.add(arith.mul(arith.up(big), arith.up(big)), acc)).all()
+
+
+def test_mac_fast_path_is_taken_only_for_exact_products() -> None:
+    """mac_f32 takes the plain-add path when p is finite and |p| >= 2^-133 (or
+    a factor is zero). Check that claim against the exact float64 product, on
+    random BF16 pairs over the whole range (subnormals included) and on pairs
+    whose product lands around the 2^-133 threshold."""
+    rng = np.random.default_rng(SEED)
+    u = rng.integers(0, 1 << 16, (2, 1 << 20))
+    a, b = (arith.up(arith.bf16_from_bits(torch.from_numpy(v))) for v in u)
+    near = arith.up(arith.bf16(t32(F32(rng.uniform(1, 2, 1 << 16) * 2.0**-60))))
+    other = arith.up(arith.bf16(t32(F32(rng.uniform(1, 2, 1 << 16) * 2.0**-74))))
+    a, b = torch.cat([a, near]), torch.cat([b, other])  # products near 2^-134 .. 2^-132
+    p = arith.mul(a, b)
+    fast = torch.isfinite(p) & ((p.abs() >= 2.0**-133) | (a == 0) | (b == 0))
+    exact = p.double() == a.double() * b.double()
+    assert fast.sum() > 0 and (~fast).sum() > 0
+    assert exact[fast].all()

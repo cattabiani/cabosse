@@ -20,6 +20,7 @@ from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply
 
 SEED = 20261004
 F32 = np.float32
+REFERENCE_PLATFORM = sys.platform == "linux" and platform.machine() == "x86_64"
 
 
 def llama_config(head_dim: int) -> LlamaConfig:
@@ -57,9 +58,6 @@ def spec_swiglu(a: np.float32, b: np.float32) -> np.float32:
 
 
 # --- RoPE tables ------------------------------------------------------------------
-
-
-REFERENCE_PLATFORM = sys.platform == "linux" and platform.machine() == "x86_64"
 
 
 @pytest.mark.skipif(

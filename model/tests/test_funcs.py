@@ -14,6 +14,9 @@ from oracle import add_ref, fma_ref, mul_ref
 SEED = 20261002
 F32 = np.float32
 INF = F32(np.inf)
+EXP2_COEFFS = list(
+    np.array([0x3F800000, 0x3F317061, 0x3E75FD26, 0x3D650E71, 0x3C1E5FB0], np.uint32).view(F32)
+)
 
 
 def t32(x) -> torch.Tensor:
@@ -78,9 +81,6 @@ def spec_recip(x: np.float32) -> np.float32:
         y = fma_ref(y, fma_ref(-xs, y, F32(1.0)), y)
     y = mul_ref(y, scale) if scale is not None else y
     return np.copysign(y, x)
-
-
-EXP2_COEFFS = [_from_bits(b) for b in (0x3F800000, 0x3F317061, 0x3E75FD26, 0x3D650E71, 0x3C1E5FB0)]
 
 
 def spec_exp(x: np.float32) -> np.float32:

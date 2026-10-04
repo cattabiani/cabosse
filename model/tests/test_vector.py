@@ -17,6 +17,9 @@ from test_funcs import max_rel_err, spec_exp, spec_recip, spec_rsqrt, t32
 SEED = 20261003
 F32 = np.float32
 NAN_BITS = arith.NAN_F32_BITS
+SPECIALS = F32(
+    [-np.inf, -3.0, -1.0, -(2.0**-149), -0.0, 0.0, 2.0**-149, 2.0**-126, 1.0, 3.0, np.inf, np.nan]
+)
 
 
 def bits_of(y) -> list[int]:
@@ -96,10 +99,6 @@ def spec_softmax(s: np.ndarray, width: int) -> list[np.float32]:
 
 
 # --- max ----------------------------------------------------------------------------
-
-SPECIALS = F32(
-    [-np.inf, -3.0, -1.0, -(2.0**-149), -0.0, 0.0, 2.0**-149, 2.0**-126, 1.0, 3.0, np.inf, np.nan]
-)
 
 
 def test_maximum_all_pairs_of_special_values() -> None:
@@ -319,3 +318,19 @@ def test_flush_to_zero_does_not_change_normal_results() -> None:
         flushed = (vector.rmsnorm(x, g, 1e-5), vector.softmax(s), vector.reduce_sum(x))
     for a, b in zip(plain, flushed, strict=True):
         assert torch.equal(arith.bits_f32(a), arith.bits_f32(b))
+
+
+def test_valid_mask_equals_truncation() -> None:
+    """reduce_sum and softmax over the valid prefix of each row, with NaN and
+    infinities in the masked part; masked softmax entries are +0."""
+    rng = np.random.default_rng(SEED)
+    x = extreme(rng, (5, 30))
+    s = F32(rng.uniform(-30, 30, (5, 30)))
+    s[:, 20:] = np.where(rng.random((5, 10)) < 0.5, np.nan, np.inf)
+    lengths = torch.tensor([1, 7, 8, 19, 20])
+    valid = torch.arange(30) < lengths[:, None]
+    sums, probs = vector.reduce_sum(t32(x), valid=valid), vector.softmax(t32(s), valid=valid)
+    for row, n in enumerate(lengths.tolist()):
+        assert bits_of(sums[row]) == bits_of(vector.reduce_sum(t32(x[row, :n])))
+        assert bits_of(probs[row, :n]) == bits_of(vector.softmax(t32(s[row, :n])))
+        assert bits_of(probs[row, n:]) == [0] * (30 - n)

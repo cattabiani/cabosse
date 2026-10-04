@@ -12,16 +12,18 @@ remembers the conversation; the base variant continues the text. Examples:
 """
 
 import argparse
-import os
+import sys
 import time
 from pathlib import Path
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, TextStreamer
 
-REPO = Path(__file__).resolve().parent.parent
-WEIGHTS = Path(os.environ.get("CABOSSE_WEIGHTS", REPO / "weights"))
-VARIANTS = {"instruct": "SmolLM2-135M-Instruct", "base": "SmolLM2-135M"}
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "model"))
+
+import paths  # noqa: E402
+
+VARIANTS = {"instruct": paths.SMOLLM2, "base": paths.SMOLLM2_BASE}
 
 
 def generate(model, tok, input_ids: torch.Tensor, args) -> torch.Tensor:
@@ -72,7 +74,7 @@ def main() -> None:
     )
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
-    args.model = WEIGHTS / VARIANTS[args.variant]
+    args.model = VARIANTS[args.variant]
 
     torch.manual_seed(args.seed)
     tok = AutoTokenizer.from_pretrained(args.model)
