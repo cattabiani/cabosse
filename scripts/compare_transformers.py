@@ -5,7 +5,7 @@
 Teacher-forces the golden model, FP32 `transformers` (the reference) and BF16
 `transformers` on the same sequences, prints a table and writes a Markdown
 report and the raw numbers to runs/. The full run (10 prompts x 256
-positions) takes about 16 minutes on the dev machine. Examples:
+positions) takes about 7 minutes on the dev machine. Examples:
     python scripts/compare_transformers.py
     python scripts/compare_transformers.py --prompts 2 --positions 64   # quick
 """
