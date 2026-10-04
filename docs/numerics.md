@@ -130,7 +130,7 @@ All FP32 unless noted. `n ≥ 1` is the vector length.
   `h // (n_heads / n_kv_heads)`):
   ```
   q̂ = bf16(RoPE(q))      K[t] = bf16(RoPE(k_t))      V[t] = bf16(v_t)
-  sₜ = mul(dot(q̂, K[t]), scale)                # scale = 1/√d, exact for d = 64
+  sₜ = mul(dot(q̂, K[t]), scale)                # scale = f32(d^-0.5): 0.125 for d = 64
   p  = bf16(softmax(s))                        # over the positions t
   oᵢ = dot over t of (pₜ, V[t][i])             # section 3, positions as k
   ```
@@ -146,6 +146,23 @@ All FP32 unless noted. `n ≥ 1` is the vector length.
   attention output `o`, and the SwiGLU output `h`.
 - **Logits:** `dot(E[v], bf16(final_norm(x)))` for every vocabulary entry `v`,
   in FP32. Sampling or argmax is not part of this spec (Q-21).
+- **Decode step**, one token at a time at position `pos = 0, 1, …` (a prompt
+  is fed the same way, Q-20). Weights are the checkpoint's BF16 tensors;
+  `dot(W, x)` is one dot product per row of `W` (section 3):
+  ```
+  h = up(E[token])
+  for each layer:
+      x = bf16(rmsnorm(h, g_attn))
+      q, k, v = dot(Wq, x), dot(Wk, x), dot(Wv, x)          # FP32, split into heads
+      K[pos], V[pos] = bf16(RoPE(k)), bf16(v)                # per KV head, before attention
+      o = attention over t = 0 … pos, per query head          # as above
+      h = add(h, dot(Wo, bf16(o)))
+      x = bf16(rmsnorm(h, g_mlp))
+      h = add(h, dot(Wdown, bf16(swiglu(dot(Wgate, x), dot(Wup, x)))))
+  logits = dot(E, bf16(rmsnorm(h, g_final)))                # E: tied embedding, or lm_head
+  ```
+  This is the order of `transformers`' Llama decoder layer (pre-norm,
+  residual adds). Biases are not supported in v0 (SmolLM2 has none).
 
 ## 5. Function approximations (D-020)
 
