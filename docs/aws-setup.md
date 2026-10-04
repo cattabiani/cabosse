@@ -15,6 +15,10 @@ Cabosse runs in Frankfurt (`eu-central-1`), where F2 instances are available.
    including close the account.
 3. Enter a payment card and verify your phone number.
 4. Choose the **Basic support** plan (free).
+5. Choose the **Paid plan**, not the Free plan. The Free plan blocks
+   expensive services (F instances are the kind it blocks) and closes the
+   account after 6 months. Both start with the same sign-up credits, and
+   "paid" only means you pay for what you use.
 
 ## 2. Protect the root user
 
@@ -142,6 +146,7 @@ the owner approves it, with that budget (AGENTS.md, rule 3).
 
 ## Sources
 
+- [AWS Free Tier changes, July 2025](https://www.infoq.com/news/2025/07/aws-risk-free-account-credits/)
 - [Creating an AWS account](https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-creating.html)
 - [Getting started with IAM Identity Center](https://docs.aws.amazon.com/singlesignon/latest/userguide/getting-started.html)
 - [IAM Identity Center authentication with the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html)
