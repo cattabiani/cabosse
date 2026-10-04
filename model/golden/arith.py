@@ -17,6 +17,7 @@ from golden import settings
 NAN_BF16_BITS = 0x7FC0
 NAN_F32_BITS = 0x7FC00000
 F32_MIN_NORMAL = 2.0**-126
+_NAN_F32 = torch.tensor(NAN_F32_BITS, dtype=torch.int32).view(torch.float32)
 
 
 # --- bit patterns -----------------------------------------------------------
@@ -57,9 +58,6 @@ def apply_ftz(x: torch.Tensor) -> torch.Tensor:
         return x
     subnormal = (x != 0) & (x.abs() < F32_MIN_NORMAL)
     return torch.where(subnormal, torch.copysign(torch.zeros_like(x), x), x)
-
-
-_NAN_F32 = f32_from_bits(torch.tensor(NAN_F32_BITS, dtype=torch.int64))
 
 
 def _finish_f32(x: torch.Tensor) -> torch.Tensor:

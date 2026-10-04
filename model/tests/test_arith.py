@@ -11,6 +11,23 @@ from oracle import add_ref, fma_ref, mul_ref
 SEED = 20261002
 N_ORACLE = 20_000  # per input family; the Fraction oracle is slow
 F32 = np.float32
+SPECIALS = F32(
+    [
+        0.0,
+        -0.0,
+        1.0,
+        -1.0,
+        np.inf,
+        -np.inf,
+        np.nan,
+        2.0**-149,
+        -(2.0**-149),
+        2.0**-126,
+        np.finfo(F32).max,
+        -np.finfo(F32).max,
+        1.0 + 2.0**-23,
+    ]
+)
 
 
 def bits(x: np.ndarray) -> np.ndarray:
@@ -106,25 +123,6 @@ def _step_ulps(x: np.ndarray, k: np.ndarray) -> np.ndarray:
             out[m] = np.nextafter(out[m], F32(direction * np.inf))
             k = np.where(m, k - direction, k)
     return out
-
-
-SPECIALS = F32(
-    [
-        0.0,
-        -0.0,
-        1.0,
-        -1.0,
-        np.inf,
-        -np.inf,
-        np.nan,
-        2.0**-149,
-        -(2.0**-149),
-        2.0**-126,
-        np.finfo(F32).max,
-        -np.finfo(F32).max,
-        1.0 + 2.0**-23,
-    ]
-)
 
 
 # --- bf16 / up -----------------------------------------------------------------

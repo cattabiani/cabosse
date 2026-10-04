@@ -16,6 +16,10 @@ from transformers import LlamaConfig
 
 from golden import arith, dot, host, vector
 
+# Positions per attention block in causal_attention(): bounds the
+# [positions, heads, T, d] temporaries of the batched scores.
+ATTENTION_BLOCK = 64
+
 
 @dataclass(frozen=True)
 class Layer:
@@ -130,11 +134,6 @@ def attention(
     p = arith.bf16(vector.softmax(s, valid=valid))  # D-011: p rounded before p.V
     mask = None if valid is None else valid[..., None, :]
     return dot.dot(v.transpose(-1, -2), p[..., None, :], valid=mask)  # o_i = sum_t p_t V[t][i]
-
-
-# Positions per attention block in step(): bounds the [positions, heads, T, d]
-# temporaries of the batched scores.
-ATTENTION_BLOCK = 64
 
 
 def causal_attention(

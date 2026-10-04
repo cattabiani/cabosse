@@ -17,6 +17,9 @@ from test_funcs import max_rel_err, spec_exp, spec_recip, spec_rsqrt, t32
 SEED = 20261003
 F32 = np.float32
 NAN_BITS = arith.NAN_F32_BITS
+SPECIALS = F32(
+    [-np.inf, -3.0, -1.0, -(2.0**-149), -0.0, 0.0, 2.0**-149, 2.0**-126, 1.0, 3.0, np.inf, np.nan]
+)
 
 
 def bits_of(y) -> list[int]:
@@ -96,10 +99,6 @@ def spec_softmax(s: np.ndarray, width: int) -> list[np.float32]:
 
 
 # --- max ----------------------------------------------------------------------------
-
-SPECIALS = F32(
-    [-np.inf, -3.0, -1.0, -(2.0**-149), -0.0, 0.0, 2.0**-149, 2.0**-126, 1.0, 3.0, np.inf, np.nan]
-)
 
 
 def test_maximum_all_pairs_of_special_values() -> None:

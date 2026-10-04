@@ -24,6 +24,7 @@ LOG2E_BITS = 0x3FB8AA3B  # f32(log2(e))
 # 2^f on [-0.5, 0.5], degree 4, c0..c4 as FP32 bit patterns (Chebyshev
 # interpolation rounded to FP32; pinned so every platform uses the same bits).
 EXP2_COEFF_BITS = (0x3F800000, 0x3F317061, 0x3E75FD26, 0x3D650E71, 0x3C1E5FB0)
+EXP2_COEFFS = list(torch.tensor(EXP2_COEFF_BITS, dtype=torch.int32).view(torch.float32))
 
 F32_MIN_NORMAL = 2.0**-126
 # Below this, rsqrt scales x by 2^24 first. 2^-125 rather than 2^-126 keeps
@@ -89,9 +90,6 @@ def recip(x: torch.Tensor) -> torch.Tensor:
 
 
 # --- exp --------------------------------------------------------------------------
-
-
-EXP2_COEFFS = [_from_bits(b) for b in EXP2_COEFF_BITS]
 
 
 def exp2_poly(f: torch.Tensor) -> torch.Tensor:

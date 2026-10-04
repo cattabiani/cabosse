@@ -152,6 +152,10 @@ These are proposed in M0 and will be confirmed when the first code is written
   computation that models hardware. Bit-level operations on `uint16` /
   `uint32` views are preferred over implicit casts.
 - Keep functions small and named after the hardware operation they model.
+- Module-level constants go at the top of the file, after the imports, not
+  between functions. Exceptions: a value that needs a class or function
+  defined in the same file, and a test's parameter table, which sits right
+  above the test that uses it.
 - Put units in names when they are not obvious (`n_bytes`, `n_cycles`,
   `bw_bytes_per_s`).
 - Tests with `pytest` (model) and cocotb (RTL). Fixed random seeds, printed on

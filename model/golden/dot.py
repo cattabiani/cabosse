@@ -21,6 +21,12 @@ Step = Callable[..., torch.Tensor]
 # the adder pipeline depth; every function takes it as a parameter.
 ACCUMULATORS = 8
 
+# matvec blocks: rows per block, and rows x vectors per block. Blocks keep a
+# slice of a large matrix (the 49152-row vocabulary projection) in cache while
+# it meets every vector, and bound the temporaries of the emulated arithmetic.
+MATVEC_ROWS = 2048
+MATVEC_BLOCK = 1 << 20
+
 
 def tree_sum(parts: torch.Tensor) -> torch.Tensor:
     """Sum over the last dimension (length a power of two) in a balanced tree,
@@ -77,13 +83,6 @@ def dot(
     # without repeating the widening for every row or every vector.
     a, b = torch.broadcast_tensors(arith.up(w), arith.up(x))
     return interleaved_sum(arith.mac_f32, accumulators, a, b, valid=valid)
-
-
-# matvec blocks: rows per block, and rows x vectors per block. Blocks keep a
-# slice of a large matrix (the 49152-row vocabulary projection) in cache while
-# it meets every vector, and bound the temporaries of the emulated arithmetic.
-MATVEC_ROWS = 2048
-MATVEC_BLOCK = 1 << 20
 
 
 def matvec(w: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
