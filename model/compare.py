@@ -73,15 +73,16 @@ def chat_sequences(tokenizer, reference, prompts: list[str], n_positions: int) -
     to exactly n_positions tokens (end of text is suppressed until then)."""
     sequences = []
     for prompt in prompts:
-        ids = tokenizer.apply_chat_template(
-            [{"role": "user", "content": prompt}], add_generation_prompt=True, return_tensors="pt"
+        enc = tokenizer.apply_chat_template(
+            [{"role": "user", "content": prompt}],
+            add_generation_prompt=True,
+            return_tensors="pt",
+            return_dict=True,
         )
-        ids = ids["input_ids"] if not isinstance(ids, torch.Tensor) else ids
-        assert ids.shape[1] < n_positions, (prompt, ids.shape)
+        assert enc["input_ids"].shape[1] < n_positions, (prompt, enc["input_ids"].shape)
         with torch.no_grad():
             out = reference.generate(
-                ids,
-                attention_mask=torch.ones_like(ids),
+                **enc,
                 max_length=n_positions,
                 min_length=n_positions,
                 do_sample=False,
@@ -101,21 +102,22 @@ def compare(golden: decoder.Model, reference, bf16, sequences: list[list[int]], 
     Returns {"golden": Metrics, "transformers_bf16": Metrics, "per_sequence":
     [{"golden": Metrics, "transformers_bf16": Metrics}, ...]}.
     """
-    golden_errors, bf16_errors, per_sequence = [], [], []
+    models = {
+        "golden": lambda tokens: decoder.forward(golden, tokens),
+        "transformers_bf16": lambda tokens: transformers_logits(bf16, tokens),
+    }
+    errors = {name: [] for name in models}
+    per_sequence = []
     for n, tokens in enumerate(sequences):
         ref = transformers_logits(reference, tokens)
-        g = position_errors(ref, decoder.forward(golden, tokens))
-        b = position_errors(ref, transformers_logits(bf16, tokens))
-        golden_errors.append(g)
-        bf16_errors.append(b)
-        per_sequence.append({"golden": summarize([g]), "transformers_bf16": summarize([b])})
-        top1_g, top1_b = per_sequence[-1]["golden"].top1, per_sequence[-1]["transformers_bf16"].top1
-        log(f"sequence {n + 1}/{len(sequences)}: top-1 golden {top1_g:.3f}, bf16 {top1_b:.3f}")
-    return {
-        "golden": summarize(golden_errors),
-        "transformers_bf16": summarize(bf16_errors),
-        "per_sequence": per_sequence,
-    }
+        seq = {}
+        for name, run in models.items():
+            errors[name].append(position_errors(ref, run(tokens)))
+            seq[name] = summarize(errors[name][-1:])
+        per_sequence.append(seq)
+        top1 = ", ".join(f"{name} {m.top1:.3f}" for name, m in seq.items())
+        log(f"sequence {n + 1}/{len(sequences)}: top-1 {top1}")
+    return {name: summarize(errs) for name, errs in errors.items()} | {"per_sequence": per_sequence}
 
 
 def as_json(result: dict) -> dict:

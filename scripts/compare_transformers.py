@@ -46,10 +46,9 @@ def main() -> None:
     bf16 = LlamaForCausalLM.from_pretrained(args.weights, dtype=torch.bfloat16).eval()
     golden = decoder.load(args.weights)
 
+    prompts = compare.PROMPTS[: args.prompts]
     start = time.perf_counter()
-    sequences = compare.chat_sequences(
-        tokenizer, reference, compare.PROMPTS[: args.prompts], args.positions
-    )
+    sequences = compare.chat_sequences(tokenizer, reference, prompts, args.positions)
     result = compare.compare(golden, reference, bf16, sequences)
     minutes = (time.perf_counter() - start) / 60
 
@@ -59,7 +58,7 @@ def main() -> None:
     stem = args.out / time.strftime("compare-%Y%m%d-%H%M%S")
     stem.with_suffix(".md").write_text(text + "\n")
     raw = compare.as_json(result) | {
-        "prompts": compare.PROMPTS[: args.prompts],
+        "prompts": prompts,
         "sequences": sequences,
         "weights": str(args.weights),
         "minutes": minutes,

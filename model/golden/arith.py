@@ -84,10 +84,10 @@ def bf16(x: torch.Tensor) -> torch.Tensor:
 
 
 def up(b: torch.Tensor) -> torch.Tensor:
-    """BF16 -> FP32, exact (the 16 low bits become zero)."""
+    """BF16 -> FP32, exact (the 16 low bits become zero). torch's conversion is
+    that bit shift; NaNs are then made canonical."""
     assert b.dtype == torch.bfloat16, b.dtype
-    u = bits_bf16(b)
-    return _finish_f32(f32_from_bits(u << 16))
+    return _finish_f32(b.to(torch.float32))
 
 
 def add(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -155,10 +155,15 @@ def mac_f32(a: torch.Tensor, b: torch.Tensor, acc: torch.Tensor) -> torch.Tensor
     Fast path: a BF16 x BF16 product has at most 16 significant bits, so the
     FP32 product is exact unless it underflows or overflows. When it is exact,
     a plain FP32 add rounds the exact sum once, which is what fma does. The
-    slow fma emulation runs only for the rare inexact products.
+    slow fma emulation runs only for products that may be inexact.
+
+    The product is certainly exact when p is finite and |p| >= 2^-133: then
+    the exact product is at least 2^-134, and 16 bits from there down stay at
+    or above 2^-149, the smallest subnormal step. A zero factor with a finite
+    p also gives an exact (signed) zero. Anything else takes the slow path.
     """
     p = mul(a, b)
-    exact = p.to(torch.float64) == a.to(torch.float64) * b.to(torch.float64)
+    exact = torch.isfinite(p) & ((p.abs() >= 2.0**-133) | (a == 0) | (b == 0))
     fast = add(p, acc)
     if bool(exact.all()):
         return fast

@@ -153,3 +153,16 @@ def test_rejects_bad_arguments() -> None:
         dot.dot(w, w, accumulators=6)  # not a power of two: fails before the loop
     with pytest.raises(AssertionError):
         dot.dot(w[:0], w[:0])  # K = 0 is not defined
+
+
+@pytest.mark.parametrize("rows, block_rows, block", [(37, 2048, 1 << 20), (37, 8, 20), (37, 5, 1)])
+def test_matvec_equals_one_dot_per_vector(
+    rows: int, block_rows: int, block: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Blocking over rows and vectors does not change any element."""
+    monkeypatch.setattr(dot, "MATVEC_ROWS", block_rows)
+    monkeypatch.setattr(dot, "MATVEC_BLOCK", block)
+    rng = np.random.default_rng(SEED)
+    w, x = random_bf16(rng, (rows, 50)), random_bf16(rng, (9, 50))
+    want = torch.stack([dot.dot(w, x[t]) for t in range(9)])
+    assert torch.equal(arith.bits_f32(dot.matvec(w, x)), arith.bits_f32(want))

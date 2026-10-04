@@ -4,7 +4,7 @@
 for the RTL later (PLAN.md, model ladder)."""
 
 import torch
-from transformers import LlamaConfig
+from transformers import LlamaConfig, LlamaForCausalLM
 
 
 def tiny_config(n_kv_heads: int = 2, head_dim: int = 16) -> LlamaConfig:
@@ -57,3 +57,17 @@ def random_weights(config: LlamaConfig, seed: int) -> dict[str, torch.Tensor]:
         }
     state["model.norm.weight"] = norm(hidden)
     return state
+
+
+def transformers_model(
+    config: LlamaConfig, state: dict[str, torch.Tensor], dtype: torch.dtype
+) -> LlamaForCausalLM:
+    """The same weights in `transformers`' LlamaForCausalLM, in FP32 (widened,
+    exact) or BF16, for comparisons. Checks that every weight was loaded."""
+    model = LlamaForCausalLM(config).to(dtype).eval()
+    missing, unexpected = model.load_state_dict(
+        {k: v.to(dtype) for k, v in state.items()}, strict=False
+    )
+    assert unexpected == [] and set(missing) <= {"lm_head.weight"}, (missing, unexpected)
+    model.tie_weights()
+    return model

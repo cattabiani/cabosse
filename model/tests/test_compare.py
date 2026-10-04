@@ -61,12 +61,8 @@ def test_compare_end_to_end_on_tiny_config() -> None:
     config = tiny.tiny_config()
     state = tiny.random_weights(config, SEED)
     golden = decoder.from_state_dict(config, state)
-    reference = LlamaForCausalLM(config).eval()
-    reference.load_state_dict({k: v.float() for k, v in state.items()}, strict=False)
-    reference.tie_weights()
-    bf16 = LlamaForCausalLM(config).to(torch.bfloat16).eval()
-    bf16.load_state_dict(state, strict=False)
-    bf16.tie_weights()
+    reference = tiny.transformers_model(config, state, torch.float32)
+    bf16 = tiny.transformers_model(config, state, torch.bfloat16)
     gen = torch.Generator().manual_seed(SEED)
     sequences = [
         torch.randint(0, config.vocab_size, (12,), generator=gen).tolist() for _ in range(2)
@@ -91,7 +87,8 @@ def test_chat_sequences_have_the_requested_length() -> None:
     reference = LlamaForCausalLM.from_pretrained(WEIGHTS, dtype=torch.float32).eval()
     (seq,) = compare.chat_sequences(tokenizer, reference, compare.PROMPTS[:1], 60)
     prompt = tokenizer.apply_chat_template(
-        [{"role": "user", "content": compare.PROMPTS[0]}], add_generation_prompt=True
-    )
-    prompt = prompt["input_ids"] if not isinstance(prompt, list) else prompt
+        [{"role": "user", "content": compare.PROMPTS[0]}],
+        add_generation_prompt=True,
+        return_dict=True,
+    )["input_ids"]
     assert len(seq) == 60 and seq[: len(prompt)] == prompt

@@ -60,3 +60,30 @@ def dot(w: torch.Tensor, x: torch.Tensor, accumulators: int = ACCUMULATORS) -> t
     # without repeating the widening for every row or every vector.
     a, b = torch.broadcast_tensors(arith.up(w), arith.up(x))
     return interleaved_sum(arith.mac_f32, accumulators, a, b)
+
+
+# matvec blocks: rows per block, and rows x vectors per block. Blocks keep a
+# slice of a large matrix (the 49152-row vocabulary projection) in cache while
+# it meets every vector, and bound the temporaries of the emulated arithmetic.
+MATVEC_ROWS = 2048
+MATVEC_BLOCK = 1 << 20
+
+
+def matvec(w: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+    """dot(w, x[t]) for every vector x[t] of x [T, K]: FP32 [T, rows]. Each
+    element is the same dot product as dot(w, x[t]); only the batching differs."""
+    rows, n = w.shape[0], x.shape[0]
+    block_rows = min(rows, MATVEC_ROWS)
+    block_vectors = max(1, MATVEC_BLOCK // block_rows)
+    return torch.cat(
+        [
+            torch.cat(
+                [
+                    dot(w[r : r + block_rows], x[t : t + block_vectors, None, :])
+                    for r in range(0, rows, block_rows)
+                ],
+                dim=1,
+            )
+            for t in range(0, n, block_vectors)
+        ]
+    )

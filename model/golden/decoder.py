@@ -122,91 +122,63 @@ def attention(
     return dot.dot(v.transpose(-1, -2), p[..., None, :])  # o_i = sum over t of p_t V[t][i]
 
 
-def decode_step(model: Model, cache: KVCache, token: int) -> torch.Tensor:
-    """Run one token at position cache.length; return its FP32 logits [vocab].
-    Writes K and V for this position into the cache."""
+def step(model: Model, cache: KVCache, tokens: list[int]) -> torch.Tensor:
+    """Run `tokens` at positions cache.length, cache.length + 1, ...; return
+    their FP32 logits [len(tokens), vocab] and write their K and V into the
+    cache.
+
+    Every position computes what one decode step at that position computes:
+    the matrix-vector products just handle all positions together, and
+    attention runs position by position because it is causal.
+    """
     c = model.config
-    pos, d = cache.length, c.head_dim
-    assert pos < cache.k.shape[2], "KV cache is full"
+    start, n, d = cache.length, len(tokens), c.head_dim
+    assert start + n <= cache.k.shape[2], "KV cache is full"
     n_heads, n_kv = c.num_attention_heads, c.num_key_value_heads
     group = n_heads // n_kv  # query heads per KV head (GQA)
     eps = c.rms_norm_eps
-    cos, sin = model.cos[pos], model.sin[pos]
-
-    h = arith.up(model.embed[token])
-    for i, layer in enumerate(model.layers):
-        x = arith.bf16(vector.rmsnorm(h, layer.attn_norm, eps))
-        q = dot.dot(layer.q, x).reshape(n_heads, d)
-        k = dot.dot(layer.k, x).reshape(n_kv, d)
-        v = dot.dot(layer.v, x).reshape(n_kv, d)
-        cache.k[i, :, pos] = arith.bf16(vector.rope(k, cos, sin))
-        cache.v[i, :, pos] = arith.bf16(v)
-        q_hat = arith.bf16(vector.rope(q, cos, sin))
-        # query head j uses KV head j // group: [n_kv, group, d] against [n_kv, 1, T, d]
-        keys, values = cache.k[i, :, None, : pos + 1], cache.v[i, :, None, : pos + 1]
-        o = attention(q_hat.reshape(n_kv, group, d), keys, values, model.scale).reshape(-1)
-        h = arith.add(h, dot.dot(layer.o, arith.bf16(o)))
-        x = arith.bf16(vector.rmsnorm(h, layer.mlp_norm, eps))
-        mlp = vector.swiglu(dot.dot(layer.gate, x), dot.dot(layer.up, x))
-        h = arith.add(h, dot.dot(layer.down, arith.bf16(mlp)))
-    cache.length = pos + 1
-    x = arith.bf16(vector.rmsnorm(h, model.final_norm, eps))
-    return dot.dot(model.lm_head, x)
-
-
-# rows x positions per matrix-vector chunk in forward(): bounds the temporaries
-# of the emulated arithmetic (about 0.5 GB at this size).
-MATVEC_CHUNK = 1 << 20
-
-
-def matvec(w: torch.Tensor, x: torch.Tensor, chunk: int = MATVEC_CHUNK) -> torch.Tensor:
-    """dot(w, x[t]) for every row x[t] of x [T, K]: FP32 [T, rows]. Each
-    element is the same dot product as in decode_step; only the batching
-    differs. Chunked over T to bound memory."""
-    step = max(1, chunk // w.shape[0])
-    return torch.cat([dot.dot(w, x[s : s + step, None, :]) for s in range(0, len(x), step)])
-
-
-def forward(model: Model, tokens: list[int], chunk: int = MATVEC_CHUNK) -> torch.Tensor:
-    """Teacher forcing: the logits that decode_step gives for every position
-    of `tokens` from an empty cache, bit for bit, FP32 [T, vocab].
-
-    A golden-model shortcut for comparisons, not a hardware mode (Q-20): all
-    positions go through the matrix-vector products together, and attention
-    runs position by position because it is causal.
-    """
-    c = model.config
-    n, d = len(tokens), c.head_dim
-    n_heads, n_kv = c.num_attention_heads, c.num_key_value_heads
-    group = n_heads // n_kv
-    eps = c.rms_norm_eps
-    cos, sin = model.cos[:n, None], model.sin[:n, None]  # [T, 1, d]: one row per position
-    cache = KVCache.empty(model, n)
+    positions = slice(start, start + n)
+    cos, sin = model.cos[positions, None], model.sin[positions, None]  # [T, 1, d]
 
     h = arith.up(model.embed[tokens])  # [T, hidden]
     for i, layer in enumerate(model.layers):
         x = arith.bf16(vector.rmsnorm(h, layer.attn_norm, eps))
-        q = matvec(layer.q, x, chunk).reshape(n, n_heads, d)
-        k = matvec(layer.k, x, chunk).reshape(n, n_kv, d)
-        v = matvec(layer.v, x, chunk).reshape(n, n_kv, d)
-        cache.k[i] = arith.bf16(vector.rope(k, cos, sin)).transpose(0, 1)
-        cache.v[i] = arith.bf16(v).transpose(0, 1)
+        q = dot.matvec(layer.q, x).reshape(n, n_heads, d)
+        k = dot.matvec(layer.k, x).reshape(n, n_kv, d)
+        v = dot.matvec(layer.v, x).reshape(n, n_kv, d)
+        cache.k[i, :, positions] = arith.bf16(vector.rope(k, cos, sin)).transpose(0, 1)
+        cache.v[i, :, positions] = arith.bf16(v).transpose(0, 1)
         q_hat = arith.bf16(vector.rope(q, cos, sin))
-        keys, values = cache.k[i, :, None], cache.v[i, :, None]  # [n_kv, 1, T, d]
+        # query head j uses KV head j // group: [n_kv, group, d] against [n_kv, 1, T, d]
+        keys, values = cache.k[i, :, None], cache.v[i, :, None]
         o = torch.stack(
             [
                 attention(
                     q_hat[t].reshape(n_kv, group, d),
-                    keys[..., : t + 1, :],
-                    values[..., : t + 1, :],
+                    keys[..., : start + t + 1, :],
+                    values[..., : start + t + 1, :],
                     model.scale,
                 ).reshape(-1)
                 for t in range(n)
             ]
         )
-        h = arith.add(h, matvec(layer.o, arith.bf16(o), chunk))
+        h = arith.add(h, dot.matvec(layer.o, arith.bf16(o)))
         x = arith.bf16(vector.rmsnorm(h, layer.mlp_norm, eps))
-        mlp = vector.swiglu(matvec(layer.gate, x, chunk), matvec(layer.up, x, chunk))
-        h = arith.add(h, matvec(layer.down, arith.bf16(mlp), chunk))
+        mlp = vector.swiglu(dot.matvec(layer.gate, x), dot.matvec(layer.up, x))
+        h = arith.add(h, dot.matvec(layer.down, arith.bf16(mlp)))
+    cache.length = start + n
     x = arith.bf16(vector.rmsnorm(h, model.final_norm, eps))
-    return matvec(model.lm_head, x, chunk)
+    return dot.matvec(model.lm_head, x)
+
+
+def decode_step(model: Model, cache: KVCache, token: int) -> torch.Tensor:
+    """One token at position cache.length (the hardware's mode, Q-20): FP32
+    logits [vocab]."""
+    return step(model, cache, [token])[0]
+
+
+def forward(model: Model, tokens: list[int]) -> torch.Tensor:
+    """Teacher forcing from an empty cache: FP32 logits [len(tokens), vocab],
+    the same bits as one decode_step per token. A golden-model shortcut for
+    comparisons."""
+    return step(model, KVCache.empty(model, len(tokens)), tokens)

@@ -7,6 +7,7 @@
 import os
 from pathlib import Path
 
+import compare
 import pytest
 import torch
 from golden import arith, decoder, dot, host, tiny, vector
@@ -27,14 +28,9 @@ def golden_logits(model: decoder.Model, tokens: list[int]) -> torch.Tensor:
 
 def transformers_logits(config: LlamaConfig, state: dict, tokens: list[int]) -> torch.Tensor:
     """FP32 reference: the same BF16 weights, widened, in LlamaForCausalLM."""
-    ref = LlamaForCausalLM(config).eval()
-    missing, unexpected = ref.load_state_dict(
-        {k: v.float() for k, v in state.items()}, strict=False
+    return compare.transformers_logits(
+        tiny.transformers_model(config, state, torch.float32), tokens
     )
-    assert unexpected == [] and set(missing) <= {"lm_head.weight"}, (missing, unexpected)
-    ref.tie_weights()
-    with torch.no_grad():
-        return ref(torch.tensor([tokens])).logits[0]
 
 
 # --- restatement of the "Decode step" (written from the spec, per head and per
@@ -150,14 +146,26 @@ def test_attention_scale_is_correctly_rounded() -> None:
 
 
 @pytest.mark.parametrize("n_kv_heads", [1, 2, 4])
-@pytest.mark.parametrize("chunk", [decoder.MATVEC_CHUNK, 100])  # 100: many small chunks
-def test_forward_equals_decode_steps(n_kv_heads: int, chunk: int) -> None:
-    """Teacher forcing gives the logits of one decode_step per token, bit for bit."""
+@pytest.mark.parametrize("small_blocks", [False, True])
+def test_forward_equals_decode_steps(
+    n_kv_heads: int, small_blocks: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Teacher forcing gives the logits of one decode_step per token, bit for
+    bit, and so does a prompt run in two parts. Small blocks: matvec splits
+    rows and vectors into many blocks."""
+    if small_blocks:
+        monkeypatch.setattr(dot, "MATVEC_ROWS", 24)
+        monkeypatch.setattr(dot, "MATVEC_BLOCK", 100)
     config = tiny.tiny_config(n_kv_heads)
     model = decoder.from_state_dict(config, tiny.random_weights(config, SEED + n_kv_heads))
     tokens = random_tokens(30, config.vocab_size)
-    got = decoder.forward(model, tokens, chunk)
-    assert torch.equal(arith.bits_f32(got), arith.bits_f32(golden_logits(model, tokens)))
+    want = arith.bits_f32(golden_logits(model, tokens))
+    assert torch.equal(arith.bits_f32(decoder.forward(model, tokens)), want)
+    cache = decoder.KVCache.empty(model, 30)
+    parts = torch.cat(
+        [decoder.step(model, cache, tokens[:11]), decoder.step(model, cache, tokens[11:])]
+    )
+    assert torch.equal(arith.bits_f32(parts), want) and cache.length == 30
 
 
 # --- wiring check against transformers ------------------------------------------
