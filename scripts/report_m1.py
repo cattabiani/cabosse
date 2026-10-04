@@ -16,6 +16,7 @@ records the commit it was measured on. Run it under the memory cap.
 import argparse
 import datetime
 import json
+import os
 import platform
 import statistics
 import subprocess
@@ -36,7 +37,9 @@ import report  # noqa: E402
 from golden import decoder  # noqa: E402
 
 POSITIONS = 256  # per comparison sequence
-DECODE_STEPS = 16  # timed decode steps, after the prompt
+DECODE_WARMUP = 4  # untimed decode steps first (caches, allocator)
+DECODE_STEPS = 32  # then timed decode steps
+QUIET_LOAD = 1.0  # 1-minute load average above which timing is suspect
 # pytest arguments. The report's own up-to-date test waits for this data.
 UP_TO_DATE = "model/tests/test_report.py::test_m1_report_is_up_to_date"
 SUITES = {"fast": ["--deselect", UP_TO_DATE], "slow": ["-m", "slow"]}
@@ -58,6 +61,7 @@ def provenance() -> dict:
         "machine": f"{platform.system()} {platform.machine()}",
         "cpu": cpu,
         "threads": torch.get_num_threads(),
+        "load_average": list(os.getloadavg()),  # 1, 5, 15 min, before measuring
         "python": platform.python_version(),
         "torch": torch.__version__,
         "transformers": transformers.__version__,
@@ -76,15 +80,17 @@ def comparison(tokenizer, reference, bf16, golden: decoder.Model) -> dict:
 
 
 def decode_seconds(tokenizer, golden: decoder.Model) -> list[float]:
-    """Wall time of each decode_step after the first prompt."""
+    """Wall time of each decode_step after the prompt and DECODE_WARMUP
+    untimed steps."""
     prompt = compare.chat_prompt(tokenizer, compare.PROMPTS[0])
-    cache = decoder.KVCache.empty(golden, len(prompt) + DECODE_STEPS)
+    cache = decoder.KVCache.empty(golden, len(prompt) + DECODE_WARMUP + DECODE_STEPS)
     token = int(decoder.step(golden, cache, prompt)[-1].argmax())
     seconds = []
-    for _ in range(DECODE_STEPS):
+    for i in range(DECODE_WARMUP + DECODE_STEPS):
         start = time.perf_counter()
         token = int(decoder.decode_step(golden, cache, token).argmax())
-        seconds.append(time.perf_counter() - start)
+        if i >= DECODE_WARMUP:
+            seconds.append(time.perf_counter() - start)
     return seconds
 
 
@@ -125,12 +131,17 @@ def measure(weights: Path) -> None:
     data = {"provenance": provenance()}
     if data["provenance"]["dirty"]:
         print("warning: uncommitted changes; the report will say so")
+    if data["provenance"]["load_average"][0] > QUIET_LOAD:
+        print("warning: the machine is busy; the timing will be suspect")
     tokenizer = AutoTokenizer.from_pretrained(weights)
     reference = LlamaForCausalLM.from_pretrained(weights, dtype=torch.float32).eval()
     bf16 = LlamaForCausalLM.from_pretrained(weights, dtype=torch.bfloat16).eval()
     golden = decoder.load(weights)
 
-    data["decode"] = {"steps": DECODE_STEPS, "seconds_per_token": decode_seconds(tokenizer, golden)}
+    data["decode"] = {
+        "warmup": DECODE_WARMUP,
+        "seconds_per_token": decode_seconds(tokenizer, golden),
+    }
     print(f"decode: median {statistics.median(data['decode']['seconds_per_token']):.2f} s/token")
     data["divergences"] = divergences(tokenizer, reference, golden)
     data["comparison"] = comparison(tokenizer, reference, bf16, golden)
