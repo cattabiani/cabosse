@@ -50,6 +50,7 @@ def m1_blocks(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
     n_sequences = len(comparison["per_sequence"])
     n_positions = {s["golden"]["positions"] for s in comparison["per_sequence"]}
     seconds = data["decode"]["seconds_per_token"]
+    p90 = statistics.quantiles(seconds, n=10)[-1]
     all_passed = all(tests_passed(s) for s in tests.values())
 
     def met(ok: bool) -> str:
@@ -85,8 +86,9 @@ def m1_blocks(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
         ],
         [
             f"One SmolLM2 token ≤ {M1_MAX_SECONDS_PER_TOKEN} s",
-            f"median {statistics.median(seconds):.2f} s, max {max(seconds):.2f} s "
-            f"({len(seconds)} decode steps)",
+            f"median {statistics.median(seconds):.2f} s, min {min(seconds):.2f} s, "
+            f"p90 {p90:.2f} s, max {max(seconds):.2f} s ({len(seconds)} timed steps "
+            f"after {data['decode']['warmup']} warmup)",
             met(max(seconds) <= M1_MAX_SECONDS_PER_TOKEN),
         ],
     ]
@@ -97,6 +99,8 @@ def m1_blocks(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
         [
             f"- commit `{prov['commit'][:12]}`{dirty}, {prov['date']}",
             f"- {prov['cpu']}, {prov['machine']}, {prov['threads']} torch threads",
+            "- load average before measuring (1, 5, 15 min): "
+            + ", ".join(f"{x:.2f}" for x in prov["load_average"]),
             f"- Python {prov['python']}, torch {prov['torch']}, "
             f"transformers {prov['transformers']}",
         ]
