@@ -103,11 +103,18 @@ def transformers_greedy(model, prompt: list[int], n_new: int) -> list[int]:
     """n_new tokens by the golden model's rule (decoder.generate): argmax with
     the lowest index on a tie, no stopping at end of text, no token forbidden.
     transformers' generate() would stop at end of text, or with min_length
-    forbid it."""
-    seq = list(prompt)
-    for _ in range(n_new):
-        seq.append(int(transformers_logits(model, seq)[-1].argmax()))
-    return seq[len(prompt) :]
+    forbid it. Uses transformers' KV cache; its logits may differ from a
+    full forward in the last bits, which is fine for a reference."""
+    tokens = []
+    with torch.no_grad():
+        out = model(torch.tensor([prompt]), use_cache=True)
+        while True:
+            tokens.append(int(out.logits[0, -1].argmax()))
+            if len(tokens) == n_new:
+                return tokens
+            out = model(
+                torch.tensor([tokens[-1:]]), past_key_values=out.past_key_values, use_cache=True
+            )
 
 
 def compare(golden: decoder.Model, reference, bf16, sequences: list[list[int]], log=print) -> dict:
