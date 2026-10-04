@@ -50,11 +50,12 @@ def main() -> None:
     result = compare.compare(golden, reference, bf16, sequences)
     minutes = (time.perf_counter() - start) / 60
 
-    text = compare.report(result)
+    raw = compare.as_json(result)
+    text = compare.report(raw)
     print(f"\n{text}\n\n({minutes:.1f} min)")
     stem = args.out / time.strftime("compare-%Y%m%d-%H%M%S")
     stem.with_suffix(".md").write_text(text + "\n")
-    raw = compare.as_json(result) | {
+    raw |= {
         "prompts": prompts,
         "sequences": sequences,
         "weights": str(args.weights),

@@ -30,6 +30,15 @@ PROMPTS = [
     "Write a polite email asking a colleague to review a document by Friday.",
 ]
 
+# Rows of report(): label, Metrics field, format.
+REPORT_ROWS = [
+    ("top-1 agreement", "top1", "{:.4f}"),
+    ("logit error, mean", "logit_err_mean", "{:.2e}"),
+    ("logit error, max", "logit_err_max", "{:.2e}"),
+    ("KL, mean (nats)", "kl_mean", "{:.2e}"),
+    ("KL, max (nats)", "kl_max", "{:.2e}"),
+]
+
 
 @dataclass(frozen=True)
 class Metrics:
@@ -149,25 +158,18 @@ def as_json(result: dict) -> dict:
     }
 
 
-def report(result: dict) -> str:
-    """Markdown table: golden next to BF16 `transformers`, both against FP32."""
-    rows = [
-        ("top-1 agreement", "top1", "{:.4f}"),
-        ("logit error, mean", "logit_err_mean", "{:.2e}"),
-        ("logit error, max", "logit_err_max", "{:.2e}"),
-        ("KL, mean (nats)", "kl_mean", "{:.2e}"),
-        ("KL, max (nats)", "kl_max", "{:.2e}"),
-    ]
-    g, b = result["golden"], result["transformers_bf16"]
+def report(raw: dict) -> str:
+    """Markdown table from as_json's output: golden next to BF16
+    `transformers`, both against FP32."""
+    g, b = raw["golden"], raw["transformers_bf16"]
     lines = [
-        f"Against FP32 `transformers`, {g.positions} positions "
-        f"({len(result['per_sequence'])} sequences).",
+        f"Against FP32 `transformers`, {g['positions']} positions "
+        f"({len(raw['per_sequence'])} sequences).",
         "",
         "| | golden | transformers BF16 |",
         "|---|---|---|",
     ]
     lines += [
-        f"| {name} | {fmt.format(getattr(g, k))} | {fmt.format(getattr(b, k))} |"
-        for name, k, fmt in rows
+        f"| {name} | {fmt.format(g[k])} | {fmt.format(b[k])} |" for name, k, fmt in REPORT_ROWS
     ]
     return "\n".join(lines)
