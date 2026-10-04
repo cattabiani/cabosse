@@ -213,8 +213,12 @@ order depends on the lane design (M2), so it is a parameter here.
     results, ties); errors against float64 2⁻¹⁷·⁷ (RMSNorm) and 2⁻¹⁶·³
     (softmax). Softmax without online rescaling (D-022). Review checklist
     for agents in `REVIEW.md` (PRs #4, #5).
-  - [ ] **Next:** RoPE, SwiGLU, residual add.
-  - [ ] Decoder: weights, KV cache, decode step, tiny configs.
+  - [x] RoPE, SiLU/SwiGLU, residual add (`arith.add`). RoPE tables come from
+    `transformers`' own rotary embedding, in FP32; they are within 1 ulp of
+    correct rounding on every platform, and pinned by hash on the reference
+    platform (D-023). Errors against float64: RoPE 2⁻²³·¹ (relative to
+    |xC| + |rS|), SiLU 2⁻¹⁶·⁴ (PR #6).
+  - [ ] **Next:** Decoder: weights, KV cache, decode step, tiny configs.
 - Comparison against `transformers`:
   - [ ] Harness and error report (teacher forcing, vs FP32 and BF16).
   - [ ] Greedy-decode fixtures and regression tests.
