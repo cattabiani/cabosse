@@ -116,8 +116,9 @@ All FP32 unless noted. `n ≥ 1` is the vector length.
   pos·inv_freq]`, `C = cos(emb)`, `S = sin(emb)`. They come from the host's
   float32 math library, which is not correctly rounded (about 5% of
   SmolLM2's values are 1 ulp off, measured on x86 Linux), so they may differ
-  between platforms (to verify; a test pins them). The accelerator and the golden model use
-  whatever tables the host gives them.
+  between platforms. The accelerator and the golden model use whatever
+  tables the host gives them. Pinned values (table hashes, fixtures) come
+  from the reference platform, x86-64 Linux (D-023).
   ```
   rᵢ = -x[i+half]  for i < half;   rᵢ = x[i-half]  for i ≥ half
   outᵢ = fma(xᵢ, Cᵢ, mul(rᵢ, Sᵢ))

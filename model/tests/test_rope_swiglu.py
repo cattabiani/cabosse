@@ -5,6 +5,8 @@
 docs/numerics.md section 4, accuracy, and agreement with `transformers`."""
 
 import hashlib
+import platform
+import sys
 
 import numpy as np
 import pytest
@@ -57,15 +59,19 @@ def spec_swiglu(a: np.float32, b: np.float32) -> np.float32:
 # --- RoPE tables ------------------------------------------------------------------
 
 
+REFERENCE_PLATFORM = sys.platform == "linux" and platform.machine() == "x86_64"
+
+
+@pytest.mark.skipif(
+    not REFERENCE_PLATFORM, reason="pinned values come from x86-64 Linux only (D-023)"
+)
 def test_rope_tables_pinned() -> None:
     """SmolLM2's tables for every position, pinned by hash.
 
     They come from torch's float32 cos/sin, which are not correctly rounded
-    (about 5% of the values are 1 ulp off). If this fails on one platform
-    only, that platform's math library gives different tables: then the
-    golden model is not reproducible across platforms (docs/numerics.md,
-    RoPE), and the decision of D-020 needs revisiting. A torch or
-    transformers upgrade can also change them.
+    (about 5% of the values are 1 ulp off), so other platforms may give
+    different tables (D-023). A torch or transformers upgrade can also
+    change them: then check the change and update the hash.
     """
     cos, sin = host.rope_tables(llama_config(64), torch.arange(8192))
     assert cos.shape == sin.shape == (8192, 64) and cos.dtype == torch.float32
