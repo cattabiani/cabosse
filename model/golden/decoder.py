@@ -205,3 +205,21 @@ def forward(model: Model, tokens: list[int]) -> torch.Tensor:
     the same bits as one decode_step per token. A golden-model shortcut for
     comparisons."""
     return step(model, KVCache.empty(model, len(tokens)), tokens)
+
+
+def generate(model: Model, prompt: list[int], n_new: int) -> tuple[list[int], torch.Tensor]:
+    """Greedy decoding: the prompt in one step, then one decode_step per new
+    token, each time taking the most likely token (the lowest index on a tie,
+    as torch.argmax). Test tooling: sampling is not part of the spec (Q-21).
+
+    Returns the n_new generated tokens and the FP32 logits of every position
+    that was run, [len(prompt) + n_new - 1, vocab].
+    """
+    assert len(prompt) > 0 and n_new > 0, (len(prompt), n_new)
+    cache = KVCache.empty(model, len(prompt) + n_new - 1)
+    logits = [step(model, cache, prompt)]
+    tokens = [int(logits[-1][-1].argmax())]
+    while len(tokens) < n_new:
+        logits.append(step(model, cache, tokens[-1:]))
+        tokens.append(int(logits[-1][-1].argmax()))
+    return tokens, torch.cat(logits)
