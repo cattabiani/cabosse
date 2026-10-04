@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """Vector unit operations (docs/numerics.md, section 4): reductions, RMSNorm,
-and softmax.
+softmax, RoPE, and SiLU/SwiGLU. The residual add is `arith.add`.
 
 The vector unit works on FP32 vectors. Its adder has a latency like a lane's,
 so a sum keeps S partial sums in rotation (element i goes to partial i mod S)
@@ -68,3 +68,29 @@ def softmax(s: torch.Tensor, width: int = REDUCE_WIDTH) -> torch.Tensor:
     e = funcs.exp(arith.add(s, -m[..., None]))  # unary minus: exact sign flip
     z = reduce_sum(e, width)
     return arith.mul(e, funcs.recip(z)[..., None])
+
+
+def rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    """Rotary position embedding over the last dimension (d even, halves not
+    interleaved): out = fma(x, cos, mul(rotate_half(x), sin)). cos and sin are
+    the host's FP32 tables for this position (golden.host.rope_tables)."""
+    assert x.dtype == cos.dtype == sin.dtype == torch.float32, (x.dtype, cos.dtype, sin.dtype)
+    d = x.shape[-1]
+    assert d % 2 == 0 and cos.shape == sin.shape and cos.shape[-1] == d, (x.shape, cos.shape)
+    half = d // 2
+    rotated = torch.cat([-x[..., half:], x[..., :half]], dim=-1)  # unary minus: exact sign flip
+    return arith.fma(x, cos, arith.mul(rotated, sin))
+
+
+def silu(a: torch.Tensor) -> torch.Tensor:
+    """a * sigmoid(a) = mul(a, recip(add(1, exp(-a))))."""
+    assert a.dtype == torch.float32, a.dtype
+    one = torch.tensor(1.0, dtype=torch.float32)
+    return arith.mul(a, funcs.recip(arith.add(one, funcs.exp(-a))))  # unary minus: exact
+
+
+def swiglu(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """mul(silu(a), b) with a = gate.x and b = up.x. FP32 in and out; the
+    result is rounded to BF16 before the down projection (D-011)."""
+    assert a.dtype == b.dtype == torch.float32, (a.dtype, b.dtype)
+    return arith.mul(silu(a), b)

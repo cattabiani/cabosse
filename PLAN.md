@@ -158,6 +158,14 @@ which adds roundings and moves the BF16 rounding of `p` (D-011) before the
 max is final. It stays a possible optimization if the perf model or hardware
 shows score storage or the extra pass is a bottleneck (M2, M6).
 
+**D-023 (2026-10-04) — Reference platform: x86-64 Linux.** Values pinned to
+exact bits (RoPE table hashes, decode fixtures) are generated and checked on
+x86-64 Linux only. ARM Linux and macOS run every test that does not depend
+on the platform. *Why:* the golden model's arithmetic gives the same bits
+everywhere by construction, but the RoPE tables come from the platform's
+float32 cos/sin, which are not correctly rounded (D-020). Other platforms
+are there to catch errors, not to make every pinned value portable.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
