@@ -80,27 +80,27 @@ def spec_logits(config: LlamaConfig, state: dict, tokens: list[int]) -> torch.Te
     return torch.stack(out)
 
 
-@pytest.mark.parametrize("n_kv_heads", [1, 2, 4])  # 4 query heads: MQA, GQA, MHA
-def test_matches_spec_bit_exactly(n_kv_heads: int) -> None:
-    config = tiny.tiny_config(n_kv_heads)
+# 4 query heads: MQA, GQA, MHA; head size 64 as in SmolLM2 (scale 0.125)
+@pytest.mark.parametrize(
+    "n_kv_heads, head_dim, n_tokens", [(1, 16, 20), (2, 16, 20), (4, 16, 20), (2, 64, 6)]
+)
+def test_matches_spec_bit_exactly(n_kv_heads: int, head_dim: int, n_tokens: int) -> None:
+    config = tiny.tiny_config(n_kv_heads, head_dim)
     state = tiny.random_weights(config, SEED + n_kv_heads)
-    tokens = random_tokens(20, config.vocab_size)
+    tokens = random_tokens(n_tokens, config.vocab_size)
     got = golden_logits(decoder.from_state_dict(config, state), tokens)
     want = spec_logits(config, state, tokens)
-    assert torch.equal(arith.bits_f32(got), arith.bits_f32(want)), f"n_kv={n_kv_heads}"
+    assert torch.equal(arith.bits_f32(got), arith.bits_f32(want)), (
+        f"n_kv={n_kv_heads}, d={head_dim}"
+    )
 
 
-def test_matches_spec_with_head_dim_64() -> None:
-    """SmolLM2's head size, where the attention scale 0.125 is exact."""
-    config = tiny.tiny_config(n_kv_heads=2, head_dim=64)
-    state = tiny.random_weights(config, SEED)
-    tokens = random_tokens(6, config.vocab_size)
-    got = golden_logits(decoder.from_state_dict(config, state), tokens)
-    assert torch.equal(arith.bits_f32(got), arith.bits_f32(spec_logits(config, state, tokens)))
+def spec_scores(q: torch.Tensor, k: torch.Tensor, scale) -> torch.Tensor:
+    return torch.stack([arith.mul(dot.dot(q, key), scale) for key in k])
 
 
 def spec_attention(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, scale) -> torch.Tensor:
-    s = torch.stack([arith.mul(dot.dot(q, key), scale) for key in k])
+    s = spec_scores(q, k, scale)
     prob = arith.bf16(vector.softmax(s))
     return torch.stack([dot.dot(prob, v[:, i]) for i in range(v.shape[1])])
 
@@ -115,8 +115,7 @@ def test_attention_scores_match_spec_bit_exactly() -> None:
     k = (torch.randn(200, 64, generator=gen) * spread).to(torch.bfloat16)
     scale = torch.tensor(0.125)
     got = decoder.attention_scores(q, k, scale)
-    want = torch.stack([arith.mul(dot.dot(q, key), scale) for key in k])
-    assert torch.equal(arith.bits_f32(got), arith.bits_f32(want))
+    assert torch.equal(arith.bits_f32(got), arith.bits_f32(spec_scores(q, k, scale)))
 
 
 @pytest.mark.parametrize("positions", [1, 7, 100, 300])
@@ -135,15 +134,15 @@ def test_attention_matches_spec_bit_exactly(positions: int) -> None:
 
 
 def test_attention_scale_is_correctly_rounded() -> None:
-    """f32(d**-0.5), float64 then FP32 as transformers computes it, equals the
-    correctly rounded 1/sqrt(d) (docs/numerics.md, attention). Exact check:
-    1/sqrt(d) > m for an FP32 midpoint m exactly when m^2 d < 1."""
+    """host.attention_scale (float64 then FP32, as transformers computes it)
+    equals the correctly rounded 1/sqrt(d) (docs/numerics.md, attention).
+    Exact check: 1/sqrt(d) > m for an FP32 midpoint m exactly when m^2 d < 1."""
     from fractions import Fraction
 
     import numpy as np
 
     for d in range(1, 4097):
-        y = np.float32(d**-0.5)
+        y = host.attention_scale(d).numpy()
         up, down = np.nextafter(y, np.float32(np.inf)), np.nextafter(y, np.float32(0))
         mid_up = (Fraction(float(y)) + Fraction(float(up))) / 2
         mid_down = (Fraction(float(y)) + Fraction(float(down))) / 2
@@ -151,6 +150,12 @@ def test_attention_scale_is_correctly_rounded() -> None:
 
 
 # --- wiring check against transformers ------------------------------------------
+
+
+def assert_wiring(ours: torch.Tensor, theirs: torch.Tensor) -> None:
+    """max |golden - transformers FP32| <= 1% of the largest logit."""
+    rel = ((ours - theirs).abs().max() / theirs.abs().max()).item()
+    assert rel <= 0.01, f"{rel:.4f} of the largest logit"
 
 
 @pytest.mark.parametrize("n_kv_heads", [1, 2, 4])
@@ -166,8 +171,7 @@ def test_agrees_with_transformers(n_kv_heads: int) -> None:
     tokens = random_tokens(24, config.vocab_size)
     ours = golden_logits(decoder.from_state_dict(config, state), tokens)
     theirs = transformers_logits(config, state, tokens)
-    rel = ((ours - theirs).abs().max() / theirs.abs().max()).item()
-    assert rel <= 0.01, f"n_kv={n_kv_heads}: {rel:.4f}"
+    assert_wiring(ours, theirs)
 
 
 # --- KV cache and loading ---------------------------------------------------------
@@ -205,10 +209,9 @@ def test_load_from_checkpoint_directory(tmp_path: Path) -> None:
 def test_rejects_unsupported_models() -> None:
     config = tiny.tiny_config()
     state = tiny.random_weights(config, SEED)
-    for change in ({"attention_bias": True}, {"mlp_bias": True}, {"hidden_act": "gelu"}):
+    for key, value in (("attention_bias", True), ("mlp_bias", True), ("hidden_act", "gelu")):
         bad = tiny.tiny_config()
-        for key, value in change.items():
-            setattr(bad, key, value)
+        setattr(bad, key, value)
         with pytest.raises(AssertionError):
             decoder.from_state_dict(bad, state)
     with pytest.raises(AssertionError):
@@ -228,5 +231,5 @@ def test_smollm2_agrees_with_transformers() -> None:
     ref = LlamaForCausalLM.from_pretrained(WEIGHTS, dtype=torch.float32).eval()
     with torch.no_grad():
         theirs = ref(torch.tensor([tokens])).logits[0]
-    assert ((ours - theirs).abs().max() / theirs.abs().max()).item() <= 0.01
+    assert_wiring(ours, theirs)
     assert torch.equal(ours.argmax(-1), theirs.argmax(-1))
