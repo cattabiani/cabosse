@@ -135,6 +135,10 @@ All FP32 unless noted. `n ≥ 1` is the vector length.
   oᵢ = dot over t of (pₜ, V[t][i])             # section 3, positions as k
   ```
   The KV cache stores `K[t]`, `V[t]` in BF16, written once per token.
+  `scale` is a host constant, computed as `transformers` does: the float64
+  value `d**-0.5`, rounded to FP32. That is two roundings, but it equals the
+  correctly rounded `1/√d` for every `d` up to 100 000 (checked; the test
+  covers `d ≤ 4096`).
 - **SwiGLU:** `a = gate·x`, `b = up·x` (dot products), then
   `sᵢ = mul(aᵢ, recip(add(1.0, exp(-aᵢ))))` (SiLU), `hᵢ = mul(sᵢ, bᵢ)`.
   For `aᵢ < -88.7`, `exp(-aᵢ)` overflows and `sᵢ = -0`, as in torch. For

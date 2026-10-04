@@ -134,6 +134,22 @@ def test_attention_matches_spec_bit_exactly(positions: int) -> None:
     assert torch.equal(arith.bits_f32(got), arith.bits_f32(spec_attention(q, k, v, scale)))
 
 
+def test_attention_scale_is_correctly_rounded() -> None:
+    """f32(d**-0.5), float64 then FP32 as transformers computes it, equals the
+    correctly rounded 1/sqrt(d) (docs/numerics.md, attention). Exact check:
+    1/sqrt(d) > m for an FP32 midpoint m exactly when m^2 d < 1."""
+    from fractions import Fraction
+
+    import numpy as np
+
+    for d in range(1, 4097):
+        y = np.float32(d**-0.5)
+        up, down = np.nextafter(y, np.float32(np.inf)), np.nextafter(y, np.float32(0))
+        mid_up = (Fraction(float(y)) + Fraction(float(up))) / 2
+        mid_down = (Fraction(float(y)) + Fraction(float(down))) / 2
+        assert mid_up**2 * d > 1 and mid_down**2 * d < 1, f"d={d}"
+
+
 # --- wiring check against transformers ------------------------------------------
 
 
