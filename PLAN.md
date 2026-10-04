@@ -391,7 +391,7 @@ checkpoint.
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
-| Q-16 | F2 budget and cost controls. | M2, before the F2 check (D-025). Budget alarm and anomaly detection (`docs/aws-setup.md`); scripts stop every instance and check; cap set by the owner. |
+| Q-16 | F2 budget and cost controls. | M2, before the F2 check (D-025). Monthly and zero-spend budget alarms (`docs/aws-setup.md`); scripts stop every instance and check; cap set by the owner. |
 | Q-17 | ECP5 board and host link. | Before M11. |
 | Q-18 | Do ECP5 before F2? | M7 checkpoint. |
 | Q-19 | Open PDK and shuttle (SKY130, GF180MCU, IHP SG13G2; Tiny Tapeout, …). | M11 checkpoint. |

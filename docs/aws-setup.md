@@ -41,10 +41,11 @@ net if something is left running.
 2. Choose the **Monthly cost budget** template. Set the amount to the agreed
    cap and add your email. AWS sends alerts at 85% and 100% of it, and when
    the forecast exceeds it.
-3. Optionally add a **Zero spend budget** too: an email as soon as anything
-   costs money.
-4. In **Cost Anomaly Detection**, create a monitor for AWS services, with
-   email alerts. It is free.
+3. Add a **Zero spend budget** too: an email as soon as anything costs
+   money.
+
+(Cost Anomaly Detection is not needed: with a small cap and a zero-spend
+budget, the budgets alert as early as it would.)
 
 A budget alarm does not stop anything. Stopping instances is still our job
 (the project scripts do it and check it).
