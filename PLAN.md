@@ -293,8 +293,9 @@ golden model still passes M1.
 - [x] F2 platform facts (`docs/f2.md`), from public AWS and AMD docs; resolves
   Q-13. HBM: 32 AXI3 ports up to 450 MHz, any port reaches any address;
   shell interfaces run at 250 MHz, so full HBM bandwidth needs a faster
-  memory-side clock. Still to verify: the DDR4 data rate, and two AMD values
-  read only from search excerpts.
+  memory-side clock. DDR4 runs at 2133 MT/s, 17.1 GB/s peak (from AWS's
+  controller configuration). Still to verify: two AMD values read only from
+  search excerpts.
 - [ ] **Next:** first-order performance model (`model/perf.py`), from the
   quoted numbers; updated after the F2 check.
 - [ ] F2 platform check (D-025): owner sets up the account
