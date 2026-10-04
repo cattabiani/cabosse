@@ -98,8 +98,8 @@ class KVCache:
     @staticmethod
     def empty(model: Model, max_positions: int | None = None) -> KVCache:
         c = model.config
-        n = max_positions or c.max_position_embeddings
-        assert n <= c.max_position_embeddings, (n, c.max_position_embeddings)
+        n = c.max_position_embeddings if max_positions is None else max_positions
+        assert 1 <= n <= c.max_position_embeddings, (n, c.max_position_embeddings)
         shape = (c.num_hidden_layers, c.num_key_value_heads, n, c.head_dim)
         return KVCache(
             torch.zeros(shape, dtype=torch.bfloat16), torch.zeros(shape, dtype=torch.bfloat16)

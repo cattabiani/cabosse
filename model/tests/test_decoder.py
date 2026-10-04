@@ -190,6 +190,9 @@ def test_kv_cache_fills_one_position_per_token() -> None:
         decoder.decode_step(model, cache, 8)  # full
     with pytest.raises(AssertionError):
         decoder.KVCache.empty(model, max_positions=129)  # beyond the config's positions
+    with pytest.raises(AssertionError):
+        decoder.KVCache.empty(model, max_positions=0)  # not "use the default"
+    assert decoder.KVCache.empty(model).k.shape[2] == 128  # None: the config's positions
 
 
 def test_load_from_checkpoint_directory(tmp_path: Path) -> None:
