@@ -4,17 +4,16 @@
 known inputs, and an end-to-end run on a tiny config."""
 
 import math
-import os
-from pathlib import Path
 
 import compare
+import paths
 import pytest
 import torch
 from golden import decoder, tiny
 from transformers import AutoTokenizer, LlamaForCausalLM
 
 SEED = 20261006
-WEIGHTS = Path(os.environ.get("CABOSSE_WEIGHTS", "weights")) / "SmolLM2-135M-Instruct"
+WEIGHTS = paths.SMOLLM2
 
 
 def test_identical_logits_have_no_error() -> None:

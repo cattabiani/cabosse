@@ -18,10 +18,12 @@ from golden import arith, dot, funcs
 REDUCE_WIDTH = 8
 
 
-def reduce_sum(x: torch.Tensor, width: int = REDUCE_WIDTH) -> torch.Tensor:
-    """sum(x): partial sums acc = add(x[i], acc)."""
+def reduce_sum(
+    x: torch.Tensor, width: int = REDUCE_WIDTH, valid: torch.Tensor | None = None
+) -> torch.Tensor:
+    """sum(x): partial sums acc = add(x[i], acc). valid: see dot.interleaved_sum."""
     assert x.dtype == torch.float32, x.dtype
-    return dot.interleaved_sum(arith.add, width, x)
+    return dot.interleaved_sum(arith.add, width, x, valid=valid)
 
 
 def reduce_sum_squares(x: torch.Tensor, width: int = REDUCE_WIDTH) -> torch.Tensor:
@@ -61,13 +63,23 @@ def rmsnorm(
     return arith.mul(arith.up(g), arith.mul(x, r[..., None]))
 
 
-def softmax(s: torch.Tensor, width: int = REDUCE_WIDTH) -> torch.Tensor:
+def softmax(
+    s: torch.Tensor, width: int = REDUCE_WIDTH, valid: torch.Tensor | None = None
+) -> torch.Tensor:
     """exp(s - max(s)) / sum, with the division as a multiply by recip(sum).
-    FP32 in and out; attention rounds the result to BF16 (D-011)."""
+    FP32 in and out; attention rounds the result to BF16 (D-011).
+
+    valid (bool, broadcastable to s): softmax over the valid entries only, with
+    the bits of softmax over the valid prefix; invalid entries give +0. At
+    least one entry per vector must be valid.
+    """
+    if valid is not None:
+        s = torch.where(valid, s, -torch.inf)  # max(x, -inf) = x, exactly
     m = reduce_max(s)
     e = funcs.exp(arith.add(s, -m[..., None]))  # unary minus: exact sign flip
-    z = reduce_sum(e, width)
-    return arith.mul(e, funcs.recip(z)[..., None])
+    z = reduce_sum(e, width, valid)
+    p = arith.mul(e, funcs.recip(z)[..., None])
+    return p if valid is None else torch.where(valid, p, 0.0)
 
 
 def rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:

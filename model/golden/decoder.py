@@ -113,13 +113,50 @@ def attention_scores(q: torch.Tensor, k: torch.Tensor, scale: torch.Tensor) -> t
 
 
 def attention(
-    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, scale: torch.Tensor
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    scale: torch.Tensor,
+    valid: torch.Tensor | None = None,
 ) -> torch.Tensor:
     """Attention over positions 0..T-1 for one query head (q [d], k and v
     [T, d]) or a batch of heads (leading dimensions broadcast, each head
-    computed independently). BF16 inputs, FP32 o [..., d]."""
-    p = arith.bf16(vector.softmax(attention_scores(q, k, scale)))  # D-011: p rounded before p.V
-    return dot.dot(v.transpose(-1, -2), p[..., None, :])  # o_i = sum over t of p_t V[t][i]
+    computed independently). BF16 inputs, FP32 o [..., d].
+
+    valid (bool [..., T]): attend only to the valid positions, with the bits
+    of attention over the valid prefix (a causal mask; see
+    dot.interleaved_sum)."""
+    s = attention_scores(q, k, scale)
+    p = arith.bf16(vector.softmax(s, valid=valid))  # D-011: p rounded before p.V
+    mask = None if valid is None else valid[..., None, :]
+    return dot.dot(v.transpose(-1, -2), p[..., None, :], valid=mask)  # o_i = sum_t p_t V[t][i]
+
+
+# Positions per attention block in step(): bounds the [positions, heads, T, d]
+# temporaries of the batched scores.
+ATTENTION_BLOCK = 64
+
+
+def causal_attention(
+    model: Model, k: torch.Tensor, v: torch.Tensor, q_hat: torch.Tensor, start: int
+) -> torch.Tensor:
+    """Attention for new positions start, start + 1, ...: q_hat BF16 [T,
+    n_heads, d], k and v the layer's cache [n_kv, positions, d]. Position
+    start + t attends to cache positions 0..start + t (a causal mask with the
+    bits of attending to that prefix). Returns FP32 [T, n_heads * d]."""
+    c = model.config
+    n, n_kv, d = q_hat.shape[0], c.num_key_value_heads, c.head_dim
+    group = c.num_attention_heads // n_kv  # query head j uses KV head j // group
+    end = start + n
+    keys, values = k[None, :, None, :end], v[None, :, None, :end]  # [1, n_kv, 1, end, d]
+    blocks = []
+    for t0 in range(0, n, ATTENTION_BLOCK):
+        q = q_hat[t0 : t0 + ATTENTION_BLOCK].reshape(-1, n_kv, group, d)
+        last = start + t0 + torch.arange(q.shape[0])  # last position each query sees
+        valid = (torch.arange(end) <= last[:, None])[:, None, None, :]  # [t, 1, 1, end]
+        o = attention(q, keys, values, model.scale, valid)  # [t, n_kv, group, d]
+        blocks.append(o.reshape(q.shape[0], -1))
+    return torch.cat(blocks)
 
 
 def step(model: Model, cache: KVCache, tokens: list[int]) -> torch.Tensor:
@@ -135,7 +172,6 @@ def step(model: Model, cache: KVCache, tokens: list[int]) -> torch.Tensor:
     start, n, d = cache.length, len(tokens), c.head_dim
     assert start + n <= cache.k.shape[2], "KV cache is full"
     n_heads, n_kv = c.num_attention_heads, c.num_key_value_heads
-    group = n_heads // n_kv  # query heads per KV head (GQA)
     eps = c.rms_norm_eps
     positions = slice(start, start + n)
     cos, sin = model.cos[positions, None], model.sin[positions, None]  # [T, 1, d]
@@ -149,19 +185,7 @@ def step(model: Model, cache: KVCache, tokens: list[int]) -> torch.Tensor:
         cache.k[i, :, positions] = arith.bf16(vector.rope(k, cos, sin)).transpose(0, 1)
         cache.v[i, :, positions] = arith.bf16(v).transpose(0, 1)
         q_hat = arith.bf16(vector.rope(q, cos, sin))
-        # query head j uses KV head j // group: [n_kv, group, d] against [n_kv, 1, T, d]
-        keys, values = cache.k[i, :, None], cache.v[i, :, None]
-        o = torch.stack(
-            [
-                attention(
-                    q_hat[t].reshape(n_kv, group, d),
-                    keys[..., : start + t + 1, :],
-                    values[..., : start + t + 1, :],
-                    model.scale,
-                ).reshape(-1)
-                for t in range(n)
-            ]
-        )
+        o = causal_attention(model, cache.k[i], cache.v[i], q_hat, start)
         h = arith.add(h, dot.matvec(layer.o, arith.bf16(o)))
         x = arith.bf16(vector.rmsnorm(h, layer.mlp_norm, eps))
         mlp = vector.swiglu(dot.matvec(layer.gate, x), dot.matvec(layer.up, x))

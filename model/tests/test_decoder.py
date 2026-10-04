@@ -4,17 +4,17 @@
 "Decode step" of docs/numerics.md section 4, a wiring check against
 `transformers`, the KV cache, and loading checkpoints."""
 
-import os
 from pathlib import Path
 
 import compare
+import paths
 import pytest
 import torch
 from golden import arith, decoder, dot, host, tiny, vector
 from transformers import LlamaConfig, LlamaForCausalLM
 
 SEED = 20261005
-WEIGHTS = Path(os.environ.get("CABOSSE_WEIGHTS", "weights")) / "SmolLM2-135M-Instruct"
+WEIGHTS = paths.SMOLLM2
 
 
 def random_tokens(n: int, vocab: int, seed: int = SEED) -> list[int]:
@@ -152,10 +152,11 @@ def test_forward_equals_decode_steps(
 ) -> None:
     """Teacher forcing gives the logits of one decode_step per token, bit for
     bit, and so does a prompt run in two parts. Small blocks: matvec splits
-    rows and vectors into many blocks."""
+    rows and vectors into many blocks, attention splits positions."""
     if small_blocks:
         monkeypatch.setattr(dot, "MATVEC_ROWS", 24)
         monkeypatch.setattr(dot, "MATVEC_BLOCK", 100)
+        monkeypatch.setattr(decoder, "ATTENTION_BLOCK", 7)
     config = tiny.tiny_config(n_kv_heads)
     model = decoder.from_state_dict(config, tiny.random_weights(config, SEED + n_kv_heads))
     tokens = random_tokens(30, config.vocab_size)

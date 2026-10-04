@@ -33,33 +33,50 @@ def tree_sum(parts: torch.Tensor) -> torch.Tensor:
     return parts[..., 0]
 
 
-def interleaved_sum(step: Step, width: int, *operands: torch.Tensor) -> torch.Tensor:
+def interleaved_sum(
+    step: Step, width: int, *operands: torch.Tensor, valid: torch.Tensor | None = None
+) -> torch.Tensor:
     """Sum over the last dimension in the order of section 3: element k goes to
     partial sum k mod width, acc = step(*operands[..., k], acc) in increasing k,
     then tree_sum. The operands have the same shape. Shared by the lanes (dot)
-    and the vector unit (golden.vector)."""
+    and the vector unit (golden.vector).
+
+    valid (bool, broadcastable to the operands): where it is False, the partial
+    sum keeps its value, as for the missing elements of a partial group (a
+    write enable in hardware). So a masked vector gives the bits of the same
+    vector truncated to its valid prefix; feeding zeros instead would not.
+    """
     assert width > 0 and width & (width - 1) == 0, f"width must be a power of two, got {width}"
     n = operands[0].shape[-1]
     assert n > 0, "empty sum (not defined by the spec)"
     acc = torch.zeros((*operands[0].shape[:-1], width), dtype=torch.float32)  # all +0.0
     for start in range(0, n, width):
         m = min(width, n - start)  # partial last group: the rest keep their value
-        acc[..., :m] = step(*(o[..., start : start + m] for o in operands), acc[..., :m])
+        new = step(*(o[..., start : start + m] for o in operands), acc[..., :m])
+        if valid is not None:
+            new = torch.where(valid[..., start : start + m], new, acc[..., :m])
+        acc[..., :m] = new
     return tree_sum(acc)
 
 
-def dot(w: torch.Tensor, x: torch.Tensor, accumulators: int = ACCUMULATORS) -> torch.Tensor:
+def dot(
+    w: torch.Tensor,
+    x: torch.Tensor,
+    accumulators: int = ACCUMULATORS,
+    valid: torch.Tensor | None = None,
+) -> torch.Tensor:
     """Dot products over the last dimension: sum_k w[..., k] * x[..., k].
 
     w and x are BF16 and broadcast against each other, so a matrix-vector
     product is dot(W, x) with W of shape [rows, K] and x of shape [K]. Returns
-    FP32 with the broadcast shape minus the last dimension.
+    FP32 with the broadcast shape minus the last dimension. valid: see
+    interleaved_sum.
     """
     assert w.dtype == x.dtype == torch.bfloat16, (w.dtype, x.dtype)
     # Widen once, before broadcasting: up() is exact, so this is mac's result
     # without repeating the widening for every row or every vector.
     a, b = torch.broadcast_tensors(arith.up(w), arith.up(x))
-    return interleaved_sum(arith.mac_f32, accumulators, a, b)
+    return interleaved_sum(arith.mac_f32, accumulators, a, b, valid=valid)
 
 
 # matvec blocks: rows per block, and rows x vectors per block. Blocks keep a

@@ -12,7 +12,6 @@ positions) takes about 16 minutes on the dev machine. Examples:
 
 import argparse
 import json
-import os
 import sys
 import time
 from pathlib import Path
@@ -20,25 +19,23 @@ from pathlib import Path
 import torch
 from transformers import AutoTokenizer, LlamaForCausalLM
 
-REPO = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO / "model"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "model"))
 
 import compare  # noqa: E402
+import paths  # noqa: E402
 from golden import decoder  # noqa: E402
-
-WEIGHTS = Path(os.environ.get("CABOSSE_WEIGHTS", REPO / "weights")) / "SmolLM2-135M-Instruct"
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
-    parser.add_argument("--weights", type=Path, default=WEIGHTS)
+    parser.add_argument("--weights", type=Path, default=paths.SMOLLM2)
     parser.add_argument(
         "--prompts", type=int, default=len(compare.PROMPTS), help="how many prompts"
     )
     parser.add_argument("--positions", type=int, default=256, help="tokens per sequence")
-    parser.add_argument("--out", type=Path, default=REPO / "runs")
+    parser.add_argument("--out", type=Path, default=paths.RUNS)
     args = parser.parse_args()
 
     tokenizer = AutoTokenizer.from_pretrained(args.weights)
