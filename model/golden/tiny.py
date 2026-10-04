@@ -7,8 +7,9 @@ import torch
 from transformers import AutoModelForCausalLM, LlamaConfig, LlamaForCausalLM
 
 
-def tiny_config(n_kv_heads: int = 2, head_dim: int = 16) -> LlamaConfig:
-    """2 layers, 4 query heads, hidden 64, vocab 256, 128 positions."""
+def tiny_config(n_kv_heads: int = 2, head_dim: int = 16, tied: bool = True) -> LlamaConfig:
+    """2 layers, 4 query heads, hidden 64, vocab 256, 128 positions. tied:
+    the output projection is the embedding table (as in SmolLM2)."""
     n_heads = 4
     return LlamaConfig(
         vocab_size=256,
@@ -21,7 +22,7 @@ def tiny_config(n_kv_heads: int = 2, head_dim: int = 16) -> LlamaConfig:
         max_position_embeddings=128,
         rope_theta=10000.0,
         rms_norm_eps=1e-5,
-        tie_word_embeddings=True,
+        tie_word_embeddings=tied,
     )
 
 
@@ -56,6 +57,8 @@ def random_weights(config: LlamaConfig, seed: int) -> dict[str, torch.Tensor]:
             p + "mlp.down_proj.weight": matrix(hidden, inter),
         }
     state["model.norm.weight"] = norm(hidden)
+    if not config.tie_word_embeddings:
+        state["lm_head.weight"] = matrix(config.vocab_size, hidden)
     return state
 
 

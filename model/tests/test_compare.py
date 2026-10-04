@@ -84,6 +84,18 @@ def test_tiny_transformers_model_keeps_rope_frequencies_in_fp32(dtype: torch.dty
     assert model.model.rotary_emb.inv_freq.dtype == torch.float32
 
 
+def test_transformers_greedy_follows_the_argmax() -> None:
+    """With the KV cache, the same tokens as picking the argmax of a full
+    forward pass after every token (no end-of-text stop on a random model)."""
+    config = tiny.tiny_config(tied=False)
+    model = tiny.transformers_model(config, tiny.random_weights(config, SEED), torch.float32)
+    prompt = [5, 17, 99]
+    seq = list(prompt)
+    for _ in range(10):
+        seq.append(int(compare.transformers_logits(model, seq)[-1].argmax()))
+    assert compare.transformers_greedy(model, prompt, 10) == seq[len(prompt) :]
+
+
 def test_prompts_are_distinct() -> None:
     assert len(compare.PROMPTS) == 10 and len(set(compare.PROMPTS)) == 10
 
@@ -95,9 +107,5 @@ def test_chat_sequences_have_the_requested_length() -> None:
     tokenizer = AutoTokenizer.from_pretrained(WEIGHTS)
     reference = LlamaForCausalLM.from_pretrained(WEIGHTS, dtype=torch.float32).eval()
     (seq,) = compare.chat_sequences(tokenizer, reference, compare.PROMPTS[:1], 60)
-    prompt = tokenizer.apply_chat_template(
-        [{"role": "user", "content": compare.PROMPTS[0]}],
-        add_generation_prompt=True,
-        return_dict=True,
-    )["input_ids"]
+    prompt = compare.chat_prompt(tokenizer, compare.PROMPTS[0])
     assert len(seq) == 60 and seq[: len(prompt)] == prompt

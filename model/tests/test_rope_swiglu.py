@@ -4,11 +4,8 @@
 (golden.host): bit-exact agreement with an independent restatement of
 docs/numerics.md section 4, accuracy, and agreement with `transformers`."""
 
-import hashlib
-import platform
-import sys
-
 import numpy as np
+import paths
 import pytest
 import torch
 from golden import arith, host, settings, vector
@@ -20,7 +17,6 @@ from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply
 
 SEED = 20261004
 F32 = np.float32
-REFERENCE_PLATFORM = sys.platform == "linux" and platform.machine() == "x86_64"
 
 
 def llama_config(head_dim: int) -> LlamaConfig:
@@ -60,9 +56,7 @@ def spec_swiglu(a: np.float32, b: np.float32) -> np.float32:
 # --- RoPE tables ------------------------------------------------------------------
 
 
-@pytest.mark.skipif(
-    not REFERENCE_PLATFORM, reason="pinned values come from x86-64 Linux only (D-023)"
-)
+@pytest.mark.skipif(not paths.REFERENCE_PLATFORM, reason=paths.REFERENCE_PLATFORM_NOTE)
 def test_rope_tables_pinned() -> None:
     """SmolLM2's tables for every position, pinned by hash.
 
@@ -74,8 +68,7 @@ def test_rope_tables_pinned() -> None:
     cos, sin = host.rope_tables(llama_config(64), torch.arange(8192))
     assert cos.shape == sin.shape == (8192, 64) and cos.dtype == torch.float32
     assert (arith.bits_f32(cos[0]) == 0x3F800000).all() and (arith.bits_f32(sin[0]) == 0).all()
-    blob = b"".join(arith.bits_f32(t).numpy().astype("<u4").tobytes() for t in (cos, sin))
-    digest = hashlib.sha256(blob).hexdigest()
+    digest = arith.bits_sha256(cos, sin)
     assert digest == "f9daa3f71dd859b63c24f7abc7e075c4d7ea9831ff81779a710077a8472728af", digest
 
 

@@ -82,7 +82,12 @@ one is wrong, say so and explain why, and let the owner decide.
   criteria, and a checkpoint where the owner reviews.
 - Prefer small, reviewable changes. One logical change per commit.
 - Each step of a milestone goes on its own branch and ends in a pull request
-  that the owner reviews and merges. CI must pass first.
+  that the owner reviews and merges. Merging does not wait for CI: check the
+  result on the next push, and fix any failure in a new pull request.
+- CI is a broad, shallow check across platforms. It never runs the real model
+  or downloads weights. Deep checks (SmolLM2, fixtures, full comparisons) are
+  `slow` tests that skip without the weights; run them locally before a pull
+  request.
 - Any review of changes (a PR, a branch, a diff) follows
   [REVIEW.md](REVIEW.md), and so does the final check before declaring a step
   done.

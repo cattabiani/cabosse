@@ -43,6 +43,8 @@ def spec_logits(config: LlamaConfig, state: dict, tokens: list[int]) -> torch.Te
     w = state.__getitem__
     keys = [[[] for _ in range(n_kv)] for _ in range(config.num_hidden_layers)]
     values = [[[] for _ in range(n_kv)] for _ in range(config.num_hidden_layers)]
+    tied = config.tie_word_embeddings
+    output_weight = w("model.embed_tokens.weight" if tied else "lm_head.weight")
     out = []
     for pos, token in enumerate(tokens):
         cos, sin = (t[0] for t in host.rope_tables(config, torch.tensor([pos])))
@@ -72,16 +74,20 @@ def spec_logits(config: LlamaConfig, state: dict, tokens: list[int]) -> torch.Te
             mlp = arith.bf16(vector.swiglu(a, b))
             h = arith.add(h, dot.dot(w(p + "mlp.down_proj.weight"), mlp))
         x = arith.bf16(vector.rmsnorm(h, w("model.norm.weight"), eps))
-        out.append(dot.dot(w("model.embed_tokens.weight"), x))
+        out.append(dot.dot(output_weight, x))
     return torch.stack(out)
 
 
-# 4 query heads: MQA, GQA, MHA; head size 64 as in SmolLM2 (scale 0.125)
+# 4 query heads: MQA, GQA, MHA; head size 64 as in SmolLM2 (scale 0.125); an
+# untied output projection
 @pytest.mark.parametrize(
-    "n_kv_heads, head_dim, n_tokens", [(1, 16, 20), (2, 16, 20), (4, 16, 20), (2, 64, 6)]
+    "n_kv_heads, head_dim, n_tokens, tied",
+    [(1, 16, 20, True), (2, 16, 20, True), (4, 16, 20, True), (2, 64, 6, True), (2, 16, 12, False)],
 )
-def test_matches_spec_bit_exactly(n_kv_heads: int, head_dim: int, n_tokens: int) -> None:
-    config = tiny.tiny_config(n_kv_heads, head_dim)
+def test_matches_spec_bit_exactly(
+    n_kv_heads: int, head_dim: int, n_tokens: int, tied: bool
+) -> None:
+    config = tiny.tiny_config(n_kv_heads, head_dim, tied)
     state = tiny.random_weights(config, SEED + n_kv_heads)
     tokens = random_tokens(n_tokens, config.vocab_size)
     got = golden_logits(decoder.from_state_dict(config, state), tokens)
@@ -178,15 +184,15 @@ def assert_wiring(ours: torch.Tensor, theirs: torch.Tensor) -> None:
     assert rel <= 0.01, f"{rel:.4f} of the largest logit"
 
 
-@pytest.mark.parametrize("n_kv_heads", [1, 2, 4])
-def test_agrees_with_transformers(n_kv_heads: int) -> None:
+@pytest.mark.parametrize("n_kv_heads, tied", [(1, True), (2, True), (4, True), (2, False)])
+def test_agrees_with_transformers(n_kv_heads: int, tied: bool) -> None:
     """max |golden - transformers FP32| <= 1% of the largest logit.
 
     A wiring check, not an accuracy measurement (that is the M1 comparison
     step). Measured: 0.2% on these configs, 0.8% on SmolLM2. Wiring mistakes
     give 6% (wrong norm weight) to 50% (wrong KV head for a query head).
     """
-    config = tiny.tiny_config(n_kv_heads)
+    config = tiny.tiny_config(n_kv_heads, tied=tied)
     state = tiny.random_weights(config, SEED + n_kv_heads)
     tokens = random_tokens(24, config.vocab_size)
     ours = golden_logits(decoder.from_state_dict(config, state), tokens)
