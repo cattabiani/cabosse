@@ -298,8 +298,9 @@ golden model still passes M1.
   search excerpts.
 - [ ] **Next:** first-order performance model (`model/perf.py`), from the
   quoted numbers; updated after the F2 check.
-- [ ] F2 platform check (D-025): owner sets up the account
-  (`docs/aws-setup.md`) and approves a budget; scripts to launch, build, run
+- [ ] F2 platform check (D-025): account set up (`docs/aws-setup.md`,
+  profile `cabosse`, `eu-central-1`, budgets on); F instance quota of 24
+  vCPUs requested 2026-10-04, pending. Then: scripts to launch, build, run
   and stop; results into `docs/f2.md` as measured.
 
 ### M3 — Toolchain and FP units
