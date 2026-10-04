@@ -14,6 +14,7 @@ WEIGHTS = Path(os.environ.get("CABOSSE_WEIGHTS", REPO / "weights"))
 SMOLLM2 = WEIGHTS / "SmolLM2-135M-Instruct"
 SMOLLM2_BASE = WEIGHTS / "SmolLM2-135M"
 RUNS = REPO / "runs"
+REPORTS = REPO / "reports"
 FIXTURES = REPO / "model" / "tests" / "fixtures"
 
 # Values pinned to exact bits (table hashes, fixtures) come from here (D-023).

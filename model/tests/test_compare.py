@@ -70,7 +70,7 @@ def test_compare_end_to_end_on_tiny_config() -> None:
     result = compare.compare(golden, reference, bf16, sequences, log=lambda _: None)
     assert result["golden"].positions == 24 and len(result["per_sequence"]) == 2
     assert result["golden"].logit_err_max <= 0.01  # the decoder's wiring bound
-    assert "| top-1 agreement |" in compare.report(result)
+    assert "| top-1 agreement |" in compare.report(compare.as_json(result))
     assert compare.as_json(result)["golden"]["positions"] == 24
 
 
