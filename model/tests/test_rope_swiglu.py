@@ -5,9 +5,8 @@
 docs/numerics.md section 4, accuracy, and agreement with `transformers`."""
 
 import hashlib
-import platform
-import sys
 
+import fixtures
 import numpy as np
 import pytest
 import torch
@@ -20,7 +19,6 @@ from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply
 
 SEED = 20261004
 F32 = np.float32
-REFERENCE_PLATFORM = sys.platform == "linux" and platform.machine() == "x86_64"
 
 
 def llama_config(head_dim: int) -> LlamaConfig:
@@ -61,7 +59,7 @@ def spec_swiglu(a: np.float32, b: np.float32) -> np.float32:
 
 
 @pytest.mark.skipif(
-    not REFERENCE_PLATFORM, reason="pinned values come from x86-64 Linux only (D-023)"
+    not fixtures.REFERENCE_PLATFORM, reason="pinned values come from x86-64 Linux only (D-023)"
 )
 def test_rope_tables_pinned() -> None:
     """SmolLM2's tables for every position, pinned by hash.
