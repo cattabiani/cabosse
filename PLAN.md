@@ -231,9 +231,16 @@ order depends on the lane design (M2), so it is a parameter here.
     correct rounding on every platform, and pinned by hash on the reference
     platform (D-023). Errors against float64: RoPE 2⁻²³·¹ (relative to
     |xC| + |rS|), SiLU 2⁻¹⁶·⁴ (PR #6).
-  - [ ] **Next:** Decoder: weights, KV cache, decode step, tiny configs.
+  - [x] Decoder: weights (checkpoint BF16 tensors, `transformers` names), flat
+    KV cache (D-024), decode step (spec section 4), tiny random-weight configs
+    (`golden/tiny.py`). Bit-exact against a per-head restatement; within 1%
+    of `transformers` FP32 as a wiring check. SmolLM2: 3 s per token on the
+    dev machine, same greedy tokens as `transformers` on a short prompt
+    (PR #7).
 - Comparison against `transformers`:
-  - [ ] Harness and error report (teacher forcing, vs FP32 and BF16).
+  - [ ] **Next:** Harness and error report (teacher forcing, vs FP32 and BF16).
+    Speed option if needed: widen weights to FP32 once at load (about 3x
+    faster matvecs, +540 MB for SmolLM2, same bits).
   - [ ] Greedy-decode fixtures and regression tests.
 - [ ] M1 checkpoint review.
 
