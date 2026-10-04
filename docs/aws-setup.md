@@ -69,7 +69,14 @@ temporary credentials: no long-lived keys on disk.
    the scripts are settled, we can narrow it.)
 5. **AWS accounts** → select your account → **Assign users or groups** → your
    user → the permission set.
-6. Sign out of root. From now on, sign in through the access portal URL.
+6. Optional, as root: account menu → **Account** → **IAM user and role
+   access to Billing information** → **Edit** → **Activate IAM Access**. Without
+   it, only root sees costs and budgets.
+7. Sign out of root. From now on, sign in through the access portal URL, not
+   the usual AWS sign-in page (its "IAM user" form does not know Identity
+   Center users). In the portal, the **Accounts** tab lists your account:
+   expand it and choose **AdministratorAccess**. If it is empty, the
+   assignment in step 5 is missing.
 
 ## 5. Install and log in with the AWS CLI
 
@@ -92,17 +99,21 @@ aws configure sso --profile cabosse
 
 Answer:
 - **SSO session name:** `cabosse`
-- **SSO start URL:** the access portal URL from step 4
+- **SSO start URL:** the access portal URL from step 4, ending in `/start`
+  (drop any `/#/` after it)
 - **SSO region:** `eu-central-1`
 - **SSO registration scopes:** press Enter (the default)
 - A browser opens: approve. Then choose the account and the
   `AdministratorAccess` role.
 - **Default client Region:** `eu-central-1`; **output format:** `json`.
+- If it offers to configure AWS skills or an MCP server for AI agents, answer
+  `n`: agents get no direct access to the account (AGENTS.md, rule 3).
 
 In the repo's local `.envrc` (never committed), add:
 
 ```
 export AWS_PROFILE=cabosse
+export AWS_REGION=eu-central-1
 ```
 
 Each day, log in with `aws sso login`. Check it with
@@ -122,7 +133,15 @@ Check it:
 aws service-quotas get-service-quota --service-code ec2 --quota-code L-74FC7D96
 ```
 
-To raise it: console, region Frankfurt, **Service Quotas** → **AWS
+The quota counts vCPUs, not instances: 24 allows exactly one f2.6xlarge at a
+time. Requesting it, and having it, costs nothing. To raise it: from the CLI,
+
+```
+aws service-quotas request-service-quota-increase \
+  --service-code ec2 --quota-code L-74FC7D96 --desired-value 24
+```
+
+or in the console, region Frankfurt, **Service Quotas** → **AWS
 services** → **Amazon Elastic Compute Cloud (Amazon EC2)** → **Running
 On-Demand F instances** → **Request increase at account level** → `24`.
 
