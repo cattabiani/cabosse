@@ -16,7 +16,7 @@ from oracle import add_ref, fma_ref, mul_ref
 from test_funcs import max_rel_err, spec_exp, spec_recip, t32
 from test_vector import bits_of, extreme, moderate
 from transformers import LlamaConfig
-from transformers.models.llama.modeling_llama import apply_rotary_pos_emb
+from transformers.models.llama.modeling_llama import LlamaRotaryEmbedding, apply_rotary_pos_emb
 
 SEED = 20261004
 F32 = np.float32
@@ -79,6 +79,41 @@ def test_rope_tables_pinned() -> None:
     blob = b"".join(arith.bits_f32(t).numpy().astype("<u4").tobytes() for t in (cos, sin))
     digest = hashlib.sha256(blob).hexdigest()
     assert digest == "f9daa3f71dd859b63c24f7abc7e075c4d7ea9831ff81779a710077a8472728af", digest
+
+
+def ulp_distance(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Number of FP32 values between a and b (finite inputs; -0 and +0 count as one step)."""
+
+    def ordered(t: torch.Tensor) -> torch.Tensor:
+        i = arith.bits_f32(t)
+        return torch.where(i >= 2**31, -(i - 2**31), i)  # monotonic in the value
+
+    return (ordered(a) - ordered(b)).abs()
+
+
+@pytest.mark.parametrize("head_dim", [2, 8, 64])
+def test_rope_tables_within_one_ulp(head_dim: int) -> None:
+    """Every platform: the tables are at most 1 ulp from correct rounding.
+
+    inv_freq is within 1 ulp of f32(theta^(-2i/d)). The angle is
+    pos * inv_freq with one FP32 rounding, the two halves of a row are equal,
+    and cos/sin are within 1 ulp of the correctly rounded cos/sin of that
+    angle (float64 then rounded once). 1 ulp is the known behaviour of
+    torch's float32 math (D-020, D-023); more would be a real error.
+    """
+    config = llama_config(head_dim)
+    inv_freq = LlamaRotaryEmbedding(config).inv_freq
+    exact_inv = F32(100000.0 ** (-np.arange(0, head_dim, 2) / head_dim))
+    assert ulp_distance(inv_freq, t32(exact_inv)).max().item() <= 1
+
+    positions = torch.arange(8192)
+    cos, sin = host.rope_tables(config, positions)
+    half = head_dim // 2
+    assert torch.equal(cos[:, :half], cos[:, half:]) and torch.equal(sin[:, :half], sin[:, half:])
+    angle = arith.mul(positions.to(torch.float32)[:, None], inv_freq[None, :]).double().numpy()
+    for table, f in ((cos, np.cos), (sin, np.sin)):
+        dist = ulp_distance(table[:, :half], t32(f(angle)))
+        assert dist.max().item() <= 1, f"{f.__name__}: {dist.max().item()} ulp"
 
 
 # --- RoPE -------------------------------------------------------------------------
