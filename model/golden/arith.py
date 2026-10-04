@@ -144,14 +144,19 @@ def maximum(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
 
 def mac(w: torch.Tensor, x: torch.Tensor, acc: torch.Tensor) -> torch.Tensor:
-    """Lane step: BF16 w * BF16 x + FP32 acc, one rounding (= fma(up(w), up(x), acc)).
+    """Lane step: BF16 w * BF16 x + FP32 acc, one rounding (= fma(up(w), up(x), acc))."""
+    return mac_f32(up(w), up(x), acc)
+
+
+def mac_f32(a: torch.Tensor, b: torch.Tensor, acc: torch.Tensor) -> torch.Tensor:
+    """mac on inputs already widened: a and b are FP32 values that are exactly
+    BF16 (outputs of up). Lets a caller widen once and reuse the result.
 
     Fast path: a BF16 x BF16 product has at most 16 significant bits, so the
     FP32 product is exact unless it underflows or overflows. When it is exact,
     a plain FP32 add rounds the exact sum once, which is what fma does. The
     slow fma emulation runs only for the rare inexact products.
     """
-    a, b = up(w), up(x)
     p = mul(a, b)
     exact = p.to(torch.float64) == a.to(torch.float64) * b.to(torch.float64)
     fast = add(p, acc)

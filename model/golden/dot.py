@@ -56,4 +56,7 @@ def dot(w: torch.Tensor, x: torch.Tensor, accumulators: int = ACCUMULATORS) -> t
     FP32 with the broadcast shape minus the last dimension.
     """
     assert w.dtype == x.dtype == torch.bfloat16, (w.dtype, x.dtype)
-    return interleaved_sum(arith.mac, accumulators, *torch.broadcast_tensors(w, x))
+    # Widen once, before broadcasting: up() is exact, so this is mac's result
+    # without repeating the widening for every row or every vector.
+    a, b = torch.broadcast_tensors(arith.up(w), arith.up(x))
+    return interleaved_sum(arith.mac_f32, accumulators, a, b)
