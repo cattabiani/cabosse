@@ -149,6 +149,17 @@ def test_attention_scale_is_correctly_rounded() -> None:
         assert mid_up**2 * d > 1 and mid_down**2 * d < 1, f"d={d}"
 
 
+@pytest.mark.parametrize("n_kv_heads", [1, 2, 4])
+@pytest.mark.parametrize("chunk", [decoder.MATVEC_CHUNK, 100])  # 100: many small chunks
+def test_forward_equals_decode_steps(n_kv_heads: int, chunk: int) -> None:
+    """Teacher forcing gives the logits of one decode_step per token, bit for bit."""
+    config = tiny.tiny_config(n_kv_heads)
+    model = decoder.from_state_dict(config, tiny.random_weights(config, SEED + n_kv_heads))
+    tokens = random_tokens(30, config.vocab_size)
+    got = decoder.forward(model, tokens, chunk)
+    assert torch.equal(arith.bits_f32(got), arith.bits_f32(golden_logits(model, tokens)))
+
+
 # --- wiring check against transformers ------------------------------------------
 
 
