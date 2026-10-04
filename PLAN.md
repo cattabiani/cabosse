@@ -279,6 +279,14 @@ golden model still passes M1.
   lane (0% overhead), or reuse the lane's adder (about 2%). The bits are the
   same either way.
 
+**Progress:**
+- [x] F2 platform facts (`docs/f2.md`), from public AWS and AMD docs; resolves
+  Q-13. HBM: 32 AXI3 ports up to 450 MHz, any port reaches any address;
+  shell interfaces run at 250 MHz, so full HBM bandwidth needs a faster
+  memory-side clock. Still to verify: the DDR4 data rate, and two AMD values
+  read only from search excerpts.
+- [ ] **Next:** first-order performance model (`model/perf.py`).
+
 ### M3 — Toolchain and FP units
 **What:** OSS CAD Suite (Verilator, Yosys with the slang SystemVerilog
 plugin, nextpnr, cocotb; owner installs), one-command test runner, CI, lint.
@@ -367,7 +375,6 @@ checkpoint.
 | Q-22 | Hide the adder latency with `A` partial sums per row (current spec), or by rotating `A` rows per lane (one running sum per row, no tree)? | M2, together with the weight memory layout. Rotating rows gives plain sequential sums; it equals `dot` with `A` = 1. |
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
-| Q-13 | What the F2 shell exposes (HBM ports, widths, clocks, DMA). | M2, from AWS docs only. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
 | Q-16 | F2 budget and cost controls. | Before M8. |
 | Q-17 | ECP5 board and host link. | Before M11. |
