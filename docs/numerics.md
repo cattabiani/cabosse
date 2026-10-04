@@ -109,15 +109,22 @@ All FP32 unless noted. `n ≥ 1` is the vector length.
   `e` need not be stored: recomputing `exp(add(sᵢ, -m))` gives the same bits
   (D-022).
   `p` is not exactly normalized: even for `n = 1`, `p₀ = recip(1) = 0.9999935`.
-- **RoPE** (head dim `d`, `half = d/2`, tables `C[pos]`, `S[pos]` of length
-  `d`, FP32): the tables are computed on the host with the same code as
-  `transformers`:
-  `inv_freq = 1/θ^(2i/d)`, `emb = [pos·inv_freq, pos·inv_freq]`,
-  `C = cos(emb)`, `S = sin(emb)`.
+- **RoPE** (head dim `d` even, `half = d/2`, tables `C[pos]`, `S[pos]` of
+  length `d`, FP32): the tables are inputs, computed on the host by
+  `transformers`' own rotary embedding (D-020), in FP32 before its cast to
+  the model dtype: `inv_freq = 1/θ^(2i/d)`, `emb = [pos·inv_freq,
+  pos·inv_freq]`, `C = cos(emb)`, `S = sin(emb)`. They come from the host's
+  float32 math library, which is not correctly rounded (about 5% of
+  SmolLM2's values are 1 ulp off, measured on x86 Linux), so they may differ
+  between platforms (to verify; a test pins them). The accelerator and the golden model use
+  whatever tables the host gives them.
   ```
   rᵢ = -x[i+half]  for i < half;   rᵢ = x[i-half]  for i ≥ half
   outᵢ = fma(xᵢ, Cᵢ, mul(rᵢ, Sᵢ))
   ```
+  This is `transformers`' `x·cos + rotate_half(x)·sin` with one rounding
+  fewer. At position 0 (`C = 1`, `S = 0`) the output equals `x`, except that
+  -0 can become +0 and an infinite partner gives NaN (`Inf·0`).
 - **Attention**, per query head (GQA: query head `h` uses KV head
   `h // (n_heads / n_kv_heads)`):
   ```
@@ -128,7 +135,10 @@ All FP32 unless noted. `n ≥ 1` is the vector length.
   ```
   The KV cache stores `K[t]`, `V[t]` in BF16, written once per token.
 - **SwiGLU:** `a = gate·x`, `b = up·x` (dot products), then
-  `sᵢ = mul(aᵢ, recip(add(1.0, exp(-aᵢ))))`, `hᵢ = mul(sᵢ, bᵢ)`.
+  `sᵢ = mul(aᵢ, recip(add(1.0, exp(-aᵢ))))` (SiLU), `hᵢ = mul(sᵢ, bᵢ)`.
+  For `aᵢ < -88.7`, `exp(-aᵢ)` overflows and `sᵢ = -0`, as in torch. For
+  large positive `aᵢ`, `sᵢ = aᵢ·recip(1) = aᵢ·0.9999935`. `silu(-Inf)` is NaN
+  (`-Inf·0`), as in torch.
 - **Residual add:** `x = add(x, delta)`.
 - **Matvec input rounding** (D-011): every vector entering a matrix-vector
   product is `bf16(·)` first. That applies to the RMSNorm outputs, the
