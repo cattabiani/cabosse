@@ -238,10 +238,14 @@ order depends on the lane design (M2), so it is a parameter here.
     dev machine, same greedy tokens as `transformers` on a short prompt
     (PR #7).
 - Comparison against `transformers`:
-  - [ ] **Next:** Harness and error report (teacher forcing, vs FP32 and BF16).
-    Speed option if needed: widen weights to FP32 once at load (about 3x
-    faster matvecs, +540 MB for SmolLM2, same bits).
-  - [ ] Greedy-decode fixtures and regression tests.
+  - [x] Harness and error report (`model/compare.py`,
+    `scripts/compare_transformers.py`). **Exit criterion met:** teacher-forced
+    on 10 chat prompts × 256 positions against FP32 `transformers`, the
+    golden model has top-1 agreement 99.30% (BF16 `transformers`: 98.75%),
+    mean relative logit error 6.3e-3 (1.5e-2), mean KL 1.2e-4 nats (8.6e-4).
+    Golden is no worse on every metric. Full run 7 min; `decode_step` 1.4 s
+    per SmolLM2 token (PR #8).
+  - [ ] **Next:** Greedy-decode fixtures and regression tests.
 - [ ] M1 checkpoint review.
 
 ### M2 — Architecture spec and performance model
