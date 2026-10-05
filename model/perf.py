@@ -62,6 +62,8 @@ CLEARED = {MEASURED, "not measurable"}  # the platform is cleared when all are
 UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 # Ops on the matrix-vector engine that are attention, not weights.
 ATTENTION_KINDS = ("attention_scores", "attention_values")
+# Design values that are counts: whole numbers (Design checks).
+ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
 
 
 @dataclass(frozen=True)
@@ -79,22 +81,9 @@ class Op:
     kv_read_bytes: int = 0
     kv_write_bytes: int = 0
     vector_elems: int = 0  # elements times passes
-
-    @property
-    def engine_shape(self) -> tuple[int, int] | None:
-        """(rows, cols) as the engine sees it: one row per lane, cols
-        multiply-adds per row; None for an op off the engine. Scores have a
-        row per head and position, p.V a row per head and output dimension."""
-        if self.kind == "matvec":
-            return self.shape
-        if self.kind in ATTENTION_KINDS:
-            heads, positions, d = self.shape
-            return (
-                (heads * positions, d)
-                if self.kind == "attention_scores"
-                else (heads * d, positions)
-            )
-        return None
+    # (rows, cols) on the engine: a row per lane, cols multiply-adds per row;
+    # None off the engine.
+    engine_shape: tuple[int, int] | None = None
 
 
 class Param(BaseModel):
@@ -178,6 +167,18 @@ class Design(Inputs):
             assert not unknown, f"scenario {name!r} overrides unknown {sorted(unknown)}"
         return self
 
+    @model_validator(mode="after")
+    def _engine_counts_are_whole(self) -> Design:
+        """Lanes, multiply-adds per lane and accumulators are counts, and the
+        accumulators' final tree needs a power of two (numerics.md, section 3)."""
+        for scenario in [None, *self.scenarios]:
+            v = self.values(scenario)
+            for k in ENGINE_COUNTS:
+                assert v[k] >= 1 and v[k] == int(v[k]), f"{scenario or 'base'}: {k} = {v[k]}"
+            a = int(v["accumulators"])
+            assert a & (a - 1) == 0, f"{scenario or 'base'}: accumulators = {a}, not a power of 2"
+        return self
+
     def values(self, scenario: str | None = None) -> dict[str, float]:
         return super().values() | (self.scenarios[scenario] if scenario else {})
 
@@ -214,7 +215,15 @@ def load_config(name: str) -> LlamaConfig:
 
 def matvec(name: str, rows: int, cols: int, kv_write_bytes: int = 0) -> Op:
     n = rows * cols
-    return Op(name, "matvec", (rows, cols), n, n * BF16_BYTES, kv_write_bytes=kv_write_bytes)
+    return Op(
+        name,
+        "matvec",
+        (rows, cols),
+        n,
+        n * BF16_BYTES,
+        kv_write_bytes=kv_write_bytes,
+        engine_shape=(rows, cols),
+    )
 
 
 def vector(name: str, kind: str, n: int, passes: int = 1, **kw) -> Op:
@@ -228,9 +237,18 @@ def rmsnorm(name: str, n: int) -> Op:
 
 def attention(kind: str, heads: int, positions: int, d: int, kv_heads: int) -> Op:
     """q.K or p.V over `positions` cache rows: reads K (or V) once per KV
-    head, shared by its query heads."""
+    head, shared by its query heads. On the engine, scores have a row per
+    head and position, p.V a row per head and output dimension."""
     kv_bytes = kv_heads * positions * d * BF16_BYTES
-    return Op(kind, kind, (heads, positions, d), heads * positions * d, kv_read_bytes=kv_bytes)
+    rows = {"attention_scores": (heads * positions, d), "attention_values": (heads * d, positions)}
+    return Op(
+        kind,
+        kind,
+        (heads, positions, d),
+        heads * positions * d,
+        kv_read_bytes=kv_bytes,
+        engine_shape=rows[kind],
+    )
 
 
 def ops(config: LlamaConfig, position: int) -> list[Op]:
@@ -288,7 +306,7 @@ class Work:
     attention_macs: int
     vector_elems: int
     commands: int
-    engine_shapes: tuple[tuple[int, int], ...] = ()  # (rows, cols) per engine op
+    engine_shapes: tuple[tuple[int, int], ...]  # (rows, cols) per engine op
 
     @property
     def memory_bytes(self) -> int:
@@ -311,7 +329,7 @@ class Work:
             attention_macs=total("macs", lambda o: o.kind in ATTENTION_KINDS),
             vector_elems=total("vector_elems"),
             commands=len(op_list),
-            engine_shapes=tuple(o.engine_shape for o in op_list if o.engine_shape),
+            engine_shapes=tuple(o.engine_shape for o in op_list if o.engine_shape is not None),
         )
 
 
@@ -335,10 +353,10 @@ def engine_cycles(shapes: tuple[tuple[int, int], ...], design: dict[str, float])
     )
 
 
-def engine_use(work: Work, design: dict[str, float]) -> float:
+def engine_use(shapes: tuple[tuple[int, int], ...], design: dict[str, float]) -> float:
     """Share of the engine's multiply-add slots that do work."""
-    slots = design["lanes"] * design["macs_per_lane"] * engine_cycles(work.engine_shapes, design)
-    return work.macs / slots
+    slots = design["lanes"] * design["macs_per_lane"] * engine_cycles(shapes, design)
+    return sum(rows * cols for rows, cols in shapes) / slots
 
 
 def seconds(work: Work, platform: dict[str, float], design: dict[str, float]) -> dict[str, float]:

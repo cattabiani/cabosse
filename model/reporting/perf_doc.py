@@ -97,7 +97,8 @@ def engine_table(config, design: perf.Inputs) -> str:
     cols = positions(config)
     work = [perf.Work.of(perf.ops(config, p)) for p in cols]
     rows = [
-        [scenario] + [f"{perf.engine_use(w, design.values(scenario)):.1%}" for w in work]
+        [scenario]
+        + [f"{perf.engine_use(w.engine_shapes, design.values(scenario)):.1%}" for w in work]
         for scenario in design.scenarios
     ]
     return blocks.table(["scenario, engine use at position"] + [str(p) for p in cols], rows)
