@@ -165,14 +165,12 @@ class Design(Inputs):
 
 
 # A measured-values file: any of the platform's parameters, each a Measurement.
+# A parameter is absent or measured: an explicit null is rejected (the default
+# None is not validated).
 Measured = create_model(
     "Measured",
     __config__=ConfigDict(extra="forbid"),
-    **{
-        k: (Measurement | None, None)
-        for k, f in Platform.model_fields.items()
-        if f.annotation is Param
-    },
+    **{k: (Measurement, None) for k, f in Platform.model_fields.items() if f.annotation is Param},
 )
 
 

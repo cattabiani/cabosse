@@ -191,8 +191,9 @@ def test_a_measurement_replaces_the_documented_entry(tmp_path) -> None:
     assert "6 of 7" in perf_doc.cleared(ours) and "7 of 7" in perf_doc.cleared(doc)
 
 
-def test_without_a_measured_file_the_documented_values_hold(tmp_path) -> None:
-    directory = platform_files(tmp_path, None)
+@pytest.mark.parametrize("measured", [None, {}])  # no file, an empty file
+def test_without_measurements_the_documented_values_hold(tmp_path, measured) -> None:
+    directory = platform_files(tmp_path, measured)
     assert perf.load_platform("f2", directory) == perf.load_platform(
         "f2", directory, measured=False
     )
@@ -201,7 +202,9 @@ def test_without_a_measured_file_the_documented_values_hold(tmp_path) -> None:
 def test_cleared_when_every_value_is_measured_or_not_measurable(tmp_path) -> None:
     doc = perf.load_platform("f2")
     measured = {k: {**p.model_dump(), "status": perf.MEASURED} for k, p in doc.params.items()}
-    assert perf.load_platform("f2", platform_files(tmp_path, measured)).unmeasured() == []
+    platform = perf.load_platform("f2", platform_files(tmp_path, measured))
+    assert platform.unmeasured() == []
+    assert perf_doc.cleared(platform).startswith("All platform values are measured by us")
 
 
 @pytest.mark.parametrize(
@@ -215,6 +218,7 @@ def test_cleared_when_every_value_is_measured_or_not_measurable(tmp_path) -> Non
         {"hbm_read_bytes_per_s": {**MEASUREMENT, "source": ""}},  # no source
         {"hbm_read_bytes_per_s": {**MEASUREMENT, "date": "x"}},  # an unknown field
         {"hbm_read_bytes_per_s": {**MEASUREMENT, "unit": ""}},  # no unit
+        {"hbm_read_bytes_per_s": None},  # looks like an entry, measures nothing
     ],
 )
 def test_a_bad_measured_file_is_rejected(tmp_path, measured: dict) -> None:
@@ -229,6 +233,13 @@ def test_bad_design_inputs_are_rejected() -> None:
             perf.Design(**raw | {"clock_hz": bad})
     with pytest.raises(ValidationError, match="unknown"):
         perf.Design(**raw | {"scenarios": {"x": {"clock_mhz": 1}}})
+
+
+def test_a_measured_file_that_is_not_json_is_rejected(tmp_path) -> None:
+    directory = platform_files(tmp_path, {})
+    (directory / "measured" / "f2.json").write_text('{"hbm_ports": ')
+    with pytest.raises(ValidationError, match="json"):
+        perf.load_platform("f2", directory)
 
 
 def test_a_measurement_in_another_unit_is_rejected(tmp_path) -> None:
