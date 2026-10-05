@@ -179,6 +179,16 @@ helps when many sequences share memory, and the workload is single-stream
 a row is arithmetic, and one head's K or V streams as one block. Q-24
 keeps the alternatives for later.
 
+**D-025 (2026-10-04) — Measure F2 first-hand in M2, with AWS's example
+designs.** A new M2 step runs AWS's HDK examples (no Cabosse RTL) on one
+f2.6xlarge in `eu-central-1` to measure what the docs leave open: HBM
+bandwidth in total and per port, through the switch, at 250 and 450 MHz;
+DDR4 bandwidth; host-to-card throughput; and the build flow itself. Own AWS
+account (setup in `docs/aws-setup.md`); nothing is created without the
+owner's approval and a budget (rule 3). M8 keeps the Cabosse wrapper.
+*Why:* the architecture and the perf model rest on these numbers, and some
+are not in any public document.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -279,6 +289,20 @@ golden model still passes M1.
   lane (0% overhead), or reuse the lane's adder (about 2%). The bits are the
   same either way.
 
+**Progress:**
+- [x] F2 platform facts (`docs/f2.md`), from public AWS and AMD docs; resolves
+  Q-13. HBM: 32 AXI3 ports up to 450 MHz, any port reaches any address;
+  shell interfaces run at 250 MHz, so full HBM bandwidth needs a faster
+  memory-side clock. DDR4 runs at 2133 MT/s, 17.1 GB/s peak (from AWS's
+  controller configuration). Still to verify: two AMD values read only from
+  search excerpts.
+- [ ] **Next:** first-order performance model (`model/perf.py`), from the
+  quoted numbers; updated after the F2 check.
+- [ ] F2 platform check (D-025): account set up (`docs/aws-setup.md`,
+  profile `cabosse`, `eu-central-1`, budgets on); F instance quota of 24
+  vCPUs requested 2026-10-04, pending. Then: scripts to launch, build, run
+  and stop; results into `docs/f2.md` as measured.
+
 ### M3 — Toolchain and FP units
 **What:** OSS CAD Suite (Verilator, Yosys with the slang SystemVerilog
 plugin, nextpnr, cocotb; owner installs), one-command test runner, CI, lint.
@@ -361,15 +385,14 @@ checkpoint.
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-04 | Vivado builds for F2: local machine or AWS build instance? | Before M8. Local needs the right Vivado version and a license for the F2 device. |
+| Q-04 | Vivado builds for F2: local machine or AWS build instance? | M2, F2 check (D-025). Leaning AWS: the FPGA Developer AMI includes the Vivado license on EC2; local needs a license for the VU47P (to verify). |
 | Q-10 | How many HBM ports the engine reads in parallel, and how weights are spread across them. | M2. This sets the bandwidth bound. |
 | Q-11 | Attention p·V: store V transposed, or add an engine mode for `Σ pᵢ·vᵢ`? | M2. |
 | Q-22 | Hide the adder latency with `A` partial sums per row (current spec), or by rotating `A` rows per lane (one running sum per row, no tree)? | M2, together with the weight memory layout. Rotating rows gives plain sequential sums; it equals `dot` with `A` = 1. |
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
-| Q-13 | What the F2 shell exposes (HBM ports, widths, clocks, DMA). | M2, from AWS docs only. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
-| Q-16 | F2 budget and cost controls. | Before M8. |
+| Q-16 | F2 budget and cost controls. | M2, before the F2 check (D-025). Monthly and zero-spend budget alarms (`docs/aws-setup.md`); scripts stop every instance and check; cap set by the owner. |
 | Q-17 | ECP5 board and host link. | Before M11. |
 | Q-18 | Do ECP5 before F2? | M7 checkpoint. |
 | Q-19 | Open PDK and shuttle (SKY130, GF180MCU, IHP SG13G2; Tiny Tapeout, …). | M11 checkpoint. |
