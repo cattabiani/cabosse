@@ -92,6 +92,18 @@ def predictions_table(config, platform: perf.Inputs, design: perf.Inputs) -> str
     )
 
 
+def engine_table(config, design: perf.Inputs) -> str:
+    """Share of the engine's multiply-add slots that do work, per scenario."""
+    cols = positions(config)
+    work = [perf.Work.of(perf.ops(config, p)) for p in cols]
+    rows = [
+        [scenario]
+        + [f"{perf.engine_use(w.engine_shapes, design.values(scenario)):.1%}" for w in work]
+        for scenario in design.scenarios
+    ]
+    return blocks.table(["scenario, engine use at position"] + [str(p) for p in cols], rows)
+
+
 def sensitivity_table(config, platform: perf.Inputs, design: perf.Inputs) -> str:
     """Overlapped tokens/s with each unsettled input scaled, per scenario."""
     assert not set(platform.params) & set(design.params)
@@ -124,6 +136,7 @@ def generated(model: str, platform_name: str, design_name: str) -> dict[str, str
         + "\n\n"
         + scenarios_table(design),
         "work": f"{model}:\n\n" + work_table(config),
+        "engine": engine_table(config, design),
         "predictions": predictions_table(config, platform, design),
         "sensitivity": f"Tokens/s (overlapped) at position {SENSITIVITY_POSITION}, with the input "
         f"scaled {factors}:\n\n" + sensitivity_table(config, platform, design),

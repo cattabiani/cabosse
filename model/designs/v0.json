@@ -1,13 +1,17 @@
 {
  "name": "v0: first-order design choices (M2)",
- "clock_hz": {"value": 250e6, "unit": "Hz", "status": "choice", "source": "the shell clock (docs/f2.md)"},
+ "clock_hz": {"value": 250e6, "unit": "Hz", "status": "choice", "source": "the shell clock (docs/f2.md); to verify in M3 (one lane) and M9 (the whole design)"},
  "memory_clock_hz": {"value": 250e6, "unit": "Hz", "status": "choice", "source": "HBM ports on the shell clock"},
- "macs_per_cycle": {"value": 64, "unit": "MAC/cycle", "status": "choice", "source": "PLAN.md M2 starting point: L = 64 lanes, one MAC each"},
+ "lanes": {"value": 128, "unit": "lanes", "status": "choice", "source": "docs/architecture.md, engine"},
+ "macs_per_lane": {"value": 4, "unit": "MAC/cycle", "status": "choice", "source": "docs/architecture.md, engine: 128 x 4 x 2 B = 1024 B/cycle, all 32 HBM ports at 250 MHz"},
+ "accumulators": {"value": 16, "unit": "partial sums", "status": "choice", "source": "docs/architecture.md, engine: 4 multiply-adds x a 4-cycle loop (proposed; docs/numerics.md has A = 8 until approved)"},
  "vector_elems_per_cycle": {"value": 16, "unit": "elements/cycle", "status": "guess", "source": "none yet (M6 sizes the vector unit)"},
  "command_cycles": {"value": 64, "unit": "cycles/command", "status": "guess", "source": "none yet (the controller is designed in M2/M7)"},
  "scenarios": {
   "as planned": {},
-  "HBM at 450 MHz": {"memory_clock_hz": 450e6},
-  "HBM at 450 MHz, 1024 MAC/cycle": {"memory_clock_hz": 450e6, "macs_per_cycle": 1024}
+  "64 lanes x 8, A = 32": {"lanes": 64, "macs_per_lane": 8, "accumulators": 32},
+  "512 lanes x 1, A = 4": {"lanes": 512, "macs_per_lane": 1, "accumulators": 4},
+  "core at 125 MHz": {"clock_hz": 125e6},
+  "256 lanes, HBM at 450 MHz": {"lanes": 256, "memory_clock_hz": 450e6}
  }
 }

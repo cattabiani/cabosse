@@ -29,7 +29,9 @@ PLATFORM = {
 DESIGN = {
     "clock_hz": 100.0,
     "memory_clock_hz": 400.0,
-    "macs_per_cycle": 10,
+    "lanes": 10,
+    "macs_per_lane": 1,
+    "accumulators": 1,
     "vector_elems_per_cycle": 4,
     "command_cycles": 5,
 }
@@ -142,6 +144,7 @@ def test_seconds_by_hand() -> None:
         attention_macs=100,
         vector_elems=200,
         commands=4,
+        engine_shapes=((10, 100),),  # one pass of the 10 lanes, 100 cycles
     )
     # memory: the ports' raw width caps the measured 1600 B/s at 2 x 1 x 400 = 800 B/s
     assert perf.seconds(work, PLATFORM, DESIGN) == {
@@ -156,10 +159,50 @@ def test_seconds_by_hand() -> None:
     assert p.tokens_per_s_serial == pytest.approx(1 / 3.7)
 
 
+# (rows, cols) -> engine cycles with ENGINE_DESIGN.
+ENGINE_DESIGN = {"lanes": 4, "macs_per_lane": 2, "accumulators": 4}
+ENGINE_CASES = [
+    ((4, 10), 5),  # one pass, 10 / 2 cycles per row
+    ((5, 10), 10),  # a fifth row needs a second pass, with 3 lanes idle
+    ((4, 11), 6),  # a partial last group still takes a cycle
+    ((4, 2), 3),  # a short row waits for its final sum: 4 - 1 adds
+    ((8, 6), 6),  # 6 / 2 = 3 cycles, as long as the final sum
+]
+
+
+@pytest.mark.parametrize(("shape", "cycles"), ENGINE_CASES)
+def test_engine_cycles_by_hand(shape: tuple[int, int], cycles: int) -> None:
+    assert perf.engine_cycles((shape,), ENGINE_DESIGN) == cycles
+
+
+def test_engine_cycles_add_up_over_ops() -> None:
+    shapes = tuple(shape for shape, _ in ENGINE_CASES)
+    assert perf.engine_cycles(shapes, ENGINE_DESIGN) == sum(cycles for _, cycles in ENGINE_CASES)
+
+
+@pytest.mark.parametrize("position", [0, 5])
+def test_engine_shapes_cover_every_multiply_add(position: int) -> None:
+    """The engine's rows times cols are exactly the ops' multiply-adds."""
+    c = tiny.tiny_config(n_kv_heads=2)
+    op_list = perf.ops(c, position)
+    on_engine = [o for o in op_list if o.engine_shape is not None]
+    assert all(math.prod(o.engine_shape) == o.macs for o in on_engine)
+    assert {o.kind for o in on_engine} == {"matvec", *perf.ATTENTION_KINDS}
+    assert all(o.macs == 0 for o in op_list if o.engine_shape is None)
+
+
+def test_engine_use() -> None:
+    """Full when every pass fills the lanes and rows are longer than the
+    final sum; idle lanes and short rows show up as lost slots."""
+    assert perf.engine_use(((8, 10),), ENGINE_DESIGN) == 1.0
+    assert perf.engine_use(((5, 10),), ENGINE_DESIGN) == 5 / 8  # second pass: 1 of 4 lanes busy
+    assert perf.engine_use(((4, 2),), ENGINE_DESIGN) == 1 / 3  # 1 cycle of work, 3 of final sum
+
+
 def test_memory_time_scales_with_the_memory_clock() -> None:
     """Below the port's maximum clock the read rate scales with the clock;
     above it, it does not."""
-    work = perf.Work(100, 0, 0, 0, 0, 0, 0)
+    work = perf.Work(100, 0, 0, 0, 0, 0, 0, ())
     platform = PLATFORM | {"hbm_ports": 100}  # no cap from the raw width
     time = {
         clock: perf.seconds(work, platform, DESIGN | {"memory_clock_hz": clock})["memory"]
@@ -233,6 +276,9 @@ def test_bad_design_inputs_are_rejected() -> None:
             perf.Design(**raw | {"clock_hz": bad})
     with pytest.raises(ValidationError, match="unknown"):
         perf.Design(**raw | {"scenarios": {"x": {"clock_mhz": 1}}})
+    for bad in ({"lanes": 2.5}, {"macs_per_lane": 0}, {"accumulators": 12}):
+        with pytest.raises(ValidationError, match="x: "):
+            perf.Design(**raw | {"scenarios": {"x": bad}})
 
 
 def test_a_measured_file_that_is_not_json_is_rejected(tmp_path) -> None:
