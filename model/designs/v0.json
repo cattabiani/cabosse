@@ -1,0 +1,15 @@
+{
+ "name": "v0: first-order design choices (M2)",
+ "parameters": {
+  "clock_hz": {"value": 250e6, "unit": "Hz", "status": "choice", "source": "the shell clock (docs/f2.md)"},
+  "memory_clock_hz": {"value": 250e6, "unit": "Hz", "status": "choice", "source": "HBM ports on the shell clock"},
+  "macs_per_cycle": {"value": 64, "unit": "MAC/cycle", "status": "choice", "source": "PLAN.md M2 starting point: L = 64 lanes, one MAC each"},
+  "vector_elems_per_cycle": {"value": 16, "unit": "elements/cycle", "status": "guess", "source": "none yet (M6 sizes the vector unit)"},
+  "command_cycles": {"value": 64, "unit": "cycles/command", "status": "guess", "source": "none yet (the controller is designed in M2/M7)"}
+ },
+ "scenarios": {
+  "as planned": {},
+  "HBM at 450 MHz": {"memory_clock_hz": 450e6},
+  "HBM at 450 MHz, 1024 MAC/cycle": {"memory_clock_hz": 450e6, "macs_per_cycle": 1024}
+ }
+}
