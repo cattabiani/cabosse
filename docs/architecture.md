@@ -8,8 +8,8 @@ is generated from the perf model.
 
 Status: draft. This version covers the blocks, the engine, memory and
 clocks. Still to come in M2: the register map, the command format, one token
-written out as commands, the vector unit and the controller. Choices marked
-**[proposed]** wait for the owner's approval.
+written out as commands, the vector unit and the controller. Sections
+marked with a D-number are decided (PLAN.md decision log).
 
 ## How a token runs
 
@@ -87,7 +87,7 @@ mean `A` = 32, with the losses of the 64 × 8 row above at long positions).
 **Left for later:** concatenating matrices that share an input (q, k and v;
 gate and up) into one, to fill the last pass; a small gain for SmolLM2.
 
-## Memory **[proposed]**
+## Memory (D-028)
 
 | What | Where | Why |
 |---|---|---|
@@ -130,7 +130,7 @@ it from there:
 The buffer must serve both access patterns at 512 values per cycle; its
 banking is designed with the engine (M5).
 
-## Clocks
+## Clocks (D-028)
 
 v0 runs everything on the shell's 250 MHz clock: the core, the HBM ports,
 the shell interfaces. One clock means no clock-domain crossings in the

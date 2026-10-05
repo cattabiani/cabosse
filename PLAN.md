@@ -210,6 +210,18 @@ attention; more, narrower lanes leave lanes idle on small matrices
 8 in `docs/numerics.md`. *Why:* the best engine use across positions of the
 shapes compared; `L` can grow later without changing the bits.
 
+**D-028 (2026-10-06) — Memory and clocks for v0.** Each of the 32 HBM
+ports reads only its own channel (no switch), and port `p` feeds lanes `4p`
+to `4p+3`; weights are stored in the lanes' read order, a reordering at load
+time. K and V are stored as written (one row per position) and staged
+through an on-chip tile buffer holding two KV heads, which the engine reads
+across positions for p·V, so V has no transposed copy. Command list and
+activations stay on chip; DDR4 is unused. Everything runs on the shell's
+250 MHz clock, to verify in M3 and the first full build. Resolves Q-10 and
+Q-11. *Why:* every port streams in parallel with sequential reads; no
+second copy of the cache; no clock crossings in the first build
+(`docs/architecture.md`).
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -335,12 +347,9 @@ golden model still passes M1.
   report says "provisional" until every platform value is measured by us or
   marked not measurable.
 - [ ] `docs/architecture.md`, draft: how a token runs, the blocks, the
-  engine, memory and clocks. Engine decided: 128 lanes × 4 multiply-adds,
-  `A` = 16 (D-027; resolves Q-25 and Q-22). Proposed, for the owner's
-  approval: each HBM port on its own
-  channel, weights in the lanes' read order (Q-10); K and V stored as
-  written and staged through an on-chip tile buffer (Q-11); one 250 MHz
-  clock. The perf model now counts idle lanes and the final sum of short
+  engine, memory and clocks. Decided: the engine, 128 lanes × 4 multiply-adds,
+  `A` = 16 (D-027; resolves Q-25 and Q-22); memory and clocks (D-028;
+  resolves Q-10 and Q-11). The perf model now counts idle lanes and the final sum of short
   rows. Still to write: register map, command format, one token as
   commands, vector unit, controller.
 - [x] `A` = 16 (D-027) in `docs/numerics.md` and the golden model; greedy
@@ -452,8 +461,6 @@ checkpoint.
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
 | Q-04 | Vivado builds for F2: local machine or AWS build instance? | First F2 build (M8, D-026). Leaning AWS: the FPGA Developer AMI (Marketplace subscription done 2026-10-05) includes the Vivado license on EC2; local needs a license for the VU47P (to verify). |
-| Q-10 | How many HBM ports the engine reads in parallel, and how weights are spread across them. | M2. This sets the bandwidth bound. Proposed in `docs/architecture.md`: each port on its own channel, no switch. |
-| Q-11 | Attention p·V: store V transposed, or add an engine mode for `Σ pᵢ·vᵢ`? | M2. Proposed in `docs/architecture.md`: neither; V stored as written, read across positions from an on-chip tile. |
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
