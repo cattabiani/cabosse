@@ -308,6 +308,11 @@ golden model still passes M1.
   overlap). At the full 8192-token window, attention's multiply-adds exceed
   the weights' and the vector unit becomes the limit. All numbers in
   `docs/perf.md`; they change with the inputs.
+- [x] Inputs validated with pydantic; our measurements
+  (`model/platforms/f2.measured.json`) replace documented values entry by
+  entry (pydantic-settings), with the documented value kept alongside. The
+  report says "provisional" until every platform value is measured by us or
+  marked not measurable.
 - [ ] **Next:** `docs/architecture.md`, starting from the engine width
   (Q-25).
 - [ ] F2 platform check (D-025): account set up (`docs/aws-setup.md`,

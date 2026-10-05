@@ -6,7 +6,8 @@ the accelerator, and which part limits it.
 Generic over three inputs:
 - the model's shape (a `transformers` config): what a token computes;
 - the platform (model/platforms/*.json): what the hardware gives, each value
-  with a status (quoted, measured, guess, ...) and a source;
+  with a status (quoted, measured, guess, ...) and a source; our own
+  measurements (*.measured.json) replace the documented values;
 - the design (model/designs/*.json): what we choose (clock, multiply-adds
   per cycle, ...), with named scenarios that override it.
 
@@ -23,10 +24,13 @@ clock from the measured rate at the port's maximum clock.
 """
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 import paths
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic_settings import BaseSettings, JsonConfigSettingsSource, SettingsConfigDict
 from transformers import LlamaConfig
 
 BF16_BYTES = 2
@@ -37,16 +41,20 @@ RMSNORM_PASSES = 2
 SOFTMAX_PASSES = 3
 TERMS = ("memory", "engine", "vector", "commands")
 # How we know an input value -> whether it is settled (no sensitivity row in
-# the report). "measured by us" is the goal for every platform value (D-025).
+# the report). "measured by us" replaces every other status (D-025); "not
+# measurable" needs a reason in the source.
 STATUSES = {
     "quoted": True,
     "computed": True,
     "measured by AWS": False,
     "measured by us": True,
+    "not measurable": True,
     "to verify": False,
     "guess": False,
     "choice": True,
 }
+MEASURED = "measured by us"
+CLEARED = {MEASURED, "not measurable"}  # the platform is cleared when all are
 # Ops on the matrix-vector engine that are attention, not weights.
 ATTENTION_KINDS = ("attention_scores", "attention_values")
 
@@ -68,38 +76,90 @@ class Op:
     vector_elems: int = 0  # elements times passes
 
 
-@dataclass(frozen=True)
-class Param:
+class Param(BaseModel):
+    """One input value, with how we know it and where from."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
     value: float
     unit: str
-    status: str
-    source: str
-
-    def __post_init__(self) -> None:
-        assert self.status in STATUSES, f"unknown status {self.status!r}"
-        assert self.source, "a source is required"
+    status: Literal[tuple(STATUSES)]
+    source: str = Field(min_length=1)
 
 
-@dataclass(frozen=True)
-class Inputs:
-    """Parameters from a JSON file: name -> Param, plus named scenarios that
-    override some values."""
+class Inputs(BaseSettings):
+    """A set of Params (the class's Param fields) plus a name. Only explicit
+    arguments count: no environment variables or other sources."""
 
+    model_config = SettingsConfigDict(frozen=True, extra="forbid")
     name: str
-    params: dict[str, Param]
-    scenarios: dict[str, dict[str, float]] = field(default_factory=dict)
+
+    @classmethod
+    def settings_customise_sources(cls, settings_cls, init_settings, *_, **__) -> tuple:
+        return (init_settings,)
+
+    @property
+    def params(self) -> dict[str, Param]:
+        return {k: v for k, v in self if isinstance(v, Param)}
+
+    def values(self) -> dict[str, float]:
+        return {k: p.value for k, p in self.params.items()}
+
+
+class Platform(Inputs):
+    """What the hardware gives. Documented values come from
+    platforms/<name>.json; our measurements, in platforms/<name>.measured.json,
+    replace them entry by entry (load_platform)."""
+
+    hbm_bytes: Param
+    hbm_ports: Param
+    hbm_port_bytes: Param
+    hbm_port_max_clock_hz: Param
+    hbm_read_bytes_per_s: Param
+    shell_clock_hz: Param
+    ddr_peak_bytes_per_s: Param
+
+    def unmeasured(self) -> list[str]:
+        """Parameters still waiting for our own measurement (D-025)."""
+        return [k for k, p in self.params.items() if p.status not in CLEARED]
+
+
+class Design(Inputs):
+    """What we choose, with named scenarios that override some values."""
+
+    clock_hz: Param
+    memory_clock_hz: Param
+    macs_per_cycle: Param
+    vector_elems_per_cycle: Param
+    command_cycles: Param
+    scenarios: dict[str, dict[str, float]] = {}
+
+    @model_validator(mode="after")
+    def _scenarios_override_parameters(self) -> Design:
+        for name, overrides in self.scenarios.items():
+            unknown = set(overrides) - set(self.params)
+            assert not unknown, f"scenario {name!r} overrides unknown {sorted(unknown)}"
+        return self
 
     def values(self, scenario: str | None = None) -> dict[str, float]:
-        out = {k: p.value for k, p in self.params.items()}
-        overrides = self.scenarios[scenario] if scenario else {}
-        assert set(overrides) <= set(out), set(overrides) - set(out)
-        return out | overrides
+        return super().values() | (self.scenarios[scenario] if scenario else {})
 
 
-def load_inputs(path: Path) -> Inputs:
-    raw = json.loads(path.read_text())
-    params = {k: Param(**v) for k, v in raw["parameters"].items()}
-    return Inputs(raw["name"], params, raw.get("scenarios", {}))
+def load_platform(name: str, directory: Path = paths.PLATFORMS, measured: bool = True) -> Platform:
+    """The documented values, each replaced by our measurement when there is
+    one (measured=False: the documented values alone). A measurement replaces
+    the whole entry, so its status and source come with it."""
+    doc, ours = directory / f"{name}.json", directory / f"{name}.measured.json"
+    assert doc.exists(), doc
+    if measured and ours.exists():
+        statuses = {k: v["status"] for k, v in json.loads(ours.read_text()).items()}
+        wrong = {k: s for k, s in statuses.items() if s != MEASURED}
+        assert not wrong, f"{ours}: only {MEASURED!r} entries belong here: {wrong}"
+    files = [doc, ours] if measured else [doc]
+    return Platform(**JsonConfigSettingsSource(Platform, json_file=files, deep_merge=False)())
+
+
+def load_design(name: str, directory: Path = paths.DESIGNS) -> Design:
+    return Design(**json.loads((directory / f"{name}.json").read_text()))
 
 
 def load_config(name: str) -> LlamaConfig:

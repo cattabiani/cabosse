@@ -8,5 +8,7 @@ transformers==5.18.0
 safetensors==0.8.0
 huggingface_hub==1.33.0
 numpy==2.5.3
+pydantic==2.13.5            # input files of the perf model (MIT)
+pydantic-settings==2.15.0   # layered inputs: measurements over docs (MIT)
 pytest==9.1.1
 ruff==0.16.10
