@@ -217,7 +217,7 @@ def test_cleared_when_every_value_is_measured_or_not_measurable(tmp_path) -> Non
     ],
 )
 def test_a_bad_measured_file_is_rejected(tmp_path, measured: dict) -> None:
-    with pytest.raises((AssertionError, ValidationError)):
+    with pytest.raises(ValidationError):
         perf.load_platform("f2", platform_files(tmp_path, measured))
 
 
@@ -228,18 +228,6 @@ def test_bad_design_inputs_are_rejected() -> None:
             perf.Design(**raw | {"clock_hz": bad})
     with pytest.raises(ValidationError, match="unknown"):
         perf.Design(**raw | {"scenarios": {"x": {"clock_mhz": 1}}})
-
-
-def test_environment_variables_do_not_fill_in(tmp_path, monkeypatch) -> None:
-    """A parameter missing from the files is an error, even if an environment
-    variable of that name exists."""
-    directory = platform_files(tmp_path, None)
-    raw = json.loads((directory / "f2.json").read_text())
-    del raw["hbm_ports"]
-    (directory / "f2.json").write_text(json.dumps(raw))
-    monkeypatch.setenv("HBM_PORTS", json.dumps({**MEASUREMENT, "value": 1}))
-    with pytest.raises(ValidationError, match="hbm_ports"):
-        perf.load_platform("f2", directory)
 
 
 @pytest.mark.parametrize(

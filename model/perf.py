@@ -29,8 +29,7 @@ from pathlib import Path
 from typing import Literal
 
 import paths
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from pydantic_settings import BaseSettings, JsonConfigSettingsSource, SettingsConfigDict
+from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 from transformers import LlamaConfig
 
 BF16_BYTES = 2
@@ -86,16 +85,17 @@ class Param(BaseModel):
     source: str = Field(min_length=1)
 
 
-class Inputs(BaseSettings):
-    """A set of Params (the class's Param fields) plus a name. Only explicit
-    arguments count: no environment variables or other sources."""
+class Measurement(Param):
+    """One of our own measurements (D-025)."""
 
-    model_config = SettingsConfigDict(frozen=True, extra="forbid")
+    status: Literal["measured by us"]
+
+
+class Inputs(BaseModel):
+    """A set of Params (the class's Param fields) plus a name."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
     name: str
-
-    @classmethod
-    def settings_customise_sources(cls, settings_cls, init_settings, *_, **__) -> tuple:
-        return (init_settings,)
 
     @property
     def params(self) -> dict[str, Param]:
@@ -144,22 +144,31 @@ class Design(Inputs):
         return super().values() | (self.scenarios[scenario] if scenario else {})
 
 
+# A measured-values file: any of the platform's parameters, each a Measurement.
+Measured = create_model(
+    "Measured",
+    __config__=ConfigDict(extra="forbid"),
+    **{
+        k: (Measurement | None, None)
+        for k, f in Platform.model_fields.items()
+        if f.annotation is Param
+    },
+)
+
+
 def load_platform(name: str, directory: Path = paths.PLATFORMS, measured: bool = True) -> Platform:
     """The documented values, each replaced by our measurement when there is
     one (measured=False: the documented values alone). A measurement replaces
     the whole entry, so its status and source come with it."""
-    doc, ours = directory / f"{name}.json", directory / "measured" / f"{name}.json"
-    assert doc.exists(), doc
+    raw = json.loads((directory / f"{name}.json").read_text())
+    ours = directory / "measured" / f"{name}.json"
     if measured and ours.exists():
-        statuses = {k: v["status"] for k, v in json.loads(ours.read_text()).items()}
-        wrong = {k: s for k, s in statuses.items() if s != MEASURED}
-        assert not wrong, f"{ours}: only {MEASURED!r} entries belong here: {wrong}"
-    files = [doc, ours] if measured else [doc]
-    return Platform(**JsonConfigSettingsSource(Platform, json_file=files, deep_merge=False)())
+        raw |= Measured.model_validate_json(ours.read_text()).model_dump(exclude_none=True)
+    return Platform(**raw)
 
 
 def load_design(name: str, directory: Path = paths.DESIGNS) -> Design:
-    return Design(**json.loads((directory / f"{name}.json").read_text()))
+    return Design.model_validate_json((directory / f"{name}.json").read_text())
 
 
 def load_config(name: str) -> LlamaConfig:

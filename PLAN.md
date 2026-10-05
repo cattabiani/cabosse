@@ -310,7 +310,7 @@ golden model still passes M1.
   `docs/perf.md`; they change with the inputs.
 - [x] Inputs validated with pydantic; our measurements
   (`model/platforms/measured/f2.json`) replace documented values entry by
-  entry (pydantic-settings), with the documented value kept alongside. The
+  entry, with the documented value kept alongside. The
   report says "provisional" until every platform value is measured by us or
   marked not measurable.
 - [ ] **Next:** `docs/architecture.md`, starting from the engine width
