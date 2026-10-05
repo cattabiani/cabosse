@@ -116,6 +116,15 @@ def attention_scores(q: torch.Tensor, k: torch.Tensor, scale: torch.Tensor) -> t
     return arith.mul(dot.dot(k, q[..., None, :]), scale)
 
 
+def attention_values(
+    p: torch.Tensor, v: torch.Tensor, valid: torch.Tensor | None = None
+) -> torch.Tensor:
+    """o_i = sum_t p_t V[t][i]: p BF16 [..., T], v BF16 [..., T, d] with
+    leading dimensions that broadcast. Returns FP32 [..., d]."""
+    mask = None if valid is None else valid[..., None, :]
+    return dot.dot(v.transpose(-1, -2), p[..., None, :], valid=mask)
+
+
 def attention(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -132,8 +141,7 @@ def attention(
     dot.interleaved_sum)."""
     s = attention_scores(q, k, scale)
     p = arith.bf16(vector.softmax(s, valid=valid))  # D-011: p rounded before p.V
-    mask = None if valid is None else valid[..., None, :]
-    return dot.dot(v.transpose(-1, -2), p[..., None, :], valid=mask)  # o_i = sum_t p_t V[t][i]
+    return attention_values(p, v, valid)
 
 
 def causal_attention(

@@ -285,6 +285,8 @@ golden model still passes M1.
 - `L` = 64 divides every SmolLM2 row count (576, 192, 1536, 49152), so no lane
   idles. `L` = 128 wastes 10–25% on some matrices. 64 lanes are a few percent
   of the F2 FPGA (to verify); memory bandwidth, not area, limits `L`.
+  **Revised by the perf model:** 64 multiply-adds per cycle at 250 MHz
+  leaves the engine, not memory, as the limit; see Q-25.
 - The final tree can overlap the next row with one small extra adder per
   lane (0% overhead), or reuse the lane's adder (about 2%). The bits are the
   same either way.
@@ -296,8 +298,18 @@ golden model still passes M1.
   memory-side clock. DDR4 runs at 2133 MT/s, 17.1 GB/s peak (from AWS's
   controller configuration). Still to verify: two AMD values read only from
   search excerpts.
-- [ ] **Next:** first-order performance model (`model/perf.py`), from the
-  quoted numbers; updated after the F2 check.
+- [x] First-order performance model (`model/perf.py`, `docs/perf.md`):
+  generic over model config, platform file (`model/platforms/f2.json`, each
+  value with a status and a source) and design file with scenarios
+  (`model/designs/v0.json`). Its work list is checked against the golden
+  decode step, its byte count against the checkpoint. SmolLM2 on F2, position
+  0: 64 MAC/cycle at 250 MHz is engine-bound at 119 tokens/s; with HBM at
+  450 MHz and 1024 MAC/cycle it becomes memory-bound at 1584 (751 with no
+  overlap). At the full 8192-token window, attention's multiply-adds exceed
+  the weights' and the vector unit becomes the limit. All numbers in
+  `docs/perf.md`; they change with the inputs.
+- [ ] **Next:** `docs/architecture.md`, starting from the engine width
+  (Q-25).
 - [ ] F2 platform check (D-025): account set up (`docs/aws-setup.md`,
   profile `cabosse`, `eu-central-1`, budgets on); F instance quota of 24
   vCPUs requested 2026-10-04, pending. Then: scripts to launch, build, run
@@ -389,6 +401,7 @@ checkpoint.
 | Q-10 | How many HBM ports the engine reads in parallel, and how weights are spread across them. | M2. This sets the bandwidth bound. |
 | Q-11 | Attention p·V: store V transposed, or add an engine mode for `Σ pᵢ·vᵢ`? | M2. |
 | Q-22 | Hide the adder latency with `A` partial sums per row (current spec), or by rotating `A` rows per lane (one running sum per row, no tree)? | M2, together with the weight memory layout. Rotating rows gives plain sequential sums; it equals `dot` with `A` = 1. |
+| Q-25 | Engine width: how many multiply-adds per cycle, and how organised (`L` lanes × elements per lane per cycle)? | M2, architecture. The perf model: 852 per cycle at 250 MHz keeps up with HBM at 450 MHz at position 0, 990 at position 1023; the summation order (`A`, Q-22) depends on it. |
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
