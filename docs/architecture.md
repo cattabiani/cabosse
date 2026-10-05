@@ -130,6 +130,9 @@ it from there:
   copy in HBM (Q-11).
 - The tile is loaded once per KV head and used by all of its query heads
   (3 for SmolLM2), as the perf model assumes.
+- A p·V pass covers 2 query heads (128 lanes = 2 × 64 dimensions), and the
+  two can belong to different KV heads (SmolLM2's heads 2 and 3 use KV heads
+  0 and 1), so the buffer holds the tiles of two KV heads at once.
 
 The buffer must serve both access patterns at 512 values per cycle; its
 banking is designed with the engine (M5).
