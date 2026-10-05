@@ -13,8 +13,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "model"))
 
-import perf_report  # noqa: E402
-import report  # noqa: E402
+from reporting import blocks  # noqa: E402
+from reporting import perf as perf_doc  # noqa: E402
 
 
 def main() -> None:
@@ -23,7 +23,7 @@ def main() -> None:
     )
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    report.write_or_check(perf_report.PERF_DOC, perf_report.render(), args.check)
+    blocks.write_or_check(perf_doc.DOC, perf_doc.render(), args.check)
 
 
 if __name__ == "__main__":

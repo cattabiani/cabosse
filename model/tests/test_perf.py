@@ -13,10 +13,10 @@ from pathlib import Path
 
 import paths
 import perf
-import perf_report
 import pytest
 from golden import decoder, tiny
 from pydantic import ValidationError
+from reporting import perf as perf_doc
 from safetensors import safe_open
 
 # Small round inputs for times checked by hand.
@@ -186,9 +186,9 @@ def test_a_measurement_replaces_the_documented_entry(tmp_path) -> None:
     assert ours.hbm_read_bytes_per_s == perf.Param(**MEASUREMENT)  # value, status and source
     others = {k: p for k, p in ours.params.items() if k != "hbm_read_bytes_per_s"}
     assert others == {k: p for k, p in doc.params.items() if k != "hbm_read_bytes_per_s"}
-    row = next(r for r in perf_report.params_table(ours, doc).splitlines() if "hbm_read" in r)
+    row = next(r for r in perf_doc.params_table(ours, doc).splitlines() if "hbm_read" in r)
     assert "401.2 GB/s | measured by us" in row and "426.28 GB/s (-5.9%)" in row
-    assert "6 of 7" in perf_report.cleared(ours) and "7 of 7" in perf_report.cleared(doc)
+    assert "6 of 7" in perf_doc.cleared(ours) and "7 of 7" in perf_doc.cleared(doc)
 
 
 def test_without_a_measured_file_the_documented_values_hold(tmp_path) -> None:
@@ -252,8 +252,8 @@ def test_a_documented_zero_cannot_be_compared(tmp_path) -> None:
     doc = perf.load_platform("f2")
     zero = doc.model_copy(update={"hbm_ports": doc.hbm_ports.model_copy(update={"value": 0})})
     ours = zero.model_copy(update={"hbm_ports": perf.Param(**{**MEASUREMENT, "unit": "ports"})})
-    with pytest.raises(ValueError, match="hbm_ports: documented as 0"):
-        perf_report.params_table(ours, zero)
+    with pytest.raises(ValueError, match="documented as 0"):
+        perf_doc.params_table(ours, zero)
 
 
 @pytest.mark.parametrize(
@@ -277,15 +277,15 @@ def test_every_input_combination_predicts(config: str, platform: str, design: st
 @pytest.mark.slow
 @pytest.mark.skipif(not paths.SMOLLM2.exists(), reason=f"needs the checkpoint in {paths.SMOLLM2}")
 def test_smollm2_config_and_size_match_the_checkpoint() -> None:
-    committed = json.loads((paths.CONFIGS / f"{perf_report.MODEL}.json").read_text())
+    committed = json.loads((paths.CONFIGS / f"{perf_doc.MODEL}.json").read_text())
     assert committed == json.loads((paths.SMOLLM2 / "config.json").read_text())
     with safe_open(paths.SMOLLM2 / "model.safetensors", "pt") as f:
         shapes = [f.get_slice(k).get_shape() for k in f.keys()]  # noqa: SIM118
     n_bytes = sum(math.prod(s) for s in shapes) * perf.BF16_BYTES
-    assert perf.parameter_bytes(perf.load_config(perf_report.MODEL)) == n_bytes
+    assert perf.parameter_bytes(perf.load_config(perf_doc.MODEL)) == n_bytes
 
 
 def test_perf_doc_is_up_to_date() -> None:
     """docs/perf.md shows what the input files say; after changing one, run:
-    python scripts/perf_report.py"""
-    assert perf_report.render() == perf_report.PERF_DOC.read_text()
+    python scripts/perf_doc.py"""
+    assert perf_doc.render() == perf_doc.DOC.read_text()

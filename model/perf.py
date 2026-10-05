@@ -54,6 +54,8 @@ STATUSES = {
 }
 MEASURED = "measured by us"
 CLEARED = {MEASURED, "not measurable"}  # the platform is cleared when all are
+# Units shown scaled: unit -> (divisor, shown unit).
+UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 # Ops on the matrix-vector engine that are attention, not weights.
 ATTENTION_KINDS = ("attention_scores", "attention_values")
 
@@ -83,6 +85,24 @@ class Param(BaseModel):
     unit: str = Field(min_length=1)
     status: Literal[tuple(STATUSES)]
     source: str = Field(min_length=1)
+
+    def __str__(self) -> str:
+        return show(self.value, self.unit)
+
+    def change_from(self, doc: Param) -> str:
+        """The documented value and how far this one is from it, e.g.
+        "426.28 GB/s (-5.9%)"; empty when they are the same entry."""
+        if self == doc:
+            return ""
+        if doc.value == 0:
+            raise ValueError(f"documented as 0 ({doc.source}), so no relative difference")
+        return f"{doc} ({self.value / doc.value - 1:+.1%})"
+
+
+def show(value: float, unit: str) -> str:
+    """A value in its unit, scaled for reading: 426280000000.0 B/s -> "426.28 GB/s"."""
+    scale, name = UNITS.get(unit, (1, unit))
+    return f"{value / scale:g} {name}".strip()
 
 
 class Measurement(Param):
