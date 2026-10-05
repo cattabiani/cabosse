@@ -14,7 +14,7 @@ import paths
 from reporting import blocks
 
 DATA = paths.REPORTS / "data" / "M1.json"
-REPORT = paths.REPORTS / "M1.md"
+PATH = paths.REPORTS / "M1.md"
 FIXTURES = ("tiny_greedy.json", "smollm2_greedy.json")
 MAX_SECONDS_PER_TOKEN = 10  # exit criterion (PLAN.md, M1)
 MIN_SEQUENCES, MIN_POSITIONS = 10, 256  # exit criterion (PLAN.md, M1)
@@ -134,4 +134,4 @@ def generated(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
 def render() -> str:
     data = json.loads(DATA.read_text())
     fixtures = {name: json.loads((paths.FIXTURES / name).read_text()) for name in FIXTURES}
-    return blocks.fill(REPORT.read_text(), generated(data, fixtures))
+    return blocks.fill(PATH.read_text(), generated(data, fixtures))

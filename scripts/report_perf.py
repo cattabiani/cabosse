@@ -3,8 +3,8 @@
 """Fill docs/perf.md's tables from the perf model (model/perf.py) and its
 input files (model/configs, model/platforms, model/designs). Runs in about a
 second and needs no weights. After changing an input file:
-    python scripts/perf_report.py            # rewrite docs/perf.md
-    python scripts/perf_report.py --check    # fail if docs/perf.md is stale
+    python scripts/report_perf.py            # rewrite docs/perf.md
+    python scripts/report_perf.py --check    # fail if docs/perf.md is stale
 """
 
 import argparse
@@ -13,8 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "model"))
 
-from reporting import blocks  # noqa: E402
-from reporting import perf as perf_doc  # noqa: E402
+from reporting import blocks, perf_doc  # noqa: E402
 
 
 def main() -> None:
@@ -23,7 +22,7 @@ def main() -> None:
     )
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    blocks.write_or_check(perf_doc.DOC, perf_doc.render(), args.check)
+    blocks.write_or_check(perf_doc.PATH, perf_doc.render(), args.check)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,9 @@
 """Report generation (model/reporting/): generated blocks, and the committed
 reports agree with their data."""
 
+import re
+
+import paths
 import pytest
 from reporting import blocks, m1
 
@@ -49,4 +52,12 @@ def test_tests_passed(summary: str, passed: bool) -> None:
 def test_m1_report_is_up_to_date() -> None:
     """reports/M1.md shows what reports/data/M1.json says; after a new
     measurement, run: python scripts/report_m1.py render"""
-    assert m1.render() == m1.REPORT.read_text()
+    assert m1.render() == m1.PATH.read_text()
+
+
+def test_measure_deselects_a_test_that_exists() -> None:
+    """scripts/report_m1.py measure leaves out the up-to-date test by its pytest
+    id; pytest ignores an id that matches nothing, so check it here."""
+    script = (paths.REPO / "scripts" / "report_m1.py").read_text()
+    path, name = re.search(r'UP_TO_DATE = "(.+)::(\w+)"', script).groups()
+    assert f"def {name}(" in (paths.REPO / path).read_text()

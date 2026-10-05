@@ -16,7 +16,7 @@ import perf
 import pytest
 from golden import decoder, tiny
 from pydantic import ValidationError
-from reporting import perf as perf_doc
+from reporting import perf_doc
 from safetensors import safe_open
 
 # Small round inputs for times checked by hand.
@@ -259,12 +259,10 @@ def test_a_measurement_does_not_complete_the_documented_file(tmp_path) -> None:
         perf.load_platform("f2", directory)
 
 
-def test_a_documented_zero_cannot_be_compared(tmp_path) -> None:
-    doc = perf.load_platform("f2")
-    zero = doc.model_copy(update={"hbm_ports": doc.hbm_ports.model_copy(update={"value": 0})})
-    ours = zero.model_copy(update={"hbm_ports": perf.Param(**{**MEASUREMENT, "unit": "ports"})})
+def test_a_documented_zero_cannot_be_compared() -> None:
+    zero = perf.Param(**{**MEASUREMENT, "status": "quoted", "value": 0})
     with pytest.raises(ValueError, match="documented as 0"):
-        perf_doc.params_table(ours, zero)
+        perf.Param(**MEASUREMENT).change_from(zero)
 
 
 @pytest.mark.parametrize(
@@ -298,5 +296,5 @@ def test_smollm2_config_and_size_match_the_checkpoint() -> None:
 
 def test_perf_doc_is_up_to_date() -> None:
     """docs/perf.md shows what the input files say; after changing one, run:
-    python scripts/perf_doc.py"""
-    assert perf_doc.render() == perf_doc.DOC.read_text()
+    python scripts/report_perf.py"""
+    assert perf_doc.render() == perf_doc.PATH.read_text()

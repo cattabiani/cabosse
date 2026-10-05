@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Literal
 
 import paths
-from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from transformers import LlamaConfig
 
 BF16_BYTES = 2
@@ -164,14 +164,9 @@ class Design(Inputs):
         return super().values() | (self.scenarios[scenario] if scenario else {})
 
 
-# A measured-values file: any of the platform's parameters, each a Measurement.
-# A parameter is absent or measured: an explicit null is rejected (the default
-# None is not validated).
-Measured = create_model(
-    "Measured",
-    __config__=ConfigDict(extra="forbid"),
-    **{k: (Measurement, None) for k, f in Platform.model_fields.items() if f.annotation is Param},
-)
+# A measured-values file: platform parameter name -> Measurement.
+PLATFORM_PARAMS = tuple(k for k, f in Platform.model_fields.items() if f.annotation is Param)
+Measured = TypeAdapter(dict[Literal[PLATFORM_PARAMS], Measurement])
 
 
 def load_platform(name: str, directory: Path = paths.PLATFORMS, measured: bool = True) -> Platform:
@@ -183,7 +178,7 @@ def load_platform(name: str, directory: Path = paths.PLATFORMS, measured: bool =
     ours = directory / "measured" / f"{name}.json"
     if not measured or not ours.exists():
         return documented
-    found = Measured.model_validate_json(ours.read_text()).model_dump(exclude_none=True)
+    found = {k: m.model_dump() for k, m in Measured.validate_json(ours.read_text()).items()}
     for k, m in found.items():  # no conversion: a measurement is in the documented unit
         unit = documented.params[k].unit
         if m["unit"] != unit:

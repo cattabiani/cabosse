@@ -41,7 +41,7 @@ DECODE_WARMUP = 4  # untimed decode steps first (caches, allocator)
 DECODE_STEPS = 32  # then timed decode steps
 QUIET_LOAD = 1.0  # 1-minute load average above which timing is suspect
 # pytest arguments. The report's own up-to-date test waits for this data.
-UP_TO_DATE = "model/tests/test_report.py::test_m1_report_is_up_to_date"
+UP_TO_DATE = "model/tests/test_reporting.py::test_m1_report_is_up_to_date"
 SUITES = {"fast": ["--deselect", UP_TO_DATE], "slow": ["-m", "slow"]}
 
 
@@ -164,7 +164,7 @@ def main() -> None:
     if args.command == "measure":
         measure(args.weights)
         return
-    blocks.write_or_check(m1.REPORT, m1.render(), args.check)
+    blocks.write_or_check(m1.PATH, m1.render(), args.check)
 
 
 if __name__ == "__main__":

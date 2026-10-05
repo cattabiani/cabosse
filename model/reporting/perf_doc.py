@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """The generated tables of docs/perf.md (model/perf.py's predictions), filled
-by scripts/perf_report.py. Every number comes from the model config, the
+by scripts/report_perf.py. Every number comes from the model config, the
 platform and the design files."""
 
 import paths
@@ -9,7 +9,7 @@ import perf
 
 from reporting import blocks
 
-DOC = paths.REPO / "docs" / "perf.md"
+PATH = paths.REPO / "docs" / "perf.md"
 # The inputs docs/perf.md shows: files in paths.CONFIGS, PLATFORMS, DESIGNS.
 MODEL, PLATFORM, DESIGN = "SmolLM2-135M-Instruct", "f2", "v0"
 SENSITIVITY_POSITION = 1023
@@ -128,4 +128,4 @@ def generated(model: str, platform_name: str, design_name: str) -> dict[str, str
 
 
 def render() -> str:
-    return blocks.fill(DOC.read_text(), generated(MODEL, PLATFORM, DESIGN))
+    return blocks.fill(PATH.read_text(), generated(MODEL, PLATFORM, DESIGN))

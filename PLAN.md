@@ -316,8 +316,9 @@ golden model still passes M1.
 - [ ] **Next:** `docs/architecture.md`, starting from the engine width
   (Q-25).
 - [x] Report-generation code in its own package, `model/reporting/`:
-  `blocks.py` (generated blocks), `m1.py` (`reports/M1.md`), `perf.py`
-  (`docs/perf.md`). Value formatting and the measured-vs-documented
+  `blocks.py` (generated blocks), `m1.py` (`reports/M1.md`), `perf_doc.py`
+  (`docs/perf.md`), each with `PATH` and `render()`; scripts
+  `report_m1.py` and `report_perf.py`. Value formatting and the measured-vs-documented
   comparison live on `perf.Param` (`str(p)`, `p.change_from(doc)`); the
   table code only lays out rows. No change in output.
 - [ ] F2 platform check (D-025): account set up (`docs/aws-setup.md`,
