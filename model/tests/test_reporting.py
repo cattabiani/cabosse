@@ -1,10 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""Milestone reports (model/report.py): generated blocks, and the committed
+"""Report generation (model/reporting/): generated blocks, and the committed
 reports agree with their data."""
 
+import re
+
+import paths
 import pytest
-import report
+from reporting import blocks, m1
 
 TEXT = """# Title
 
@@ -19,17 +22,17 @@ middle
 
 
 def test_fill_replaces_only_the_blocks() -> None:
-    out = report.fill(TEXT, {"a": "new a", "b": "| x |"})
+    out = blocks.fill(TEXT, {"a": "new a", "b": "| x |"})
     assert out == TEXT.replace("old\n", "new a\n").replace(
         "<!-- begin: b -->\n", "<!-- begin: b -->\n| x |\n"
     )
-    assert report.fill(out, {"a": "new a", "b": "| x |"}) == out  # idempotent
+    assert blocks.fill(out, {"a": "new a", "b": "| x |"}) == out  # idempotent
 
 
-@pytest.mark.parametrize("blocks", [{"a": "x"}, {"a": "x", "b": "y", "c": "z"}])
-def test_fill_needs_exactly_the_blocks_in_the_text(blocks: dict[str, str]) -> None:
+@pytest.mark.parametrize("given", [{"a": "x"}, {"a": "x", "b": "y", "c": "z"}])
+def test_fill_needs_exactly_the_blocks_in_the_text(given: dict[str, str]) -> None:
     with pytest.raises(AssertionError):
-        report.fill(TEXT, blocks)
+        blocks.fill(TEXT, given)
 
 
 @pytest.mark.parametrize(
@@ -43,10 +46,18 @@ def test_fill_needs_exactly_the_blocks_in_the_text(blocks: dict[str, str]) -> No
     ],
 )
 def test_tests_passed(summary: str, passed: bool) -> None:
-    assert report.tests_passed(summary) == passed
+    assert m1.tests_passed(summary) == passed
 
 
 def test_m1_report_is_up_to_date() -> None:
     """reports/M1.md shows what reports/data/M1.json says; after a new
     measurement, run: python scripts/report_m1.py render"""
-    assert report.render_m1() == report.M1_REPORT.read_text()
+    assert m1.render() == m1.PATH.read_text()
+
+
+def test_measure_deselects_a_test_that_exists() -> None:
+    """scripts/report_m1.py measure leaves out the up-to-date test by its pytest
+    id; pytest ignores an id that matches nothing, so check it here."""
+    script = (paths.REPO / "scripts" / "report_m1.py").read_text()
+    path, name = re.search(r'UP_TO_DATE = "(.+)::(\w+)"', script).groups()
+    assert f"def {name}(" in (paths.REPO / path).read_text()

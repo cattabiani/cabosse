@@ -1,54 +1,23 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""Milestone reports (reports/): prose written by hand, every measured number
-in a generated block, filled from the measurement data in reports/data/ (made
-by scripts/report_m1.py). Never type a number into a generated block.
-
-A block sits between two markers in the Markdown file:
-    <!-- begin: name -->
-    ...generated...
-    <!-- end: name -->
-"""
+"""The generated tables of the M1 checkpoint report (reports/M1.md), filled
+from the measurement data in reports/data/M1.json (made by
+scripts/report_m1.py measure)."""
 
 import json
 import re
 import statistics
-import sys
-from pathlib import Path
 
 import compare
 import paths
 
-BLOCK = re.compile(r"(<!-- begin: (\S+) -->\n).*?(<!-- end: \2 -->)", re.DOTALL)
-M1_DATA = paths.REPORTS / "data" / "M1.json"
-M1_REPORT = paths.REPORTS / "M1.md"
-M1_FIXTURES = ("tiny_greedy.json", "smollm2_greedy.json")
-M1_MAX_SECONDS_PER_TOKEN = 10  # exit criterion (PLAN.md, M1)
-M1_MIN_SEQUENCES, M1_MIN_POSITIONS = 10, 256  # exit criterion (PLAN.md, M1)
+from reporting import blocks
 
-
-def fill(text: str, blocks: dict[str, str]) -> str:
-    """Replace every block's content. Every block in the text must be given,
-    and every given block must be in the text."""
-    found = BLOCK.findall(text)
-    names = [name for _, name, _ in found]
-    assert sorted(names) == sorted(blocks), (names, sorted(blocks))
-    return BLOCK.sub(lambda m: f"{m[1]}{blocks[m[2]]}\n{m[3]}", text)
-
-
-def table(header: list[str], rows: list[list]) -> str:
-    lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
-    return "\n".join(lines + ["| " + " | ".join(str(c) for c in row) + " |" for row in rows])
-
-
-def write_or_check(path: Path, text: str, check: bool) -> None:
-    """Write a rendered report, or with check=True exit with an error if the
-    file on disk differs from it."""
-    if not check:
-        path.write_text(text)
-        print(f"written: {path}")
-    elif text != path.read_text():
-        sys.exit(f"{path} is stale: render it")
+DATA = paths.REPORTS / "data" / "M1.json"
+PATH = paths.REPORTS / "M1.md"
+FIXTURES = ("tiny_greedy.json", "smollm2_greedy.json")
+MAX_SECONDS_PER_TOKEN = 10  # exit criterion (PLAN.md, M1)
+MIN_SEQUENCES, MIN_POSITIONS = 10, 256  # exit criterion (PLAN.md, M1)
 
 
 def tests_passed(summary: str) -> bool:
@@ -56,7 +25,7 @@ def tests_passed(summary: str) -> bool:
     return " passed" in summary and not re.search(r"\b(failed|error|errors)\b", summary)
 
 
-def m1_blocks(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
+def generated(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
     comparison, tests = data["comparison"], data["tests"]
     golden, bf16 = comparison["golden"], comparison["transformers_bf16"]
     n_sequences = len(comparison["per_sequence"])
@@ -69,7 +38,7 @@ def m1_blocks(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
         return "yes" if ok else "**no**"
 
     no_worse = golden["top1"] >= bf16["top1"] and golden["logit_err_mean"] <= bf16["logit_err_mean"]
-    enough = n_sequences >= M1_MIN_SEQUENCES and min(n_positions) >= M1_MIN_POSITIONS
+    enough = n_sequences >= MIN_SEQUENCES and min(n_positions) >= MIN_POSITIONS
     fixture_runs = {
         name: f"{len(f['runs'])} prompts × {len(f['runs'][0]['tokens'])} tokens"
         for name, f in fixtures.items()
@@ -97,11 +66,11 @@ def m1_blocks(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
             met(all_passed),
         ],
         [
-            f"One SmolLM2 token ≤ {M1_MAX_SECONDS_PER_TOKEN} s",
+            f"One SmolLM2 token ≤ {MAX_SECONDS_PER_TOKEN} s",
             f"median {statistics.median(seconds):.2f} s, min {min(seconds):.2f} s, "
             f"p90 {p90:.2f} s, max {max(seconds):.2f} s ({len(seconds)} timed steps "
             f"after {data['decode']['warmup']} warmup)",
-            met(max(seconds) <= M1_MAX_SECONDS_PER_TOKEN),
+            met(max(seconds) <= MAX_SECONDS_PER_TOKEN),
         ],
     ]
 
@@ -120,7 +89,7 @@ def m1_blocks(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
     unmet = [row[0] for row in exit_rows if row[2] != "yes"]
     verdict = "**Not met:** " + "; ".join(unmet) + "." if unmet else "All M1 exit criteria are met."
 
-    per_sequence = table(
+    per_sequence = blocks.table(
         ["prompt", "top-1 golden", "top-1 BF16", "logit error golden", "logit error BF16"],
         [
             [
@@ -137,7 +106,7 @@ def m1_blocks(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
     def logits(choice: dict) -> str:
         return ", ".join(f"{tok!r} {value:.4f}" for tok, value in choice)
 
-    divergences = table(
+    divergences = blocks.table(
         ["prompt", "first difference", "golden logits there", "FP32 `transformers` logits there"],
         [
             [
@@ -153,16 +122,16 @@ def m1_blocks(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
     return {
         "verdict": verdict,
         "provenance": provenance,
-        "exit-criteria": table(["criterion", "measured", "met"], exit_rows),
+        "exit-criteria": blocks.table(["criterion", "measured", "met"], exit_rows),
         "comparison": compare.report(comparison)
         + f"\n\nFull run: {comparison['minutes']:.1f} min.",
         "per-sequence": per_sequence,
         "divergences": divergences,
-        "tests": table(["suite", "result"], [[name, f"`{s}`"] for name, s in tests.items()]),
+        "tests": blocks.table(["suite", "result"], [[name, f"`{s}`"] for name, s in tests.items()]),
     }
 
 
-def render_m1() -> str:
-    data = json.loads(M1_DATA.read_text())
-    fixtures = {name: json.loads((paths.FIXTURES / name).read_text()) for name in M1_FIXTURES}
-    return fill(M1_REPORT.read_text(), m1_blocks(data, fixtures))
+def render() -> str:
+    data = json.loads(DATA.read_text())
+    fixtures = {name: json.loads((paths.FIXTURES / name).read_text()) for name in FIXTURES}
+    return blocks.fill(PATH.read_text(), generated(data, fixtures))

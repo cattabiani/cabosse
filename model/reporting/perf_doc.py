@@ -1,19 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """The generated tables of docs/perf.md (model/perf.py's predictions), filled
-by scripts/perf_report.py. Every number comes from the model config, the
+by scripts/report_perf.py. Every number comes from the model config, the
 platform and the design files."""
 
 import paths
 import perf
-import report
 
-PERF_DOC = paths.REPO / "docs" / "perf.md"
+from reporting import blocks
+
+PATH = paths.REPO / "docs" / "perf.md"
 # The inputs docs/perf.md shows: files in paths.CONFIGS, PLATFORMS, DESIGNS.
 MODEL, PLATFORM, DESIGN = "SmolLM2-135M-Instruct", "f2", "v0"
 SENSITIVITY_POSITION = 1023
 SENSITIVITY_FACTORS = (0.5, 1.0, 2.0)
-UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 # Rows of the work table: label, Work attribute, scale, format.
 WORK_ROWS = [
     ("weights read (MB)", "weight_bytes", 1e6, "{:.2f}"),
@@ -27,26 +27,16 @@ WORK_ROWS = [
 ]
 
 
-def show(value: float, unit: str) -> str:
-    scale, name = UNITS.get(unit, (1, unit))
-    return f"{value / scale:g} {name}".strip()
-
-
 def params_table(inputs: perf.Inputs, documented: perf.Inputs | None = None) -> str:
     """One row per parameter; with `documented`, also the documented value
     next to each of our measurements."""
-    header, rows = ["parameter", "value", "status", "source"], []
-    for k, p in inputs.params.items():
-        row = [f"`{k}`", show(p.value, p.unit), p.status, p.source]
-        if documented:
-            doc = documented.params[k]
-            if p != doc and doc.value == 0:
-                raise ValueError(f"{k}: documented as 0, so no relative difference")
-            row.append(
-                "" if p == doc else f"{show(doc.value, doc.unit)} ({p.value / doc.value - 1:+.1%})"
-            )
-        rows.append(row)
-    return report.table(header + (["documented"] if documented else []), rows)
+    header = ["parameter", "value", "status", "source"] + (["documented"] if documented else [])
+    rows = [
+        [f"`{k}`", str(p), p.status, p.source]
+        + ([p.change_from(documented.params[k])] if documented else [])
+        for k, p in inputs.params.items()
+    ]
+    return blocks.table(header, rows)
 
 
 def cleared(platform: perf.Platform) -> str:
@@ -62,10 +52,13 @@ def cleared(platform: perf.Platform) -> str:
 
 def scenarios_table(design: perf.Inputs) -> str:
     def changes(overrides: dict[str, float]) -> str:
-        shown = [f"`{k}` = {show(v, design.params[k].unit)}" for k, v in overrides.items()]
+        params = design.params
+        shown = [
+            f"`{k}` = {params[k].model_copy(update={'value': v})}" for k, v in overrides.items()
+        ]
         return ", ".join(shown) or "none"
 
-    return report.table(
+    return blocks.table(
         ["scenario", "changes"], [[name, changes(o)] for name, o in design.scenarios.items()]
     )
 
@@ -77,7 +70,7 @@ def positions(config) -> list[int]:
 def work_table(config) -> str:
     cols = positions(config)
     work = [perf.Work.of(perf.ops(config, p)) for p in cols]
-    return report.table(
+    return blocks.table(
         ["per token, at position"] + [str(p) for p in cols],
         [
             [label] + [fmt.format(getattr(w, attr) / scale) for w in work]
@@ -94,7 +87,7 @@ def predictions_table(config, platform: perf.Inputs, design: perf.Inputs) -> str
             rate = f"{pred.tokens_per_s_serial:.0f}–{pred.tokens_per_s_overlapped:.0f}"
             ms = [f"{pred.terms[t] * 1e3:.3f}" for t in perf.TERMS]
             rows.append([scenario, str(p), rate, pred.bound, *ms])
-    return report.table(
+    return blocks.table(
         ["scenario", "position", "tokens/s", "limited by"] + [f"{t} (ms)" for t in perf.TERMS], rows
     )
 
@@ -112,10 +105,10 @@ def sensitivity_table(config, platform: perf.Inputs, design: perf.Inputs) -> str
             rates = [perf.predict(config, v, v, SENSITIVITY_POSITION) for v in scaled]
             cells[k].append(" / ".join(f"{r.tokens_per_s_overlapped:.0f}" for r in rates))
     rows = [[f"`{k}` ({params[k].status})", *cells[k]] for k in unsettled]
-    return report.table(["input", *design.scenarios], rows)
+    return blocks.table(["input", *design.scenarios], rows)
 
 
-def blocks(model: str, platform_name: str, design_name: str) -> dict[str, str]:
+def generated(model: str, platform_name: str, design_name: str) -> dict[str, str]:
     config = perf.load_config(model)
     platform, design = perf.load_platform(platform_name), perf.load_design(design_name)
     documented = perf.load_platform(platform_name, measured=False)
@@ -138,4 +131,4 @@ def blocks(model: str, platform_name: str, design_name: str) -> dict[str, str]:
 
 
 def render() -> str:
-    return report.fill(PERF_DOC.read_text(), blocks(MODEL, PLATFORM, DESIGN))
+    return blocks.fill(PATH.read_text(), generated(MODEL, PLATFORM, DESIGN))

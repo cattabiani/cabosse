@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Literal
 
 import paths
-from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from transformers import LlamaConfig
 
 BF16_BYTES = 2
@@ -54,6 +54,8 @@ STATUSES = {
 }
 MEASURED = "measured by us"
 CLEARED = {MEASURED, "not measurable"}  # the platform is cleared when all are
+# Units shown scaled: unit -> (divisor, shown unit).
+UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 # Ops on the matrix-vector engine that are attention, not weights.
 ATTENTION_KINDS = ("attention_scores", "attention_values")
 
@@ -83,6 +85,20 @@ class Param(BaseModel):
     unit: str = Field(min_length=1)
     status: Literal[tuple(STATUSES)]
     source: str = Field(min_length=1)
+
+    def __str__(self) -> str:
+        """The value in its unit, scaled for reading: "426.28 GB/s"."""
+        scale, unit = UNITS.get(self.unit, (1, self.unit))
+        return f"{self.value / scale:g} {unit}"
+
+    def change_from(self, doc: Param) -> str:
+        """The documented value and how far this one is from it, e.g.
+        "426.28 GB/s (-5.9%)"; empty when they are the same entry."""
+        if self == doc:
+            return ""
+        if doc.value == 0:
+            raise ValueError(f"documented as 0 ({doc.source}), so no relative difference")
+        return f"{doc} ({self.value / doc.value - 1:+.1%})"
 
 
 class Measurement(Param):
@@ -144,16 +160,9 @@ class Design(Inputs):
         return super().values() | (self.scenarios[scenario] if scenario else {})
 
 
-# A measured-values file: any of the platform's parameters, each a Measurement.
-Measured = create_model(
-    "Measured",
-    __config__=ConfigDict(extra="forbid"),
-    **{
-        k: (Measurement | None, None)
-        for k, f in Platform.model_fields.items()
-        if f.annotation is Param
-    },
-)
+# A measured-values file: platform parameter name -> Measurement.
+PLATFORM_PARAMS = tuple(k for k, f in Platform.model_fields.items() if f.annotation is Param)
+Measured = TypeAdapter(dict[Literal[PLATFORM_PARAMS], Measurement])
 
 
 def load_platform(name: str, directory: Path = paths.PLATFORMS, measured: bool = True) -> Platform:
@@ -165,7 +174,7 @@ def load_platform(name: str, directory: Path = paths.PLATFORMS, measured: bool =
     ours = directory / "measured" / f"{name}.json"
     if not measured or not ours.exists():
         return documented
-    found = Measured.model_validate_json(ours.read_text()).model_dump(exclude_none=True)
+    found = {k: m.model_dump() for k, m in Measured.validate_json(ours.read_text()).items()}
     for k, m in found.items():  # no conversion: a measurement is in the documented unit
         unit = documented.params[k].unit
         if m["unit"] != unit:

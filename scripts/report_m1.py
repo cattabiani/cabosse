@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """The M1 checkpoint report, reports/M1.md: its numbers are generated, never
-typed (model/report.py).
+typed (model/reporting/).
 
     python scripts/report_m1.py measure          # writes reports/data/M1.json
     python scripts/report_m1.py render           # fills reports/M1.md from it
@@ -33,15 +33,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "model"))
 import compare  # noqa: E402
 import fixtures  # noqa: E402
 import paths  # noqa: E402
-import report  # noqa: E402
 from golden import decoder  # noqa: E402
+from reporting import blocks, m1  # noqa: E402
 
 POSITIONS = 256  # per comparison sequence
 DECODE_WARMUP = 4  # untimed decode steps first (caches, allocator)
 DECODE_STEPS = 32  # then timed decode steps
 QUIET_LOAD = 1.0  # 1-minute load average above which timing is suspect
 # pytest arguments. The report's own up-to-date test waits for this data.
-UP_TO_DATE = "model/tests/test_report.py::test_m1_report_is_up_to_date"
+UP_TO_DATE = "model/tests/test_reporting.py::test_m1_report_is_up_to_date"
 SUITES = {"fast": ["--deselect", UP_TO_DATE], "slow": ["-m", "slow"]}
 
 
@@ -148,9 +148,9 @@ def measure(weights: Path) -> None:
     data["tests"] = {name: pytest_summary(extra) for name, extra in SUITES.items()}
     print(data["tests"])
 
-    report.M1_DATA.parent.mkdir(parents=True, exist_ok=True)
-    report.M1_DATA.write_text(json.dumps(data, indent=1) + "\n")
-    print(f"written: {report.M1_DATA}")
+    m1.DATA.parent.mkdir(parents=True, exist_ok=True)
+    m1.DATA.write_text(json.dumps(data, indent=1) + "\n")
+    print(f"written: {m1.DATA}")
 
 
 def main() -> None:
@@ -164,7 +164,7 @@ def main() -> None:
     if args.command == "measure":
         measure(args.weights)
         return
-    report.write_or_check(report.M1_REPORT, report.render_m1(), args.check)
+    blocks.write_or_check(m1.PATH, m1.render(), args.check)
 
 
 if __name__ == "__main__":
