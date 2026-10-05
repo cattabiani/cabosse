@@ -52,7 +52,10 @@ def cleared(platform: perf.Platform) -> str:
 
 def scenarios_table(design: perf.Inputs) -> str:
     def changes(overrides: dict[str, float]) -> str:
-        shown = [f"`{k}` = {perf.show(v, design.params[k].unit)}" for k, v in overrides.items()]
+        params = design.params
+        shown = [
+            f"`{k}` = {params[k].model_copy(update={'value': v})}" for k, v in overrides.items()
+        ]
         return ", ".join(shown) or "none"
 
     return blocks.table(

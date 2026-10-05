@@ -87,7 +87,9 @@ class Param(BaseModel):
     source: str = Field(min_length=1)
 
     def __str__(self) -> str:
-        return show(self.value, self.unit)
+        """The value in its unit, scaled for reading: "426.28 GB/s"."""
+        scale, unit = UNITS.get(self.unit, (1, self.unit))
+        return f"{self.value / scale:g} {unit}"
 
     def change_from(self, doc: Param) -> str:
         """The documented value and how far this one is from it, e.g.
@@ -97,12 +99,6 @@ class Param(BaseModel):
         if doc.value == 0:
             raise ValueError(f"documented as 0 ({doc.source}), so no relative difference")
         return f"{doc} ({self.value / doc.value - 1:+.1%})"
-
-
-def show(value: float, unit: str) -> str:
-    """A value in its unit, scaled for reading: 426280000000.0 B/s -> "426.28 GB/s"."""
-    scale, name = UNITS.get(unit, (1, unit))
-    return f"{value / scale:g} {name}".strip()
 
 
 class Measurement(Param):
