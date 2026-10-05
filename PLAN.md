@@ -189,6 +189,17 @@ owner's approval and a budget (rule 3). M8 keeps the Cabosse wrapper.
 *Why:* the architecture and the perf model rest on these numbers, and some
 are not in any public document.
 
+**D-026 (2026-10-05) — No example-design build in M2; HBM and DDR are
+measured with our own design in M8.** The F2 check ran AWS's public
+`cl_sde` image only (no build). No public image measures HBM or DDR, and
+`cl_mem_perf` needs a full Vivado build of hours. Its numbers would not
+change the design: engine width, lanes and ports are RTL parameters, the
+first build uses our best guess from the documented values, and a rebuild
+fixes it if the F2 says otherwise. M8 measures HBM per port and in total
+with the Cabosse wrapper; until then the perf model keeps the documented
+values as "quoted". *Why:* a build of AWS's design costs as much as a build
+of ours and only answers a question about theirs.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -321,10 +332,18 @@ golden model still passes M1.
   `report_m1.py` and `report_perf.py`. Value formatting and the measured-vs-documented
   comparison live on `perf.Param` (`str(p)`, `p.change_from(doc)`); the
   table code only lays out rows. No change in output.
-- [ ] F2 platform check (D-025): account set up (`docs/aws-setup.md`,
-  profile `cabosse`, `eu-central-1`, budgets on); F instance quota of 24
-  vCPUs requested 2026-10-04, pending. Then: scripts to launch, build, run
-  and stop; results into `docs/f2.md` as measured.
+- [x] F2 platform check (D-025, D-026): account set up (`docs/aws-setup.md`,
+  profile `cabosse`, `eu-central-1`, budgets on, F quota 24 vCPUs). On
+  2026-10-05 one f2.6xlarge loaded AWS's public `cl_sde` image
+  (`scripts/f2/measure_sde.sh`; raw output in `reports/data/f2/`): PCIe link
+  16 GT/s x8; host-to-card streaming up to 10.55 GB/s and card-to-host up to
+  14.21 GB/s (64 KiB packets); FPGA core power (Vccint) 6–9 W; no clock
+  readout (the image has no clock generator). No perf-model value is
+  measured by us yet: HBM and DDR wait for M8 (D-026).
+  Resolves Q-16: a 30 USD monthly budget and a zero-spend alert; each
+  launch needs the owner's OK with a time limit; instances terminate
+  themselves at the limit, and every session ends with a check that
+  nothing is left.
 
 ### M3 — Toolchain and FP units
 **What:** OSS CAD Suite (Verilator, Yosys with the slang SystemVerilog
@@ -408,15 +427,14 @@ checkpoint.
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-04 | Vivado builds for F2: local machine or AWS build instance? | M2, F2 check (D-025). Leaning AWS: the FPGA Developer AMI includes the Vivado license on EC2; local needs a license for the VU47P (to verify). |
+| Q-04 | Vivado builds for F2: local machine or AWS build instance? | First F2 build (M8, D-026). Leaning AWS: the FPGA Developer AMI (Marketplace subscription done 2026-10-05) includes the Vivado license on EC2; local needs a license for the VU47P (to verify). |
 | Q-10 | How many HBM ports the engine reads in parallel, and how weights are spread across them. | M2. This sets the bandwidth bound. |
 | Q-11 | Attention p·V: store V transposed, or add an engine mode for `Σ pᵢ·vᵢ`? | M2. |
 | Q-22 | Hide the adder latency with `A` partial sums per row (current spec), or by rotating `A` rows per lane (one running sum per row, no tree)? | M2, together with the weight memory layout. Rotating rows gives plain sequential sums; it equals `dot` with `A` = 1. |
-| Q-25 | Engine width: how many multiply-adds per cycle, and how organised (`L` lanes × elements per lane per cycle)? | M2, architecture. The perf model: 852 per cycle at 250 MHz keeps up with HBM at 450 MHz at position 0, 990 at position 1023; the summation order (`A`, Q-22) depends on it. |
+| Q-25 | Engine width: how many multiply-adds per cycle, and how organised (`L` lanes × elements per lane per cycle)? | M2, architecture. The perf model: 852 per cycle at 250 MHz keeps up with HBM at 450 MHz at position 0, 990 at position 1023; the summation order (`A`, Q-22) depends on it. Size it for HBM ports at both 250 and 450 MHz until M8 measures (D-026). |
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
-| Q-16 | F2 budget and cost controls. | M2, before the F2 check (D-025). Monthly and zero-spend budget alarms (`docs/aws-setup.md`); scripts stop every instance and check; cap set by the owner. |
 | Q-17 | ECP5 board and host link. | Before M11. |
 | Q-18 | Do ECP5 before F2? | M7 checkpoint. |
 | Q-19 | Open PDK and shuttle (SKY130, GF180MCU, IHP SG13G2; Tiny Tapeout, …). | M11 checkpoint. |
