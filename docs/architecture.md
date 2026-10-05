@@ -13,15 +13,13 @@ written out as commands, the vector unit and the controller. Choices marked
 
 ## How a token runs
 
-The host loads three things once: the image (the circuits), the weights
-(into HBM, over PCIe), and the command list (one decode step, into an
-on-chip buffer). Then, per token, it writes the token's id and the position
-into registers and starts the step. The controller runs the whole command
-list on its own; the host sees nothing until the logits are ready (D-003).
-Weights, the KV cache and the command list stay on the card between tokens.
-A new conversation only resets the position: attention at position `p` reads
-cache entries `0…p`, so older entries are never read again and are
-overwritten as the new conversation grows.
+The host loads the image, the weights (into HBM, over PCIe) and the command
+list for one decode step (on chip) once. Per token, it writes the token id
+and the position into registers and starts the step; the controller runs
+the whole command list with no host involvement until the logits are ready
+(D-003). Weights, KV cache and command list stay on the card between
+tokens. A new conversation resets the position; attention at position `p`
+reads only cache entries `0…p`, so stale entries need no clearing.
 
 ## Blocks
 
@@ -42,15 +40,12 @@ HBM IP, the shell ports, clocks) sits in `platforms/f2/`.
 **Shape:** `L` = 128 lanes, each doing 4 multiply-adds per cycle, with `A` =
 16 partial sums per lane: 512 multiply-adds per cycle.
 
-- A lane computes one row at a time: one dot product, the loop of
-  numerics.md section 3. Each cycle it takes the row's next 4 weights and
-  the matching 4 elements of the input vector, which is the same for all
-  lanes.
-- Element `k` of a row goes into partial sum `k mod 16`. Each of the lane's
-  4 multiply-add units owns 4 of the 16 sums and returns to each one every 4
-  cycles, so a unit's accumulate loop (multiply, align, add, round, back
-  into the sum) has 4 cycles to finish. The units are pipelined: each takes
-  a new pair every cycle.
+- A lane computes one row at a time (numerics.md, section 3): each cycle
+  the row's next 4 weights times the matching 4 elements of the input
+  vector, which is broadcast to all lanes.
+- Element `k` goes into partial sum `k mod 16`. Each of the 4 pipelined
+  multiply-add units owns 4 of the sums, so its accumulate loop has 4
+  cycles.
 - At the end of a row the 16 sums are added in the fixed tree of section 3
   (15 adds), on one extra adder per lane, while the lane runs its next row.
 - Rows go in passes of 128. A matrix whose row count is not a multiple of
