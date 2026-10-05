@@ -315,6 +315,11 @@ golden model still passes M1.
   marked not measurable.
 - [ ] **Next:** `docs/architecture.md`, starting from the engine width
   (Q-25).
+- Later (refactor, no behaviour change): move the report-generation code
+  (`model/report.py`, `model/perf_report.py`) into a `model/reporting/`
+  package (`blocks.py`, `m1.py`, `perf.py`), and put value formatting and the
+  measured-vs-documented comparison on `perf.Param` (`str(p)`,
+  `p.change_from(doc)`), so the table code only lays out rows.
 - [ ] F2 platform check (D-025): account set up (`docs/aws-setup.md`,
   profile `cabosse`, `eu-central-1`, budgets on); F instance quota of 24
   vCPUs requested 2026-10-04, pending. Then: scripts to launch, build, run
