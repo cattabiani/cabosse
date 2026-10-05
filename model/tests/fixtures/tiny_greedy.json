@@ -81,7 +81,7 @@
     187,
     41
    ],
-   "logits_sha256": "cd93acca499d888dca718fdaae592cbe258864a64a6309c4a6c9a4c01b5a076d"
+   "logits_sha256": "29a3147cf344665badaabc89448d7f53203797c6f1c42d05f4e44c0c2df05bb3"
   },
   {
    "prompt": [
@@ -161,7 +161,7 @@
     148,
     104
    ],
-   "logits_sha256": "4950de7de80bc4f7e20a1edc964940b68fd69c0cc8c2a86c04a0688abf287298"
+   "logits_sha256": "5af5b0fe8bea19e64bf78f2a3e7378079c95c348a30651b71ad1a1a638ac39cb"
   },
   {
    "prompt": [
@@ -248,7 +248,7 @@
     158,
     89
    ],
-   "logits_sha256": "c1043441b2f7ca6123eee31a9b5716c1812c93a46f8caaa1f4c3578a2e73d4ca"
+   "logits_sha256": "0e18dbef05cbbf9a93df0aa07cdd2375814d6adf1423393a97ba23da4bd86443"
   }
  ]
 }

@@ -200,6 +200,16 @@ with the Cabosse wrapper; until then the perf model keeps the documented
 values as "quoted". *Why:* a build of AWS's design costs as much as a build
 of ours and only answers a question about theirs.
 
+**D-027 (2026-10-06) — Engine: 128 lanes × 4 multiply-adds, `A` = 16.**
+512 multiply-adds per cycle use what the 32 HBM ports deliver at 250 MHz.
+4 per lane is the most a 64-long attention row allows: its 16 partial sums
+(4 per multiply-add unit, for a 4-cycle accumulate loop) take a 15-add final
+sum, which fits in the next row's 16 cycles. Fewer, wider lanes stall on
+attention; more, narrower lanes leave lanes idle on small matrices
+(`docs/architecture.md`, `docs/perf.md`). `A` = 16 replaces the provisional
+8 in `docs/numerics.md`. *Why:* the best engine use across positions of the
+shapes compared; `L` can grow later without changing the bits.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -297,7 +307,7 @@ golden model still passes M1.
   idles. `L` = 128 wastes 10–25% on some matrices. 64 lanes are a few percent
   of the F2 FPGA (to verify); memory bandwidth, not area, limits `L`.
   **Revised by the perf model:** 64 multiply-adds per cycle at 250 MHz
-  leaves the engine, not memory, as the limit; see Q-25.
+  leaves the engine, not memory, as the limit; see Q-25 (resolved by D-027).
 - The final tree can overlap the next row with one small extra adder per
   lane (0% overhead), or reuse the lane's adder (about 2%). The bits are the
   same either way.
@@ -325,13 +335,21 @@ golden model still passes M1.
   report says "provisional" until every platform value is measured by us or
   marked not measurable.
 - [ ] `docs/architecture.md`, draft: how a token runs, the blocks, the
-  engine, memory and clocks. Proposed, for the owner's approval: 128 lanes
-  × 4 multiply-adds, `A` = 16 (Q-25, Q-22); each HBM port on its own
+  engine, memory and clocks. Engine decided: 128 lanes × 4 multiply-adds,
+  `A` = 16 (D-027; resolves Q-25 and Q-22). Proposed, for the owner's
+  approval: each HBM port on its own
   channel, weights in the lanes' read order (Q-10); K and V stored as
   written and staged through an on-chip tile buffer (Q-11); one 250 MHz
   clock. The perf model now counts idle lanes and the final sum of short
   rows. Still to write: register map, command format, one token as
-  commands, vector unit, controller. `A` = 16 changes numerics.md (own PR).
+  commands, vector unit, controller.
+- [x] `A` = 16 (D-027) in `docs/numerics.md` and the golden model; greedy
+  fixtures regenerated. Teacher-forced comparison rerun on the M1 set (10
+  prompts × 256 positions, `reports/data/M2-accumulators-16-compare.json`):
+  still well ahead of BF16 `transformers` on every measure; against `A` = 8,
+  top-1 0.9965 vs 0.9930 and mean KL lower, mean logit error 1.6% higher.
+  `S` (vector-unit reductions) stays provisional 8 until the vector unit is
+  designed.
 - [x] Report-generation code in its own package, `model/reporting/`:
   `blocks.py` (generated blocks), `m1.py` (`reports/M1.md`), `perf_doc.py`
   (`docs/perf.md`), each with `PATH` and `render()`; scripts
@@ -436,8 +454,6 @@ checkpoint.
 | Q-04 | Vivado builds for F2: local machine or AWS build instance? | First F2 build (M8, D-026). Leaning AWS: the FPGA Developer AMI (Marketplace subscription done 2026-10-05) includes the Vivado license on EC2; local needs a license for the VU47P (to verify). |
 | Q-10 | How many HBM ports the engine reads in parallel, and how weights are spread across them. | M2. This sets the bandwidth bound. Proposed in `docs/architecture.md`: each port on its own channel, no switch. |
 | Q-11 | Attention p·V: store V transposed, or add an engine mode for `Σ pᵢ·vᵢ`? | M2. Proposed in `docs/architecture.md`: neither; V stored as written, read across positions from an on-chip tile. |
-| Q-22 | Hide the adder latency with `A` partial sums per row (current spec), or by rotating `A` rows per lane (one running sum per row, no tree)? | M2, together with the weight memory layout. Rotating rows gives plain sequential sums; it equals `dot` with `A` = 1. Proposed in `docs/architecture.md`: `A` partial sums (rotation needs one multiply-add per lane). |
-| Q-25 | Engine width: how many multiply-adds per cycle, and how organised (`L` lanes × elements per lane per cycle)? | M2, architecture. The perf model: 852 per cycle at 250 MHz keeps up with HBM at 450 MHz at position 0, 990 at position 1023; the summation order (`A`, Q-22) depends on it. Size it for HBM ports at both 250 and 450 MHz until M8 measures (D-026). Proposed in `docs/architecture.md`: 128 lanes × 4, `A` = 16. |
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |

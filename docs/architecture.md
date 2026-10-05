@@ -35,7 +35,7 @@ reads only cache entries `0…p`, so stale entries need no clearing.
 The core exposes AXI-Lite and AXI only (D-004). Everything F2-specific (the
 HBM IP, the shell ports, clocks) sits in `platforms/f2/`.
 
-## Engine **[proposed]**
+## Engine (D-027)
 
 **Shape:** `L` = 128 lanes, each doing 4 multiply-adds per cycle, with `A` =
 16 partial sums per lane: 512 multiply-adds per cycle.
@@ -73,9 +73,7 @@ use"):
 **Numerics.** Only `A` affects the result bits. `L` and the multiply-adds
 per lane change the speed, not the bits, so the engine can grow (more
 lanes) without a numerics change. `A` = 16 replaces the provisional `A` = 8
-of numerics.md; changing it is a numerics change (AGENTS.md rule 8): the
-spec, the golden model, and the M1 comparison rerun, in their own pull
-request once approved.
+of numerics.md.
 
 **Requirement for M3.** The multiply-add unit's accumulate loop must close
 in 4 cycles at 250 MHz. If it needs more, `A` grows with it (8 cycles would
