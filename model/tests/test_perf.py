@@ -172,19 +172,23 @@ def platform_files(tmp_path, measured: dict | None) -> Path:
     """A copy of the F2 platform file in tmp_path, plus a measured file."""
     shutil.copy(paths.PLATFORMS / "f2.json", tmp_path / "f2.json")
     if measured is not None:
-        (tmp_path / "f2.measured.json").write_text(json.dumps(measured))
+        (tmp_path / "measured").mkdir()
+        (tmp_path / "measured" / "f2.json").write_text(json.dumps(measured))
     return tmp_path
 
 
 def test_a_measurement_replaces_the_documented_entry(tmp_path) -> None:
+    """In the platform, and in the report: the measurement with the
+    documented value next to it, and one value fewer to measure."""
     directory = platform_files(tmp_path, {"hbm_read_bytes_per_s": MEASUREMENT})
     doc = perf.load_platform("f2", directory, measured=False)
     ours = perf.load_platform("f2", directory)
     assert ours.hbm_read_bytes_per_s == perf.Param(**MEASUREMENT)  # value, status and source
     others = {k: p for k, p in ours.params.items() if k != "hbm_read_bytes_per_s"}
     assert others == {k: p for k, p in doc.params.items() if k != "hbm_read_bytes_per_s"}
-    assert "hbm_read_bytes_per_s" not in ours.unmeasured()
-    assert "hbm_read_bytes_per_s" in doc.unmeasured()
+    row = next(r for r in perf_report.params_table(ours, doc).splitlines() if "hbm_read" in r)
+    assert "401.2 GB/s | measured by us" in row and "426.28 GB/s (-5.9%)" in row
+    assert "6 of 7" in perf_report.cleared(ours) and "7 of 7" in perf_report.cleared(doc)
 
 
 def test_without_a_measured_file_the_documented_values_hold(tmp_path) -> None:
@@ -197,10 +201,6 @@ def test_without_a_measured_file_the_documented_values_hold(tmp_path) -> None:
 def test_cleared_when_every_value_is_measured_or_not_measurable(tmp_path) -> None:
     doc = perf.load_platform("f2")
     measured = {k: {**p.model_dump(), "status": perf.MEASURED} for k, p in doc.params.items()}
-    measured["hbm_bytes"]["status"] = "not measurable"  # not allowed in the measured file
-    with pytest.raises(AssertionError):
-        perf.load_platform("f2", platform_files(tmp_path, measured))
-    measured["hbm_bytes"]["status"] = perf.MEASURED
     assert perf.load_platform("f2", platform_files(tmp_path, measured)).unmeasured() == []
 
 
@@ -208,6 +208,9 @@ def test_cleared_when_every_value_is_measured_or_not_measurable(tmp_path) -> Non
     "measured",
     [
         {"hbm_read_bytes_per_s": {**MEASUREMENT, "status": "quoted"}},  # not a measurement
+        {
+            "hbm_read_bytes_per_s": {**MEASUREMENT, "status": "not measurable"}
+        },  # goes in the doc file
         {"hbm_read_bytes_per_sec": MEASUREMENT},  # a typo in the name
         {"hbm_read_bytes_per_s": {**MEASUREMENT, "source": ""}},  # no source
         {"hbm_read_bytes_per_s": {**MEASUREMENT, "date": "x"}},  # an unknown field
@@ -239,21 +242,12 @@ def test_environment_variables_do_not_fill_in(tmp_path, monkeypatch) -> None:
         perf.load_platform("f2", directory)
 
 
-def test_the_report_shows_the_documented_value_next_to_a_measurement(tmp_path) -> None:
-    directory = platform_files(tmp_path, {"hbm_read_bytes_per_s": MEASUREMENT})
-    ours = perf.load_platform("f2", directory)
-    doc = perf.load_platform("f2", directory, measured=False)
-    row = next(r for r in perf_report.platform_table(ours, doc).splitlines() if "hbm_read" in r)
-    assert "401.2 GB/s | measured by us" in row and "426.28 GB/s (-5.9%)" in row
-    assert "6 of 7" in perf_report.cleared(ours)
-
-
 @pytest.mark.parametrize(
     ("config", "platform", "design"),
     list(
         product(
             sorted(p.stem for p in paths.CONFIGS.glob("*.json")),
-            sorted(p.stem for p in paths.PLATFORMS.glob("*.json") if ".measured" not in p.name),
+            sorted(p.stem for p in paths.PLATFORMS.glob("*.json")),
             sorted(p.stem for p in paths.DESIGNS.glob("*.json")),
         )
     ),

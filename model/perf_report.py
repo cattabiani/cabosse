@@ -32,22 +32,19 @@ def show(value: float, unit: str) -> str:
     return f"{value / scale:g} {name}".strip()
 
 
-def params_table(inputs: perf.Inputs) -> str:
-    return report.table(
-        ["parameter", "value", "status", "source"],
-        [[f"`{k}`", show(p.value, p.unit), p.status, p.source] for k, p in inputs.params.items()],
-    )
-
-
-def platform_table(platform: perf.Platform, documented: perf.Platform) -> str:
-    """The values in use, and the documented value next to each of our
-    measurements."""
-    rows = []
-    for k, p in platform.params.items():
-        doc = documented.params[k]
-        vs_doc = "" if p == doc else f"{show(doc.value, doc.unit)} ({p.value / doc.value - 1:+.1%})"
-        rows.append([f"`{k}`", show(p.value, p.unit), p.status, p.source, vs_doc])
-    return report.table(["parameter", "value", "status", "source", "documented"], rows)
+def params_table(inputs: perf.Inputs, documented: perf.Inputs | None = None) -> str:
+    """One row per parameter; with `documented`, also the documented value
+    next to each of our measurements."""
+    header, rows = ["parameter", "value", "status", "source"], []
+    for k, p in inputs.params.items():
+        row = [f"`{k}`", show(p.value, p.unit), p.status, p.source]
+        if documented:
+            doc = documented.params[k]
+            row.append(
+                "" if p == doc else f"{show(doc.value, doc.unit)} ({p.value / doc.value - 1:+.1%})"
+            )
+        rows.append(row)
+    return report.table(header + (["documented"] if documented else []), rows)
 
 
 def cleared(platform: perf.Platform) -> str:
@@ -123,8 +120,8 @@ def blocks(model: str, platform_name: str, design_name: str) -> dict[str, str]:
     factors = " / ".join(f"×{f:g}" for f in SENSITIVITY_FACTORS)
     return {
         "platform": f"{platform.name}, from `model/platforms/{platform_name}.json` and "
-        f"`{platform_name}.measured.json`:\n\n"
-        + platform_table(platform, documented)
+        f"`measured/{platform_name}.json`:\n\n"
+        + params_table(platform, documented)
         + "\n\n"
         + cleared(platform),
         "design": f"{design.name}, from `model/designs/{design_name}.json`:\n\n"

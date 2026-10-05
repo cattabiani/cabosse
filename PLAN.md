@@ -309,7 +309,7 @@ golden model still passes M1.
   the weights' and the vector unit becomes the limit. All numbers in
   `docs/perf.md`; they change with the inputs.
 - [x] Inputs validated with pydantic; our measurements
-  (`model/platforms/f2.measured.json`) replace documented values entry by
+  (`model/platforms/measured/f2.json`) replace documented values entry by
   entry (pydantic-settings), with the documented value kept alongside. The
   report says "provisional" until every platform value is measured by us or
   marked not measurable.

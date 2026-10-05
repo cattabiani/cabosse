@@ -7,7 +7,7 @@ Generic over three inputs:
 - the model's shape (a `transformers` config): what a token computes;
 - the platform (model/platforms/*.json): what the hardware gives, each value
   with a status (quoted, measured, guess, ...) and a source; our own
-  measurements (*.measured.json) replace the documented values;
+  measurements (platforms/measured/*.json) replace the documented values;
 - the design (model/designs/*.json): what we choose (clock, multiply-adds
   per cycle, ...), with named scenarios that override it.
 
@@ -107,7 +107,7 @@ class Inputs(BaseSettings):
 
 class Platform(Inputs):
     """What the hardware gives. Documented values come from
-    platforms/<name>.json; our measurements, in platforms/<name>.measured.json,
+    platforms/<name>.json; our measurements, in platforms/measured/<name>.json,
     replace them entry by entry (load_platform)."""
 
     hbm_bytes: Param
@@ -148,7 +148,7 @@ def load_platform(name: str, directory: Path = paths.PLATFORMS, measured: bool =
     """The documented values, each replaced by our measurement when there is
     one (measured=False: the documented values alone). A measurement replaces
     the whole entry, so its status and source come with it."""
-    doc, ours = directory / f"{name}.json", directory / f"{name}.measured.json"
+    doc, ours = directory / f"{name}.json", directory / "measured" / f"{name}.json"
     assert doc.exists(), doc
     if measured and ours.exists():
         statuses = {k: v["status"] for k, v in json.loads(ours.read_text()).items()}

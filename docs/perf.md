@@ -32,14 +32,14 @@ Assumptions, to revisit in `docs/architecture.md`:
 
 Each value has a status. "Choice" is ours to make in M2; "guess" and "to
 verify" are not yet known. Our own measurements go in
-`model/platforms/<platform>.measured.json`, written by the measurement
+`model/platforms/measured/<platform>.json`, written by the measurement
 scripts: each one replaces the documented entry (value, status and source),
 and the documented value stays visible next to it. The platform is cleared
 when every value is measured by us, or marked "not measurable" with a
 reason (D-025).
 
 <!-- begin: platform -->
-AWS F2 (f2.6xlarge, one VU47P), from `model/platforms/f2.json` and `f2.measured.json`:
+AWS F2 (f2.6xlarge, one VU47P), from `model/platforms/f2.json` and `measured/f2.json`:
 
 | parameter | value | status | source | documented |
 |---|---|---|---|---|
