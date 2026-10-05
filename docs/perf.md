@@ -44,7 +44,7 @@ AWS F2 (f2.6xlarge, one VU47P), from `model/platforms/f2.json` and `measured/f2.
 | parameter | value | status | source | documented |
 |---|---|---|---|---|
 | `hbm_bytes` | 16 GiB | quoted | docs/f2.md [1], [5]: 16 GiB |  |
-| `hbm_ports` | 32 | quoted | docs/f2.md [5] |  |
+| `hbm_ports` | 32 ports | quoted | docs/f2.md [5] |  |
 | `hbm_port_bytes` | 32 B/cycle | to verify | docs/f2.md [6]: 256-bit read port |  |
 | `hbm_port_max_clock_hz` | 450 MHz | quoted | docs/f2.md [5] |  |
 | `hbm_read_bytes_per_s` | 426.28 GB/s | measured by AWS | docs/f2.md [5]: CL_MEM_PERF, 32 ports at 450 MHz, units not stated |  |

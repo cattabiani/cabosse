@@ -40,6 +40,8 @@ def params_table(inputs: perf.Inputs, documented: perf.Inputs | None = None) -> 
         row = [f"`{k}`", show(p.value, p.unit), p.status, p.source]
         if documented:
             doc = documented.params[k]
+            if p != doc and doc.value == 0:
+                raise ValueError(f"{k}: documented as 0, so no relative difference")
             row.append(
                 "" if p == doc else f"{show(doc.value, doc.unit)} ({p.value / doc.value - 1:+.1%})"
             )

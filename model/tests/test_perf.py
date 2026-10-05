@@ -214,6 +214,7 @@ def test_cleared_when_every_value_is_measured_or_not_measurable(tmp_path) -> Non
         {"hbm_read_bytes_per_sec": MEASUREMENT},  # a typo in the name
         {"hbm_read_bytes_per_s": {**MEASUREMENT, "source": ""}},  # no source
         {"hbm_read_bytes_per_s": {**MEASUREMENT, "date": "x"}},  # an unknown field
+        {"hbm_read_bytes_per_s": {**MEASUREMENT, "unit": ""}},  # no unit
     ],
 )
 def test_a_bad_measured_file_is_rejected(tmp_path, measured: dict) -> None:
@@ -228,6 +229,22 @@ def test_bad_design_inputs_are_rejected() -> None:
             perf.Design(**raw | {"clock_hz": bad})
     with pytest.raises(ValidationError, match="unknown"):
         perf.Design(**raw | {"scenarios": {"x": {"clock_mhz": 1}}})
+
+
+def test_a_measurement_in_another_unit_is_rejected(tmp_path) -> None:
+    """No conversion: 401.2 GB/s written as {"value": 401.2, "unit": "GB/s"}
+    would otherwise be read as 401.2 B/s."""
+    measured = {"hbm_read_bytes_per_s": {**MEASUREMENT, "value": 401.2, "unit": "GB/s"}}
+    with pytest.raises(ValueError, match="hbm_read_bytes_per_s in 'GB/s', documented in 'B/s'"):
+        perf.load_platform("f2", platform_files(tmp_path, measured))
+
+
+def test_a_documented_zero_cannot_be_compared(tmp_path) -> None:
+    doc = perf.load_platform("f2")
+    zero = doc.model_copy(update={"hbm_ports": doc.hbm_ports.model_copy(update={"value": 0})})
+    ours = zero.model_copy(update={"hbm_ports": perf.Param(**{**MEASUREMENT, "unit": "ports"})})
+    with pytest.raises(ValueError, match="hbm_ports: documented as 0"):
+        perf_report.params_table(ours, zero)
 
 
 @pytest.mark.parametrize(

@@ -80,7 +80,7 @@ class Param(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
     value: float
-    unit: str
+    unit: str = Field(min_length=1)
     status: Literal[tuple(STATUSES)]
     source: str = Field(min_length=1)
 
@@ -163,7 +163,11 @@ def load_platform(name: str, directory: Path = paths.PLATFORMS, measured: bool =
     raw = json.loads((directory / f"{name}.json").read_text())
     ours = directory / "measured" / f"{name}.json"
     if measured and ours.exists():
-        raw |= Measured.model_validate_json(ours.read_text()).model_dump(exclude_none=True)
+        found = Measured.model_validate_json(ours.read_text()).model_dump(exclude_none=True)
+        for k, m in found.items():  # no conversion: a measurement is in the documented unit
+            if m["unit"] != raw[k]["unit"]:
+                raise ValueError(f"{ours}: {k} in {m['unit']!r}, documented in {raw[k]['unit']!r}")
+        raw |= found
     return Platform(**raw)
 
 

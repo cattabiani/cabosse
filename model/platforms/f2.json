@@ -1,7 +1,7 @@
 {
  "name": "AWS F2 (f2.6xlarge, one VU47P)",
  "hbm_bytes": {"value": 17179869184, "unit": "B", "status": "quoted", "source": "docs/f2.md [1], [5]: 16 GiB"},
- "hbm_ports": {"value": 32, "unit": "", "status": "quoted", "source": "docs/f2.md [5]"},
+ "hbm_ports": {"value": 32, "unit": "ports", "status": "quoted", "source": "docs/f2.md [5]"},
  "hbm_port_bytes": {"value": 32, "unit": "B/cycle", "status": "to verify", "source": "docs/f2.md [6]: 256-bit read port"},
  "hbm_port_max_clock_hz": {"value": 450e6, "unit": "Hz", "status": "quoted", "source": "docs/f2.md [5]"},
  "hbm_read_bytes_per_s": {"value": 426.28e9, "unit": "B/s", "status": "measured by AWS", "source": "docs/f2.md [5]: CL_MEM_PERF, 32 ports at 450 MHz, units not stated"},
