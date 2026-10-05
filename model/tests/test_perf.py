@@ -239,6 +239,15 @@ def test_a_measurement_in_another_unit_is_rejected(tmp_path) -> None:
         perf.load_platform("f2", platform_files(tmp_path, measured))
 
 
+def test_a_measurement_does_not_complete_the_documented_file(tmp_path) -> None:
+    directory = platform_files(tmp_path, {"hbm_read_bytes_per_s": MEASUREMENT})
+    raw = json.loads((directory / "f2.json").read_text())
+    del raw["hbm_read_bytes_per_s"]
+    (directory / "f2.json").write_text(json.dumps(raw))
+    with pytest.raises(ValidationError, match="hbm_read_bytes_per_s"):
+        perf.load_platform("f2", directory)
+
+
 def test_a_documented_zero_cannot_be_compared(tmp_path) -> None:
     doc = perf.load_platform("f2")
     zero = doc.model_copy(update={"hbm_ports": doc.hbm_ports.model_copy(update={"value": 0})})

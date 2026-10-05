@@ -161,14 +161,16 @@ def load_platform(name: str, directory: Path = paths.PLATFORMS, measured: bool =
     one (measured=False: the documented values alone). A measurement replaces
     the whole entry, so its status and source come with it."""
     raw = json.loads((directory / f"{name}.json").read_text())
+    documented = Platform(**raw)  # complete on its own, whatever is measured
     ours = directory / "measured" / f"{name}.json"
-    if measured and ours.exists():
-        found = Measured.model_validate_json(ours.read_text()).model_dump(exclude_none=True)
-        for k, m in found.items():  # no conversion: a measurement is in the documented unit
-            if m["unit"] != raw[k]["unit"]:
-                raise ValueError(f"{ours}: {k} in {m['unit']!r}, documented in {raw[k]['unit']!r}")
-        raw |= found
-    return Platform(**raw)
+    if not measured or not ours.exists():
+        return documented
+    found = Measured.model_validate_json(ours.read_text()).model_dump(exclude_none=True)
+    for k, m in found.items():  # no conversion: a measurement is in the documented unit
+        unit = documented.params[k].unit
+        if m["unit"] != unit:
+            raise ValueError(f"{ours}: {k} in {m['unit']!r}, documented in {unit!r}")
+    return Platform(**raw | found)
 
 
 def load_design(name: str, directory: Path = paths.DESIGNS) -> Design:
