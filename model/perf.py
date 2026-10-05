@@ -8,8 +8,8 @@ Generic over three inputs:
 - the platform (model/platforms/*.json): what the hardware gives, each value
   with a status (quoted, measured, guess, ...) and a source; our own
   measurements (platforms/measured/*.json) replace the documented values;
-- the design (model/designs/*.json): what we choose (clock, multiply-adds
-  per cycle, ...), with named scenarios that override it.
+- the design (model/designs/*.json): what we choose (clock, lanes, ...),
+  with named scenarios that override it.
 
 ops() lists the work of one decode step in the order of golden/decoder.py's
 step(); a test checks that against the golden model. predict() turns the work
@@ -20,10 +20,14 @@ and the fixed cost per command. The token takes at least the largest of them
 Assumptions: weights and the KV cache live in HBM and are read once per token
 (K and V once per KV head, shared by its query heads); activations stay on
 chip; one command per operation; the HBM read rate scales with the memory
-clock from the measured rate at the port's maximum clock.
+clock from the measured rate at the port's maximum clock. The engine is
+`lanes` lanes of `macs_per_lane` multiply-adds each; a lane computes one row
+at a time with `accumulators` partial sums (docs/numerics.md, section 3),
+and adds them on its own adder while it runs the next row (engine_cycles).
 """
 
 import json
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -75,6 +79,22 @@ class Op:
     kv_read_bytes: int = 0
     kv_write_bytes: int = 0
     vector_elems: int = 0  # elements times passes
+
+    @property
+    def engine_shape(self) -> tuple[int, int] | None:
+        """(rows, cols) as the engine sees it: one row per lane, cols
+        multiply-adds per row; None for an op off the engine. Scores have a
+        row per head and position, p.V a row per head and output dimension."""
+        if self.kind == "matvec":
+            return self.shape
+        if self.kind in ATTENTION_KINDS:
+            heads, positions, d = self.shape
+            return (
+                (heads * positions, d)
+                if self.kind == "attention_scores"
+                else (heads * d, positions)
+            )
+        return None
 
 
 class Param(BaseModel):
@@ -144,7 +164,9 @@ class Design(Inputs):
 
     clock_hz: Param
     memory_clock_hz: Param
-    macs_per_cycle: Param
+    lanes: Param
+    macs_per_lane: Param
+    accumulators: Param
     vector_elems_per_cycle: Param
     command_cycles: Param
     scenarios: dict[str, dict[str, float]] = {}
@@ -266,6 +288,7 @@ class Work:
     attention_macs: int
     vector_elems: int
     commands: int
+    engine_shapes: tuple[tuple[int, int], ...] = ()  # (rows, cols) per engine op
 
     @property
     def memory_bytes(self) -> int:
@@ -288,6 +311,7 @@ class Work:
             attention_macs=total("macs", lambda o: o.kind in ATTENTION_KINDS),
             vector_elems=total("vector_elems"),
             commands=len(op_list),
+            engine_shapes=tuple(o.engine_shape for o in op_list if o.engine_shape),
         )
 
 
@@ -299,12 +323,30 @@ def hbm_bytes_per_s(platform: dict[str, float], design: dict[str, float]) -> flo
     return min(measured, platform["hbm_ports"] * platform["hbm_port_bytes"] * clock)
 
 
+def engine_cycles(shapes: tuple[tuple[int, int], ...], design: dict[str, float]) -> int:
+    """Cycles of the engine for these (rows, cols): rows in passes of `lanes`
+    (a partial pass leaves lanes idle); a row takes cols / `macs_per_lane`
+    cycles, but at least the `accumulators` - 1 adds of its final sum, which
+    run during the next row."""
+    lanes, per_lane = int(design["lanes"]), int(design["macs_per_lane"])
+    tree = int(design["accumulators"]) - 1
+    return sum(
+        math.ceil(rows / lanes) * max(math.ceil(cols / per_lane), tree) for rows, cols in shapes
+    )
+
+
+def engine_use(work: Work, design: dict[str, float]) -> float:
+    """Share of the engine's multiply-add slots that do work."""
+    slots = design["lanes"] * design["macs_per_lane"] * engine_cycles(work.engine_shapes, design)
+    return work.macs / slots
+
+
 def seconds(work: Work, platform: dict[str, float], design: dict[str, float]) -> dict[str, float]:
     """Time of each term for one token, in seconds."""
     clock = design["clock_hz"]
     return {
         "memory": work.memory_bytes / hbm_bytes_per_s(platform, design),
-        "engine": work.macs / (design["macs_per_cycle"] * clock),
+        "engine": engine_cycles(work.engine_shapes, design) / clock,
         "vector": work.vector_elems / (design["vector_elems_per_cycle"] * clock),
         "commands": work.commands * design["command_cycles"] / clock,
     }

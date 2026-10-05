@@ -12,7 +12,13 @@ golden model's decode step (a test checks this against `golden/decoder.py`).
 Four times follow from the work:
 
 - **memory**: bytes read and written in HBM ÷ the HBM read rate;
-- **engine**: multiply-adds ÷ (multiply-adds per cycle × clock);
+- **engine**: the engine's cycles ÷ clock. The engine has `lanes` lanes of
+  `macs_per_lane` multiply-adds each, and a lane computes one row at a time.
+  Rows go in passes of `lanes` (a partial pass leaves lanes idle), and a row
+  takes cols ÷ `macs_per_lane` cycles, but at least the `accumulators` − 1
+  adds of its final sum, which run during the next row. Attention scores
+  have one row per head and position (64 long for SmolLM2); p·V has one row
+  per head and output dimension;
 - **vector**: element passes ÷ (elements per cycle × clock);
 - **commands**: one command per operation × a fixed cost in cycles.
 
@@ -59,17 +65,21 @@ v0: first-order design choices (M2), from `model/designs/v0.json`:
 
 | parameter | value | status | source |
 |---|---|---|---|
-| `clock_hz` | 250 MHz | choice | the shell clock (docs/f2.md) |
+| `clock_hz` | 250 MHz | choice | the shell clock (docs/f2.md); to verify in M3 (one lane) and M9 (the whole design) |
 | `memory_clock_hz` | 250 MHz | choice | HBM ports on the shell clock |
-| `macs_per_cycle` | 64 MAC/cycle | choice | PLAN.md M2 starting point: L = 64 lanes, one MAC each |
+| `lanes` | 128 lanes | choice | docs/architecture.md, engine |
+| `macs_per_lane` | 4 MAC/cycle | choice | docs/architecture.md, engine: 128 x 4 x 2 B = 1024 B/cycle, all 32 HBM ports at 250 MHz |
+| `accumulators` | 16 partial sums | choice | docs/architecture.md, engine: 4 multiply-adds x a 4-cycle loop (proposed; docs/numerics.md has A = 8 until approved) |
 | `vector_elems_per_cycle` | 16 elements/cycle | guess | none yet (M6 sizes the vector unit) |
 | `command_cycles` | 64 cycles/command | guess | none yet (the controller is designed in M2/M7) |
 
 | scenario | changes |
 |---|---|
 | as planned | none |
-| HBM at 450 MHz | `memory_clock_hz` = 450 MHz |
-| HBM at 450 MHz, 1024 MAC/cycle | `memory_clock_hz` = 450 MHz, `macs_per_cycle` = 1024 MAC/cycle |
+| 64 lanes x 8, A = 32 | `lanes` = 64 lanes, `macs_per_lane` = 8 MAC/cycle, `accumulators` = 32 partial sums |
+| 512 lanes x 1, A = 4 | `lanes` = 512 lanes, `macs_per_lane` = 1 MAC/cycle, `accumulators` = 4 partial sums |
+| core at 125 MHz | `clock_hz` = 125 MHz |
+| 256 lanes, HBM at 450 MHz | `lanes` = 256 lanes, `memory_clock_hz` = 450 MHz |
 <!-- end: design -->
 
 ## Work per token
@@ -92,20 +102,41 @@ SmolLM2-135M-Instruct:
 | commands | 513 | 513 | 513 |
 <!-- end: work -->
 
+## Engine use
+
+The share of the engine's multiply-add slots that do work: below 100% when
+a matrix's rows leave lanes idle, or rows are too short for their final sum.
+
+<!-- begin: engine -->
+| scenario, engine use at position | 0 | 1023 | 8191 |
+|---|---|---|---|
+| as planned | 93.9% | 94.8% | 94.8% |
+| 64 lanes x 8, A = 32 | 96.6% | 77.0% | 50.6% |
+| 512 lanes x 1, A = 4 | 73.6% | 73.6% | 72.6% |
+| core at 125 MHz | 93.9% | 94.8% | 94.8% |
+| 256 lanes, HBM at 450 MHz | 87.3% | 87.8% | 86.6% |
+<!-- end: engine -->
+
 ## Predictions
 
 <!-- begin: predictions -->
 | scenario | position | tokens/s | limited by | memory (ms) | engine (ms) | vector (ms) | commands (ms) |
 |---|---|---|---|---|---|---|---|
-| as planned | 0 | 103–119 | engine | 1.136 | 8.407 | 0.044 | 0.131 |
-| as planned | 1023 | 82–94 | engine | 1.236 | 10.617 | 0.251 | 0.131 |
-| as planned | 8191 | 33–38 | engine | 1.933 | 26.100 | 1.702 | 0.131 |
-| HBM at 450 MHz | 0 | 109–119 | engine | 0.631 | 8.407 | 0.044 | 0.131 |
-| HBM at 450 MHz | 1023 | 86–94 | engine | 0.687 | 10.617 | 0.251 | 0.131 |
-| HBM at 450 MHz | 8191 | 34–38 | engine | 1.074 | 26.100 | 1.702 | 0.131 |
-| HBM at 450 MHz, 1024 MAC/cycle | 0 | 751–1584 | memory | 0.631 | 0.525 | 0.044 | 0.131 |
-| HBM at 450 MHz, 1024 MAC/cycle | 1023 | 577–1457 | memory | 0.687 | 0.664 | 0.251 | 0.131 |
-| HBM at 450 MHz, 1024 MAC/cycle | 8191 | 220–587 | vector | 1.074 | 1.631 | 1.702 | 0.131 |
+| as planned | 0 | 411–880 | memory | 1.136 | 1.119 | 0.044 | 0.131 |
+| as planned | 1023 | 331–714 | engine | 1.236 | 1.400 | 0.251 | 0.131 |
+| as planned | 8191 | 139–290 | engine | 1.933 | 3.443 | 1.702 | 0.131 |
+| 64 lanes x 8, A = 32 | 0 | 417–880 | memory | 1.136 | 1.088 | 0.044 | 0.131 |
+| 64 lanes x 8, A = 32 | 1023 | 299–580 | engine | 1.236 | 1.725 | 0.251 | 0.131 |
+| 64 lanes x 8, A = 32 | 8191 | 98–155 | engine | 1.933 | 6.442 | 1.702 | 0.131 |
+| 512 lanes x 1, A = 4 | 0 | 365–700 | engine | 1.136 | 1.428 | 0.044 | 0.131 |
+| 512 lanes x 1, A = 4 | 1023 | 292–555 | engine | 1.236 | 1.803 | 0.251 | 0.131 |
+| 512 lanes x 1, A = 4 | 8191 | 121–223 | engine | 1.933 | 4.491 | 1.702 | 0.131 |
+| core at 125 MHz | 0 | 268–447 | engine | 1.136 | 2.238 | 0.087 | 0.263 |
+| core at 125 MHz | 1023 | 208–357 | engine | 1.236 | 2.800 | 0.502 | 0.263 |
+| core at 125 MHz | 8191 | 80–145 | engine | 1.933 | 6.886 | 3.405 | 0.263 |
+| 256 lanes, HBM at 450 MHz | 0 | 710–1584 | memory | 0.631 | 0.602 | 0.044 | 0.131 |
+| 256 lanes, HBM at 450 MHz | 1023 | 548–1323 | engine | 0.687 | 0.756 | 0.251 | 0.131 |
+| 256 lanes, HBM at 450 MHz | 8191 | 209–531 | engine | 1.074 | 1.885 | 1.702 | 0.131 |
 <!-- end: predictions -->
 
 ## Sensitivity
@@ -115,10 +146,10 @@ How much the answer depends on the inputs we have not settled.
 <!-- begin: sensitivity -->
 Tokens/s (overlapped) at position 1023, with the input scaled ×0.5 / ×1 / ×2:
 
-| input | as planned | HBM at 450 MHz | HBM at 450 MHz, 1024 MAC/cycle |
-|---|---|---|---|
-| `hbm_port_bytes` (to verify) | 94 / 94 / 94 | 94 / 94 / 94 | 787 / 1457 / 1457 |
-| `hbm_read_bytes_per_s` (measured by AWS) | 94 / 94 / 94 | 94 / 94 / 94 | 728 / 1457 / 1507 |
-| `vector_elems_per_cycle` (guess) | 94 / 94 / 94 | 94 / 94 / 94 | 1457 / 1457 / 1457 |
-| `command_cycles` (guess) | 94 / 94 / 94 | 94 / 94 / 94 | 1457 / 1457 / 1457 |
+| input | as planned | 64 lanes x 8, A = 32 | 512 lanes x 1, A = 4 | core at 125 MHz | 256 lanes, HBM at 450 MHz |
+|---|---|---|---|---|---|
+| `hbm_port_bytes` (to verify) | 437 / 714 / 714 | 437 / 580 / 580 | 437 / 555 / 555 | 357 / 357 / 357 | 787 / 1323 / 1323 |
+| `hbm_read_bytes_per_s` (measured by AWS) | 405 / 714 / 714 | 405 / 580 / 580 | 405 / 555 / 555 | 357 / 357 / 357 | 728 / 1323 / 1323 |
+| `vector_elems_per_cycle` (guess) | 714 / 714 / 714 | 580 / 580 / 580 | 555 / 555 / 555 | 357 / 357 / 357 | 1323 / 1323 / 1323 |
+| `command_cycles` (guess) | 714 / 714 / 714 | 580 / 580 / 580 | 555 / 555 / 555 | 357 / 357 / 357 | 1323 / 1323 / 1323 |
 <!-- end: sensitivity -->
