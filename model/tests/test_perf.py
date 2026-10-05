@@ -6,14 +6,17 @@ times scale as they should."""
 
 import json
 import math
+import shutil
 import types
 from itertools import product
+from pathlib import Path
 
 import paths
 import perf
 import perf_report
 import pytest
 from golden import decoder, tiny
+from pydantic import ValidationError
 from safetensors import safe_open
 
 # Small round inputs for times checked by hand.
@@ -29,6 +32,13 @@ DESIGN = {
     "macs_per_cycle": 10,
     "vector_elems_per_cycle": 4,
     "command_cycles": 5,
+}
+# One of our measurements, as a measurement script would write it.
+MEASUREMENT = {
+    "value": 401.2e9,
+    "unit": "B/s",
+    "status": "measured by us",
+    "source": "scripts/f2_hbm.sh, 2026-10-10, commit abc1234",
 }
 # What the golden decoder calls, as (kind, *shape) per call, from the
 # arguments: the same shapes perf.ops() gives (one decode position).
@@ -158,16 +168,92 @@ def test_memory_time_scales_with_the_memory_clock() -> None:
     assert time[100.0] == 2 * time[200.0] == 4 * time[400.0] == 4 * time[800.0]
 
 
-def test_bad_inputs_are_rejected(tmp_path) -> None:
+def platform_files(tmp_path, measured: dict | None) -> Path:
+    """A copy of the F2 platform file in tmp_path, plus a measured file."""
+    shutil.copy(paths.PLATFORMS / "f2.json", tmp_path / "f2.json")
+    if measured is not None:
+        (tmp_path / "measured").mkdir()
+        (tmp_path / "measured" / "f2.json").write_text(json.dumps(measured))
+    return tmp_path
+
+
+def test_a_measurement_replaces_the_documented_entry(tmp_path) -> None:
+    """In the platform, and in the report: the measurement with the
+    documented value next to it, and one value fewer to measure."""
+    directory = platform_files(tmp_path, {"hbm_read_bytes_per_s": MEASUREMENT})
+    doc = perf.load_platform("f2", directory, measured=False)
+    ours = perf.load_platform("f2", directory)
+    assert ours.hbm_read_bytes_per_s == perf.Param(**MEASUREMENT)  # value, status and source
+    others = {k: p for k, p in ours.params.items() if k != "hbm_read_bytes_per_s"}
+    assert others == {k: p for k, p in doc.params.items() if k != "hbm_read_bytes_per_s"}
+    row = next(r for r in perf_report.params_table(ours, doc).splitlines() if "hbm_read" in r)
+    assert "401.2 GB/s | measured by us" in row and "426.28 GB/s (-5.9%)" in row
+    assert "6 of 7" in perf_report.cleared(ours) and "7 of 7" in perf_report.cleared(doc)
+
+
+def test_without_a_measured_file_the_documented_values_hold(tmp_path) -> None:
+    directory = platform_files(tmp_path, None)
+    assert perf.load_platform("f2", directory) == perf.load_platform(
+        "f2", directory, measured=False
+    )
+
+
+def test_cleared_when_every_value_is_measured_or_not_measurable(tmp_path) -> None:
+    doc = perf.load_platform("f2")
+    measured = {k: {**p.model_dump(), "status": perf.MEASURED} for k, p in doc.params.items()}
+    assert perf.load_platform("f2", platform_files(tmp_path, measured)).unmeasured() == []
+
+
+@pytest.mark.parametrize(
+    "measured",
+    [
+        {"hbm_read_bytes_per_s": {**MEASUREMENT, "status": "quoted"}},  # not a measurement
+        {
+            "hbm_read_bytes_per_s": {**MEASUREMENT, "status": "not measurable"}
+        },  # goes in the doc file
+        {"hbm_read_bytes_per_sec": MEASUREMENT},  # a typo in the name
+        {"hbm_read_bytes_per_s": {**MEASUREMENT, "source": ""}},  # no source
+        {"hbm_read_bytes_per_s": {**MEASUREMENT, "date": "x"}},  # an unknown field
+        {"hbm_read_bytes_per_s": {**MEASUREMENT, "unit": ""}},  # no unit
+    ],
+)
+def test_a_bad_measured_file_is_rejected(tmp_path, measured: dict) -> None:
+    with pytest.raises(ValidationError):
+        perf.load_platform("f2", platform_files(tmp_path, measured))
+
+
+def test_bad_design_inputs_are_rejected() -> None:
     raw = json.loads((paths.DESIGNS / "v0.json").read_text())
-    clock = raw["parameters"]["clock_hz"]
-    for bad in ({**clock, "status": "rumour"}, {**clock, "source": ""}):
-        path = tmp_path / "bad.json"
-        path.write_text(json.dumps(raw | {"parameters": raw["parameters"] | {"clock_hz": bad}}))
-        with pytest.raises(AssertionError):
-            perf.load_inputs(path)
-    with pytest.raises(AssertionError):  # a scenario overriding a parameter that does not exist
-        perf.Inputs("x", {}, {"s": {"clock_mhz": 1.0}}).values("s")
+    for bad in ({**raw["clock_hz"], "status": "rumour"}, {**raw["clock_hz"], "source": ""}):
+        with pytest.raises(ValidationError):
+            perf.Design(**raw | {"clock_hz": bad})
+    with pytest.raises(ValidationError, match="unknown"):
+        perf.Design(**raw | {"scenarios": {"x": {"clock_mhz": 1}}})
+
+
+def test_a_measurement_in_another_unit_is_rejected(tmp_path) -> None:
+    """No conversion: 401.2 GB/s written as {"value": 401.2, "unit": "GB/s"}
+    would otherwise be read as 401.2 B/s."""
+    measured = {"hbm_read_bytes_per_s": {**MEASUREMENT, "value": 401.2, "unit": "GB/s"}}
+    with pytest.raises(ValueError, match="hbm_read_bytes_per_s in 'GB/s', documented in 'B/s'"):
+        perf.load_platform("f2", platform_files(tmp_path, measured))
+
+
+def test_a_measurement_does_not_complete_the_documented_file(tmp_path) -> None:
+    directory = platform_files(tmp_path, {"hbm_read_bytes_per_s": MEASUREMENT})
+    raw = json.loads((directory / "f2.json").read_text())
+    del raw["hbm_read_bytes_per_s"]
+    (directory / "f2.json").write_text(json.dumps(raw))
+    with pytest.raises(ValidationError, match="hbm_read_bytes_per_s"):
+        perf.load_platform("f2", directory)
+
+
+def test_a_documented_zero_cannot_be_compared(tmp_path) -> None:
+    doc = perf.load_platform("f2")
+    zero = doc.model_copy(update={"hbm_ports": doc.hbm_ports.model_copy(update={"value": 0})})
+    ours = zero.model_copy(update={"hbm_ports": perf.Param(**{**MEASUREMENT, "unit": "ports"})})
+    with pytest.raises(ValueError, match="hbm_ports: documented as 0"):
+        perf_report.params_table(ours, zero)
 
 
 @pytest.mark.parametrize(
@@ -175,14 +261,14 @@ def test_bad_inputs_are_rejected(tmp_path) -> None:
     list(
         product(
             sorted(p.stem for p in paths.CONFIGS.glob("*.json")),
-            sorted(paths.PLATFORMS.glob("*.json")),
-            sorted(paths.DESIGNS.glob("*.json")),
+            sorted(p.stem for p in paths.PLATFORMS.glob("*.json")),
+            sorted(p.stem for p in paths.DESIGNS.glob("*.json")),
         )
     ),
 )
-def test_every_input_combination_predicts(config: str, platform, design) -> None:
+def test_every_input_combination_predicts(config: str, platform: str, design: str) -> None:
     c = perf.load_config(config)
-    plat, des = perf.load_inputs(platform), perf.load_inputs(design)
+    plat, des = perf.load_platform(platform), perf.load_design(design)
     for scenario in [None, *des.scenarios]:
         p = perf.predict(c, plat.values(), des.values(scenario), c.max_position_embeddings - 1)
         assert set(p.terms) == set(perf.TERMS) and min(p.terms.values()) > 0

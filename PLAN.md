@@ -308,8 +308,18 @@ golden model still passes M1.
   overlap). At the full 8192-token window, attention's multiply-adds exceed
   the weights' and the vector unit becomes the limit. All numbers in
   `docs/perf.md`; they change with the inputs.
+- [x] Inputs validated with pydantic; our measurements
+  (`model/platforms/measured/f2.json`) replace documented values entry by
+  entry, with the documented value kept alongside. The
+  report says "provisional" until every platform value is measured by us or
+  marked not measurable.
 - [ ] **Next:** `docs/architecture.md`, starting from the engine width
   (Q-25).
+- Later (refactor, no behaviour change): move the report-generation code
+  (`model/report.py`, `model/perf_report.py`) into a `model/reporting/`
+  package (`blocks.py`, `m1.py`, `perf.py`), and put value formatting and the
+  measured-vs-documented comparison on `perf.Param` (`str(p)`,
+  `p.change_from(doc)`), so the table code only lays out rows.
 - [ ] F2 platform check (D-025): account set up (`docs/aws-setup.md`,
   profile `cabosse`, `eu-central-1`, budgets on); F instance quota of 24
   vCPUs requested 2026-10-04, pending. Then: scripts to launch, build, run

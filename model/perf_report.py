@@ -32,10 +32,31 @@ def show(value: float, unit: str) -> str:
     return f"{value / scale:g} {name}".strip()
 
 
-def params_table(inputs: perf.Inputs) -> str:
-    return report.table(
-        ["parameter", "value", "status", "source"],
-        [[f"`{k}`", show(p.value, p.unit), p.status, p.source] for k, p in inputs.params.items()],
+def params_table(inputs: perf.Inputs, documented: perf.Inputs | None = None) -> str:
+    """One row per parameter; with `documented`, also the documented value
+    next to each of our measurements."""
+    header, rows = ["parameter", "value", "status", "source"], []
+    for k, p in inputs.params.items():
+        row = [f"`{k}`", show(p.value, p.unit), p.status, p.source]
+        if documented:
+            doc = documented.params[k]
+            if p != doc and doc.value == 0:
+                raise ValueError(f"{k}: documented as 0, so no relative difference")
+            row.append(
+                "" if p == doc else f"{show(doc.value, doc.unit)} ({p.value / doc.value - 1:+.1%})"
+            )
+        rows.append(row)
+    return report.table(header + (["documented"] if documented else []), rows)
+
+
+def cleared(platform: perf.Platform) -> str:
+    missing = platform.unmeasured()
+    if not missing:
+        return "All platform values are measured by us: the predictions rest on measurements."
+    names = ", ".join(f"`{k}`" for k in missing)
+    n = len(platform.params)
+    return (
+        f"**Provisional:** {len(missing)} of {n} platform values not yet measured by us: {names}."
     )
 
 
@@ -96,12 +117,15 @@ def sensitivity_table(config, platform: perf.Inputs, design: perf.Inputs) -> str
 
 def blocks(model: str, platform_name: str, design_name: str) -> dict[str, str]:
     config = perf.load_config(model)
-    platform = perf.load_inputs(paths.PLATFORMS / f"{platform_name}.json")
-    design = perf.load_inputs(paths.DESIGNS / f"{design_name}.json")
+    platform, design = perf.load_platform(platform_name), perf.load_design(design_name)
+    documented = perf.load_platform(platform_name, measured=False)
     factors = " / ".join(f"×{f:g}" for f in SENSITIVITY_FACTORS)
     return {
-        "platform": f"{platform.name}, from `model/platforms/{platform_name}.json`:\n\n"
-        + params_table(platform),
+        "platform": f"{platform.name}, from `model/platforms/{platform_name}.json` and "
+        f"`measured/{platform_name}.json`:\n\n"
+        + params_table(platform, documented)
+        + "\n\n"
+        + cleared(platform),
         "design": f"{design.name}, from `model/designs/{design_name}.json`:\n\n"
         + params_table(design)
         + "\n\n"

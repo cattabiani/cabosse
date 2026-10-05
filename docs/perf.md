@@ -31,21 +31,27 @@ Assumptions, to revisit in `docs/architecture.md`:
 ## Inputs
 
 Each value has a status. "Choice" is ours to make in M2; "guess" and "to
-verify" are not yet known. Values become "measured by us" after the F2
-session (D-025).
+verify" are not yet known. Our own measurements go in
+`model/platforms/measured/<platform>.json`, written by the measurement
+scripts: each one replaces the documented entry (value, status and source),
+and the documented value stays visible next to it. The platform is cleared
+when every value is measured by us, or marked "not measurable" with a
+reason (D-025).
 
 <!-- begin: platform -->
-AWS F2 (f2.6xlarge, one VU47P), from `model/platforms/f2.json`:
+AWS F2 (f2.6xlarge, one VU47P), from `model/platforms/f2.json` and `measured/f2.json`:
 
-| parameter | value | status | source |
-|---|---|---|---|
-| `hbm_bytes` | 16 GiB | quoted | docs/f2.md [1], [5]: 16 GiB |
-| `hbm_ports` | 32 | quoted | docs/f2.md [5] |
-| `hbm_port_bytes` | 32 B/cycle | to verify | docs/f2.md [6]: 256-bit read port |
-| `hbm_port_max_clock_hz` | 450 MHz | quoted | docs/f2.md [5] |
-| `hbm_read_bytes_per_s` | 426.28 GB/s | measured by AWS | docs/f2.md [5]: CL_MEM_PERF, 32 ports at 450 MHz, units not stated |
-| `shell_clock_hz` | 250 MHz | quoted | docs/f2.md [3] |
-| `ddr_peak_bytes_per_s` | 17.06 GB/s | computed | docs/f2.md [10]: 2133 MT/s x 8 B |
+| parameter | value | status | source | documented |
+|---|---|---|---|---|
+| `hbm_bytes` | 16 GiB | quoted | docs/f2.md [1], [5]: 16 GiB |  |
+| `hbm_ports` | 32 ports | quoted | docs/f2.md [5] |  |
+| `hbm_port_bytes` | 32 B/cycle | to verify | docs/f2.md [6]: 256-bit read port |  |
+| `hbm_port_max_clock_hz` | 450 MHz | quoted | docs/f2.md [5] |  |
+| `hbm_read_bytes_per_s` | 426.28 GB/s | measured by AWS | docs/f2.md [5]: CL_MEM_PERF, 32 ports at 450 MHz, units not stated |  |
+| `shell_clock_hz` | 250 MHz | quoted | docs/f2.md [3] |  |
+| `ddr_peak_bytes_per_s` | 17.06 GB/s | computed | docs/f2.md [10]: 2133 MT/s x 8 B |  |
+
+**Provisional:** 7 of 7 platform values not yet measured by us: `hbm_bytes`, `hbm_ports`, `hbm_port_bytes`, `hbm_port_max_clock_hz`, `hbm_read_bytes_per_s`, `shell_clock_hz`, `ddr_peak_bytes_per_s`.
 <!-- end: platform -->
 
 <!-- begin: design -->
