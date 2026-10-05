@@ -164,13 +164,7 @@ def main() -> None:
     if args.command == "measure":
         measure(args.weights)
         return
-    text = report.render_m1()
-    if args.check:
-        sys.exit(
-            0 if text == report.M1_REPORT.read_text() else f"{report.M1_REPORT} is stale: render it"
-        )
-    report.M1_REPORT.write_text(text)
-    print(f"written: {report.M1_REPORT}")
+    report.write_or_check(report.M1_REPORT, report.render_m1(), args.check)
 
 
 if __name__ == "__main__":

@@ -304,7 +304,7 @@ golden model still passes M1.
   (`model/designs/v0.json`). Its work list is checked against the golden
   decode step, its byte count against the checkpoint. SmolLM2 on F2, position
   0: 64 MAC/cycle at 250 MHz is engine-bound at 119 tokens/s; with HBM at
-  450 MHz and 1024 MAC/cycle it becomes memory-bound at 1584 (755 with no
+  450 MHz and 1024 MAC/cycle it becomes memory-bound at 1584 (751 with no
   overlap). At the full 8192-token window, attention's multiply-adds exceed
   the weights' and the vector unit becomes the limit. All numbers in
   `docs/perf.md`; they change with the inputs.

@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "model"))
 
 import perf_report  # noqa: E402
+import report  # noqa: E402
 
 
 def main() -> None:
@@ -22,15 +23,7 @@ def main() -> None:
     )
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    text = perf_report.render()
-    if args.check:
-        sys.exit(
-            0
-            if text == perf_report.PERF_DOC.read_text()
-            else f"{perf_report.PERF_DOC} is stale: render it"
-        )
-    perf_report.PERF_DOC.write_text(text)
-    print(f"written: {perf_report.PERF_DOC}")
+    report.write_or_check(perf_report.PERF_DOC, perf_report.render(), args.check)
 
 
 if __name__ == "__main__":

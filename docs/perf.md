@@ -83,7 +83,7 @@ SmolLM2-135M-Instruct:
 | multiply-adds, matrix-vector (M) | 134.5 | 134.5 | 134.5 |
 | multiply-adds, attention (M) | 0.0 | 35.4 | 283.1 |
 | vector-unit element passes (M) | 0.2 | 1.0 | 6.8 |
-| commands | 483 | 483 | 483 |
+| commands | 513 | 513 | 513 |
 <!-- end: work -->
 
 ## Predictions
@@ -91,15 +91,15 @@ SmolLM2-135M-Instruct:
 <!-- begin: predictions -->
 | scenario | position | tokens/s | limited by | memory (ms) | engine (ms) | vector (ms) | commands (ms) |
 |---|---|---|---|---|---|---|---|
-| as planned | 0 | 103–119 | engine | 1.136 | 8.407 | 0.044 | 0.124 |
-| as planned | 1023 | 82–94 | engine | 1.236 | 10.617 | 0.251 | 0.124 |
-| as planned | 8191 | 33–38 | engine | 1.933 | 26.100 | 1.702 | 0.124 |
-| HBM at 450 MHz | 0 | 109–119 | engine | 0.631 | 8.407 | 0.044 | 0.124 |
-| HBM at 450 MHz | 1023 | 86–94 | engine | 0.687 | 10.617 | 0.251 | 0.124 |
-| HBM at 450 MHz | 8191 | 34–38 | engine | 1.074 | 26.100 | 1.702 | 0.124 |
-| HBM at 450 MHz, 1024 MAC/cycle | 0 | 755–1584 | memory | 0.631 | 0.525 | 0.044 | 0.124 |
-| HBM at 450 MHz, 1024 MAC/cycle | 1023 | 580–1457 | memory | 0.687 | 0.664 | 0.251 | 0.124 |
-| HBM at 450 MHz, 1024 MAC/cycle | 8191 | 221–587 | vector | 1.074 | 1.631 | 1.702 | 0.124 |
+| as planned | 0 | 103–119 | engine | 1.136 | 8.407 | 0.044 | 0.131 |
+| as planned | 1023 | 82–94 | engine | 1.236 | 10.617 | 0.251 | 0.131 |
+| as planned | 8191 | 33–38 | engine | 1.933 | 26.100 | 1.702 | 0.131 |
+| HBM at 450 MHz | 0 | 109–119 | engine | 0.631 | 8.407 | 0.044 | 0.131 |
+| HBM at 450 MHz | 1023 | 86–94 | engine | 0.687 | 10.617 | 0.251 | 0.131 |
+| HBM at 450 MHz | 8191 | 34–38 | engine | 1.074 | 26.100 | 1.702 | 0.131 |
+| HBM at 450 MHz, 1024 MAC/cycle | 0 | 751–1584 | memory | 0.631 | 0.525 | 0.044 | 0.131 |
+| HBM at 450 MHz, 1024 MAC/cycle | 1023 | 577–1457 | memory | 0.687 | 0.664 | 0.251 | 0.131 |
+| HBM at 450 MHz, 1024 MAC/cycle | 8191 | 220–587 | vector | 1.074 | 1.631 | 1.702 | 0.131 |
 <!-- end: predictions -->
 
 ## Sensitivity

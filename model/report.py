@@ -13,6 +13,8 @@ A block sits between two markers in the Markdown file:
 import json
 import re
 import statistics
+import sys
+from pathlib import Path
 
 import compare
 import paths
@@ -37,6 +39,16 @@ def fill(text: str, blocks: dict[str, str]) -> str:
 def table(header: list[str], rows: list[list]) -> str:
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     return "\n".join(lines + ["| " + " | ".join(str(c) for c in row) + " |" for row in rows])
+
+
+def write_or_check(path: Path, text: str, check: bool) -> None:
+    """Write a rendered report, or with check=True exit with an error if the
+    file on disk differs from it."""
+    if not check:
+        path.write_text(text)
+        print(f"written: {path}")
+    elif text != path.read_text():
+        sys.exit(f"{path} is stale: render it")
 
 
 def tests_passed(summary: str) -> bool:

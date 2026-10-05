@@ -16,6 +16,10 @@ SMOLLM2_BASE = WEIGHTS / "SmolLM2-135M"
 RUNS = REPO / "runs"
 REPORTS = REPO / "reports"
 FIXTURES = REPO / "model" / "tests" / "fixtures"
+# Perf model inputs (model/perf.py): model configs, platforms, designs.
+CONFIGS = REPO / "model" / "configs"
+PLATFORMS = REPO / "model" / "platforms"
+DESIGNS = REPO / "model" / "designs"
 
 # Values pinned to exact bits (table hashes, fixtures) come from here (D-023).
 REFERENCE_PLATFORM = sys.platform == "linux" and platform.machine() == "x86_64"

@@ -1,6 +1,5 @@
 {
  "name": "AWS F2 (f2.6xlarge, one VU47P)",
- "doc": "docs/f2.md",
  "parameters": {
   "hbm_bytes": {"value": 17179869184, "unit": "B", "status": "quoted", "source": "docs/f2.md [1], [5]: 16 GiB"},
   "hbm_ports": {"value": 32, "unit": "", "status": "quoted", "source": "docs/f2.md [5]"},

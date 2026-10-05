@@ -30,35 +30,42 @@ import paths
 from transformers import LlamaConfig
 
 BF16_BYTES = 2
-CONFIGS = paths.REPO / "model" / "configs"
-PLATFORMS = paths.REPO / "model" / "platforms"
-DESIGNS = paths.REPO / "model" / "designs"
 # Passes over the data per element in the vector unit (docs/numerics.md,
 # section 4): RMSNorm sums squares then scales; softmax finds the max, sums
 # the exponentials, then normalizes.
 RMSNORM_PASSES = 2
 SOFTMAX_PASSES = 3
 TERMS = ("memory", "engine", "vector", "commands")
+# How we know an input value -> whether it is settled (no sensitivity row in
+# the report). "measured by us" is the goal for every platform value (D-025).
+STATUSES = {
+    "quoted": True,
+    "computed": True,
+    "measured by AWS": False,
+    "measured by us": True,
+    "to verify": False,
+    "guess": False,
+    "choice": True,
+}
+# Ops on the matrix-vector engine that are attention, not weights.
+ATTENTION_KINDS = ("attention_scores", "attention_values")
 
 
 @dataclass(frozen=True)
 class Op:
-    """One operation of a decode step. shape is (rows, cols) of a weight
-    matrix, or (heads, positions, head_dim) for attention, or (n,) for a
-    vector operation."""
+    """One operation of a decode step. kind is the golden-model function it
+    stands for, and shape what that function sees: (rows, cols) of a weight
+    matrix, (heads, positions, head_dim) for attention, or (n,) for a vector
+    operation (elements per token)."""
 
     name: str
-    unit: str  # "engine" or "vector"
+    kind: str
     shape: tuple[int, ...]
     macs: int = 0
     weight_bytes: int = 0
     kv_read_bytes: int = 0
     kv_write_bytes: int = 0
     vector_elems: int = 0  # elements times passes
-
-    @property
-    def memory_bytes(self) -> int:
-        return self.weight_bytes + self.kv_read_bytes + self.kv_write_bytes
 
 
 @dataclass(frozen=True)
@@ -67,6 +74,10 @@ class Param:
     unit: str
     status: str
     source: str
+
+    def __post_init__(self) -> None:
+        assert self.status in STATUSES, f"unknown status {self.status!r}"
+        assert self.source, "a source is required"
 
 
 @dataclass(frozen=True)
@@ -92,20 +103,28 @@ def load_inputs(path: Path) -> Inputs:
 
 
 def load_config(name: str) -> LlamaConfig:
-    return LlamaConfig(**json.loads((CONFIGS / f"{name}.json").read_text()))
+    return LlamaConfig.from_json_file(paths.CONFIGS / f"{name}.json")
 
 
-def matvec(name: str, rows: int, cols: int) -> Op:
-    return Op(name, "engine", (rows, cols), rows * cols, weight_bytes=rows * cols * BF16_BYTES)
+def matvec(name: str, rows: int, cols: int, kv_write_bytes: int = 0) -> Op:
+    n = rows * cols
+    return Op(name, "matvec", (rows, cols), n, n * BF16_BYTES, kv_write_bytes=kv_write_bytes)
 
 
-def vector(name: str, n: int, passes: int = 1) -> Op:
-    return Op(name, "vector", (n,), vector_elems=n * passes)
+def vector(name: str, kind: str, n: int, passes: int = 1, **kw) -> Op:
+    return Op(name, kind, (n,), vector_elems=n * passes, **kw)
 
 
 def rmsnorm(name: str, n: int) -> Op:
     """Reads its gains (n BF16 weights) from memory."""
-    return Op(name, "vector", (n,), vector_elems=n * RMSNORM_PASSES, weight_bytes=n * BF16_BYTES)
+    return vector(name, "rmsnorm", n, RMSNORM_PASSES, weight_bytes=n * BF16_BYTES)
+
+
+def attention(kind: str, heads: int, positions: int, d: int, kv_heads: int) -> Op:
+    """q.K or p.V over `positions` cache rows: reads K (or V) once per KV
+    head, shared by its query heads."""
+    kv_bytes = kv_heads * positions * d * BF16_BYTES
+    return Op(kind, kind, (heads, positions, d), heads * positions * d, kv_read_bytes=kv_bytes)
 
 
 def ops(config: LlamaConfig, position: int) -> list[Op]:
@@ -115,39 +134,35 @@ def ops(config: LlamaConfig, position: int) -> list[Op]:
     d, hidden, inter = c.head_dim, c.hidden_size, c.intermediate_size
     n_heads, n_kv = c.num_attention_heads, c.num_key_value_heads
     q_dim, kv_dim, t = n_heads * d, n_kv * d, position + 1
-    kv_bytes = n_kv * t * d * BF16_BYTES  # one layer's K (or V) up to `position`
-    out = [Op("embed", "vector", (hidden,), weight_bytes=hidden * BF16_BYTES)]
+    row = kv_dim * BF16_BYTES  # one position's K (or V) in one layer
+    out = [Op("embed", "embed", (hidden,), weight_bytes=hidden * BF16_BYTES)]
     for _ in range(c.num_hidden_layers):
         out += [
             rmsnorm("attn_norm", hidden),
             matvec("q", q_dim, hidden),
             matvec("k", kv_dim, hidden),
-            matvec("v", kv_dim, hidden),
-            Op(
-                "rope",
-                "vector",
-                (q_dim + kv_dim,),
-                vector_elems=q_dim + kv_dim,
-                kv_write_bytes=2 * kv_dim * BF16_BYTES,
-            ),
-            Op("scores", "engine", (n_heads, t, d), n_heads * t * d, kv_read_bytes=kv_bytes),
-            vector("softmax", n_heads * t, SOFTMAX_PASSES),
-            Op("pv", "engine", (n_heads, t, d), n_heads * t * d, kv_read_bytes=kv_bytes),
+            matvec("v", kv_dim, hidden, kv_write_bytes=row),
+            vector("rope_k", "rope", kv_dim, kv_write_bytes=row),
+            vector("rope_q", "rope", q_dim),
+            attention("attention_scores", n_heads, t, d, n_kv),
+            vector("softmax", "softmax", n_heads * t, SOFTMAX_PASSES),
+            attention("attention_values", n_heads, t, d, n_kv),
             matvec("o", hidden, q_dim),
-            vector("residual", hidden),
+            vector("residual", "add", hidden),
             rmsnorm("mlp_norm", hidden),
             matvec("gate", inter, hidden),
             matvec("up", inter, hidden),
-            vector("swiglu", inter),
+            vector("swiglu", "swiglu", inter),
             matvec("down", hidden, inter),
-            vector("residual", hidden),
+            vector("residual", "add", hidden),
         ]
     return out + [rmsnorm("final_norm", hidden), matvec("lm_head", c.vocab_size, hidden)]
 
 
 def parameter_bytes(config: LlamaConfig) -> int:
     """Bytes of the checkpoint's BF16 tensors (the embedding counted once when
-    the output projection is tied to it)."""
+    the output projection is tied to it). Independent of ops(), so the tests
+    can check one against the other."""
     c = config
     d, hidden, inter = c.head_dim, c.hidden_size, c.intermediate_size
     q_dim, kv_dim = c.num_attention_heads * d, c.num_key_value_heads * d
@@ -158,20 +173,37 @@ def parameter_bytes(config: LlamaConfig) -> int:
 
 @dataclass(frozen=True)
 class Work:
-    """Totals of a list of ops."""
+    """Totals of a list of ops: what a token moves and computes."""
 
-    memory_bytes: int
-    macs: int
+    weight_bytes: int
+    kv_read_bytes: int
+    kv_write_bytes: int
+    matvec_macs: int
+    attention_macs: int
     vector_elems: int
     commands: int
 
+    @property
+    def memory_bytes(self) -> int:
+        return self.weight_bytes + self.kv_read_bytes + self.kv_write_bytes
+
+    @property
+    def macs(self) -> int:
+        return self.matvec_macs + self.attention_macs
+
     @staticmethod
     def of(op_list: list[Op]) -> Work:
+        def total(attr: str, keep=lambda o: True) -> int:
+            return sum(getattr(o, attr) for o in op_list if keep(o))
+
         return Work(
-            sum(o.memory_bytes for o in op_list),
-            sum(o.macs for o in op_list),
-            sum(o.vector_elems for o in op_list),
-            len(op_list),
+            weight_bytes=total("weight_bytes"),
+            kv_read_bytes=total("kv_read_bytes"),
+            kv_write_bytes=total("kv_write_bytes"),
+            matvec_macs=total("macs", lambda o: o.kind not in ATTENTION_KINDS),
+            attention_macs=total("macs", lambda o: o.kind in ATTENTION_KINDS),
+            vector_elems=total("vector_elems"),
+            commands=len(op_list),
         )
 
 
