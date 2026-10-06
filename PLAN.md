@@ -290,6 +290,13 @@ for others; wrappers target F2 and the ASIC (narrows D-004). The RTL keeps
 no vendor primitives, and tools stay open source wherever F2 allows.
 Resolves Q-17 and Q-18. *Why:* we can only measure what we can run.
 
+**D-035 (2026-10-06) — Logits go to the host; sampling runs on the host.**
+OUTPUT copies the FP32 logits to host memory every token (D-029), and the
+host picks the token (argmax or sampling). Argmax on the device comes only
+if M9 measures the copy costing tokens/s. Resolves Q-21. *Why:* for SmolLM2
+the copy is 192 KiB, about 20 µs at the PCIe rate measured on F2 against a
+token of about 1 ms (estimate); the host gets every sampling method for free.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -549,4 +556,3 @@ checkpoint.
 |------|----------|----------------|
 | Q-19 | Open PDK and shuttle (SKY130, GF180MCU, IHP SG13G2; Tiny Tapeout, …). | Before M12. |
 | Q-20 | Is one-token-at-a-time prefill acceptable long-term? | After M10. |
-| Q-21 | Sampling: argmax on device or logits to host? | Leaning both. |
