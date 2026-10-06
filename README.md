@@ -60,6 +60,8 @@ git-ignored.
   cocotb 2.1 needs Verilator 5.036 or newer, which Ubuntu 26.04 does not
   have, and the slang plugin is not packaged. The tools sit in the repo
   because nothing else uses them.
+- **Tests:** `pytest` runs the golden-model tests and the RTL tests
+  (`pytest -m slow` the long ones). RTL tests skip without the suite.
 - **Vivado** is not installed locally: F2 builds run on AWS (D-032,
   [docs/aws-setup.md](docs/aws-setup.md)).
 - **Model weights** go in `weights/` (git-ignored), for example
