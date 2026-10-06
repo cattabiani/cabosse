@@ -133,8 +133,11 @@ banking is designed with the engine (M5).
 ## Clocks (D-028)
 
 v0 runs everything on the shell's 250 MHz clock: the core, the HBM ports,
-the shell interfaces. One clock means no clock-domain crossings in the
-datapath. 250 MHz is a target, to verify in M3 (one lane) and in the first
+the shell interfaces. AWS fixes 250 MHz for the shell's interfaces; the HBM
+ports are ours (we instantiate the HBM controller) and run up to 450 MHz,
+so 250 MHz on them is a v0 choice that uses about 56% of the HBM's
+bandwidth. In exchange, one clock means no clock-domain crossings in the
+datapath of the first build. 250 MHz is a target, to verify in M3 (one lane) and in the first
 full build. If it does not close, perf.md's "core at 125 MHz" scenario
 shows what is lost; a slower core would run on its own clock from AWS's
 recipes, with crossings to the shell.

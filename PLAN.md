@@ -217,7 +217,9 @@ time. K and V are stored as written (one row per position) and staged
 through an on-chip tile buffer holding two KV heads, which the engine reads
 across positions for p·V, so V has no transposed copy. Command list and
 activations stay on chip; DDR4 is unused. Everything runs on the shell's
-250 MHz clock, to verify in M3 and the first full build. Resolves Q-10 and
+250 MHz clock, to verify in M3 and the first full build. AWS fixes that
+clock for the shell's interfaces only; the HBM ports could run at 450 MHz,
+so 250 MHz there is our choice for the first build (M9 raises it). Resolves Q-10 and
 Q-11. *Why:* every port streams in parallel with sequential reads; no
 second copy of the cache; no clock crossings in the first build
 (`docs/architecture.md`).
