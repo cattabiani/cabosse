@@ -121,10 +121,9 @@ one is wrong, say so and explain why, and let the owner decide.
 - Everything else: Apache-2.0. Every source file starts with
   `SPDX-License-Identifier: Apache-2.0`.
 - Copyright line: `Copyright <year> The Cabosse Authors`.
-- Vendored third-party files (`rtl/vendor/`) keep their own headers and
-  licenses; `rtl/vendor/README.md` records where each comes from.
 - Never copy code from elsewhere without checking that its license is
-  compatible, and record where it came from.
+  compatible, and record where it came from (vendored RTL:
+  `rtl/vendor/README.md`; those files keep their own headers).
 
 ## Coding conventions
 

@@ -524,12 +524,13 @@ resource cost comes with the first build.
   changes only softmax's intermediate max, never its output: a NaN score
   still gives NaN everywhere. Needs its decision entry, `docs/numerics.md`,
   the golden model and tests together (rule 8).
-- [x] CVFPU vendored (`rtl/vendor/`, D-033): `fpnew_fma` and `fpnew_noncomp`
-  from `develop` at `77811635cb7e`, with common_cells v1.40.0 (v1.21.0, which
-  CVFPU asks for, has an "unreleased" header on `lzc.sv`). `rtl/fp32_fma.sv`
-  wraps the FMA (fma, add, mul, round to nearest even). Smoke test: bit-exact
-  against the golden model on all 4,096 triples of 16 special values and
-  3,000 random inputs per operation.
+- [x] CVFPU vendored (`rtl/vendor/`, D-033; pins and reasons in its
+  README; checksums tested). `rtl/sources.f` is the one compile list for
+  every tool. `rtl/fp32_fma.sv` wraps the FMA (fma, add, mul, round to
+  nearest even); smoke test bit-exact on every triple of 18 special values
+  and 3,000 random inputs per operation. The BF16 lane needs no
+  multi-format unit: BF16 inputs widen to FP32 exactly, and a BF16 × BF16
+  product is exact in FP32.
 - To do in step 2, before the first CVFPU test (from the review of PR #27):
   the cocotb pattern of one simulator round trip per input costs about
   5 µs per input (measured), so 10⁸ inputs per operation would take about
@@ -537,8 +538,14 @@ resource cost comes with the first build.
   bulk vectors instead: inputs and expected bits from the golden model as
   tensors, run through Verilator in chunks with no return to Python per
   input, outputs compared in bulk; `slow`-marked and seeded per chunk.
-  cocotb stays for small exhaustive tests and handshakes. Remove this note
-  when the bulk harness exists.
+  cocotb stays for small exhaustive tests and handshakes. When measuring
+  its throughput, check Verilator's UNOPTFLAT warning (combinational loops
+  in fpnew_fma and lzc, waived in `rtl/vendor/lint.vlt`): it costs
+  simulation speed. Remove this note when the bulk harness exists.
+- Later: synthesizing every module as its own top re-synthesizes the FMA
+  under each parent; once lanes and the vector unit instantiate it, check
+  leaves and the real top only, or mark full tops `slow`. The FMA's op
+  codes (`OpAdd`, `OpMul`) move to a package when a second module uses them.
 
 ### M4 — Dot-product lane
 **What:** a lane that streams BF16 pairs into an FP32 dot product.

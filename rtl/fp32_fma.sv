@@ -54,11 +54,6 @@ module fp32_fma #(
   logic unused_in_ready, unused_extension_bit, unused_tag, unused_mask, unused_aux;
   logic unused_busy, unused_early_out_valid;
 
-  // No external register-enable override: the pipeline always advances.
-  localparam int unsigned ExtRegEna = NumPipeRegs == 0 ? 1 : NumPipeRegs;
-  logic [ExtRegEna-1:0] reg_ena;
-  assign reg_ena = '0;
-
   fpnew_fma #(
     .FpFormat   (fpnew_pkg::FP32),
     .NumPipeRegs(NumPipeRegs),
@@ -86,7 +81,7 @@ module fp32_fma #(
     .out_valid_o      (valid_o),
     .out_ready_i      (1'b1),
     .busy_o           (unused_busy),
-    .reg_ena_i        (reg_ena),
+    .reg_ena_i        ('0),  // no external register-enable override
     .early_out_valid_o(unused_early_out_valid)
   );
 

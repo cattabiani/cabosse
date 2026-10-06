@@ -7,27 +7,12 @@ import pytest
 import torch
 from golden import arith, settings
 from oracle import add_ref, fma_ref, mul_ref
+from specials import F32_SPECIAL_BITS
 
 SEED = 20261002
 N_ORACLE = 20_000  # per input family; the Fraction oracle is slow
 F32 = np.float32
-SPECIALS = F32(
-    [
-        0.0,
-        -0.0,
-        1.0,
-        -1.0,
-        np.inf,
-        -np.inf,
-        np.nan,
-        2.0**-149,
-        -(2.0**-149),
-        2.0**-126,
-        np.finfo(F32).max,
-        -np.finfo(F32).max,
-        1.0 + 2.0**-23,
-    ]
-)
+SPECIALS = np.array(F32_SPECIAL_BITS, np.uint32).view(F32)
 
 
 def bits(x: np.ndarray) -> np.ndarray:

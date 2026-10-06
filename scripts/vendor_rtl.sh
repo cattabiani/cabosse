@@ -3,8 +3,10 @@
 # Copyright 2026 The Cabosse Authors
 #
 # Fetch the vendored RTL (rtl/vendor/README.md) at its pinned commits, as is:
-# the files the FP units need, and each project's license. Rerun after
-# changing a pin; review the diff.
+# the files the FP units need, and each project's license, and record their
+# checksums in rtl/vendor/SHA256SUMS (a test checks them, so a local edit
+# fails). Rerun after changing a pin; review the diff, and keep
+# rtl/sources.f in step.
 set -euo pipefail
 cd "$(dirname "$0")/../rtl/vendor"
 
@@ -24,3 +26,5 @@ fetch openhwgroup/cvfpu $CVFPU LICENSE.solderpad cvfpu/LICENSE.solderpad
 for f in src/cf_math_pkg.sv src/lzc.sv include/common_cells/registers.svh include/common_cells/assertions.svh LICENSE; do
   fetch pulp-platform/common_cells $COMMON_CELLS $f common_cells/$f
 done
+
+find cvfpu common_cells -type f | sort | xargs sha256sum > SHA256SUMS

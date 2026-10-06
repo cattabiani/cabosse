@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """Run the RTL checks from pytest: cocotb testbenches under Verilator, the
-Verilator lint and a Yosys synthesis check. Every tool gets all of rtl/ and
-the name of the top module, so blocks can instantiate each other.
+Verilator lint and a Yosys synthesis check. Every tool reads all of rtl/ from
+rtl/sources.f and is told the top module, so blocks can instantiate each
+other.
 
 The OSS CAD Suite in .tools/ goes on PATH for this process (the cocotb runner
 finds Verilator there). The simulator's Python imports what pytest's sys.path
@@ -19,21 +20,11 @@ from cocotb_tools.runner import get_runner
 from paths import REPO
 
 RTL = REPO / "rtl"
-VENDOR = RTL / "vendor"  # rtl/vendor/README.md
-# Vendored files in compile order (packages first).
-VENDOR_SOURCES = [
-    VENDOR / "common_cells" / "src" / "cf_math_pkg.sv",
-    VENDOR / "cvfpu" / "src" / "fpnew_pkg.sv",
-    VENDOR / "common_cells" / "src" / "lzc.sv",
-    *(
-        VENDOR / "cvfpu" / "src" / f"fpnew_{m}.sv"
-        for m in ("classifier", "rounding", "fma", "noncomp")
-    ),
-]
-INCLUDES = [VENDOR / "common_cells" / "include"]
-VENDOR_LINT = VENDOR / "lint.vlt"  # vendored code is not held to -Wall
+SOURCES = RTL / "sources.f"  # every RTL file in compile order
+VENDOR_LINT = RTL / "vendor" / "lint.vlt"  # vendored code is not held to -Wall
 BUILD = REPO / "verif" / "sim_build"  # git-ignored
 TOOLS_BIN = REPO / ".tools" / "oss-cad-suite" / "bin"
+VERILATOR_FILES = [str(VENDOR_LINT), "-F", str(SOURCES)]
 
 if TOOLS_BIN.is_dir():
     os.environ["PATH"] = os.pathsep.join([str(TOOLS_BIN), os.environ["PATH"]])
@@ -50,12 +41,8 @@ needs_verilator, needs_yosys = needs("verilator"), needs("yosys")
 
 
 def modules() -> list[str]:
-    """Our modules: one per file in rtl/, named after it."""
+    """Our modules: one per file in rtl/ (not rtl/vendor/), named after it."""
     return [p.stem for p in sorted(RTL.glob("*.sv"))]
-
-
-def sources() -> list[str]:
-    return [str(p) for p in [*VENDOR_SOURCES, *sorted(RTL.glob("*.sv"))]]
 
 
 def simulate(top: str, test_module: str | None = None) -> None:
@@ -64,29 +51,24 @@ def simulate(top: str, test_module: str | None = None) -> None:
     test fails here."""
     runner = get_runner("verilator")
     build_dir = BUILD / top
-    runner.build(
-        sources=[str(VENDOR_LINT), *sources()],
-        includes=INCLUDES,
+    runner.build(build_args=VERILATOR_FILES, hdl_toplevel=top, build_dir=build_dir)
+    runner.test(
         hdl_toplevel=top,
+        hdl_toplevel_lang="verilog",  # the runner cannot infer it from a file list
+        test_module=test_module or f"test_{top}",
         build_dir=build_dir,
-        always=True,
     )
-    runner.test(hdl_toplevel=top, test_module=test_module or f"test_{top}", build_dir=build_dir)
 
 
 def lint(top: str) -> subprocess.CompletedProcess:
-    includes = [f"-I{d}" for d in INCLUDES]
-    argv = ["verilator", "--lint-only", "-Wall", *includes, "--top-module", top]
-    argv += [str(VENDOR_LINT), *sources()]
+    argv = ["verilator", "--lint-only", "-Wall", "--top-module", top, *VERILATOR_FILES]
     return subprocess.run(argv, capture_output=True, text=True)
 
 
 def synthesize(top: str) -> subprocess.CompletedProcess:
     """Generic Yosys synthesis with `top` as the top module; `check -assert`
     fails on problems such as latches or undriven signals."""
-    includes = " ".join(f"-I {d}" for d in INCLUDES)
-    files = " ".join(sources())
-    script = f"read_slang {includes} {files} --top {top}; synth -top {top}; check -assert"
+    script = f"read_slang -F {SOURCES} --top {top}; synth -top {top}; check -assert"
     return subprocess.run(
         ["yosys", "-q", "-m", "slang", "-p", script], capture_output=True, text=True
     )
