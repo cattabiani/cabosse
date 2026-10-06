@@ -1,68 +1,64 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """Run the RTL checks from pytest: cocotb testbenches under Verilator, the
-Verilator lint and a Yosys synthesis check.
+Verilator lint and a Yosys synthesis check. Every tool gets all of rtl/ and
+the name of the top module, so blocks can instantiate each other.
 
-The OSS CAD Suite in .tools/ (README, "Development setup") goes on PATH after
-the venv's own bin, so the venv's cocotb comes first. Without Verilator or
-Yosys the tests that need them skip.
+The OSS CAD Suite in .tools/ goes on PATH for this process (the cocotb runner
+finds Verilator there). The simulator's Python imports what pytest's sys.path
+has (pyproject.toml, `pythonpath`): the runner passes it on. Without the tools
+the RTL tests skip, unless CABOSSE_REQUIRE_RTL=1 makes that a failure.
 """
 
 import os
 import shutil
 import subprocess
-import sys
-from pathlib import Path
 
 import pytest
 from cocotb_tools.runner import get_runner
+from paths import REPO
 
-REPO = Path(__file__).resolve().parent.parent
 RTL = REPO / "rtl"
 BUILD = REPO / "verif" / "sim_build"  # git-ignored
 TOOLS_BIN = REPO / ".tools" / "oss-cad-suite" / "bin"
-# The golden model and the testbench modules, for the Python inside the simulator.
-PYTHONPATH = [REPO / "model", REPO / "verif", REPO / "verif" / "tests"]
 
 if TOOLS_BIN.is_dir():
-    os.environ["PATH"] = os.pathsep.join(
-        [str(Path(sys.executable).parent), str(TOOLS_BIN), os.environ["PATH"]]
-    )
-
-needs_verilator = pytest.mark.skipif(shutil.which("verilator") is None, reason="no verilator")
-needs_yosys = pytest.mark.skipif(shutil.which("yosys") is None, reason="no yosys")
+    os.environ["PATH"] = os.pathsep.join([str(TOOLS_BIN), os.environ["PATH"]])
 
 
-def sources() -> list[Path]:
-    return sorted(RTL.glob("*.sv"))
+def needs(tool: str) -> pytest.MarkDecorator:
+    missing = shutil.which(tool) is None
+    if missing and os.environ.get("CABOSSE_REQUIRE_RTL") == "1":
+        raise RuntimeError(f"CABOSSE_REQUIRE_RTL=1 but {tool} is not on PATH")
+    return pytest.mark.skipif(missing, reason=f"no {tool}")
 
 
-def simulate(top: str, test_module: str) -> None:
-    """Build `top` (one module per file: rtl/<top>.sv) and run the cocotb tests
-    in verif/tests/<test_module>.py against it; a failing test fails here."""
+needs_verilator, needs_yosys = needs("verilator"), needs("yosys")
+
+
+def sources() -> list[str]:
+    return [str(p) for p in sorted(RTL.glob("*.sv"))]
+
+
+def simulate(top: str, test_module: str | None = None) -> None:
+    """Build rtl/ with `top` as the top module and run the cocotb tests in
+    verif/tests/<test_module>.py (default test_<top>) against it; a failing
+    test fails here."""
     runner = get_runner("verilator")
     build_dir = BUILD / top
-    runner.build(sources=[RTL / f"{top}.sv"], hdl_toplevel=top, build_dir=build_dir, always=True)
-    pythonpath = os.pathsep.join(str(p) for p in PYTHONPATH)
-    runner.test(
-        hdl_toplevel=top,
-        test_module=test_module,
-        build_dir=build_dir,
-        test_dir=build_dir,
-        extra_env={"PYTHONPATH": pythonpath},
-    )
+    runner.build(sources=sources(), hdl_toplevel=top, build_dir=build_dir, always=True)
+    runner.test(hdl_toplevel=top, test_module=test_module or f"test_{top}", build_dir=build_dir)
 
 
-def lint(path: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["verilator", "--lint-only", "-Wall", str(path)], capture_output=True, text=True
-    )
+def lint(top: str) -> subprocess.CompletedProcess:
+    argv = ["verilator", "--lint-only", "-Wall", "--top-module", top, *sources()]
+    return subprocess.run(argv, capture_output=True, text=True)
 
 
-def synthesize(path: Path) -> subprocess.CompletedProcess:
-    """Generic Yosys synthesis of one module; `check -assert` fails on
-    problems such as latches or undriven signals."""
-    script = f"read_slang {path}; synth -top {path.stem}; check -assert"
+def synthesize(top: str) -> subprocess.CompletedProcess:
+    """Generic Yosys synthesis with `top` as the top module; `check -assert`
+    fails on problems such as latches or undriven signals."""
+    script = f"read_slang {' '.join(sources())} --top {top}; synth -top {top}; check -assert"
     return subprocess.run(
         ["yosys", "-q", "-m", "slang", "-p", script], capture_output=True, text=True
     )

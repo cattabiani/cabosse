@@ -13,7 +13,7 @@ import rtl
 
 @rtl.needs_verilator
 def test_bf16_to_fp32() -> None:
-    rtl.simulate("bf16_to_fp32", "test_bf16_to_fp32")
+    rtl.simulate("bf16_to_fp32")
 
 
 @cocotb.test()

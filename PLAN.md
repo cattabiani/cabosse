@@ -524,6 +524,15 @@ resource cost comes with the first build.
   changes only softmax's intermediate max, never its output: a NaN score
   still gives NaN everywhere. Needs its decision entry, `docs/numerics.md`,
   the golden model and tests together (rule 8).
+- To do in step 2, before the first CVFPU test (from the review of PR #27):
+  the cocotb pattern of one simulator round trip per input costs about
+  5 µs per input (measured), so 10⁸ inputs per operation would take about
+  9 minutes and several GB of Python lists. High-volume numerics tests use
+  bulk vectors instead: inputs and expected bits from the golden model as
+  tensors, run through Verilator in chunks with no return to Python per
+  input, outputs compared in bulk; `slow`-marked and seeded per chunk.
+  cocotb stays for small exhaustive tests and handshakes. Remove this note
+  when the bulk harness exists.
 
 ### M4 — Dot-product lane
 **What:** a lane that streams BF16 pairs into an FP32 dot product.
