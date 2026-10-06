@@ -146,7 +146,7 @@ The next step up (M9) is HBM at 450 MHz with 256 lanes (perf.md's last
 scenario): about 1.8× the memory bandwidth, the same `A` and so the same
 bits. It needs a second clock domain on the memory side.
 
-## Controller **[proposed]**
+## Controller (D-029)
 
 A fixed-function sequencer, not a processor (Q-12): it reads the command
 list in order and starts each command when the units it needs are free. A
@@ -167,7 +167,7 @@ and checks that logits and KV cache match the golden decode step bit for
 bit: every operation of the step has a command, and no host work happens
 mid-token.
 
-## Commands **[proposed]**
+## Commands (D-029; vector-unit commands: Q-26)
 
 <!-- begin: opcodes -->
 | opcode | command | does |
@@ -254,7 +254,7 @@ layer, and fits the command buffer with a wide margin:
 Command buffer: 64 KiB, 2,048 commands.
 <!-- end: ladder -->
 
-## Registers **[proposed]**
+## Registers (D-029)
 
 On the shell's OCL port (AXI-Lite, 32-bit). The host writes the command list
 once, then per token: TOKEN, POSITION, CONTROL start; it waits for STATUS
