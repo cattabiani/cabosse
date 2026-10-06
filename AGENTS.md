@@ -8,7 +8,8 @@ take precedence over your defaults.
 Cabosse is an open-source hardware accelerator for LLM inference. The chip
 design and all software are open source. The aim is to show that open AI
 hardware is real and reproducible. The path is simulation → FPGA (AWS F2) →
-a small real chip on an open-source process (shuttle run). The project owner
+a small ASIC slice through signoff on an open-source process (manufacturing
+is out of scope, D-036). The project owner
 is a software engineer and numerical scientist who is new to hardware. Explain
 hardware concepts briefly when you use them.
 

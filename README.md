@@ -13,8 +13,9 @@ plan to get there in three steps:
    simulation and match a bit-exact Python reference.
 2. **FPGA:** run the same design on an AWS F2 FPGA instance and measure
    tokens/s.
-3. **ASIC:** tape out a small slice of the design on an open-source process
-   through a multi-project shuttle.
+3. **ASIC:** take a small slice of the design through signoff on an
+   open-source process, with open tools. Manufacturing it is out of scope for
+   now.
 
 The first target workload is single-stream decode (one token at a time) of
 small models, starting with SmolLM2-135M-Instruct (a small chat model). Numerics are BF16

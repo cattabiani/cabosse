@@ -16,8 +16,8 @@ The path:
    and matches a bit-exact Python golden model.
 2. **FPGA:** the same RTL runs on AWS F2 as a PCIe device, measured against
    our memory-bandwidth bound and the Gemmini hackathon baseline.
-3. **ASIC:** a small slice of the design passes signoff on an open PDK. If
-   a shuttle is affordable, we submit it.
+3. **ASIC:** a small slice of the design passes signoff on an open PDK, with
+   open tools. Manufacturing it is out of scope (D-036).
 
 ## Non-goals (for now)
 
@@ -40,6 +40,8 @@ The path:
   the ASIC.
 - Other FPGAs, such as a cheap Lattice ECP5 board with a fully open flow
   (D-034). The RTL stays vendor-neutral, so others can port it.
+- Manufacturing a chip (a shuttle run, D-036). A possible later development;
+  M12 takes the design up to signoff.
 
 ## Decision log
 
@@ -299,6 +301,13 @@ if M9 measures the copy costing tokens/s. Resolves Q-21. *Why:* for SmolLM2
 the copy is 192 KiB, about 20 µs at the PCIe rate measured on F2 against a
 token of about 1 ms (estimate); the host gets every sampling method for free.
 
+**D-036 (2026-10-06) — No chip manufacturing.** M12 takes a slice of the
+design through signoff on an open PDK, with open tools; submitting it to a
+shuttle is out of scope, a possible later development. Narrows D-001. The
+shuttle part of Q-19 is resolved; the PDK choice stays open. *Why:* signoff
+shows the design is buildable on an open process; a real chip costs money
+and time the project does not plan for.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -549,11 +558,10 @@ a tiny config on a cheap board.
 
 ### M12 — ASIC slice on an open PDK
 A few lanes with a simple test interface. DRC/LVS clean, timing met,
-gate-level simulation bit-exact. Shuttle submission is decided at this
-checkpoint.
+gate-level simulation bit-exact. No shuttle submission (D-036).
 
 ## Open questions
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-19 | Open PDK and shuttle (SKY130, GF180MCU, IHP SG13G2; Tiny Tapeout, …). | Before M12. |
+| Q-19 | Open PDK for M12's signoff (SKY130, GF180MCU, IHP SG13G2). | Before M12. |
