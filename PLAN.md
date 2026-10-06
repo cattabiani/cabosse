@@ -495,10 +495,17 @@ golden model still passes M1.
   nothing is left.
 
 ### M3 — Toolchain and FP units
-**What:** OSS CAD Suite (Verilator, Yosys with the slang SystemVerilog
-plugin, cocotb; owner installs), one-command test runner, CI, lint.
-CVFPU (D-033), vendored at a pinned version and configured for BF16 × BF16
-→ FP32 multiply-add and the FP32 operations of the vector unit.
+**What:** in this order:
+1. OSS CAD Suite (Verilator, Yosys with the slang SystemVerilog plugin,
+   cocotb; owner installs) and a one-command test runner.
+2. CVFPU (D-033), vendored at a pinned version and configured for BF16 ×
+   BF16 → FP32 multiply-add and the FP32 operations of the vector unit,
+   tested for bit exactness against the golden model. This comes first
+   because a mismatch can change the numerics, and every later milestone
+   builds on them.
+3. The accumulate loop's timing at 250 MHz: a small, targeted Vivado run on
+   AWS (D-032), with the owner's OK when it is needed.
+4. CI and lint for the RTL.
 **Why:** the FP units carry the numerics. Proving the toolchain and CVFPU's
 bit exactness on something small first.
 **Done when:** a bit-exactness step tests each CVFPU operation we use
