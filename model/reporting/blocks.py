@@ -48,4 +48,5 @@ def main(doc: str, path: Path, render: Callable[[], str]) -> None:
     if it is stale. `doc` is the script's docstring."""
     parser = argparse.ArgumentParser(description=doc, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("--check", action="store_true", help="fail if the file is stale")
-    write_or_check(path, render(), parser.parse_args().check)
+    check = parser.parse_args().check  # first: --help and bad flags exit before rendering
+    write_or_check(path, render(), check)
