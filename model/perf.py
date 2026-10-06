@@ -36,12 +36,10 @@ from typing import Literal
 
 import commands
 import paths
-from commands import Flag, Op
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from transformers import LlamaConfig
 
 BF16_BYTES = 2
-F32_BYTES = 4
 TERMS = ("memory", "engine", "vector", "commands")
 # How we know an input value -> whether it is settled (no sensitivity row in
 # the report). "measured by us" replaces every other status (D-025); "not
@@ -61,15 +59,15 @@ CLEARED = {MEASURED, "not measurable"}  # the platform is cleared when all are
 # Units shown scaled: unit -> (divisor, shown unit).
 UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 # Ops on the matrix-vector engine that are attention, not weights.
-ATTENTION_KINDS = ("attention_scores", "attention_values")
+ATTENTION_KINDS = ("scores", "values")
 # Design values that are counts: whole numbers (Design checks).
 ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
 
 
 @dataclass(frozen=True)
 class Step:
-    """The work of one command. kind is the command (lower case; attention_scores
-    and attention_values for SCORES and VALUES), and shape what it works on:
+    """The work of one command. kind is the command in lower case, and shape
+    what it works on:
     (rows, cols) of a weight matrix, (heads, positions, head_dim) for
     attention, (rows, length) on the vector unit, (elements,) for a load."""
 
@@ -212,40 +210,38 @@ def load_config(name: str) -> LlamaConfig:
     return LlamaConfig.from_json_file(paths.CONFIGS / f"{name}.json")
 
 
-def attention(kind: str, heads: int, positions: int, d: int, kv_heads: int) -> Step:
-    """q.K or p.V over `positions` cache rows: reads K (or V) once per KV
-    head, shared by its query heads. On the engine, scores have a row per
-    head and position, p.V a row per head and output dimension."""
-    kv_bytes = kv_heads * positions * d * BF16_BYTES
-    rows = {"attention_scores": (heads * positions, d), "attention_values": (heads * d, positions)}
+def attention(cmd: commands.Command, positions: int) -> Step:
+    """q.K (SCORES) or p.V (VALUES) over `positions` cache rows: reads K (or V)
+    once per KV head, shared by its query heads. On the engine, scores have a
+    row per head and position, p.V a row per head and output dimension."""
+    heads, d = cmd.n, cmd.m
+    rows = (heads * positions, d) if cmd.op == commands.Op.SCORES else (heads * d, positions)
     return Step(
-        kind,
+        cmd.op.name.lower(),
         (heads, positions, d),
         heads * positions * d,
-        kv_read_bytes=kv_bytes,
-        engine_shape=rows[kind],
+        kv_read_bytes=cmd.kv_heads * positions * d * BF16_BYTES,
+        engine_shape=rows,
     )
 
 
 def step(cmd: commands.Command, t: int) -> Step:
     """The work of one command when attention reads t positions."""
     match cmd.op:
-        case Op.MATVEC:
+        case commands.Op.MATVEC:
             n = cmd.n * cmd.m
             return Step("matvec", (cmd.n, cmd.m), n, n * BF16_BYTES, engine_shape=(cmd.n, cmd.m))
-        case Op.LOAD:
-            size = BF16_BYTES if cmd.flags & Flag.SRC_BF16 else F32_BYTES
-            return Step("load", (cmd.m,), weight_bytes=cmd.m * size)
-        case Op.KV_STORE:
+        case commands.Op.LOAD:
+            dtype = commands.BF16 if cmd.flags & commands.Flag.SRC_BF16 else commands.F32
+            return Step("load", (cmd.m,), weight_bytes=commands.n_bytes(cmd.m, dtype))
+        case commands.Op.KV_STORE:
             return Step("kv_store", (cmd.n, cmd.m), kv_write_bytes=cmd.n * cmd.m * BF16_BYTES)
-        case Op.SCORES:
-            return attention("attention_scores", cmd.n, t, cmd.m, cmd.kv_heads)
-        case Op.VALUES:
-            return attention("attention_values", cmd.n, t, cmd.m, cmd.kv_heads)
-        case Op.OUTPUT | Op.END:  # OUTPUT goes over PCIe, not HBM
+        case commands.Op.SCORES | commands.Op.VALUES:
+            return attention(cmd, t)
+        case commands.Op.OUTPUT | commands.Op.END:  # OUTPUT goes over PCIe, not HBM
             return Step(cmd.op.name.lower(), ())
         case _:  # the vector unit
-            length = t if cmd.flags & Flag.LEN_T else cmd.m
+            length = cmd.row_length(t)
             return Step(cmd.op.name.lower(), (cmd.n, length), vector_elems=cmd.n * length)
 
 

@@ -10,7 +10,6 @@ import shutil
 from itertools import product
 from pathlib import Path
 
-import commands
 import paths
 import perf
 import pytest
@@ -44,17 +43,6 @@ MEASUREMENT = {
 }
 
 
-@pytest.mark.parametrize("position", [0, 5])
-def test_ops_are_the_command_list(position: int) -> None:
-    """One entry per command, in order: the command list is the decode step
-    (test_commands checks it bit for bit against the golden model)."""
-    config = tiny.tiny_config(n_kv_heads=2)
-    cmds = commands.build(commands.Layout.of(config, position + 1))
-    names = {"scores": "attention_scores", "values": "attention_values"}
-    kinds = [names.get(c.op.name.lower(), c.op.name.lower()) for c in cmds]
-    assert [o.kind for o in perf.ops(config, position)] == kinds
-
-
 @pytest.mark.parametrize("tied", [True, False])
 def test_parameter_bytes_match_the_weights(tied: bool) -> None:
     config = tiny.tiny_config(tied=tied)
@@ -69,7 +57,7 @@ def test_a_token_reads_every_weight_once(tied: bool) -> None:
     c = tiny.tiny_config(tied=tied)
     read = perf.Work.of(perf.ops(c, 0)).weight_bytes
     table = 0 if tied else c.vocab_size * c.hidden_size * perf.BF16_BYTES
-    rope = 2 * c.head_dim * perf.F32_BYTES
+    rope = 2 * c.head_dim * 4  # FP32 cos and sin
     assert read == perf.parameter_bytes(c) + c.hidden_size * perf.BF16_BYTES + rope - table
 
 

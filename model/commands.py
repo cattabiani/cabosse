@@ -196,6 +196,10 @@ class Command:
     addr: int = 0
     scalar: int = 0  # FP32 bits
 
+    def row_length(self, t: int) -> int:
+        """Elements per row of a vector-unit command: t with LEN_T, else m."""
+        return t if self.flags & Flag.LEN_T else self.m
+
     def encode(self) -> bytes:
         return struct.pack(FORMAT, *(getattr(self, f.name) for f in fields(self)))
 
@@ -351,24 +355,19 @@ def prologue(layout: Layout) -> list[Command]:
     ]
 
 
-def vec(op: Op, dst: Buf, a: Buf, b: Buf = Buf.NONE, n: int = 1, m: int = 1, **kw) -> Command:
-    """A vector-unit command on n rows of m elements."""
-    return Command(op, dst, a, b, n=n, m=m, **kw)
-
-
 def norm(layout: Layout, name: str) -> list[Command]:
     """X = rmsnorm(H): mul(g, mul(x, rsqrt(add(mul(sumsq(x), 1/n), eps))))."""
     n = layout.config.hidden_size
-    inv_n = f32_bits(torch.tensor(1.0, dtype=F32) / n)  # IEEE division: one rounding
-    eps = f32_bits(layout.config.rms_norm_eps)
+    inv_n, eps = (f32_bits(x) for x in vector.rmsnorm_constants(n, layout.config.rms_norm_eps))
+    row, one = dict(n=1, m=n), dict(n=1, m=1)
     return [
         load_vector(Buf.W, layout, name),
-        vec(Op.SUMSQ, Buf.R, Buf.H, m=n),
-        vec(Op.MUL, Buf.R, Buf.R, scalar=inv_n),
-        vec(Op.ADD, Buf.R, Buf.R, scalar=eps),
-        vec(Op.RSQRT, Buf.R, Buf.R),
-        vec(Op.MUL, Buf.T, Buf.H, Buf.R, m=n, flags=Flag.B_PER_ROW),
-        vec(Op.MUL, Buf.X, Buf.T, Buf.W, m=n),
+        Command(Op.SUMSQ, Buf.R, Buf.H, **row),
+        Command(Op.MUL, Buf.R, Buf.R, scalar=inv_n, **one),
+        Command(Op.ADD, Buf.R, Buf.R, scalar=eps, **one),
+        Command(Op.RSQRT, Buf.R, Buf.R, **one),
+        Command(Op.MUL, Buf.T, Buf.H, Buf.R, flags=Flag.B_PER_ROW, **row),
+        Command(Op.MUL, Buf.X, Buf.T, Buf.W, **row),
     ]
 
 
@@ -376,35 +375,34 @@ def rope(dst: Buf, a: Buf, rotated: Buf, heads: int, d: int) -> list[Command]:
     """dst = fma(a, cos, mul(rotate_half(a), sin)), per head."""
     shape = dict(n=heads, m=d)
     return [
-        vec(Op.ROTATE_HALF, rotated, a, **shape),
-        vec(Op.MUL, rotated, rotated, Buf.SIN, flags=Flag.B_ROW, **shape),
-        Command(Op.FMA, dst, a, Buf.COS, rotated, Flag.B_ROW, **shape),
+        Command(Op.ROTATE_HALF, rotated, a, **shape),
+        Command(Op.MUL, rotated, rotated, Buf.SIN, flags=Flag.B_ROW, **shape),
+        Command(Op.FMA, dst, a, Buf.COS, c=rotated, flags=Flag.B_ROW, **shape),
     ]
 
 
 def softmax(heads: int) -> list[Command]:
     """P = softmax(S) per head: mul(e, recip(sum(e))), e = exp(add(s, -max(s)))."""
-    rows = dict(n=heads, m=0, flags=Flag.LEN_T)  # rows t long
+    rows, per_row = dict(n=heads), Flag.LEN_T | Flag.B_PER_ROW  # rows t long
     return [
-        vec(Op.MAX, Buf.R, Buf.S, **rows),
-        Command(
-            Op.ADD, Buf.S, Buf.S, Buf.R, n=heads, flags=Flag.LEN_T | Flag.B_PER_ROW | Flag.NEG_B
-        ),
-        vec(Op.EXP, Buf.S, Buf.S, **rows),
-        vec(Op.SUM, Buf.R, Buf.S, **rows),
-        vec(Op.RECIP, Buf.R, Buf.R, n=heads),
-        Command(Op.MUL, Buf.P, Buf.S, Buf.R, n=heads, flags=Flag.LEN_T | Flag.B_PER_ROW),
+        Command(Op.MAX, Buf.R, Buf.S, flags=Flag.LEN_T, **rows),
+        Command(Op.ADD, Buf.S, Buf.S, Buf.R, flags=per_row | Flag.NEG_B, **rows),
+        Command(Op.EXP, Buf.S, Buf.S, flags=Flag.LEN_T, **rows),
+        Command(Op.SUM, Buf.R, Buf.S, flags=Flag.LEN_T, **rows),
+        Command(Op.RECIP, Buf.R, Buf.R, m=1, **rows),
+        Command(Op.MUL, Buf.P, Buf.S, Buf.R, flags=per_row, **rows),
     ]
 
 
 def swiglu(n: int) -> list[Command]:
     """M = mul(silu(G), U), silu(a) = mul(a, recip(add(exp(-a), 1)))."""
+    row = dict(n=1, m=n)
     return [
-        vec(Op.EXP, Buf.E, Buf.G, m=n, flags=Flag.NEG_A),
-        vec(Op.ADD, Buf.E, Buf.E, m=n, scalar=f32_bits(1.0)),
-        vec(Op.RECIP, Buf.E, Buf.E, m=n),
-        vec(Op.MUL, Buf.E, Buf.G, Buf.E, m=n),
-        vec(Op.MUL, Buf.M, Buf.E, Buf.U, m=n),
+        Command(Op.EXP, Buf.E, Buf.G, flags=Flag.NEG_A, **row),
+        Command(Op.ADD, Buf.E, Buf.E, scalar=f32_bits(1.0), **row),
+        Command(Op.RECIP, Buf.E, Buf.E, **row),
+        Command(Op.MUL, Buf.E, Buf.G, Buf.E, **row),
+        Command(Op.MUL, Buf.M, Buf.E, Buf.U, **row),
     ]
 
 
@@ -424,7 +422,7 @@ def layer_commands(layout: Layout, i: int) -> list[Command]:
         return Command(Op.KV_STORE, a=a, n=kv_heads, m=d, cap=layout.cap, addr=layout.addr(name))
 
     scale = f32_bits(host.attention_scale(d))
-    residual = vec(Op.ADD, Buf.H, Buf.H, Buf.T, m=c.hidden_size)
+    residual = Command(Op.ADD, Buf.H, Buf.H, Buf.T, n=1, m=c.hidden_size)
     return [
         *norm(layout, p + "attn_norm"),
         matvec(layout, Buf.Q, p + "q", Buf.X),
@@ -487,11 +485,13 @@ def run(
         assert x.dtype == F32 and x.numel() <= length, (dst, x.dtype, x.numel(), length)
         buf[dst] = arith.bf16(x) if dtype == BF16 else x
 
-    def rows(cmd: Command, x: Buf | None, negate: bool = False) -> torch.Tensor:
-        """Operand x as n rows (t long with LEN_T), sign-flipped if asked."""
-        length = t if cmd.flags & Flag.LEN_T else cmd.m
-        v = buf[x].reshape(cmd.n, length)
-        return -v if negate else v  # unary minus: an exact sign flip
+    def rows(cmd: Command, x: Buf) -> torch.Tensor:
+        """Buffer x as the command's n rows."""
+        return buf[x].reshape(cmd.n, cmd.row_length(t))
+
+    def operand_a(cmd: Command) -> torch.Tensor:
+        v = rows(cmd, cmd.a)
+        return -v if cmd.flags & Flag.NEG_A else v  # unary minus: an exact sign flip
 
     def operand_b(cmd: Command) -> torch.Tensor:
         if cmd.b == Buf.NONE:
@@ -541,19 +541,16 @@ def run(
                 assert a.shape == (cmd.n,) and a.dtype == F32, (a.shape, a.dtype)
                 output = a.clone()
             case Op.ADD | Op.MUL:
-                x = rows(cmd, cmd.a, bool(cmd.flags & Flag.NEG_A))
-                write(cmd.dst, binary[cmd.op](x, operand_b(cmd)).reshape(-1))
+                write(cmd.dst, binary[cmd.op](operand_a(cmd), operand_b(cmd)).reshape(-1))
             case Op.FMA:
-                x = rows(cmd, cmd.a, bool(cmd.flags & Flag.NEG_A))
-                write(cmd.dst, arith.fma(x, operand_b(cmd), rows(cmd, cmd.c)).reshape(-1))
+                fma = arith.fma(operand_a(cmd), operand_b(cmd), rows(cmd, cmd.c))
+                write(cmd.dst, fma.reshape(-1))
             case Op.EXP | Op.RECIP | Op.RSQRT:
-                x = rows(cmd, cmd.a, bool(cmd.flags & Flag.NEG_A))
-                write(cmd.dst, unary[cmd.op](x).reshape(-1))
+                write(cmd.dst, unary[cmd.op](operand_a(cmd)).reshape(-1))
             case Op.SUM | Op.SUMSQ | Op.MAX:
                 write(cmd.dst, reduce[cmd.op](rows(cmd, cmd.a)))
             case Op.ROTATE_HALF:
-                x, half = rows(cmd, cmd.a), cmd.m // 2
-                write(cmd.dst, torch.cat([-x[:, half:], x[:, :half]], dim=1).reshape(-1))
+                write(cmd.dst, vector.rotate_half(rows(cmd, cmd.a)).reshape(-1))
             case Op.END:  # must be the last command (the COMMANDS register's count)
                 assert i == len(commands) - 1, f"{len(commands) - 1 - i} commands after END"
                 return output

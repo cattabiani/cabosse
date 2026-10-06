@@ -46,6 +46,12 @@ def reduce_max(x: torch.Tensor) -> torch.Tensor:
     return x[..., 0]
 
 
+def rmsnorm_constants(n: int, eps: float) -> tuple[torch.Tensor, torch.Tensor]:
+    """1/n and eps for RMSNorm, each rounded to FP32 once (on the host)."""
+    inv_n = torch.tensor(1.0, dtype=torch.float32) / n  # IEEE division: f32(1/n), one rounding
+    return inv_n, torch.tensor(eps, dtype=torch.float32)  # f32(eps), one rounding
+
+
 def rmsnorm(
     x: torch.Tensor, g: torch.Tensor, eps: float, width: int = REDUCE_WIDTH
 ) -> torch.Tensor:
@@ -57,8 +63,7 @@ def rmsnorm(
     assert x.dtype == torch.float32 and g.dtype == torch.bfloat16, (x.dtype, g.dtype)
     n = x.shape[-1]
     assert g.shape == (n,), (g.shape, n)  # one weight per element, no broadcasting
-    inv_n = torch.tensor(1.0, dtype=torch.float32) / n  # IEEE division: f32(1/n), one rounding
-    eps32 = torch.tensor(eps, dtype=torch.float32)  # f32(eps), one rounding
+    inv_n, eps32 = rmsnorm_constants(n, eps)
     var = arith.mul(reduce_sum_squares(x, width), inv_n)
     r = funcs.rsqrt(arith.add(var, eps32))
     return arith.mul(arith.up(g), arith.mul(x, r[..., None]))
@@ -83,6 +88,12 @@ def softmax(
     return p if valid is None else torch.where(valid, p, 0.0)
 
 
+def rotate_half(x: torch.Tensor) -> torch.Tensor:
+    """(-second half, first half) over the last dimension (d even)."""
+    half = x.shape[-1] // 2
+    return torch.cat([-x[..., half:], x[..., :half]], dim=-1)  # unary minus: exact sign flip
+
+
 def rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
     """Rotary position embedding over the last dimension (d even, halves not
     interleaved): out = fma(x, cos, mul(rotate_half(x), sin)). cos and sin are
@@ -90,9 +101,7 @@ def rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
     assert x.dtype == cos.dtype == sin.dtype == torch.float32, (x.dtype, cos.dtype, sin.dtype)
     d = x.shape[-1]
     assert d % 2 == 0 and cos.shape == sin.shape and cos.shape[-1] == d, (x.shape, cos.shape)
-    half = d // 2
-    rotated = torch.cat([-x[..., half:], x[..., :half]], dim=-1)  # unary minus: exact sign flip
-    return arith.fma(x, cos, arith.mul(rotated, sin))
+    return arith.fma(x, cos, arith.mul(rotate_half(x), sin))
 
 
 def silu(a: torch.Tensor) -> torch.Tensor:
