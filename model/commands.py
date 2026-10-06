@@ -50,7 +50,7 @@ class Op(enum.IntEnum):
 # (docs/architecture.md, "Commands"). `t` is position + 1, the positions
 # attention reads.
 OPS = {
-    Op.END: ("token done: set STATUS done, raise the interrupt", ()),
+    Op.END: ("token done: set STATUS done, raise the interrupt; the last command", ()),
     Op.EMBED: ("dst = up(table[token]), rows of m; table at addr", ("dst", "m", "addr")),
     Op.RMSNORM: (
         "dst = rmsnorm(a, gain at addr, eps = scalar), n elements",
@@ -363,7 +363,7 @@ def run(
         assert x.dtype == F32 and x.numel() <= length, (dst, x.dtype, x.numel(), length)
         buf[dst] = arith.bf16(x) if dtype == BF16 else x
 
-    for cmd in commands:
+    for i, cmd in enumerate(commands):
         a, b, mem = buf.get(cmd.a), buf.get(cmd.b), hbm.get(cmd.addr)
         match cmd.op:
             case Op.EMBED:
@@ -398,7 +398,8 @@ def run(
             case Op.OUTPUT:
                 assert a.shape == (cmd.n,) and a.dtype == F32, (a.shape, a.dtype)
                 output = a.clone()
-            case Op.END:
+            case Op.END:  # must be the last command (the COMMANDS register's count)
+                assert i == len(commands) - 1, f"{len(commands) - 1 - i} commands after END"
                 return output
             case _:  # the controller stops with STATUS error and the index in ERROR
                 raise AssertionError(f"unknown command {cmd.op!r}")

@@ -172,7 +172,7 @@ mid-token.
 <!-- begin: opcodes -->
 | opcode | command | does |
 |---|---|---|
-| 0 | `END` | token done: set STATUS done, raise the interrupt |
+| 0 | `END` | token done: set STATUS done, raise the interrupt; the last command |
 | 1 | `EMBED` | dst = up(table[token]), rows of m; table at addr |
 | 2 | `RMSNORM` | dst = rmsnorm(a, gain at addr, eps = scalar), n elements |
 | 3 | `MATVEC` | dst = W·a, W at addr: n rows × m columns |

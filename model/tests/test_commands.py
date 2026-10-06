@@ -132,6 +132,17 @@ def test_an_unknown_opcode_or_buffer_does_not_decode(byte: int) -> None:
         commands.Command.decode(bytes(raw))
 
 
+def test_a_command_after_end_is_rejected() -> None:
+    """END is the last command: anything after it is a mistake of the host
+    (a wrong count, two steps in one list), not something to skip."""
+    c = tiny.tiny_config()
+    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=1))
+    layout = commands.Layout.of(c, cap=2)
+    cmds = commands.build(layout) + [commands.Command(commands.Op.END)]
+    with pytest.raises(AssertionError, match="1 commands after END"):
+        commands.run(cmds, layout, commands.load(model, layout), 3, 0)
+
+
 def test_an_unknown_command_stops_the_run() -> None:
     """A command run() has no case for (an opcode added to Op but not to
     run()) is an error, not skipped."""
