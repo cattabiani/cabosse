@@ -27,6 +27,7 @@ from golden import arith, decoder, dot, host, vector
 from transformers import LlamaConfig
 
 ALIGN = 4096  # HBM bytes; every tensor starts on a boundary
+COMMAND_BUFFER_BYTES = 64 * 2**10  # on chip, next to the controller
 BF16, F32 = torch.bfloat16, torch.float32
 
 
@@ -185,7 +186,7 @@ REGISTERS = [
     (0x24, "LOGITS_HI", "RW", "host address for OUTPUT, high 32 bits"),
     (0x28, "CYCLES_LO", "R", "cycles of the last token, low 32 bits"),
     (0x2C, "CYCLES_HI", "R", "cycles of the last token, high 32 bits"),
-    (0x10000, "COMMAND_BUFFER", "W", "the command list, 32 bytes per command"),
+    (0x10000, "COMMAND_BUFFER", "W", "the command list: 64 KiB, up to 2,048 commands"),
 ]
 
 
@@ -349,6 +350,7 @@ def run(
     """Execute a command list for one token, as the controller does: buffers
     start empty, HBM (the KV cache) is updated in place. Returns what OUTPUT
     wrote to the host."""
+    assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
     formats = buffers(layout.config, layout.cap)
     buf: dict[Buf, torch.Tensor] = {}
     output = None

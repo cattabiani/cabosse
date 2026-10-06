@@ -9,11 +9,15 @@ import struct
 import commands
 import paths
 import perf
+import torch
 
 from reporting import blocks
 
 PATH = paths.REPO / "docs" / "architecture.md"
-MODEL = "SmolLM2-135M-Instruct"
+MODEL = "SmolLM2-135M-Instruct"  # the decode step written out
+# The model ladder after the tiny configs (D-014), each at its full context:
+# the on-chip buffers are sized for the largest of each.
+LADDER = ("SmolLM2-135M-Instruct", "Qwen2.5-0.5B-Instruct")
 COLUMNS = ("dst", "a", "b", "n", "m", "addr")  # of the decode-step table
 
 
@@ -49,21 +53,59 @@ def registers_table() -> str:
     )
 
 
-def buffers_table(layout: commands.Layout) -> str:
-    formats = commands.buffers(layout.config, layout.cap)
+def ladder_layouts() -> dict[str, commands.Layout]:
+    configs = {name: perf.load_config(name) for name in LADDER}
+    return {name: commands.Layout.of(c, c.max_position_embeddings) for name, c in configs.items()}
+
+
+def capacities() -> dict[commands.Buf, tuple[torch.dtype, int, str]]:
+    """Each buffer at the largest size the ladder needs, and which model sets it."""
+    out = {}
+    for name, layout in ladder_layouts().items():
+        for b, (dtype, n) in commands.buffers(layout.config, layout.cap).items():
+            if b not in out or n > out[b][1]:
+                out[b] = (dtype, n, name)
+    return out
+
+
+def buffers_table() -> str:
+    caps = capacities()
     rows = [
         [
             f"`{b.name}`",
             "BF16" if dtype == commands.BF16 else "FP32",
             f"{n:,}",
             f"{commands.n_bytes(n, dtype):,}",
+            name,
         ]
-        for b, (dtype, n) in formats.items()
+        for b, (dtype, n, name) in caps.items()
     ]
-    total = sum(commands.n_bytes(n, dtype) for dtype, n in formats.values())
+    total = sum(commands.n_bytes(n, dtype) for dtype, n, _ in caps.values())
     return (
-        blocks.table(["buffer", "format", "elements", "bytes"], rows)
-        + f"\n\nTotal {total / 2**10:,.0f} KiB for {MODEL} with a cache of {layout.cap} positions."
+        blocks.table(["buffer", "format", "elements", "bytes", "sized by"], rows)
+        + f"\n\nTotal {total / 2**20:,.2f} MiB."
+    )
+
+
+def ladder_table() -> str:
+    rows = []
+    for name, layout in ladder_layouts().items():
+        n = len(commands.build(layout))
+        rows.append(
+            [
+                name,
+                layout.config.num_hidden_layers,
+                layout.cap,
+                n,
+                f"{n * commands.COMMAND_BYTES:,}",
+                f"{layout.total_bytes / 2**20:,.1f}",
+            ]
+        )
+    return blocks.table(
+        ["model", "layers", "context", "commands", "command bytes", "HBM (MiB)"], rows
+    ) + (
+        f"\n\nCommand buffer: {commands.COMMAND_BUFFER_BYTES // 2**10} KiB, "
+        f"{commands.COMMAND_BUFFER_BYTES // commands.COMMAND_BYTES:,} commands."
     )
 
 
@@ -108,7 +150,8 @@ def generated() -> dict[str, str]:
         "opcodes": opcodes_table(),
         "encoding": encoding_table(),
         "registers": registers_table(),
-        "buffers": buffers_table(layout),
+        "buffers": buffers_table(),
+        "ladder": ladder_table(),
         "token": token_block(layout),
     }
 

@@ -211,30 +211,48 @@ and every MATVEC input is already BF16.
 32 bytes per command, little-endian; unused fields are zero.
 <!-- end: encoding -->
 
-**On-chip buffers.** One per kind of value in a step; the scores and
-probabilities grow with the cache size:
+**On-chip buffers.** One per kind of value in a step. Their sizes are fixed
+when the image is built, so they cap a model's dimensions: LOGITS the
+vocabulary, S and P (scores and probabilities) heads × context, G, U and M
+the intermediate size. They are sized for the largest model of the ladder at
+its full context; a longer context or a larger model needs a rebuild, and
+the host can always run a shorter context (a smaller `cap`) on the same
+image. Qwen2.5-0.5B is read as a Llama config, so its q, k and v biases are
+not counted (they need no buffer of their own).
 
 <!-- begin: buffers -->
-| buffer | format | elements | bytes |
-|---|---|---|---|
-| `H` | FP32 | 576 | 2,304 |
-| `X` | BF16 | 576 | 1,152 |
-| `Q` | FP32 | 576 | 2,304 |
-| `K` | FP32 | 192 | 768 |
-| `V` | FP32 | 192 | 768 |
-| `QR` | BF16 | 576 | 1,152 |
-| `KR` | FP32 | 192 | 768 |
-| `S` | FP32 | 73,728 | 294,912 |
-| `P` | BF16 | 73,728 | 147,456 |
-| `ATT` | BF16 | 576 | 1,152 |
-| `T` | FP32 | 576 | 2,304 |
-| `G` | FP32 | 1,536 | 6,144 |
-| `U` | FP32 | 1,536 | 6,144 |
-| `M` | BF16 | 1,536 | 3,072 |
-| `LOGITS` | FP32 | 49,152 | 196,608 |
+| buffer | format | elements | bytes | sized by |
+|---|---|---|---|---|
+| `H` | FP32 | 896 | 3,584 | Qwen2.5-0.5B-Instruct |
+| `X` | BF16 | 896 | 1,792 | Qwen2.5-0.5B-Instruct |
+| `Q` | FP32 | 896 | 3,584 | Qwen2.5-0.5B-Instruct |
+| `K` | FP32 | 192 | 768 | SmolLM2-135M-Instruct |
+| `V` | FP32 | 192 | 768 | SmolLM2-135M-Instruct |
+| `QR` | BF16 | 896 | 1,792 | Qwen2.5-0.5B-Instruct |
+| `KR` | FP32 | 192 | 768 | SmolLM2-135M-Instruct |
+| `S` | FP32 | 458,752 | 1,835,008 | Qwen2.5-0.5B-Instruct |
+| `P` | BF16 | 458,752 | 917,504 | Qwen2.5-0.5B-Instruct |
+| `ATT` | BF16 | 896 | 1,792 | Qwen2.5-0.5B-Instruct |
+| `T` | FP32 | 896 | 3,584 | Qwen2.5-0.5B-Instruct |
+| `G` | FP32 | 4,864 | 19,456 | Qwen2.5-0.5B-Instruct |
+| `U` | FP32 | 4,864 | 19,456 | Qwen2.5-0.5B-Instruct |
+| `M` | BF16 | 4,864 | 9,728 | Qwen2.5-0.5B-Instruct |
+| `LOGITS` | FP32 | 151,936 | 607,744 | Qwen2.5-0.5B-Instruct |
 
-Total 651 KiB for SmolLM2-135M-Instruct with a cache of 8192 positions.
+Total 3.27 MiB.
 <!-- end: buffers -->
+
+**Command lists of the ladder.** The list grows by one layer's commands per
+layer, and fits the command buffer with a wide margin:
+
+<!-- begin: ladder -->
+| model | layers | context | commands | command bytes | HBM (MiB) |
+|---|---|---|---|---|---|
+| SmolLM2-135M-Instruct | 30 | 8192 | 575 | 18,400 | 440.7 |
+| Qwen2.5-0.5B-Instruct | 24 | 32768 | 461 | 14,752 | 1,342.3 |
+
+Command buffer: 64 KiB, 2,048 commands.
+<!-- end: ladder -->
 
 ## Registers **[proposed]**
 
@@ -257,7 +275,7 @@ done (or the interrupt) and finds the logits at the host address it set.
 | `0x24` | `LOGITS_HI` | RW | host address for OUTPUT, high 32 bits |
 | `0x28` | `CYCLES_LO` | R | cycles of the last token, low 32 bits |
 | `0x2C` | `CYCLES_HI` | R | cycles of the last token, high 32 bits |
-| `0x10000` | `COMMAND_BUFFER` | W | the command list, 32 bytes per command |
+| `0x10000` | `COMMAND_BUFFER` | W | the command list: 64 KiB, up to 2,048 commands |
 <!-- end: registers -->
 
 ## One token as commands

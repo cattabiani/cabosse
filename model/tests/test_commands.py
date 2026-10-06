@@ -99,6 +99,20 @@ def test_perf_ops_follow_the_command_list(n_kv_heads: int) -> None:
             assert (cmd.n, cmd.m) == op.shape, (cmd, op)
 
 
+@pytest.mark.parametrize("name", arch_doc.LADDER)
+def test_ladder_command_lists_fit_the_command_buffer(name: str) -> None:
+    c = perf.load_config(name)
+    n = len(commands.build(commands.Layout.of(c, c.max_position_embeddings)))
+    assert n * commands.COMMAND_BYTES <= commands.COMMAND_BUFFER_BYTES, (name, n)
+
+
+def test_buffer_capacities_cover_every_ladder_model() -> None:
+    caps = arch_doc.capacities()
+    for layout in arch_doc.ladder_layouts().values():
+        for b, (dtype, n) in commands.buffers(layout.config, layout.cap).items():
+            assert caps[b][0] == dtype and n <= caps[b][1], (b, layout.config)
+
+
 def test_a_list_without_end_is_rejected() -> None:
     c = tiny.tiny_config()
     model = decoder.from_state_dict(c, tiny.random_weights(c, seed=1))
