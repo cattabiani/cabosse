@@ -14,24 +14,28 @@ from reporting import blocks
 
 PATH = paths.REPO / "docs" / "architecture.md"
 MODEL = "SmolLM2-135M-Instruct"
+COLUMNS = ("dst", "a", "b", "n", "m", "addr")  # of the decode-step table
 
 
 def opcodes_table() -> str:
     return blocks.table(
         ["opcode", "command", "does"],
-        [[int(op), f"`{op.name}`", commands.OP_DOC[op]] for op in commands.Op],
+        [[int(op), f"`{op.name}`", does] for op, (does, _) in commands.OPS.items()],
     )
 
 
 def encoding_table() -> str:
     rows, offset = [], 0
-    for name, fmt, meaning in commands.FIELDS:
+    for name, (fmt, meaning) in commands.ENCODING.items():
         size = struct.calcsize("<" + fmt)
-        rows.append([offset, size, f"`{name}`", meaning])
+        users = [op.name for op, (_, used) in commands.OPS.items() if name in used]
+        rows.append(
+            [offset, size, f"`{name}`", meaning, ", ".join(users) if name != "op" else "all"]
+        )
         offset += size
     return (
-        blocks.table(["byte", "bytes", "field", "meaning"], rows)
-        + f"\n\n{commands.COMMAND_BYTES} bytes per command, little-endian."
+        blocks.table(["byte", "bytes", "field", "meaning", "used by"], rows)
+        + f"\n\n{commands.COMMAND_BYTES} bytes per command, little-endian; unused fields are zero."
     )
 
 
@@ -46,48 +50,52 @@ def registers_table() -> str:
 
 
 def buffers_table(layout: commands.Layout) -> str:
-    sizes = commands.buffer_bytes(layout.config, layout.cap)
-    rows = [[f"`{b.name}`", f"{n:,}"] for b, n in sizes.items()]
-    total = sum(sizes.values())
+    formats = commands.buffers(layout.config, layout.cap)
+    rows = [
+        [
+            f"`{b.name}`",
+            "BF16" if dtype == commands.BF16 else "FP32",
+            f"{n:,}",
+            f"{commands.n_bytes(n, dtype):,}",
+        ]
+        for b, (dtype, n) in formats.items()
+    ]
+    total = sum(commands.n_bytes(n, dtype) for dtype, n in formats.values())
     return (
-        blocks.table(["buffer", "bytes"], rows)
+        blocks.table(["buffer", "format", "elements", "bytes"], rows)
         + f"\n\nTotal {total / 2**10:,.0f} KiB for {MODEL} with a cache of {layout.cap} positions."
     )
 
 
-def fmt(cmd: commands.Command) -> list[str]:
-    def buf(b: commands.Buf) -> str:
-        return "" if b == commands.Buf.NONE else b.name
+def row(index: int | str, cmd: commands.Command) -> list:
+    used = commands.OPS[cmd.op][1]
 
-    return [
-        cmd.op.name,
-        buf(cmd.dst),
-        buf(cmd.a),
-        buf(cmd.b),
-        str(cmd.n or ""),
-        str(cmd.m or ""),
-        f"0x{cmd.addr:X}" if cmd.op in commands.ADDRESSED else "",
-    ]
+    def cell(name: str) -> str:
+        if name not in used:
+            return ""
+        value = getattr(cmd, name)
+        if name == "addr":
+            return f"0x{value:X}"
+        return value.name if isinstance(value, commands.Buf) else str(value)
+
+    return [index, cmd.op.name, *(cell(name) for name in COLUMNS)]
 
 
 def token_block(layout: commands.Layout) -> str:
-    """The first layer in full, then the rest as a count."""
+    """Layer 0 in full, the other layers as a count."""
+    head = commands.prologue(layout) + commands.layer_commands(layout, 0)
+    tail = commands.epilogue(layout)
     cmds = commands.build(layout)
-    c = layout.config
-    first = [i for i, cmd in enumerate(cmds) if cmd.op == commands.Op.RMSNORM][::2]
-    per_layer = first[1] - first[0]  # from one layer's first RMSNORM to the next
-    head = cmds[: first[0] + per_layer]
-    tail = cmds[first[0] + per_layer * c.num_hidden_layers :]
-    header = ["#", "command", "dst", "a", "b", "n", "m", "addr"]
-    rows = [[i, *fmt(cmd)] for i, cmd in enumerate(head)]
+    layers, per_layer = layout.config.num_hidden_layers, len(commands.layer_commands(layout, 0))
+    rows = [row(i, cmd) for i, cmd in enumerate(head)]
     rows.append(
-        ["…", f"layers 1 to {c.num_hidden_layers - 1}: the same, at their own addresses"] + [""] * 6
+        ["…", f"layers 1 to {layers - 1}: the same, at their own addresses"] + [""] * len(COLUMNS)
     )
-    rows += [[len(cmds) - len(tail) + i, *fmt(cmd)] for i, cmd in enumerate(tail)]
+    rows += [row(len(cmds) - len(tail) + i, cmd) for i, cmd in enumerate(tail)]
     size = len(cmds) * commands.COMMAND_BYTES
     return (
         f"{MODEL}, cache of {layout.cap} positions:\n\n"
-        + blocks.table(header, rows)
+        + blocks.table(["#", "command", *COLUMNS], rows)
         + f"\n\n{len(cmds)} commands ({per_layer} per layer), {size:,} bytes. "
         f"HBM in use: {layout.total_bytes / 2**20:,.1f} MiB."
     )

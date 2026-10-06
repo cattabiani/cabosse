@@ -93,7 +93,7 @@ gate and up) into one, to fill the last pass; a small gain for SmolLM2.
 |---|---|---|
 | Weights | HBM, spread over all 32 channels | the only memory big and fast enough; all ports stream at once |
 | KV cache | HBM, spread over all 32 channels | grows with the position; read every token |
-| Command list | on chip, next to the controller | small (one command per operation: perf.md, "Work per token"); fetched with no HBM latency |
+| Command list | on chip, next to the controller | small (below, "One token as commands"); fetched with no HBM latency |
 | Activations | on chip | small, used constantly; no HBM traffic (perf.md's assumption) |
 | KV tiles | on chip | a block of K or V positions, staged for the engine (below) |
 | DDR4 | unused in v0 | 27× slower than HBM (f2.md) |
@@ -172,66 +172,66 @@ mid-token.
 <!-- begin: opcodes -->
 | opcode | command | does |
 |---|---|---|
-| 0 | `END` | token done: set the status register's done bit, raise the interrupt |
-| 1 | `EMBED` | dst = up(table row `token`); table at addr, rows of m BF16 |
-| 2 | `RMSNORM` | dst = bf16(rmsnorm(a, gain at addr, eps = scalar)), n elements |
-| 3 | `MATVEC` | dst = W·a, W at addr: n rows × m cols BF16; a is BF16, dst FP32 |
-| 4 | `ROPE` | dst = bf16(rope(a)): n vectors of m; cos and sin rows at addr, row `position` |
-| 5 | `KV_STORE` | cache[h][position] = a[h] (rounded to BF16 if FP32), n heads of m; cache at addr |
-| 6 | `SCORES` | dst[h][t] = dot(a[h], K[h // group][t]) · scalar for t ≤ position |
-| 7 | `SOFTMAX` | dst = bf16(softmax(a)), n vectors of position + 1 |
-| 8 | `VALUES` | dst[h] = bf16(Σₜ a[h][t] · V[h // group][t]) for t ≤ position |
-| 9 | `SWIGLU` | dst = bf16(swiglu(a, b)), n elements |
+| 0 | `END` | token done: set STATUS done, raise the interrupt |
+| 1 | `EMBED` | dst = up(table[token]), rows of m; table at addr |
+| 2 | `RMSNORM` | dst = rmsnorm(a, gain at addr, eps = scalar), n elements |
+| 3 | `MATVEC` | dst = W·a, W at addr: n rows × m columns |
+| 4 | `ROPE` | dst = rope(a), n vectors of m; cos and sin at addr, row position |
+| 5 | `KV_STORE` | cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head |
+| 6 | `SCORES` | dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t |
+| 7 | `SOFTMAX` | dst = softmax(a), n vectors of t |
+| 8 | `VALUES` | dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t |
+| 9 | `SWIGLU` | dst = swiglu(a, b), n elements |
 | 10 | `ADD` | dst = add(a, b), n elements |
-| 11 | `OUTPUT` | write a (n FP32) to host memory at the logits address register |
+| 11 | `OUTPUT` | a (n FP32) to host memory at LOGITS_HI:LOGITS_LO |
 <!-- end: opcodes -->
 
 Every command names its buffers (`dst`, `a`, `b`) and, where it reads or
-writes HBM, an address. BF16 rounding before a matrix product (D-011) is
-part of the command that produces the vector: RMSNORM, SWIGLU and VALUES
-write BF16, so every MATVEC input is already BF16.
+writes HBM, an address. Results are FP32; writing to a BF16 buffer or to
+the KV cache rounds them (round to nearest even). The BF16 rounding points
+of D-011 are exactly the BF16 destinations, so no command rounds on its own
+and every MATVEC input is already BF16.
 
 **Encoding.** One fixed size for every command, unused fields zero:
 
 <!-- begin: encoding -->
-| byte | bytes | field | meaning |
-|---|---|---|---|
-| 0 | 1 | `op` | opcode (Op) |
-| 1 | 1 | `dst` | destination buffer (Buf) |
-| 2 | 1 | `a` | first source buffer |
-| 3 | 1 | `b` | second source buffer |
-| 4 | 4 | `n` | rows, elements or vectors |
-| 8 | 4 | `m` | columns or vector length |
-| 12 | 2 | `heads` | query heads (SCORES, VALUES) |
-| 14 | 2 | `kv_heads` | KV heads (SCORES, VALUES) |
-| 16 | 4 | `cap` | KV cache rows per head (KV_STORE, SCORES, VALUES) |
-| 20 | 8 | `addr` | HBM byte address |
-| 28 | 4 | `scalar` | FP32 bits: eps (RMSNORM) or scale (SCORES) |
+| byte | bytes | field | meaning | used by |
+|---|---|---|---|---|
+| 0 | 1 | `op` | opcode | all |
+| 1 | 1 | `dst` | destination buffer | EMBED, RMSNORM, MATVEC, ROPE, SCORES, SOFTMAX, VALUES, SWIGLU, ADD |
+| 2 | 1 | `a` | first source buffer | RMSNORM, MATVEC, ROPE, KV_STORE, SCORES, SOFTMAX, VALUES, SWIGLU, ADD, OUTPUT |
+| 3 | 1 | `b` | second source buffer | SWIGLU, ADD |
+| 4 | 4 | `n` | rows, elements, vectors or heads | RMSNORM, MATVEC, ROPE, KV_STORE, SCORES, SOFTMAX, VALUES, SWIGLU, ADD, OUTPUT |
+| 8 | 4 | `m` | columns or vector length | EMBED, MATVEC, ROPE, KV_STORE, SCORES, VALUES |
+| 12 | 4 | `kv_heads` | KV heads | SCORES, VALUES |
+| 16 | 4 | `cap` | KV cache rows per head | KV_STORE, SCORES, VALUES |
+| 20 | 8 | `addr` | HBM byte address | EMBED, RMSNORM, MATVEC, ROPE, KV_STORE, SCORES, VALUES |
+| 28 | 4 | `scalar` | FP32 bits: eps or scale | RMSNORM, SCORES |
 
-32 bytes per command, little-endian.
+32 bytes per command, little-endian; unused fields are zero.
 <!-- end: encoding -->
 
 **On-chip buffers.** One per kind of value in a step; the scores and
 probabilities grow with the cache size:
 
 <!-- begin: buffers -->
-| buffer | bytes |
-|---|---|
-| `H` | 2,304 |
-| `X` | 1,152 |
-| `Q` | 2,304 |
-| `K` | 768 |
-| `V` | 768 |
-| `QR` | 1,152 |
-| `KR` | 384 |
-| `S` | 294,912 |
-| `P` | 147,456 |
-| `ATT` | 1,152 |
-| `T` | 2,304 |
-| `G` | 6,144 |
-| `U` | 6,144 |
-| `M` | 3,072 |
-| `LOGITS` | 196,608 |
+| buffer | format | elements | bytes |
+|---|---|---|---|
+| `H` | FP32 | 576 | 2,304 |
+| `X` | BF16 | 576 | 1,152 |
+| `Q` | FP32 | 576 | 2,304 |
+| `K` | FP32 | 192 | 768 |
+| `V` | FP32 | 192 | 768 |
+| `QR` | BF16 | 576 | 1,152 |
+| `KR` | FP32 | 192 | 768 |
+| `S` | FP32 | 73,728 | 294,912 |
+| `P` | BF16 | 73,728 | 147,456 |
+| `ATT` | BF16 | 576 | 1,152 |
+| `T` | FP32 | 576 | 2,304 |
+| `G` | FP32 | 1,536 | 6,144 |
+| `U` | FP32 | 1,536 | 6,144 |
+| `M` | BF16 | 1,536 | 3,072 |
+| `LOGITS` | FP32 | 49,152 | 196,608 |
 
 Total 651 KiB for SmolLM2-135M-Instruct with a cache of 8192 positions.
 <!-- end: buffers -->
@@ -245,7 +245,7 @@ done (or the interrupt) and finds the logits at the host address it set.
 <!-- begin: registers -->
 | offset | register | access | meaning |
 |---|---|---|---|
-| `0x0` | `ID` | R | 0x43424F53 ('CBOS'), then the version in the next word |
+| `0x0` | `ID` | R | 0x43424F53 ('CBOS') |
 | `0x4` | `VERSION` | R | architecture version |
 | `0x8` | `CONTROL` | W | bit 0: start a token; bit 1: reset the controller |
 | `0xC` | `STATUS` | R | bit 0: busy; bit 1: done; bit 2: error |
@@ -257,7 +257,7 @@ done (or the interrupt) and finds the logits at the host address it set.
 | `0x24` | `LOGITS_HI` | RW | host address for OUTPUT, high 32 bits |
 | `0x28` | `CYCLES_LO` | R | cycles of the last token, low 32 bits |
 | `0x2C` | `CYCLES_HI` | R | cycles of the last token, high 32 bits |
-| `0x10000` | `COMMAND_BUFFER` | W | the command list, COMMAND_BYTES per command |
+| `0x10000` | `COMMAND_BUFFER` | W | the command list, 32 bytes per command |
 <!-- end: registers -->
 
 ## One token as commands
@@ -278,9 +278,9 @@ SmolLM2-135M-Instruct, cache of 8192 positions:
 | 6 | KV_STORE |  | KR |  | 3 | 64 | 0x40C2000 |
 | 7 | KV_STORE |  | V |  | 3 | 64 | 0x43C2000 |
 | 8 | ROPE | QR | Q |  | 9 | 64 | 0x3600000 |
-| 9 | SCORES | S | QR |  |  | 64 | 0x40C2000 |
+| 9 | SCORES | S | QR |  | 9 | 64 | 0x40C2000 |
 | 10 | SOFTMAX | P | S |  | 9 |  |  |
-| 11 | VALUES | ATT | P |  |  | 64 | 0x43C2000 |
+| 11 | VALUES | ATT | P |  | 9 | 64 | 0x43C2000 |
 | 12 | MATVEC | T | ATT |  | 576 | 576 | 0x3B0F000 |
 | 13 | ADD | H | H | T | 576 |  |  |
 | 14 | RMSNORM | X | H |  | 576 |  | 0x3BB1000 |

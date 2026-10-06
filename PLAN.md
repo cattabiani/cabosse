@@ -473,6 +473,7 @@ checkpoint.
 | Q-04 | Vivado builds for F2: local machine or AWS build instance? | First F2 build (M8, D-026). Leaning AWS: the FPGA Developer AMI (Marketplace subscription done 2026-10-05) includes the Vivado license on EC2; local needs a license for the VU47P (to verify). |
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
 | Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. Proposed in `docs/architecture.md`: a sequencer; the decode step has no data-dependent control. |
+| Q-26 | Vector-unit commands: fused per model block (RMSNORM, ROPE, SOFTMAX, SWIGLU: today's proposal) or primitives (elementwise ops, exp, recip, reductions) so that other model families need only a new command list? | M2, with the vector unit. Leaning: keep MATVEC and attention fused, make the vector unit primitive; its time is small next to memory and the engine (`docs/perf.md`). |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
 | Q-17 | ECP5 board and host link. | Before M11. |
 | Q-18 | Do ECP5 before F2? | M7 checkpoint. |

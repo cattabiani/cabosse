@@ -4,7 +4,10 @@
 gives the golden decode step's bits, so every operation has a command; its
 encoding round-trips; the HBM layout is consistent."""
 
+import dataclasses
+
 import commands
+import perf
 import pytest
 import torch
 from golden import arith, decoder, tiny
@@ -24,7 +27,7 @@ def test_commands_give_the_golden_decode_step(n_kv_heads: int, tied: bool) -> No
     cache = decoder.KVCache.empty(model, layout.cap)
     for position, token in enumerate(TOKENS):
         expected = decoder.decode_step(model, cache, token)
-        got = commands.run(cmds, hbm, token, position)
+        got = commands.run(cmds, layout, hbm, token, position)
         assert torch.equal(arith.bits_f32(got), arith.bits_f32(expected)), position
     for i in range(c.num_hidden_layers):
         for name, golden in (("k_cache", cache.k[i]), ("v_cache", cache.v[i])):
@@ -44,9 +47,7 @@ def test_encoding_round_trips() -> None:
 @pytest.mark.parametrize("tied", [True, False])
 def test_layout_is_aligned_and_does_not_overlap(tied: bool) -> None:
     layout = commands.Layout.of(tiny.tiny_config(tied=tied), cap=4)
-    spans = sorted(
-        {(a, a + torch.Size(s).numel() * t.itemsize) for a, s, t in layout.tensors.values()}
-    )
+    spans = sorted({(a, a + commands.n_bytes(s, t)) for a, s, t in layout.tensors.values()})
     assert all(a % commands.ALIGN == 0 for a, _ in spans)
     assert all(end <= start for (_, end), (start, _) in zip(spans, spans[1:], strict=False))
     assert (layout.addr("lm_head") == layout.addr("embed")) == tied
@@ -54,8 +55,48 @@ def test_layout_is_aligned_and_does_not_overlap(tied: bool) -> None:
 
 def test_every_opcode_is_documented_and_used() -> None:
     layout = commands.Layout.of(tiny.tiny_config(), cap=4)
-    assert set(commands.OP_DOC) == set(commands.Op)
+    assert set(commands.OPS) == set(commands.Op)
     assert {cmd.op for cmd in commands.build(layout)} == set(commands.Op)
+
+
+def test_commands_set_only_the_fields_their_op_uses() -> None:
+    """OPS lists each command's fields; the doc's tables rely on it."""
+    for cmd in commands.build(commands.Layout.of(tiny.tiny_config(), cap=4)):
+        default = commands.Command(cmd.op)
+        set_fields = {
+            f.name
+            for f in dataclasses.fields(cmd)
+            if getattr(cmd, f.name) != getattr(default, f.name)
+        }
+        assert set_fields <= set(commands.OPS[cmd.op][1]), cmd
+
+
+# Perf model op kinds per compute command; KV_STORE, OUTPUT and END move data
+# or signal, and perf.ops() charges their traffic to other ops.
+PERF_KIND = {
+    commands.Op.EMBED: "embed",
+    commands.Op.RMSNORM: "rmsnorm",
+    commands.Op.MATVEC: "matvec",
+    commands.Op.ROPE: "rope",
+    commands.Op.SCORES: "attention_scores",
+    commands.Op.SOFTMAX: "softmax",
+    commands.Op.VALUES: "attention_values",
+    commands.Op.SWIGLU: "swiglu",
+    commands.Op.ADD: "add",
+}
+
+
+@pytest.mark.parametrize("n_kv_heads", [1, 2])
+def test_perf_ops_follow_the_command_list(n_kv_heads: int) -> None:
+    """perf.ops() and build() are two lists of one decode step: the same
+    compute operations, in the same order, on the same matrix shapes."""
+    c = tiny.tiny_config(n_kv_heads=n_kv_heads)
+    cmds = [x for x in commands.build(commands.Layout.of(c, cap=4)) if x.op in PERF_KIND]
+    ops = perf.ops(c, position=0)
+    assert [PERF_KIND[x.op] for x in cmds] == [o.kind for o in ops]
+    for cmd, op in zip(cmds, ops, strict=True):
+        if cmd.op == commands.Op.MATVEC:
+            assert (cmd.n, cmd.m) == op.shape, (cmd, op)
 
 
 def test_a_list_without_end_is_rejected() -> None:
@@ -63,7 +104,7 @@ def test_a_list_without_end_is_rejected() -> None:
     model = decoder.from_state_dict(c, tiny.random_weights(c, seed=1))
     layout = commands.Layout.of(c, cap=2)
     with pytest.raises(AssertionError, match="without END"):
-        commands.run(commands.build(layout)[:-1], commands.load(model, layout), 3, 0)
+        commands.run(commands.build(layout)[:-1], layout, commands.load(model, layout), 3, 0)
 
 
 def test_architecture_doc_is_up_to_date() -> None:

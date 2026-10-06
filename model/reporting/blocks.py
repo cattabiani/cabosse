@@ -10,8 +10,10 @@ A block sits between two markers in the Markdown file:
     <!-- end: name -->
 """
 
+import argparse
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 BLOCK = re.compile(r"(<!-- begin: (\S+) -->\n).*?(<!-- end: \2 -->)", re.DOTALL)
@@ -39,3 +41,11 @@ def write_or_check(path: Path, text: str, check: bool) -> None:
         print(f"written: {path}")
     elif text != path.read_text():
         sys.exit(f"{path} is stale: render it")
+
+
+def main(doc: str, path: Path, render: Callable[[], str]) -> None:
+    """Command line of a report script: rewrite `path`, or with --check fail
+    if it is stale. `doc` is the script's docstring."""
+    parser = argparse.ArgumentParser(description=doc, formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("--check", action="store_true", help="fail if the file is stale")
+    write_or_check(path, render(), parser.parse_args().check)
