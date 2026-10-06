@@ -260,6 +260,14 @@ not change. Resolves Q-26; to be applied to `model/commands.py`,
 needing a new step (Qwen2.5's q/k/v biases, Qwen3's q/k norm) needs a new
 command list, not new hardware; the vector unit is one generic pipeline.
 
+**D-032 (2026-10-06) — F2 builds run on AWS.** Vivado builds for F2 run on
+an EC2 instance from the FPGA Developer AMI, which includes the Vivado
+license; nothing is built locally. Each build instance, like every launch,
+needs the owner's OK with a time limit. Resolves Q-04. *Why:* no local
+Vivado install or VU47P license to manage, the HDK's Vivado version comes
+with the AMI, and turning the build into an FPGA image (AFI) happens on
+AWS anyway. The build's result does not depend on the host machine.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -512,7 +520,6 @@ checkpoint.
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-04 | Vivado builds for F2: local machine or AWS build instance? | First F2 build (M8, D-026). Leaning AWS: the FPGA Developer AMI (Marketplace subscription done 2026-10-05) includes the Vivado license on EC2; local needs a license for the VU47P (to verify). |
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
 | Q-17 | ECP5 board and host link. | Before M11. |
