@@ -524,6 +524,12 @@ resource cost comes with the first build.
   changes only softmax's intermediate max, never its output: a NaN score
   still gives NaN everywhere. Needs its decision entry, `docs/numerics.md`,
   the golden model and tests together (rule 8).
+- [x] CVFPU vendored (`rtl/vendor/`, D-033): `fpnew_fma` and `fpnew_noncomp`
+  from `develop` at `77811635cb7e`, with common_cells v1.40.0 (v1.21.0, which
+  CVFPU asks for, has an "unreleased" header on `lzc.sv`). `rtl/fp32_fma.sv`
+  wraps the FMA (fma, add, mul, round to nearest even). Smoke test: bit-exact
+  against the golden model on all 4,096 triples of 16 special values and
+  3,000 random inputs per operation.
 - To do in step 2, before the first CVFPU test (from the review of PR #27):
   the cocotb pattern of one simulator round trip per input costs about
   5 µs per input (measured), so 10⁸ inputs per operation would take about

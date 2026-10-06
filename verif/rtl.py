@@ -19,6 +19,19 @@ from cocotb_tools.runner import get_runner
 from paths import REPO
 
 RTL = REPO / "rtl"
+VENDOR = RTL / "vendor"  # rtl/vendor/README.md
+# Vendored files in compile order (packages first).
+VENDOR_SOURCES = [
+    VENDOR / "common_cells" / "src" / "cf_math_pkg.sv",
+    VENDOR / "cvfpu" / "src" / "fpnew_pkg.sv",
+    VENDOR / "common_cells" / "src" / "lzc.sv",
+    *(
+        VENDOR / "cvfpu" / "src" / f"fpnew_{m}.sv"
+        for m in ("classifier", "rounding", "fma", "noncomp")
+    ),
+]
+INCLUDES = [VENDOR / "common_cells" / "include"]
+VENDOR_LINT = VENDOR / "lint.vlt"  # vendored code is not held to -Wall
 BUILD = REPO / "verif" / "sim_build"  # git-ignored
 TOOLS_BIN = REPO / ".tools" / "oss-cad-suite" / "bin"
 
@@ -36,8 +49,13 @@ def needs(tool: str) -> pytest.MarkDecorator:
 needs_verilator, needs_yosys = needs("verilator"), needs("yosys")
 
 
+def modules() -> list[str]:
+    """Our modules: one per file in rtl/, named after it."""
+    return [p.stem for p in sorted(RTL.glob("*.sv"))]
+
+
 def sources() -> list[str]:
-    return [str(p) for p in sorted(RTL.glob("*.sv"))]
+    return [str(p) for p in [*VENDOR_SOURCES, *sorted(RTL.glob("*.sv"))]]
 
 
 def simulate(top: str, test_module: str | None = None) -> None:
@@ -46,19 +64,29 @@ def simulate(top: str, test_module: str | None = None) -> None:
     test fails here."""
     runner = get_runner("verilator")
     build_dir = BUILD / top
-    runner.build(sources=sources(), hdl_toplevel=top, build_dir=build_dir, always=True)
+    runner.build(
+        sources=[str(VENDOR_LINT), *sources()],
+        includes=INCLUDES,
+        hdl_toplevel=top,
+        build_dir=build_dir,
+        always=True,
+    )
     runner.test(hdl_toplevel=top, test_module=test_module or f"test_{top}", build_dir=build_dir)
 
 
 def lint(top: str) -> subprocess.CompletedProcess:
-    argv = ["verilator", "--lint-only", "-Wall", "--top-module", top, *sources()]
+    includes = [f"-I{d}" for d in INCLUDES]
+    argv = ["verilator", "--lint-only", "-Wall", *includes, "--top-module", top]
+    argv += [str(VENDOR_LINT), *sources()]
     return subprocess.run(argv, capture_output=True, text=True)
 
 
 def synthesize(top: str) -> subprocess.CompletedProcess:
     """Generic Yosys synthesis with `top` as the top module; `check -assert`
     fails on problems such as latches or undriven signals."""
-    script = f"read_slang {' '.join(sources())} --top {top}; synth -top {top}; check -assert"
+    includes = " ".join(f"-I {d}" for d in INCLUDES)
+    files = " ".join(sources())
+    script = f"read_slang {includes} {files} --top {top}; synth -top {top}; check -assert"
     return subprocess.run(
         ["yosys", "-q", "-m", "slang", "-p", script], capture_output=True, text=True
     )

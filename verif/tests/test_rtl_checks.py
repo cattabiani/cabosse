@@ -4,18 +4,16 @@
 synthesizes in Yosys (AGENTS.md, SystemVerilog conventions), as the top of
 all of rtl/. One module per file, named after it."""
 
-from pathlib import Path
-
 import pytest
 
 import rtl
 
 
 def test_there_is_rtl() -> None:
-    assert rtl.sources()
+    assert MODULES
 
 
-MODULES = [Path(p).stem for p in rtl.sources()]
+MODULES = rtl.modules()
 
 
 @rtl.needs_verilator
