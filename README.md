@@ -30,7 +30,7 @@ checkpoints.
 
 ## Status
 
-**M2 in progress** (architecture spec and performance model). See [PLAN.md](PLAN.md) for goals,
+**M3 in progress** (toolchain and FP units). M2 is done: [reports/M2.md](reports/M2.md). See [PLAN.md](PLAN.md) for goals,
 decisions, milestones, and open questions.
 
 ## Repository layout

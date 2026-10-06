@@ -388,7 +388,7 @@ order depends on the lane design (M2), so it is a parameter here.
   #11). Resolves Q-08: the D-020 parameters hold end to end (the comparison
   uses them); their area is checked in M6.
 
-### M2 — Architecture spec and performance model
+### M2 — Architecture spec and performance model ✅
 **What:** `docs/architecture.md` (block diagram, register map, memory map,
 data layouts, command format, one token written out as commands, lanes `L`,
 accumulators `A`, clock targets) and a first-order perf model
