@@ -22,9 +22,12 @@ COLUMNS = ("dst", "a", "b", "c", "n", "m", "flags", "scalar", "addr")  # of the 
 
 
 def opcodes_table() -> str:
+    def accepts(op: commands.Op) -> str:
+        return " ".join(f.name for f in commands.ACCEPTS.get(op, commands.Flag.NONE))
+
     return blocks.table(
-        ["opcode", "command", "does"],
-        [[int(op), f"`{op.name}`", does] for op, (does, _) in commands.OPS.items()],
+        ["opcode", "command", "does", "flags"],
+        [[int(op), f"`{op.name}`", does, accepts(op)] for op, (does, _) in commands.OPS.items()],
     )
 
 

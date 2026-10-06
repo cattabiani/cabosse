@@ -64,6 +64,34 @@ def test_every_flag_is_documented_and_fits_its_byte() -> None:
     assert max(commands.Flag) < 256
 
 
+def test_built_commands_use_only_accepted_flags() -> None:
+    layout = commands.Layout.of(tiny.tiny_config(), cap=4)
+    assert all(commands.flags_ok(cmd) for cmd in commands.build(layout))
+
+
+F = commands.Flag
+BAD_FLAGS = [
+    (commands.Op.SUM, F.NEG_A),  # a reduction does not negate its input
+    (commands.Op.ROTATE_HALF, F.LEN_T),
+    (commands.Op.MATVEC, F.NEG_A),  # engine commands take no flags
+    (commands.Op.MUL, F.B_PER_ROW | F.B_ROW),  # one b shape at a time
+    (commands.Op.LOAD, F.BY_TOKEN | F.BY_POSITION),
+]
+
+
+@pytest.mark.parametrize(("op", "flags"), BAD_FLAGS)
+def test_a_flag_the_command_does_not_accept_stops_the_run(op, flags) -> None:
+    """Flags outside the command's ACCEPTS are an error, not ignored."""
+    c = tiny.tiny_config()
+    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=1))
+    layout = commands.Layout.of(c, cap=2)
+    cmds = commands.build(layout)
+    i = next(k for k, x in enumerate(cmds) if x.op == op)
+    cmds[i] = dataclasses.replace(cmds[i], flags=flags)
+    with pytest.raises(AssertionError, match=f"command {i}: flags"):
+        commands.run(cmds, layout, commands.load(model, layout), 3, 0)
+
+
 def test_commands_set_only_the_fields_their_op_uses() -> None:
     """OPS lists each command's fields; the doc's tables rely on it."""
     for cmd in commands.build(commands.Layout.of(tiny.tiny_config(), cap=4)):

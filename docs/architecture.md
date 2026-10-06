@@ -203,25 +203,25 @@ mid-token.
 ## Commands (D-029, D-031)
 
 <!-- begin: opcodes -->
-| opcode | command | does |
-|---|---|---|
-| 0 | `END` | token done: set STATUS done, raise the interrupt; the last command |
-| 1 | `LOAD` | dst = up(tensor at addr), m elements |
-| 2 | `MATVEC` | dst = W·a, W at addr: n rows × m columns |
-| 3 | `KV_STORE` | cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head |
-| 4 | `SCORES` | dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t |
-| 5 | `VALUES` | dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t |
-| 6 | `OUTPUT` | a (n FP32) to host memory at LOGITS_HI:LOGITS_LO |
-| 7 | `ADD` | dst = add(a, b) |
-| 8 | `MUL` | dst = mul(a, b) |
-| 9 | `FMA` | dst = fma(a, b, c) |
-| 10 | `EXP` | dst = exp(a) |
-| 11 | `RECIP` | dst = recip(a) |
-| 12 | `RSQRT` | dst = rsqrt(a) |
-| 13 | `SUM` | dst[r] = sum of row r of a, with S partial sums |
-| 14 | `SUMSQ` | dst[r] = sum of squares of row r of a |
-| 15 | `MAX` | dst[r] = max of row r of a |
-| 16 | `ROTATE_HALF` | each row of a: (-second half, first half) |
+| opcode | command | does | flags |
+|---|---|---|---|
+| 0 | `END` | token done: set STATUS done, raise the interrupt; the last command |  |
+| 1 | `LOAD` | dst = up(tensor at addr), m elements | BY_TOKEN BY_POSITION SRC_BF16 |
+| 2 | `MATVEC` | dst = W·a, W at addr: n rows × m columns |  |
+| 3 | `KV_STORE` | cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head |  |
+| 4 | `SCORES` | dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t |  |
+| 5 | `VALUES` | dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t |  |
+| 6 | `OUTPUT` | a (n FP32) to host memory at LOGITS_HI:LOGITS_LO |  |
+| 7 | `ADD` | dst = add(a, b) | NEG_A NEG_B B_PER_ROW B_ROW LEN_T |
+| 8 | `MUL` | dst = mul(a, b) | NEG_A NEG_B B_PER_ROW B_ROW LEN_T |
+| 9 | `FMA` | dst = fma(a, b, c) | NEG_A NEG_B B_PER_ROW B_ROW LEN_T |
+| 10 | `EXP` | dst = exp(a) | NEG_A LEN_T |
+| 11 | `RECIP` | dst = recip(a) | NEG_A LEN_T |
+| 12 | `RSQRT` | dst = rsqrt(a) | NEG_A LEN_T |
+| 13 | `SUM` | dst[r] = sum of row r of a, with S partial sums | LEN_T |
+| 14 | `SUMSQ` | dst[r] = sum of squares of row r of a | LEN_T |
+| 15 | `MAX` | dst[r] = max of row r of a | LEN_T |
+| 16 | `ROTATE_HALF` | each row of a: (-second half, first half) |  |
 <!-- end: opcodes -->
 
 The engine gets one command per matrix product (MATVEC, SCORES, VALUES).

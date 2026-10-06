@@ -85,6 +85,23 @@ FLAGS = {
 # buffer of the same shape, unless a B_ flag says otherwise; with b = NONE,
 # b is the constant in `scalar`.
 ROWS = ("n", "m", "flags")
+_OPERANDS = Flag.NEG_A | Flag.NEG_B | Flag.B_PER_ROW | Flag.B_ROW | Flag.LEN_T
+# The flags each command accepts; any other flag, or both flags of an
+# EXCLUSIVE pair, is an error (run() stops, as for an unknown opcode).
+ACCEPTS = {
+    Op.LOAD: Flag.BY_TOKEN | Flag.BY_POSITION | Flag.SRC_BF16,
+    Op.ADD: _OPERANDS,
+    Op.MUL: _OPERANDS,
+    Op.FMA: _OPERANDS,
+    Op.EXP: Flag.NEG_A | Flag.LEN_T,
+    Op.RECIP: Flag.NEG_A | Flag.LEN_T,
+    Op.RSQRT: Flag.NEG_A | Flag.LEN_T,
+    Op.SUM: Flag.LEN_T,
+    Op.SUMSQ: Flag.LEN_T,
+    Op.MAX: Flag.LEN_T,
+    Op.ROTATE_HALF: Flag.NONE,
+}
+EXCLUSIVE = (Flag.B_PER_ROW | Flag.B_ROW, Flag.BY_TOKEN | Flag.BY_POSITION)
 
 # Per command: what it does, and the fields it uses besides `op`
 # (docs/architecture.md, "Commands"). `t` is position + 1, the positions
@@ -466,6 +483,12 @@ def build(layout: Layout) -> list[Command]:
     )
 
 
+def flags_ok(cmd: Command) -> bool:
+    """Only flags the command accepts, and at most one of each EXCLUSIVE pair."""
+    accepted = ACCEPTS.get(cmd.op, Flag.NONE)
+    return not cmd.flags & ~accepted and all((cmd.flags & pair) != pair for pair in EXCLUSIVE)
+
+
 def run(
     commands: list[Command], layout: Layout, hbm: dict[int, torch.Tensor], token: int, position: int
 ) -> torch.Tensor | None:
@@ -512,6 +535,8 @@ def run(
         Op.MAX: vector.reduce_max,
     }
     for i, cmd in enumerate(commands):
+        assert cmd.op in OPS, f"unknown command {cmd.op!r}"  # stops, as case _ below
+        assert flags_ok(cmd), f"command {i}: flags {cmd.flags!r} not accepted by {cmd.op!r}"
         a, mem = buf.get(cmd.a), hbm.get(cmd.addr)
         match cmd.op:
             case Op.LOAD:
