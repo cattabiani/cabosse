@@ -224,6 +224,30 @@ Q-11. *Why:* every port streams in parallel with sequential reads; no
 second copy of the cache; no clock crossings in the first build
 (`docs/architecture.md`).
 
+**D-029 (2026-10-06) — Controller, commands and registers for v0.** The
+controller is a fixed-function sequencer: it runs one unrolled command list
+per model in order, with the token id and the position in registers; no
+processor (resolves Q-12). Commands have one 32-byte encoding; results are
+FP32 and round to BF16 where the destination is BF16 (the D-011 points); END
+is the last command and an unknown command is an error. On-chip buffers are
+sized at build time for the largest ladder model at full context; the
+command buffer holds 64 KiB. The host interface is plain registers on the
+OCL port: TOKEN, POSITION, CONTROL start, STATUS done or the interrupt, and
+OUTPUT copies the logits to a host address. Whether the vector-unit commands
+stay fused is open (Q-26). *Why:* a decode step has no data-dependent
+control, so a processor would add a core, firmware and slower command issue
+for nothing used; a queue of token descriptors, a completion record in host
+memory or on-device argmax save microseconds per millisecond token, so they
+wait for Q-20 and Q-21 (`docs/architecture.md`, `model/commands.py`).
+
+**D-030 (2026-10-06) — Vector unit: 16 FP32 elements per cycle, `S` = 128.**
+`S` fits every vector unit planned: up to 32 elements per cycle with a
+4-cycle add loop, or 16 with an 8-cycle loop; v0 builds 16. `S` = 128
+replaces the provisional 8 in `docs/numerics.md`. *Why:* at 16 wide the
+vector unit stays below the engine's time at every position of both ladder
+models (`docs/perf.md`); a wider unit or online softmax (D-022) can come
+later, and widening does not change the bits (`docs/architecture.md`).
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -352,8 +376,8 @@ golden model still passes M1.
   engine, memory and clocks. Decided: the engine, 128 lanes × 4 multiply-adds,
   `A` = 16 (D-027; resolves Q-25 and Q-22); memory and clocks (D-028;
   resolves Q-10 and Q-11). The perf model now counts idle lanes and the final sum of short
-  rows. Still to write: the vector unit.
-- [ ] Controller, commands and registers, proposed (`docs/architecture.md`,
+  rows. Vector unit: 16 FP32 elements per cycle, `S` = 128 (D-030).
+- [x] Controller, commands and registers, D-029 (`docs/architecture.md`,
   tables generated from `model/commands.py`): a fixed-function sequencer
   (Q-12) running one unrolled command list per model; token and position in
   registers; 12 commands of 32 bytes; 575 commands for SmolLM2. A reference
@@ -369,6 +393,12 @@ golden model still passes M1.
   top-1 0.9965 vs 0.9930 and mean KL lower, mean logit error 1.6% higher.
   `S` (vector-unit reductions) stays provisional 8 until the vector unit is
   designed.
+- [x] `S` = 128 (D-030) in `docs/numerics.md` and the golden model; SmolLM2
+  greedy fixture regenerated (the tiny one keeps its bits: its 64-long sums
+  differ, but not after the BF16 roundings). Comparison rerun on the M1 set
+  (`reports/data/M2-reduce-width-128-compare.json`): against `S` = 8, top-1
+  (0.9965) and mean logit error unchanged; max logit error 1.91e-2 vs
+  2.20e-2, max KL 3.5e-3 vs 4.4e-3.
 - [x] Report-generation code in its own package, `model/reporting/`:
   `blocks.py` (generated blocks), `m1.py` (`reports/M1.md`), `perf_doc.py`
   (`docs/perf.md`), each with `PATH` and `render()`; scripts
@@ -472,7 +502,6 @@ checkpoint.
 |------|----------|----------------|
 | Q-04 | Vivado builds for F2: local machine or AWS build instance? | First F2 build (M8, D-026). Leaning AWS: the FPGA Developer AMI (Marketplace subscription done 2026-10-05) includes the Vivado license on EC2; local needs a license for the VU47P (to verify). |
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
-| Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. Proposed in `docs/architecture.md`: a sequencer; the decode step has no data-dependent control. |
 | Q-26 | Vector-unit commands: fused per model block (RMSNORM, ROPE, SOFTMAX, SWIGLU: today's proposal) or primitives (elementwise ops, exp, recip, reductions) so that other model families need only a new command list? | M2, with the vector unit. Leaning: keep MATVEC and attention fused, make the vector unit primitive; its time is small next to memory and the engine (`docs/perf.md`). |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
 | Q-17 | ECP5 board and host link. | Before M11. |

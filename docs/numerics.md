@@ -74,7 +74,7 @@ v0. If M2 needs it, this section changes.
 All FP32 unless noted. `n ≥ 1` is the vector length.
 
 - **Reductions.** `sum(x)` and `sum_squares(x)` use the loop of section 3 with
-  `S` interleaved partial sums **[param, from M2]** in place of `A` (the vector
+  `S` = 128 interleaved partial sums (D-030) in place of `A` (the vector
   unit's adder has a latency too), and a step in place of
   `mac(w[k], x[k], acc)`: `add(xᵢ, acc)` for `sum`, `fma(xᵢ, xᵢ, acc)` for
   `sum_squares`. Unlike section 3, padding the last group with +0 gives the
@@ -239,7 +239,7 @@ with tolerances (M1 exit criteria), never bit-exactly.
 | Param | Meaning | Fixed by |
 |-------|---------|----------|
 | `A` | interleaved accumulators per lane | M2: 16 (D-027; 4 multiply-adds per lane × a 4-cycle accumulate loop) |
-| `S` | vector-unit reduction width | M2; provisional 8 |
+| `S` | vector-unit reduction width | M2: 128 (D-030; up to 32 elements per cycle × a 4-cycle add loop) |
 | `R_RSQRT`, `N_RSQRT` | rsqrt first-guess constant, Newton steps | M1: `0x5F3759DF`, 2 |
 | `R_RECIP`, `N_RECIP` | recip first-guess constant, Newton steps | M1: `0x7EF311C3`, 2 |
 | exp degree, coefficients | 2ᶠ polynomial | M1: degree 4, section 5 |

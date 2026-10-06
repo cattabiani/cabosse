@@ -141,17 +141,18 @@ def test_reduce_max_signed_zeros_and_single_nan() -> None:
 
 
 @pytest.mark.parametrize("family", ["moderate", "extreme"])
-@pytest.mark.parametrize("width", [1, 2, 4, 8, 16])
+@pytest.mark.parametrize("width", [1, 2, 4, 8, 16, vector.REDUCE_WIDTH])
 @pytest.mark.parametrize(
     "golden, spec",
     [(vector.reduce_sum, spec_sum), (vector.reduce_sum_squares, spec_sum_squares)],
     ids=["sum", "sum_squares"],
 )
 def test_sums_match_spec_bit_exactly(golden, spec, width: int, family: str) -> None:
-    """Lengths 1..40 include n < S and n not a multiple of S."""
+    """Lengths 1..40 and around 128 include n < S, n = S and n not a multiple
+    of S, for every width."""
     rng = np.random.default_rng(SEED + width)
     make = moderate if family == "moderate" else extreme
-    for length in range(1, 41):
+    for length in [*range(1, 41), 127, 128, 129, 300]:
         x = make(rng, (4, length))
         got = bits_of(golden(t32(x), width))
         want = bits_of([spec(row, width) for row in x])
@@ -203,7 +204,7 @@ RMSNORM_INPUTS = {
 
 @pytest.mark.parametrize("family", list(RMSNORM_INPUTS))
 @pytest.mark.parametrize("eps", [1e-5, 1e-6])
-@pytest.mark.parametrize("width", [1, 8])
+@pytest.mark.parametrize("width", [1, 8, vector.REDUCE_WIDTH])
 def test_rmsnorm_matches_spec_bit_exactly(width: int, eps: float, family: str) -> None:
     """n = 576 is SmolLM2's hidden size (1/576 is not exact in FP32)."""
     rng = np.random.default_rng(SEED + width)
@@ -262,7 +263,7 @@ SOFTMAX_SCORES = {
 
 
 @pytest.mark.parametrize("family", list(SOFTMAX_SCORES))
-@pytest.mark.parametrize("width", [1, 8])
+@pytest.mark.parametrize("width", [1, 8, vector.REDUCE_WIDTH])
 def test_softmax_matches_spec_bit_exactly(width: int, family: str) -> None:
     rng = np.random.default_rng(SEED + width)
     for n in (1, 2, 5, 8, 33, 100, 600):
