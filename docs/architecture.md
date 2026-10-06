@@ -8,8 +8,8 @@ is generated from the perf model.
 
 Status: draft. This version covers the blocks, the engine, memory and
 clocks. Still to come in M2: the register map, the command format, one token
-written out as commands, the vector unit and the controller. Choices marked
-**[proposed]** wait for the owner's approval.
+written out as commands, the vector unit and the controller. Sections
+marked with a D-number are decided (PLAN.md decision log).
 
 ## How a token runs
 
@@ -35,7 +35,7 @@ reads only cache entries `0…p`, so stale entries need no clearing.
 The core exposes AXI-Lite and AXI only (D-004). Everything F2-specific (the
 HBM IP, the shell ports, clocks) sits in `platforms/f2/`.
 
-## Engine **[proposed]**
+## Engine (D-027)
 
 **Shape:** `L` = 128 lanes, each doing 4 multiply-adds per cycle, with `A` =
 16 partial sums per lane: 512 multiply-adds per cycle.
@@ -73,9 +73,7 @@ use"):
 **Numerics.** Only `A` affects the result bits. `L` and the multiply-adds
 per lane change the speed, not the bits, so the engine can grow (more
 lanes) without a numerics change. `A` = 16 replaces the provisional `A` = 8
-of numerics.md; changing it is a numerics change (AGENTS.md rule 8): the
-spec, the golden model, and the M1 comparison rerun, in their own pull
-request once approved.
+of numerics.md.
 
 **Requirement for M3.** The multiply-add unit's accumulate loop must close
 in 4 cycles at 250 MHz. If it needs more, `A` grows with it (8 cycles would
@@ -89,7 +87,7 @@ mean `A` = 32, with the losses of the 64 × 8 row above at long positions).
 **Left for later:** concatenating matrices that share an input (q, k and v;
 gate and up) into one, to fill the last pass; a small gain for SmolLM2.
 
-## Memory **[proposed]**
+## Memory (D-028)
 
 | What | Where | Why |
 |---|---|---|
@@ -132,11 +130,14 @@ it from there:
 The buffer must serve both access patterns at 512 values per cycle; its
 banking is designed with the engine (M5).
 
-## Clocks
+## Clocks (D-028)
 
 v0 runs everything on the shell's 250 MHz clock: the core, the HBM ports,
-the shell interfaces. One clock means no clock-domain crossings in the
-datapath. 250 MHz is a target, to verify in M3 (one lane) and in the first
+the shell interfaces. AWS fixes 250 MHz for the shell's interfaces; the HBM
+ports are ours (we instantiate the HBM controller) and run up to 450 MHz,
+so 250 MHz on them is a v0 choice that uses about 56% of the HBM's
+bandwidth. In exchange, one clock means no clock-domain crossings in the
+datapath of the first build. 250 MHz is a target, to verify in M3 (one lane) and in the first
 full build. If it does not close, perf.md's "core at 125 MHz" scenario
 shows what is lost; a slower core would run on its own clock from AWS's
 recipes, with crossings to the shell.

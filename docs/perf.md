@@ -69,7 +69,7 @@ v0: first-order design choices (M2), from `model/designs/v0.json`:
 | `memory_clock_hz` | 250 MHz | choice | HBM ports on the shell clock |
 | `lanes` | 128 lanes | choice | docs/architecture.md, engine |
 | `macs_per_lane` | 4 MAC/cycle | choice | docs/architecture.md, engine: 128 x 4 x 2 B = 1024 B/cycle, all 32 HBM ports at 250 MHz |
-| `accumulators` | 16 partial sums | choice | docs/architecture.md, engine: 4 multiply-adds x a 4-cycle loop (proposed; docs/numerics.md has A = 8 until approved) |
+| `accumulators` | 16 partial sums | choice | docs/architecture.md, engine: 4 multiply-adds x a 4-cycle loop (D-027) |
 | `vector_elems_per_cycle` | 16 elements/cycle | guess | none yet (M6 sizes the vector unit) |
 | `command_cycles` | 64 cycles/command | guess | none yet (the controller is designed in M2/M7) |
 

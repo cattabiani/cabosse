@@ -46,7 +46,7 @@ Special values (D-012, D-016):
 ## 3. Dot product (the lanes)
 
 A dot product `y = Σₖ w[k]·x[k]` over `k = 0…K-1` with BF16 `w`, `x`
-is computed with `A` interleaved accumulators **[param, from M2]**:
+is computed with `A` = 16 interleaved accumulators (D-027):
 
 ```
 acc[j] = +0.0                                  for j = 0…A-1
@@ -238,7 +238,7 @@ with tolerances (M1 exit criteria), never bit-exactly.
 
 | Param | Meaning | Fixed by |
 |-------|---------|----------|
-| `A` | interleaved accumulators per lane | M2 (adder pipeline depth); provisional 8 |
+| `A` | interleaved accumulators per lane | M2: 16 (D-027; 4 multiply-adds per lane × a 4-cycle accumulate loop) |
 | `S` | vector-unit reduction width | M2; provisional 8 |
 | `R_RSQRT`, `N_RSQRT` | rsqrt first-guess constant, Newton steps | M1: `0x5F3759DF`, 2 |
 | `R_RECIP`, `N_RECIP` | recip first-guess constant, Newton steps | M1: `0x7EF311C3`, 2 |

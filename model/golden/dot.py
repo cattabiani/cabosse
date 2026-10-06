@@ -17,9 +17,9 @@ from golden import arith
 # One step of a partial sum: step(*elements, acc) -> new acc.
 Step = Callable[..., torch.Tensor]
 
-# A: interleaved accumulators per lane. Provisional until M2 derives it from
-# the adder pipeline depth; every function takes it as a parameter.
-ACCUMULATORS = 8
+# A: interleaved accumulators per lane (D-027: 4 multiply-adds per lane x a
+# 4-cycle accumulate loop). Every function takes it as a parameter.
+ACCUMULATORS = 16
 
 # matvec blocks: rows per block, and rows x vectors per block. Blocks keep a
 # slice of a large matrix (the 49152-row vocabulary projection) in cache while
