@@ -272,6 +272,17 @@ Vivado install or VU47P license to manage, the HDK's Vivado version comes
 with the AMI, and turning the build into an FPGA image (AFI) happens on
 AWS anyway. The build's result does not depend on the host machine.
 
+**D-033 (2026-10-06) — FP units from CVFPU.** The lanes' and the vector
+unit's floating-point operations use CVFPU (OpenHW Group / ETH Zurich,
+open-source, Solderpad license; license compatibility to verify when it is
+vendored), pinned to one version. M3 first tests it for bit exactness
+against `docs/numerics.md` and the golden model. A mismatch goes to the
+owner: a spec change (rule 8) or our own unit for that operation. Already
+known to check: RISC-V's `fmax` returns the other operand when one is NaN,
+where the spec returns NaN. Resolves Q-14. *Why:* a mature, tested design
+saves the hardest numerics RTL; the bit-exactness tests keep the spec in
+charge.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -445,13 +456,17 @@ golden model still passes M1.
 ### M3 — Toolchain and FP units
 **What:** OSS CAD Suite (Verilator, Yosys with the slang SystemVerilog
 plugin, nextpnr, cocotb; owner installs), one-command test runner, CI, lint.
-RTL for the BF16×BF16 multiplier and the FP32 adder.
-**Why:** the FP adder is the hardest numerics RTL. Proving the toolchain on
-something small first.
-**Done when:** both units are bit-exact against the golden model on ≥ 10⁸
-random inputs plus every special-value class. The multiplier is tested
-exhaustively if that is fast enough. Lint is clean, and both synthesize in
-Yosys. The area cost of subnormal support is reported (D-016).
+CVFPU (D-033), vendored at a pinned version and configured for BF16 × BF16
+→ FP32 multiply-add and the FP32 operations of the vector unit.
+**Why:** the FP units carry the numerics. Proving the toolchain and CVFPU's
+bit exactness on something small first.
+**Done when:** a bit-exactness step tests each CVFPU operation we use
+against the golden model on ≥ 10⁸ random inputs plus every special-value
+class (the BF16 multiply exhaustively if that is fast enough); every
+mismatch is reported and settled by the owner (D-033). The multiply-add's
+accumulate loop closes in 4 cycles at 250 MHz, or `A` changes (D-027). Lint
+is clean, and the units synthesize in Yosys. The area cost of subnormal
+support is reported (D-016).
 
 ### M4 — Dot-product lane
 **What:** a lane that streams BF16 pairs into an FP32 dot product.
@@ -525,7 +540,6 @@ checkpoint.
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
 | Q-17 | ECP5 board and host link. | Before M11. |
 | Q-18 | Do ECP5 before F2? | M7 checkpoint. |
 | Q-19 | Open PDK and shuttle (SKY130, GF180MCU, IHP SG13G2; Tiny Tapeout, …). | M11 checkpoint. |
