@@ -203,7 +203,7 @@ def step(model: Model, cache: KVCache, tokens: list[int]) -> torch.Tensor:
 
 
 def decode_step(model: Model, cache: KVCache, token: int) -> torch.Tensor:
-    """One token at position cache.length (the hardware's mode, Q-20): FP32
+    """One token at position cache.length (the hardware's mode; a prompt too): FP32
     logits [vocab]."""
     return step(model, cache, [token])[0]
 
@@ -218,7 +218,7 @@ def forward(model: Model, tokens: list[int]) -> torch.Tensor:
 def generate(model: Model, prompt: list[int], n_new: int) -> tuple[list[int], torch.Tensor]:
     """Greedy decoding: the prompt in one step, then one decode_step per new
     token, each time taking the most likely token (the lowest index on a tie,
-    as torch.argmax). Test tooling: sampling is not part of the spec (Q-21).
+    as torch.argmax). Test tooling: sampling is not part of the spec (the host does it, D-035).
 
     Returns the n_new generated tokens and the FP32 logits of every position
     that was run, [len(prompt) + n_new - 1, vocab].

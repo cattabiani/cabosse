@@ -23,7 +23,9 @@ The path:
 
 - Training.
 - Batched or multi-user serving: one sequence at a time.
-- Fast prefill: the prompt goes through the decode path one token at a time.
+- Fast prefill: the prompt goes through the decode path one token at a time
+  (about 0.5 s for 500 tokens of SmolLM2, estimate). Revisit if M9 shows
+  prompt latency matters (was Q-20).
 - Contexts beyond the model's trained window (attention sinks with a circular
   cache, as in StreamingLLM). At the window's end the host runtime stops the
   conversation with a message that longer contexts are not supported yet. A
@@ -555,4 +557,3 @@ checkpoint.
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
 | Q-19 | Open PDK and shuttle (SKY130, GF180MCU, IHP SG13G2; Tiny Tapeout, …). | Before M12. |
-| Q-20 | Is one-token-at-a-time prefill acceptable long-term? | After M10. |
