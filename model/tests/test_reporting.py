@@ -7,7 +7,7 @@ import re
 
 import paths
 import pytest
-from reporting import blocks, m1
+from reporting import blocks, m1, m2
 
 TEXT = """# Title
 
@@ -53,6 +53,12 @@ def test_m1_report_is_up_to_date() -> None:
     """reports/M1.md shows what reports/data/M1.json says; after a new
     measurement, run: python scripts/report_m1.py render"""
     assert m1.render() == m1.PATH.read_text()
+
+
+def test_m2_report_is_up_to_date() -> None:
+    """reports/M2.md shows the current perf model, command list and
+    comparison data; after a change, run: python scripts/report_m2.py"""
+    assert m2.render() == m2.PATH.read_text()
 
 
 def test_measure_deselects_a_test_that_exists() -> None:
