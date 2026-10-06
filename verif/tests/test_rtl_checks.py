@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""Every RTL file passes the Verilator lint with no warnings and synthesizes
-in Yosys (AGENTS.md, SystemVerilog conventions)."""
+"""Every RTL module passes the Verilator lint with no warnings and
+synthesizes in Yosys (AGENTS.md, SystemVerilog conventions), as the top of
+all of rtl/. One module per file, named after it."""
 
 from pathlib import Path
 
@@ -14,15 +15,18 @@ def test_there_is_rtl() -> None:
     assert rtl.sources()
 
 
+MODULES = [Path(p).stem for p in rtl.sources()]
+
+
 @rtl.needs_verilator
-@pytest.mark.parametrize("path", rtl.sources(), ids=lambda p: p.name)
-def test_lint_is_clean(path: Path) -> None:
-    result = rtl.lint(path)
+@pytest.mark.parametrize("top", MODULES)
+def test_lint_is_clean(top: str) -> None:
+    result = rtl.lint(top)
     assert result.returncode == 0 and not result.stderr.strip(), result.stderr
 
 
 @rtl.needs_yosys
-@pytest.mark.parametrize("path", rtl.sources(), ids=lambda p: p.name)
-def test_synthesizes(path: Path) -> None:
-    result = rtl.synthesize(path)
+@pytest.mark.parametrize("top", MODULES)
+def test_synthesizes(top: str) -> None:
+    result = rtl.synthesize(top)
     assert result.returncode == 0, result.stdout + result.stderr
