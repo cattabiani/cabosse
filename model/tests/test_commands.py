@@ -59,6 +59,11 @@ def test_every_opcode_is_documented_and_used() -> None:
     assert {cmd.op for cmd in commands.build(layout)} == set(commands.Op)
 
 
+def test_every_flag_is_documented_and_fits_its_byte() -> None:
+    assert set(commands.FLAGS) == set(commands.Flag)
+    assert max(commands.Flag) < 256
+
+
 def test_commands_set_only_the_fields_their_op_uses() -> None:
     """OPS lists each command's fields; the doc's tables rely on it."""
     for cmd in commands.build(commands.Layout.of(tiny.tiny_config(), cap=4)):
@@ -69,34 +74,6 @@ def test_commands_set_only_the_fields_their_op_uses() -> None:
             if getattr(cmd, f.name) != getattr(default, f.name)
         }
         assert set_fields <= set(commands.OPS[cmd.op][1]), cmd
-
-
-# Perf model op kinds per compute command; KV_STORE, OUTPUT and END move data
-# or signal, and perf.ops() charges their traffic to other ops.
-PERF_KIND = {
-    commands.Op.EMBED: "embed",
-    commands.Op.RMSNORM: "rmsnorm",
-    commands.Op.MATVEC: "matvec",
-    commands.Op.ROPE: "rope",
-    commands.Op.SCORES: "attention_scores",
-    commands.Op.SOFTMAX: "softmax",
-    commands.Op.VALUES: "attention_values",
-    commands.Op.SWIGLU: "swiglu",
-    commands.Op.ADD: "add",
-}
-
-
-@pytest.mark.parametrize("n_kv_heads", [1, 2])
-def test_perf_ops_follow_the_command_list(n_kv_heads: int) -> None:
-    """perf.ops() and build() are two lists of one decode step: the same
-    compute operations, in the same order, on the same matrix shapes."""
-    c = tiny.tiny_config(n_kv_heads=n_kv_heads)
-    cmds = [x for x in commands.build(commands.Layout.of(c, cap=4)) if x.op in PERF_KIND]
-    ops = perf.ops(c, position=0)
-    assert [PERF_KIND[x.op] for x in cmds] == [o.kind for o in ops]
-    for cmd, op in zip(cmds, ops, strict=True):
-        if cmd.op == commands.Op.MATVEC:
-            assert (cmd.n, cmd.m) == op.shape, (cmd, op)
 
 
 @pytest.mark.parametrize("name", arch_doc.LADDER)

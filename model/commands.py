@@ -9,6 +9,11 @@ tokens. run() executes a list with the golden model's functions: it is the
 reference for the controller, and the tests check that it gives the golden
 decode step's bits, so every operation of the step has a command.
 
+The engine has one command per matrix product (MATVEC, SCORES, VALUES); the
+vector unit has primitives (D-031), chained into RMSNorm, RoPE, softmax and
+SwiGLU in the spec's order of operations, so the chains give the golden
+functions' bits.
+
 Every result is computed in FP32 and rounded to BF16 when it is written to a
 BF16 buffer or to the KV cache: the D-011 rounding points are where the
 destination is BF16, not a step of their own.
@@ -19,11 +24,12 @@ address to tensor, in the tensors' logical shape: the engine's read order
 """
 
 import enum
+import math
 import struct
 from dataclasses import dataclass, fields
 
 import torch
-from golden import arith, decoder, dot, host, vector
+from golden import arith, decoder, dot, funcs, host, vector
 from transformers import LlamaConfig
 
 ALIGN = 4096  # HBM bytes; every tensor starts on a boundary
@@ -33,34 +39,60 @@ BF16, F32 = torch.bfloat16, torch.float32
 
 class Op(enum.IntEnum):
     END = 0
-    EMBED = 1
-    RMSNORM = 2
-    MATVEC = 3
-    ROPE = 4
-    KV_STORE = 5
-    SCORES = 6
-    SOFTMAX = 7
-    VALUES = 8
-    SWIGLU = 9
-    ADD = 10
-    OUTPUT = 11
+    LOAD = 1
+    MATVEC = 2
+    KV_STORE = 3
+    SCORES = 4
+    VALUES = 5
+    OUTPUT = 6
+    ADD = 7
+    MUL = 8
+    FMA = 9
+    EXP = 10
+    RECIP = 11
+    RSQRT = 12
+    SUM = 13
+    SUMSQ = 14
+    MAX = 15
+    ROTATE_HALF = 16
 
+
+class Flag(enum.IntFlag):
+    """Modifiers of a command (FLAGS: meaning)."""
+
+    NONE = 0
+    NEG_A = 1
+    NEG_B = 2
+    B_PER_ROW = 4
+    B_ROW = 8
+    LEN_T = 16
+    BY_TOKEN = 32
+    BY_POSITION = 64
+    SRC_BF16 = 128
+
+
+FLAGS = {
+    Flag.NEG_A: "use -a (an exact sign flip)",
+    Flag.NEG_B: "use -b",
+    Flag.B_PER_ROW: "b holds one value per row, used for the whole row",
+    Flag.B_ROW: "b holds one row, used for every row",
+    Flag.LEN_T: "rows are t long (the positions attention reads), not m",
+    Flag.BY_TOKEN: "LOAD row `token` of the tensor at addr",
+    Flag.BY_POSITION: "LOAD row `position` of the tensor at addr",
+    Flag.SRC_BF16: "LOAD from BF16 (else FP32); converted to FP32 exactly",
+}
+# Vector-unit commands work on n rows of m elements (t with LEN_T). b is a
+# buffer of the same shape, unless a B_ flag says otherwise; with b = NONE,
+# b is the constant in `scalar`.
+ROWS = ("n", "m", "flags")
 
 # Per command: what it does, and the fields it uses besides `op`
 # (docs/architecture.md, "Commands"). `t` is position + 1, the positions
 # attention reads.
 OPS = {
     Op.END: ("token done: set STATUS done, raise the interrupt; the last command", ()),
-    Op.EMBED: ("dst = up(table[token]), rows of m; table at addr", ("dst", "m", "addr")),
-    Op.RMSNORM: (
-        "dst = rmsnorm(a, gain at addr, eps = scalar), n elements",
-        ("dst", "a", "n", "addr", "scalar"),
-    ),
+    Op.LOAD: ("dst = up(tensor at addr), m elements", ("dst", "m", "flags", "addr")),
     Op.MATVEC: ("dst = W·a, W at addr: n rows × m columns", ("dst", "a", "n", "m", "addr")),
-    Op.ROPE: (
-        "dst = rope(a), n vectors of m; cos and sin at addr, row position",
-        ("dst", "a", "n", "m", "addr"),
-    ),
     Op.KV_STORE: (
         "cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head",
         ("a", "n", "m", "cap", "addr"),
@@ -69,14 +101,21 @@ OPS = {
         "dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t",
         ("dst", "a", "n", "m", "kv_heads", "cap", "addr", "scalar"),
     ),
-    Op.SOFTMAX: ("dst = softmax(a), n vectors of t", ("dst", "a", "n")),
     Op.VALUES: (
         "dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t",
         ("dst", "a", "n", "m", "kv_heads", "cap", "addr"),
     ),
-    Op.SWIGLU: ("dst = swiglu(a, b), n elements", ("dst", "a", "b", "n")),
-    Op.ADD: ("dst = add(a, b), n elements", ("dst", "a", "b", "n")),
     Op.OUTPUT: ("a (n FP32) to host memory at LOGITS_HI:LOGITS_LO", ("a", "n")),
+    Op.ADD: ("dst = add(a, b)", ("dst", "a", "b", *ROWS, "scalar")),
+    Op.MUL: ("dst = mul(a, b)", ("dst", "a", "b", *ROWS, "scalar")),
+    Op.FMA: ("dst = fma(a, b, c)", ("dst", "a", "b", "c", *ROWS)),
+    Op.EXP: ("dst = exp(a)", ("dst", "a", *ROWS)),
+    Op.RECIP: ("dst = recip(a)", ("dst", "a", *ROWS)),
+    Op.RSQRT: ("dst = rsqrt(a)", ("dst", "a", *ROWS)),
+    Op.SUM: ("dst[r] = sum of row r of a, with S partial sums", ("dst", "a", *ROWS)),
+    Op.SUMSQ: ("dst[r] = sum of squares of row r of a", ("dst", "a", *ROWS)),
+    Op.MAX: ("dst[r] = max of row r of a", ("dst", "a", *ROWS)),
+    Op.ROTATE_HALF: ("each row of a: (-second half, first half)", ("dst", "a", *ROWS)),
 }
 
 
@@ -99,6 +138,12 @@ class Buf(enum.IntEnum):
     U = 13  # up
     M = 14  # SwiGLU output
     LOGITS = 15
+    R = 16  # one value per row: a sum, a max, RMSNorm's scale
+    W = 17  # RMSNorm's gain
+    COS = 18  # RoPE tables, this position's row
+    SIN = 19
+    QT = 20  # RoPE's rotated q
+    E = 21  # SiLU's steps
 
 
 def buffers(config: LlamaConfig, cap: int) -> dict[Buf, tuple[torch.dtype, int]]:
@@ -118,11 +163,17 @@ def buffers(config: LlamaConfig, cap: int) -> dict[Buf, tuple[torch.dtype, int]]
         Buf.S: (F32, scores),
         Buf.P: (BF16, scores),
         Buf.ATT: (BF16, q),
-        Buf.T: (F32, hidden),
+        Buf.T: (F32, hidden),  # also RMSNorm's x times its scale
         Buf.G: (F32, inter),
         Buf.U: (F32, inter),
         Buf.M: (BF16, inter),
         Buf.LOGITS: (F32, c.vocab_size),
+        Buf.R: (F32, c.num_attention_heads),
+        Buf.W: (F32, hidden),
+        Buf.COS: (F32, c.head_dim),
+        Buf.SIN: (F32, c.head_dim),
+        Buf.QT: (F32, q),
+        Buf.E: (F32, inter),
     }
 
 
@@ -136,9 +187,11 @@ class Command:
     dst: Buf = Buf.NONE
     a: Buf = Buf.NONE
     b: Buf = Buf.NONE
+    c: Buf = Buf.NONE
+    flags: Flag = Flag.NONE
+    kv_heads: int = 0
     n: int = 0
     m: int = 0
-    kv_heads: int = 0
     cap: int = 0
     addr: int = 0
     scalar: int = 0  # FP32 bits
@@ -150,7 +203,8 @@ class Command:
     def decode(raw: bytes) -> Command:
         values = dict(zip(FIELD_NAMES, struct.unpack(FORMAT, raw), strict=True))
         values["op"] = Op(values["op"])
-        values |= {k: Buf(values[k]) for k in ("dst", "a", "b")}
+        values |= {k: Buf(values[k]) for k in ("dst", "a", "b", "c")}
+        values["flags"] = Flag(values["flags"])
         return Command(**values)
 
 
@@ -160,12 +214,14 @@ ENCODING = {
     "dst": ("B", "destination buffer"),
     "a": ("B", "first source buffer"),
     "b": ("B", "second source buffer"),
-    "n": ("I", "rows, elements, vectors or heads"),
-    "m": ("I", "columns or vector length"),
-    "kv_heads": ("I", "KV heads"),
+    "c": ("B", "third source buffer"),
+    "flags": ("B", "modifiers (flags table)"),
+    "kv_heads": ("H", "KV heads"),
+    "n": ("I", "rows or heads"),
+    "m": ("I", "columns, row length or elements"),
     "cap": ("I", "KV cache rows per head"),
     "addr": ("Q", "HBM byte address"),
-    "scalar": ("I", "FP32 bits: eps or scale"),
+    "scalar": ("I", "FP32 bits: a constant (scale, 1/n, eps, 1)"),
 }
 FIELD_NAMES = tuple(f.name for f in fields(Command))
 assert tuple(ENCODING) == FIELD_NAMES, (tuple(ENCODING), FIELD_NAMES)
@@ -215,7 +271,11 @@ class Layout:
         d, hidden, inter = c.head_dim, c.hidden_size, c.intermediate_size
         q, kv = c.num_attention_heads * d, c.num_key_value_heads * d
         cache = (c.num_key_value_heads, cap, d)
-        shapes = {"embed": ((c.vocab_size, hidden), BF16), "rope": ((cap, 2, d), F32)}
+        shapes = {
+            "embed": ((c.vocab_size, hidden), BF16),
+            "rope_cos": ((cap, d), F32),
+            "rope_sin": ((cap, d), F32),
+        }
         for i in range(c.num_hidden_layers):
             p = f"layers.{i}."
             shapes |= {
@@ -258,7 +318,8 @@ def load(model: decoder.Model, layout: Layout) -> dict[int, torch.Tensor]:
     model, never written), and an empty KV cache."""
     names = {
         "embed": model.embed,
-        "rope": torch.stack([model.cos, model.sin], dim=1)[: layout.cap],
+        "rope_cos": model.cos[: layout.cap],
+        "rope_sin": model.sin[: layout.cap],
         "final_norm": model.final_norm,
         "lm_head": model.lm_head,
     }
@@ -273,15 +334,78 @@ def load(model: decoder.Model, layout: Layout) -> dict[int, torch.Tensor]:
     return hbm
 
 
+def load_vector(dst: Buf, layout: Layout, name: str, flags: Flag = Flag.NONE) -> Command:
+    _, shape, dtype = layout.tensors[name]
+    by_row = flags & (Flag.BY_TOKEN | Flag.BY_POSITION)
+    m = shape[-1] if by_row else math.prod(shape)
+    src = Flag.SRC_BF16 if dtype == BF16 else Flag.NONE
+    return Command(Op.LOAD, dst, m=m, flags=flags | src, addr=layout.addr(name))
+
+
 def prologue(layout: Layout) -> list[Command]:
-    c = layout.config
-    return [Command(Op.EMBED, Buf.H, m=c.hidden_size, addr=layout.addr("embed"))]
+    """The token's embedding, and this position's RoPE tables for every layer."""
+    return [
+        load_vector(Buf.H, layout, "embed", Flag.BY_TOKEN),
+        load_vector(Buf.COS, layout, "rope_cos", Flag.BY_POSITION),
+        load_vector(Buf.SIN, layout, "rope_sin", Flag.BY_POSITION),
+    ]
 
 
-def norm(layout: Layout, name: str) -> Command:
-    c = layout.config
-    eps = f32_bits(c.rms_norm_eps)
-    return Command(Op.RMSNORM, Buf.X, Buf.H, n=c.hidden_size, addr=layout.addr(name), scalar=eps)
+def vec(op: Op, dst: Buf, a: Buf, b: Buf = Buf.NONE, n: int = 1, m: int = 1, **kw) -> Command:
+    """A vector-unit command on n rows of m elements."""
+    return Command(op, dst, a, b, n=n, m=m, **kw)
+
+
+def norm(layout: Layout, name: str) -> list[Command]:
+    """X = rmsnorm(H): mul(g, mul(x, rsqrt(add(mul(sumsq(x), 1/n), eps))))."""
+    n = layout.config.hidden_size
+    inv_n = f32_bits(torch.tensor(1.0, dtype=F32) / n)  # IEEE division: one rounding
+    eps = f32_bits(layout.config.rms_norm_eps)
+    return [
+        load_vector(Buf.W, layout, name),
+        vec(Op.SUMSQ, Buf.R, Buf.H, m=n),
+        vec(Op.MUL, Buf.R, Buf.R, scalar=inv_n),
+        vec(Op.ADD, Buf.R, Buf.R, scalar=eps),
+        vec(Op.RSQRT, Buf.R, Buf.R),
+        vec(Op.MUL, Buf.T, Buf.H, Buf.R, m=n, flags=Flag.B_PER_ROW),
+        vec(Op.MUL, Buf.X, Buf.T, Buf.W, m=n),
+    ]
+
+
+def rope(dst: Buf, a: Buf, rotated: Buf, heads: int, d: int) -> list[Command]:
+    """dst = fma(a, cos, mul(rotate_half(a), sin)), per head."""
+    shape = dict(n=heads, m=d)
+    return [
+        vec(Op.ROTATE_HALF, rotated, a, **shape),
+        vec(Op.MUL, rotated, rotated, Buf.SIN, flags=Flag.B_ROW, **shape),
+        Command(Op.FMA, dst, a, Buf.COS, rotated, Flag.B_ROW, **shape),
+    ]
+
+
+def softmax(heads: int) -> list[Command]:
+    """P = softmax(S) per head: mul(e, recip(sum(e))), e = exp(add(s, -max(s)))."""
+    rows = dict(n=heads, m=0, flags=Flag.LEN_T)  # rows t long
+    return [
+        vec(Op.MAX, Buf.R, Buf.S, **rows),
+        Command(
+            Op.ADD, Buf.S, Buf.S, Buf.R, n=heads, flags=Flag.LEN_T | Flag.B_PER_ROW | Flag.NEG_B
+        ),
+        vec(Op.EXP, Buf.S, Buf.S, **rows),
+        vec(Op.SUM, Buf.R, Buf.S, **rows),
+        vec(Op.RECIP, Buf.R, Buf.R, n=heads),
+        Command(Op.MUL, Buf.P, Buf.S, Buf.R, n=heads, flags=Flag.LEN_T | Flag.B_PER_ROW),
+    ]
+
+
+def swiglu(n: int) -> list[Command]:
+    """M = mul(silu(G), U), silu(a) = mul(a, recip(add(exp(-a), 1)))."""
+    return [
+        vec(Op.EXP, Buf.E, Buf.G, m=n, flags=Flag.NEG_A),
+        vec(Op.ADD, Buf.E, Buf.E, m=n, scalar=f32_bits(1.0)),
+        vec(Op.RECIP, Buf.E, Buf.E, m=n),
+        vec(Op.MUL, Buf.E, Buf.G, Buf.E, m=n),
+        vec(Op.MUL, Buf.M, Buf.E, Buf.U, m=n),
+    ]
 
 
 def matvec(layout: Layout, dst: Buf, name: str, a: Buf) -> Command:
@@ -294,42 +418,42 @@ def layer_commands(layout: Layout, i: int) -> list[Command]:
     c = layout.config
     d, heads, kv_heads = c.head_dim, c.num_attention_heads, c.num_key_value_heads
     p = f"layers.{i}."
-    rope = layout.addr("rope")
     attention = dict(n=heads, m=d, kv_heads=kv_heads, cap=layout.cap)
 
     def kv_store(name: str, a: Buf) -> Command:
         return Command(Op.KV_STORE, a=a, n=kv_heads, m=d, cap=layout.cap, addr=layout.addr(name))
 
     scale = f32_bits(host.attention_scale(d))
+    residual = vec(Op.ADD, Buf.H, Buf.H, Buf.T, m=c.hidden_size)
     return [
-        norm(layout, p + "attn_norm"),
+        *norm(layout, p + "attn_norm"),
         matvec(layout, Buf.Q, p + "q", Buf.X),
         matvec(layout, Buf.K, p + "k", Buf.X),
         matvec(layout, Buf.V, p + "v", Buf.X),
-        Command(Op.ROPE, Buf.KR, Buf.K, n=kv_heads, m=d, addr=rope),
+        *rope(Buf.KR, Buf.K, Buf.KR, kv_heads, d),
         kv_store(p + "k_cache", Buf.KR),
         kv_store(p + "v_cache", Buf.V),
-        Command(Op.ROPE, Buf.QR, Buf.Q, n=heads, m=d, addr=rope),
+        *rope(Buf.QR, Buf.Q, Buf.QT, heads, d),
         Command(
             Op.SCORES, Buf.S, Buf.QR, addr=layout.addr(p + "k_cache"), scalar=scale, **attention
         ),
-        Command(Op.SOFTMAX, Buf.P, Buf.S, n=heads),
+        *softmax(heads),
         Command(Op.VALUES, Buf.ATT, Buf.P, addr=layout.addr(p + "v_cache"), **attention),
         matvec(layout, Buf.T, p + "o", Buf.ATT),
-        Command(Op.ADD, Buf.H, Buf.H, Buf.T, n=c.hidden_size),
-        norm(layout, p + "mlp_norm"),
+        residual,
+        *norm(layout, p + "mlp_norm"),
         matvec(layout, Buf.G, p + "gate", Buf.X),
         matvec(layout, Buf.U, p + "up", Buf.X),
-        Command(Op.SWIGLU, Buf.M, Buf.G, Buf.U, n=c.intermediate_size),
+        *swiglu(c.intermediate_size),
         matvec(layout, Buf.T, p + "down", Buf.M),
-        Command(Op.ADD, Buf.H, Buf.H, Buf.T, n=c.hidden_size),
+        residual,
     ]
 
 
 def epilogue(layout: Layout) -> list[Command]:
     vocab = layout.config.vocab_size
     return [
-        norm(layout, "final_norm"),
+        *norm(layout, "final_norm"),
         matvec(layout, Buf.LOGITS, "lm_head", Buf.X),
         Command(Op.OUTPUT, a=Buf.LOGITS, n=vocab),
         Command(Op.END),
@@ -363,20 +487,44 @@ def run(
         assert x.dtype == F32 and x.numel() <= length, (dst, x.dtype, x.numel(), length)
         buf[dst] = arith.bf16(x) if dtype == BF16 else x
 
+    def rows(cmd: Command, x: Buf | None, negate: bool = False) -> torch.Tensor:
+        """Operand x as n rows (t long with LEN_T), sign-flipped if asked."""
+        length = t if cmd.flags & Flag.LEN_T else cmd.m
+        v = buf[x].reshape(cmd.n, length)
+        return -v if negate else v  # unary minus: an exact sign flip
+
+    def operand_b(cmd: Command) -> torch.Tensor:
+        if cmd.b == Buf.NONE:
+            v = f32_value(cmd.scalar)
+        elif cmd.flags & Flag.B_PER_ROW:
+            v = buf[cmd.b].reshape(cmd.n, 1)
+        elif cmd.flags & Flag.B_ROW:
+            v = buf[cmd.b].reshape(1, -1)
+        else:
+            v = rows(cmd, cmd.b)
+        return -v if cmd.flags & Flag.NEG_B else v
+
+    unary = {Op.EXP: funcs.exp, Op.RECIP: funcs.recip, Op.RSQRT: funcs.rsqrt}
+    binary = {Op.ADD: arith.add, Op.MUL: arith.mul}
+    reduce = {
+        Op.SUM: vector.reduce_sum,
+        Op.SUMSQ: vector.reduce_sum_squares,
+        Op.MAX: vector.reduce_max,
+    }
     for i, cmd in enumerate(commands):
-        a, b, mem = buf.get(cmd.a), buf.get(cmd.b), hbm.get(cmd.addr)
+        a, mem = buf.get(cmd.a), hbm.get(cmd.addr)
         match cmd.op:
-            case Op.EMBED:
-                assert mem.shape[1] == cmd.m, (mem.shape, cmd.m)
-                write(cmd.dst, arith.up(mem[token]))
-            case Op.RMSNORM:
-                write(cmd.dst, vector.rmsnorm(a, mem, float(f32_value(cmd.scalar))))
+            case Op.LOAD:
+                assert (mem.dtype == BF16) == bool(cmd.flags & Flag.SRC_BF16), (mem.dtype, cmd)
+                if cmd.flags & Flag.BY_TOKEN:
+                    mem = mem[token]
+                elif cmd.flags & Flag.BY_POSITION:
+                    mem = mem[position]
+                assert mem.numel() == cmd.m, (mem.shape, cmd.m)
+                write(cmd.dst, arith.up(mem.reshape(-1)) if mem.dtype == BF16 else mem.reshape(-1))
             case Op.MATVEC:
                 assert mem.shape == (cmd.n, cmd.m) and a.dtype == BF16, (mem.shape, a.dtype)
                 write(cmd.dst, dot.matvec(mem, a[None])[0])  # one vector
-            case Op.ROPE:
-                cos, sin = mem[position]
-                write(cmd.dst, vector.rope(a.reshape(cmd.n, cmd.m), cos, sin).reshape(-1))
             case Op.KV_STORE:
                 assert mem.shape == (cmd.n, cmd.cap, cmd.m) and a.dtype == F32, (mem.shape, a.dtype)
                 mem[:, position] = arith.bf16(a.reshape(cmd.n, cmd.m))  # the cache is BF16
@@ -386,18 +534,26 @@ def run(
                 )  # head h: KV head h // group
                 s = decoder.attention_scores(q, mem[:, None, :t], f32_value(cmd.scalar))
                 write(cmd.dst, s.reshape(-1))
-            case Op.SOFTMAX:
-                write(cmd.dst, vector.softmax(a.reshape(cmd.n, t)).reshape(-1))
             case Op.VALUES:
                 p = a.reshape(cmd.kv_heads, cmd.n // cmd.kv_heads, t)
                 write(cmd.dst, decoder.attention_values(p, mem[:, None, :t]).reshape(-1))
-            case Op.SWIGLU:
-                write(cmd.dst, vector.swiglu(a, b))
-            case Op.ADD:
-                write(cmd.dst, arith.add(a, b))
             case Op.OUTPUT:
                 assert a.shape == (cmd.n,) and a.dtype == F32, (a.shape, a.dtype)
                 output = a.clone()
+            case Op.ADD | Op.MUL:
+                x = rows(cmd, cmd.a, bool(cmd.flags & Flag.NEG_A))
+                write(cmd.dst, binary[cmd.op](x, operand_b(cmd)).reshape(-1))
+            case Op.FMA:
+                x = rows(cmd, cmd.a, bool(cmd.flags & Flag.NEG_A))
+                write(cmd.dst, arith.fma(x, operand_b(cmd), rows(cmd, cmd.c)).reshape(-1))
+            case Op.EXP | Op.RECIP | Op.RSQRT:
+                x = rows(cmd, cmd.a, bool(cmd.flags & Flag.NEG_A))
+                write(cmd.dst, unary[cmd.op](x).reshape(-1))
+            case Op.SUM | Op.SUMSQ | Op.MAX:
+                write(cmd.dst, reduce[cmd.op](rows(cmd, cmd.a)))
+            case Op.ROTATE_HALF:
+                x, half = rows(cmd, cmd.a), cmd.m // 2
+                write(cmd.dst, torch.cat([-x[:, half:], x[:, :half]], dim=1).reshape(-1))
             case Op.END:  # must be the last command (the COMMANDS register's count)
                 assert i == len(commands) - 1, f"{len(commands) - 1 - i} commands after END"
                 return output

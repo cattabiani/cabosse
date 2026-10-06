@@ -11,15 +11,17 @@ Generic over three inputs:
 - the design (model/designs/*.json): what we choose (clock, lanes, ...),
   with named scenarios that override it.
 
-ops() lists the work of one decode step in the order of golden/decoder.py's
-step(); a test checks that against the golden model. predict() turns the work
+ops() lists the work of one decode step, one entry per command of the
+command list (model/commands.py), which a test checks bit for bit against the
+golden model's decode step. predict() turns the work
 into four times: memory traffic, the matrix-vector engine, the vector unit,
 and the fixed cost per command. The token takes at least the largest of them
 (perfect overlap) and at most their sum (no overlap).
 
 Assumptions: weights and the KV cache live in HBM and are read once per token
 (K and V once per KV head, shared by its query heads); activations stay on
-chip; one command per operation; the HBM read rate scales with the memory
+chip; every command costs a fixed time, and every vector-unit command is one
+pass over its elements; the HBM read rate scales with the memory
 clock from the measured rate at the port's maximum clock. The engine is
 `lanes` lanes of `macs_per_lane` multiply-adds each; a lane computes one row
 at a time with `accumulators` partial sums (docs/numerics.md, section 3),
@@ -32,16 +34,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+import commands
 import paths
+from commands import Flag, Op
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 from transformers import LlamaConfig
 
 BF16_BYTES = 2
-# Passes over the data per element in the vector unit (docs/numerics.md,
-# section 4): RMSNorm sums squares then scales; softmax finds the max, sums
-# the exponentials, then normalizes.
-RMSNORM_PASSES = 2
-SOFTMAX_PASSES = 3
+F32_BYTES = 4
 TERMS = ("memory", "engine", "vector", "commands")
 # How we know an input value -> whether it is settled (no sensitivity row in
 # the report). "measured by us" replaces every other status (D-025); "not
@@ -67,20 +67,19 @@ ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
 
 
 @dataclass(frozen=True)
-class Op:
-    """One operation of a decode step. kind is the golden-model function it
-    stands for, and shape what that function sees: (rows, cols) of a weight
-    matrix, (heads, positions, head_dim) for attention, or (n,) for a vector
-    operation (elements per token)."""
+class Step:
+    """The work of one command. kind is the command (lower case; attention_scores
+    and attention_values for SCORES and VALUES), and shape what it works on:
+    (rows, cols) of a weight matrix, (heads, positions, head_dim) for
+    attention, (rows, length) on the vector unit, (elements,) for a load."""
 
-    name: str
     kind: str
     shape: tuple[int, ...]
     macs: int = 0
     weight_bytes: int = 0
     kv_read_bytes: int = 0
     kv_write_bytes: int = 0
-    vector_elems: int = 0  # elements times passes
+    vector_elems: int = 0  # elements on the vector unit (one pass)
     # (rows, cols) on the engine: a row per lane, cols multiply-adds per row;
     # None off the engine.
     engine_shape: tuple[int, int] | None = None
@@ -213,36 +212,13 @@ def load_config(name: str) -> LlamaConfig:
     return LlamaConfig.from_json_file(paths.CONFIGS / f"{name}.json")
 
 
-def matvec(name: str, rows: int, cols: int, kv_write_bytes: int = 0) -> Op:
-    n = rows * cols
-    return Op(
-        name,
-        "matvec",
-        (rows, cols),
-        n,
-        n * BF16_BYTES,
-        kv_write_bytes=kv_write_bytes,
-        engine_shape=(rows, cols),
-    )
-
-
-def vector(name: str, kind: str, n: int, passes: int = 1, **kw) -> Op:
-    return Op(name, kind, (n,), vector_elems=n * passes, **kw)
-
-
-def rmsnorm(name: str, n: int) -> Op:
-    """Reads its gains (n BF16 weights) from memory."""
-    return vector(name, "rmsnorm", n, RMSNORM_PASSES, weight_bytes=n * BF16_BYTES)
-
-
-def attention(kind: str, heads: int, positions: int, d: int, kv_heads: int) -> Op:
+def attention(kind: str, heads: int, positions: int, d: int, kv_heads: int) -> Step:
     """q.K or p.V over `positions` cache rows: reads K (or V) once per KV
     head, shared by its query heads. On the engine, scores have a row per
     head and position, p.V a row per head and output dimension."""
     kv_bytes = kv_heads * positions * d * BF16_BYTES
     rows = {"attention_scores": (heads * positions, d), "attention_values": (heads * d, positions)}
-    return Op(
-        kind,
+    return Step(
         kind,
         (heads, positions, d),
         heads * positions * d,
@@ -251,36 +227,33 @@ def attention(kind: str, heads: int, positions: int, d: int, kv_heads: int) -> O
     )
 
 
-def ops(config: LlamaConfig, position: int) -> list[Op]:
+def step(cmd: commands.Command, t: int) -> Step:
+    """The work of one command when attention reads t positions."""
+    match cmd.op:
+        case Op.MATVEC:
+            n = cmd.n * cmd.m
+            return Step("matvec", (cmd.n, cmd.m), n, n * BF16_BYTES, engine_shape=(cmd.n, cmd.m))
+        case Op.LOAD:
+            size = BF16_BYTES if cmd.flags & Flag.SRC_BF16 else F32_BYTES
+            return Step("load", (cmd.m,), weight_bytes=cmd.m * size)
+        case Op.KV_STORE:
+            return Step("kv_store", (cmd.n, cmd.m), kv_write_bytes=cmd.n * cmd.m * BF16_BYTES)
+        case Op.SCORES:
+            return attention("attention_scores", cmd.n, t, cmd.m, cmd.kv_heads)
+        case Op.VALUES:
+            return attention("attention_values", cmd.n, t, cmd.m, cmd.kv_heads)
+        case Op.OUTPUT | Op.END:  # OUTPUT goes over PCIe, not HBM
+            return Step(cmd.op.name.lower(), ())
+        case _:  # the vector unit
+            length = t if cmd.flags & Flag.LEN_T else cmd.m
+            return Step(cmd.op.name.lower(), (cmd.n, length), vector_elems=cmd.n * length)
+
+
+def ops(config: LlamaConfig, position: int) -> list[Step]:
     """The work of one decode step at `position` (0-based: it attends to
-    position + 1 cache rows), in the order of decoder.step()."""
-    c = config
-    d, hidden, inter = c.head_dim, c.hidden_size, c.intermediate_size
-    n_heads, n_kv = c.num_attention_heads, c.num_key_value_heads
-    q_dim, kv_dim, t = n_heads * d, n_kv * d, position + 1
-    row = kv_dim * BF16_BYTES  # one position's K (or V) in one layer
-    out = [Op("embed", "embed", (hidden,), weight_bytes=hidden * BF16_BYTES)]
-    for _ in range(c.num_hidden_layers):
-        out += [
-            rmsnorm("attn_norm", hidden),
-            matvec("q", q_dim, hidden),
-            matvec("k", kv_dim, hidden),
-            matvec("v", kv_dim, hidden, kv_write_bytes=row),
-            vector("rope_k", "rope", kv_dim, kv_write_bytes=row),
-            vector("rope_q", "rope", q_dim),
-            attention("attention_scores", n_heads, t, d, n_kv),
-            vector("softmax", "softmax", n_heads * t, SOFTMAX_PASSES),
-            attention("attention_values", n_heads, t, d, n_kv),
-            matvec("o", hidden, q_dim),
-            vector("residual", "add", hidden),
-            rmsnorm("mlp_norm", hidden),
-            matvec("gate", inter, hidden),
-            matvec("up", inter, hidden),
-            vector("swiglu", "swiglu", inter),
-            matvec("down", hidden, inter),
-            vector("residual", "add", hidden),
-        ]
-    return out + [rmsnorm("final_norm", hidden), matvec("lm_head", c.vocab_size, hidden)]
+    position + 1 cache rows), one entry per command."""
+    layout = commands.Layout.of(config, cap=position + 1)
+    return [step(cmd, position + 1) for cmd in commands.build(layout)]
 
 
 def parameter_bytes(config: LlamaConfig) -> int:
@@ -317,7 +290,7 @@ class Work:
         return self.matvec_macs + self.attention_macs
 
     @staticmethod
-    def of(op_list: list[Op]) -> Work:
+    def of(op_list: list[Step]) -> Work:
         def total(attr: str, keep=lambda o: True) -> int:
             return sum(getattr(o, attr) for o in op_list if keep(o))
 

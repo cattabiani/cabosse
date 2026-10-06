@@ -7,14 +7,14 @@ times scale as they should."""
 import json
 import math
 import shutil
-import types
 from itertools import product
 from pathlib import Path
 
+import commands
 import paths
 import perf
 import pytest
-from golden import decoder, tiny
+from golden import tiny
 from pydantic import ValidationError
 from reporting import perf_doc
 from safetensors import safe_open
@@ -42,70 +42,17 @@ MEASUREMENT = {
     "status": "measured by us",
     "source": "scripts/f2_hbm.sh, 2026-10-10, commit abc1234",
 }
-# What the golden decoder calls, as (kind, *shape) per call, from the
-# arguments: the same shapes perf.ops() gives (one decode position).
-GOLDEN_CALLS = {
-    "arith": {
-        "up": lambda x: ("embed", x.shape[-1]),
-        "add": lambda h, _: ("add", h.shape[-1]),
-    },
-    "dot": {"matvec": lambda w, _: ("matvec", *w.shape)},
-    "vector": {
-        "rmsnorm": lambda x, *_: ("rmsnorm", x.shape[-1]),
-        "rope": lambda x, *_: ("rope", x[0].numel()),
-        "softmax": lambda s, **_: ("softmax", s[0].numel()),
-        "swiglu": lambda a, _: ("swiglu", a.shape[-1]),
-    },
-}
-ATTENTION_CALLS = {  # module-level functions of decoder, called by attention()
-    "attention_scores": lambda q, k, _: (
-        "attention_scores",
-        q[0].numel() // q.shape[-1],
-        *k.shape[-2:],
-    ),
-    "attention_values": lambda p, v, *_: (
-        "attention_values",
-        p[0].numel() // p.shape[-1],
-        *v.shape[-2:],
-    ),
-}
-
-
-def wrap(f, event, events: list):
-    def wrapper(*args, **kwargs):
-        events.append(event(*args, **kwargs))
-        return f(*args, **kwargs)
-
-    return wrapper
-
-
-def golden_events(monkeypatch, config, position: int) -> list[tuple]:
-    """The calls the golden decoder makes for one decode step at `position`.
-    The modules are wrapped as the decoder sees them, so their own inner
-    calls (an arith.add inside the vector unit) are not counted."""
-    model = decoder.from_state_dict(config, tiny.random_weights(config, 0))
-    cache = decoder.KVCache.empty(model, position + 1)
-    if position:
-        decoder.step(model, cache, list(range(position)))
-    events = []
-    for module_name, calls in GOLDEN_CALLS.items():
-        module = getattr(decoder, module_name)
-        proxy = types.SimpleNamespace(**{k: getattr(module, k) for k in dir(module)})
-        for name, event in calls.items():
-            setattr(proxy, name, wrap(getattr(module, name), event, events))
-        monkeypatch.setattr(decoder, module_name, proxy)
-    for name, event in ATTENTION_CALLS.items():
-        monkeypatch.setattr(decoder, name, wrap(getattr(decoder, name), event, events))
-    decoder.decode_step(model, cache, 1)
-    return events
 
 
 @pytest.mark.parametrize("position", [0, 5])
-@pytest.mark.parametrize("n_kv_heads", [1, 2, 4])
-def test_ops_are_the_golden_decode_step(monkeypatch, position: int, n_kv_heads: int) -> None:
-    config = tiny.tiny_config(n_kv_heads=n_kv_heads, tied=False)
-    ops = [(op.kind, *op.shape) for op in perf.ops(config, position)]
-    assert ops == golden_events(monkeypatch, config, position)
+def test_ops_are_the_command_list(position: int) -> None:
+    """One entry per command, in order: the command list is the decode step
+    (test_commands checks it bit for bit against the golden model)."""
+    config = tiny.tiny_config(n_kv_heads=2)
+    cmds = commands.build(commands.Layout.of(config, position + 1))
+    names = {"scores": "attention_scores", "values": "attention_values"}
+    kinds = [names.get(c.op.name.lower(), c.op.name.lower()) for c in cmds]
+    assert [o.kind for o in perf.ops(config, position)] == kinds
 
 
 @pytest.mark.parametrize("tied", [True, False])
@@ -117,12 +64,13 @@ def test_parameter_bytes_match_the_weights(tied: bool) -> None:
 
 @pytest.mark.parametrize("tied", [True, False])
 def test_a_token_reads_every_weight_once(tied: bool) -> None:
-    """All weights, plus the one embedding row; untied, minus the embedding
-    table (only its row is read)."""
+    """All weights, plus the one embedding row and the position's FP32 RoPE
+    rows; untied, minus the embedding table (only its row is read)."""
     c = tiny.tiny_config(tied=tied)
     read = perf.Work.of(perf.ops(c, 0)).weight_bytes
     table = 0 if tied else c.vocab_size * c.hidden_size * perf.BF16_BYTES
-    assert read == perf.parameter_bytes(c) + c.hidden_size * perf.BF16_BYTES - table
+    rope = 2 * c.head_dim * perf.F32_BYTES
+    assert read == perf.parameter_bytes(c) + c.hidden_size * perf.BF16_BYTES + rope - table
 
 
 def test_kv_traffic_grows_with_the_position() -> None:

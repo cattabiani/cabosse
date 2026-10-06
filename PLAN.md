@@ -434,7 +434,7 @@ golden model still passes M1.
   entry, with the documented value kept alongside. The
   report says "provisional" until every platform value is measured by us or
   marked not measurable.
-- [ ] `docs/architecture.md`, draft: how a token runs, the blocks, the
+- [x] `docs/architecture.md`, draft: how a token runs, the blocks, the
   engine, memory and clocks. Decided: the engine, 128 lanes × 4 multiply-adds,
   `A` = 16 (D-027; resolves Q-25 and Q-22); memory and clocks (D-028;
   resolves Q-10 and Q-11). The perf model now counts idle lanes and the final sum of short
@@ -446,8 +446,19 @@ golden model still passes M1.
   controller (`commands.run()`) on the golden functions gives the golden
   decode step's logits and KV cache bit for bit (tiny configs, 5 tokens):
   every operation maps to a command, with no host work mid-token (M2 exit
-  criterion). The perf model still counts one command per operation (513
-  for SmolLM2, not 575); its command time is a guess either way.
+  criterion).
+- [x] Primitive vector-unit commands (D-031): 17 commands, 44 per layer,
+  1333 for SmolLM2 (42 KB of the 64 KiB buffer); RMSNorm, RoPE, softmax and
+  SwiGLU are chains of primitives in the spec's order, still bit-exact
+  against the golden decode step. The perf model now takes its work from
+  the command list (one entry per command, one vector pass each), so its
+  command count is the real one. Against the fused commands: vector-unit
+  passes ×1.7 (softmax: five passes over the scores instead of three) and
+  commands ×2.6. In v0 neither limits the token (SmolLM2 at position 0:
+  880 tokens/s overlapped, unchanged; 369 with no overlap, was 411); at
+  Qwen2.5-0.5B's full window the vector unit reaches 95% of the engine's
+  time, and with M9's faster engine and memory it becomes the limit at
+  long positions (fused softmax, D-031, or a wider unit then).
 - [x] `A` = 16 (D-027) in `docs/numerics.md` and the golden model; greedy
   fixtures regenerated. Teacher-forced comparison rerun on the M1 set (10
   prompts × 256 positions, `reports/data/M2-accumulators-16-compare.json`):

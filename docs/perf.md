@@ -7,9 +7,9 @@ page and the files disagree. Change an input, then rerun the script.
 
 ## Method
 
-For one decode token, `perf.ops()` lists the operations in the order of the
-golden model's decode step (a test checks this against `golden/decoder.py`).
-Four times follow from the work:
+For one decode token, `perf.ops()` gives the work of each command of the
+command list (`model/commands.py`, which a test checks bit for bit against
+the golden model's decode step). Four times follow from the work:
 
 - **memory**: bytes read and written in HBM ÷ the HBM read rate;
 - **engine**: the engine's cycles ÷ clock. The engine has `lanes` lanes of
@@ -19,8 +19,9 @@ Four times follow from the work:
   adds of its final sum, which run during the next row. Attention scores
   have one row per head and position (64 long for SmolLM2); p·V has one row
   per head and output dimension;
-- **vector**: element passes ÷ (elements per cycle × clock);
-- **commands**: one command per operation × a fixed cost in cycles.
+- **vector**: element passes ÷ (elements per cycle × clock); every
+  vector-unit command is one pass over its elements;
+- **commands**: the number of commands × a fixed cost in cycles.
 
 A token takes at least the largest time, if the four overlap perfectly, and
 at most their sum. The tokens/s column gives that range (sum first). The
@@ -98,8 +99,8 @@ SmolLM2-135M-Instruct:
 | memory traffic (MB) | 269.08 | 292.65 | 457.80 |
 | multiply-adds, matrix-vector (M) | 134.5 | 134.5 | 134.5 |
 | multiply-adds, attention (M) | 0.0 | 35.4 | 283.1 |
-| vector-unit element passes (M) | 0.2 | 1.0 | 6.8 |
-| commands | 513 | 513 | 513 |
+| vector-unit element passes (M) | 0.4 | 1.8 | 11.5 |
+| commands | 1333 | 1333 | 1333 |
 <!-- end: work -->
 
 ## Engine use
@@ -122,21 +123,21 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: predictions -->
 | scenario | position | tokens/s | limited by | memory (ms) | engine (ms) | vector (ms) | commands (ms) |
 |---|---|---|---|---|---|---|---|
-| as planned | 0 | 411–880 | memory | 1.136 | 1.119 | 0.044 | 0.131 |
-| as planned | 1023 | 331–714 | engine | 1.236 | 1.400 | 0.251 | 0.131 |
-| as planned | 8191 | 139–290 | engine | 1.933 | 3.443 | 1.702 | 0.131 |
-| 64 lanes x 8, A = 32 | 0 | 417–880 | memory | 1.136 | 1.088 | 0.044 | 0.131 |
-| 64 lanes x 8, A = 32 | 1023 | 299–580 | engine | 1.236 | 1.725 | 0.251 | 0.131 |
-| 64 lanes x 8, A = 32 | 8191 | 98–155 | engine | 1.933 | 6.442 | 1.702 | 0.131 |
-| 512 lanes x 1, A = 4 | 0 | 365–700 | engine | 1.136 | 1.428 | 0.044 | 0.131 |
-| 512 lanes x 1, A = 4 | 1023 | 292–555 | engine | 1.236 | 1.803 | 0.251 | 0.131 |
-| 512 lanes x 1, A = 4 | 8191 | 121–223 | engine | 1.933 | 4.491 | 1.702 | 0.131 |
-| core at 125 MHz | 0 | 268–447 | engine | 1.136 | 2.238 | 0.087 | 0.263 |
-| core at 125 MHz | 1023 | 208–357 | engine | 1.236 | 2.800 | 0.502 | 0.263 |
-| core at 125 MHz | 8191 | 80–145 | engine | 1.933 | 6.886 | 3.405 | 0.263 |
-| 256 lanes, HBM at 450 MHz | 0 | 710–1584 | memory | 0.631 | 0.602 | 0.044 | 0.131 |
-| 256 lanes, HBM at 450 MHz | 1023 | 548–1323 | engine | 0.687 | 0.756 | 0.251 | 0.131 |
-| 256 lanes, HBM at 450 MHz | 8191 | 209–531 | engine | 1.074 | 1.885 | 1.702 | 0.131 |
+| as planned | 0 | 369–880 | memory | 1.136 | 1.119 | 0.110 | 0.341 |
+| as planned | 1023 | 291–714 | engine | 1.236 | 1.400 | 0.456 | 0.341 |
+| as planned | 8191 | 116–290 | engine | 1.933 | 3.443 | 2.875 | 0.341 |
+| 64 lanes x 8, A = 32 | 0 | 374–880 | memory | 1.136 | 1.088 | 0.110 | 0.341 |
+| 64 lanes x 8, A = 32 | 1023 | 266–580 | engine | 1.236 | 1.725 | 0.456 | 0.341 |
+| 64 lanes x 8, A = 32 | 8191 | 86–155 | engine | 1.933 | 6.442 | 2.875 | 0.341 |
+| 512 lanes x 1, A = 4 | 0 | 332–700 | engine | 1.136 | 1.428 | 0.110 | 0.341 |
+| 512 lanes x 1, A = 4 | 1023 | 261–555 | engine | 1.236 | 1.803 | 0.456 | 0.341 |
+| 512 lanes x 1, A = 4 | 8191 | 104–223 | engine | 1.933 | 4.491 | 2.875 | 0.341 |
+| core at 125 MHz | 0 | 234–447 | engine | 1.136 | 2.238 | 0.221 | 0.682 |
+| core at 125 MHz | 1023 | 178–357 | engine | 1.236 | 2.800 | 0.911 | 0.682 |
+| core at 125 MHz | 8191 | 66–145 | engine | 1.933 | 6.886 | 5.750 | 0.682 |
+| 256 lanes, HBM at 450 MHz | 0 | 594–1584 | memory | 0.631 | 0.602 | 0.110 | 0.341 |
+| 256 lanes, HBM at 450 MHz | 1023 | 447–1323 | engine | 0.687 | 0.756 | 0.456 | 0.341 |
+| 256 lanes, HBM at 450 MHz | 8191 | 162–348 | vector | 1.074 | 1.885 | 2.875 | 0.341 |
 <!-- end: predictions -->
 
 ## Sensitivity

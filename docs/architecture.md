@@ -104,18 +104,21 @@ numerics.md, section 2, and the rsqrt, recip and exp of section 5.
 **Why this width.** At short positions the vector unit is a few percent of
 the memory time. At long ones softmax's passes over the scores grow with
 the position, but so does attention on the engine, which stays the larger
-of the two: at 16 wide the vector unit is about half the engine's time at
-the full window of SmolLM2 and of Qwen2.5-0.5B (perf.md, "Predictions"). A
-wider unit, or online softmax (D-022), is for when the engine stops being
-the limit there.
+of the two in v0: with primitive commands (one pass each, five over the
+scores), the vector unit is about 85% of the engine's time at SmolLM2's
+full window and about 95% at Qwen2.5-0.5B's (perf.md, "Predictions"). With
+the faster engine and memory of M9 it becomes the limit at long positions;
+a wider unit, fused softmax commands (D-031) or online softmax (D-022) are
+the options then.
 
 **Numerics.** Only `S` affects the bits. 128 partial sums fit any width up
 to 32 with a 4-cycle add loop, or 16 wide with an 8-cycle loop, so the unit
 can widen without a numerics change. Online softmax changes the spec.
 `S` = 128 replaces the provisional 8 of numerics.md.
 
-**Commands:** fused per model block today; primitive commands are open
-(Q-26).
+**Commands:** primitives (D-031): elementwise add, multiply, FMA, exp,
+recip and rsqrt; sums, sums of squares and maxima per row; RoPE's half
+rotation; loads from HBM. Each is one pass over its rows ("Commands").
 
 ## Memory (D-028)
 
@@ -197,26 +200,53 @@ and checks that logits and KV cache match the golden decode step bit for
 bit: every operation of the step has a command, and no host work happens
 mid-token.
 
-## Commands (D-029; vector-unit commands: Q-26)
+## Commands (D-029, D-031)
 
 <!-- begin: opcodes -->
 | opcode | command | does |
 |---|---|---|
 | 0 | `END` | token done: set STATUS done, raise the interrupt; the last command |
-| 1 | `EMBED` | dst = up(table[token]), rows of m; table at addr |
-| 2 | `RMSNORM` | dst = rmsnorm(a, gain at addr, eps = scalar), n elements |
-| 3 | `MATVEC` | dst = W·a, W at addr: n rows × m columns |
-| 4 | `ROPE` | dst = rope(a), n vectors of m; cos and sin at addr, row position |
-| 5 | `KV_STORE` | cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head |
-| 6 | `SCORES` | dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t |
-| 7 | `SOFTMAX` | dst = softmax(a), n vectors of t |
-| 8 | `VALUES` | dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t |
-| 9 | `SWIGLU` | dst = swiglu(a, b), n elements |
-| 10 | `ADD` | dst = add(a, b), n elements |
-| 11 | `OUTPUT` | a (n FP32) to host memory at LOGITS_HI:LOGITS_LO |
+| 1 | `LOAD` | dst = up(tensor at addr), m elements |
+| 2 | `MATVEC` | dst = W·a, W at addr: n rows × m columns |
+| 3 | `KV_STORE` | cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head |
+| 4 | `SCORES` | dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t |
+| 5 | `VALUES` | dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t |
+| 6 | `OUTPUT` | a (n FP32) to host memory at LOGITS_HI:LOGITS_LO |
+| 7 | `ADD` | dst = add(a, b) |
+| 8 | `MUL` | dst = mul(a, b) |
+| 9 | `FMA` | dst = fma(a, b, c) |
+| 10 | `EXP` | dst = exp(a) |
+| 11 | `RECIP` | dst = recip(a) |
+| 12 | `RSQRT` | dst = rsqrt(a) |
+| 13 | `SUM` | dst[r] = sum of row r of a, with S partial sums |
+| 14 | `SUMSQ` | dst[r] = sum of squares of row r of a |
+| 15 | `MAX` | dst[r] = max of row r of a |
+| 16 | `ROTATE_HALF` | each row of a: (-second half, first half) |
 <!-- end: opcodes -->
 
-Every command names its buffers (`dst`, `a`, `b`) and, where it reads or
+The engine gets one command per matrix product (MATVEC, SCORES, VALUES).
+The vector unit gets primitives (D-031): the list chains them into RMSNorm,
+RoPE, softmax and SwiGLU in the order of operations of numerics.md, so a
+chain gives the golden function's bits, and a model with a different step
+(a bias, a norm on q and k) needs a new list, not new hardware. A
+vector-unit command works on `n` rows of `m` elements; flags pick the
+variants (negated operands, a value per row, a row for every row, rows `t`
+long, a constant from `scalar`):
+
+<!-- begin: flags -->
+| bit | flag | meaning |
+|---|---|---|
+| 0 | `NEG_A` | use -a (an exact sign flip) |
+| 1 | `NEG_B` | use -b |
+| 2 | `B_PER_ROW` | b holds one value per row, used for the whole row |
+| 3 | `B_ROW` | b holds one row, used for every row |
+| 4 | `LEN_T` | rows are t long (the positions attention reads), not m |
+| 5 | `BY_TOKEN` | LOAD row `token` of the tensor at addr |
+| 6 | `BY_POSITION` | LOAD row `position` of the tensor at addr |
+| 7 | `SRC_BF16` | LOAD from BF16 (else FP32); converted to FP32 exactly |
+<!-- end: flags -->
+
+Every command names its buffers (`dst`, `a`, `b`, `c`) and, where it reads or
 writes HBM, an address. Results are FP32; writing to a BF16 buffer or to
 the KV cache rounds them (round to nearest even). The BF16 rounding points
 of D-011 are exactly the BF16 destinations, so no command rounds on its own
@@ -228,15 +258,17 @@ and every MATVEC input is already BF16.
 | byte | bytes | field | meaning | used by |
 |---|---|---|---|---|
 | 0 | 1 | `op` | opcode | all |
-| 1 | 1 | `dst` | destination buffer | EMBED, RMSNORM, MATVEC, ROPE, SCORES, SOFTMAX, VALUES, SWIGLU, ADD |
-| 2 | 1 | `a` | first source buffer | RMSNORM, MATVEC, ROPE, KV_STORE, SCORES, SOFTMAX, VALUES, SWIGLU, ADD, OUTPUT |
-| 3 | 1 | `b` | second source buffer | SWIGLU, ADD |
-| 4 | 4 | `n` | rows, elements, vectors or heads | RMSNORM, MATVEC, ROPE, KV_STORE, SCORES, SOFTMAX, VALUES, SWIGLU, ADD, OUTPUT |
-| 8 | 4 | `m` | columns or vector length | EMBED, MATVEC, ROPE, KV_STORE, SCORES, VALUES |
-| 12 | 4 | `kv_heads` | KV heads | SCORES, VALUES |
+| 1 | 1 | `dst` | destination buffer | LOAD, MATVEC, SCORES, VALUES, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
+| 2 | 1 | `a` | first source buffer | MATVEC, KV_STORE, SCORES, VALUES, OUTPUT, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
+| 3 | 1 | `b` | second source buffer | ADD, MUL, FMA |
+| 4 | 1 | `c` | third source buffer | FMA |
+| 5 | 1 | `flags` | modifiers (flags table) | LOAD, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
+| 6 | 2 | `kv_heads` | KV heads | SCORES, VALUES |
+| 8 | 4 | `n` | rows or heads | MATVEC, KV_STORE, SCORES, VALUES, OUTPUT, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
+| 12 | 4 | `m` | columns, row length or elements | LOAD, MATVEC, KV_STORE, SCORES, VALUES, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
 | 16 | 4 | `cap` | KV cache rows per head | KV_STORE, SCORES, VALUES |
-| 20 | 8 | `addr` | HBM byte address | EMBED, RMSNORM, MATVEC, ROPE, KV_STORE, SCORES, VALUES |
-| 28 | 4 | `scalar` | FP32 bits: eps or scale | RMSNORM, SCORES |
+| 20 | 8 | `addr` | HBM byte address | LOAD, MATVEC, KV_STORE, SCORES, VALUES |
+| 28 | 4 | `scalar` | FP32 bits: a constant (scale, 1/n, eps, 1) | SCORES, ADD, MUL |
 
 32 bytes per command, little-endian; unused fields are zero.
 <!-- end: encoding -->
@@ -268,18 +300,27 @@ not counted (they need no buffer of their own).
 | `U` | FP32 | 4,864 | 19,456 | Qwen2.5-0.5B-Instruct |
 | `M` | BF16 | 4,864 | 9,728 | Qwen2.5-0.5B-Instruct |
 | `LOGITS` | FP32 | 151,936 | 607,744 | Qwen2.5-0.5B-Instruct |
+| `R` | FP32 | 14 | 56 | Qwen2.5-0.5B-Instruct |
+| `W` | FP32 | 896 | 3,584 | Qwen2.5-0.5B-Instruct |
+| `COS` | FP32 | 64 | 256 | SmolLM2-135M-Instruct |
+| `SIN` | FP32 | 64 | 256 | SmolLM2-135M-Instruct |
+| `QT` | FP32 | 896 | 3,584 | Qwen2.5-0.5B-Instruct |
+| `E` | FP32 | 4,864 | 19,456 | Qwen2.5-0.5B-Instruct |
 
-Total 3.27 MiB.
+Total 3.29 MiB.
 <!-- end: buffers -->
 
 **Command lists of the ladder.** The list grows by one layer's commands per
-layer, and fits the command buffer with a wide margin:
+layer, not with the context or the model's width, and fits the command
+buffer with a margin. The largest models that fit F2's HBM (about 8B
+parameters in BF16) could come close to it; a larger buffer (a rebuild) or a
+command that repeats a layer's block at shifted addresses would fix that.
 
 <!-- begin: ladder -->
 | model | layers | context | commands | command bytes | HBM (MiB) |
 |---|---|---|---|---|---|
-| SmolLM2-135M-Instruct | 30 | 8192 | 575 | 18,400 | 440.7 |
-| Qwen2.5-0.5B-Instruct | 24 | 32768 | 461 | 14,752 | 1,342.3 |
+| SmolLM2-135M-Instruct | 30 | 8192 | 1333 | 42,656 | 440.7 |
+| Qwen2.5-0.5B-Instruct | 24 | 32768 | 1069 | 34,208 | 1,342.3 |
 
 Command buffer: 64 KiB, 2,048 commands.
 <!-- end: ladder -->
@@ -315,33 +356,66 @@ Generated by `build()`:
 <!-- begin: token -->
 SmolLM2-135M-Instruct, cache of 8192 positions:
 
-| # | command | dst | a | b | n | m | addr |
-|---|---|---|---|---|---|---|---|
-| 0 | EMBED | H |  |  |  | 576 | 0x0 |
-| 1 | RMSNORM | X | H |  | 576 |  | 0x3A00000 |
-| 2 | MATVEC | Q | X |  | 576 | 576 | 0x3A01000 |
-| 3 | MATVEC | K | X |  | 192 | 576 | 0x3AA3000 |
-| 4 | MATVEC | V | X |  | 192 | 576 | 0x3AD9000 |
-| 5 | ROPE | KR | K |  | 3 | 64 | 0x3600000 |
-| 6 | KV_STORE |  | KR |  | 3 | 64 | 0x40C2000 |
-| 7 | KV_STORE |  | V |  | 3 | 64 | 0x43C2000 |
-| 8 | ROPE | QR | Q |  | 9 | 64 | 0x3600000 |
-| 9 | SCORES | S | QR |  | 9 | 64 | 0x40C2000 |
-| 10 | SOFTMAX | P | S |  | 9 |  |  |
-| 11 | VALUES | ATT | P |  | 9 | 64 | 0x43C2000 |
-| 12 | MATVEC | T | ATT |  | 576 | 576 | 0x3B0F000 |
-| 13 | ADD | H | H | T | 576 |  |  |
-| 14 | RMSNORM | X | H |  | 576 |  | 0x3BB1000 |
-| 15 | MATVEC | G | X |  | 1536 | 576 | 0x3BB2000 |
-| 16 | MATVEC | U | X |  | 1536 | 576 | 0x3D62000 |
-| 17 | SWIGLU | M | G | U | 1536 |  |  |
-| 18 | MATVEC | T | M |  | 576 | 1536 | 0x3F12000 |
-| 19 | ADD | H | H | T | 576 |  |  |
-| … | layers 1 to 29: the same, at their own addresses |  |  |  |  |  |  |
-| 571 | RMSNORM | X | H |  | 576 |  | 0x1B8BC000 |
-| 572 | MATVEC | LOGITS | X |  | 49152 | 576 | 0x0 |
-| 573 | OUTPUT |  | LOGITS |  | 49152 |  |  |
-| 574 | END |  |  |  |  |  |  |
+| # | command | dst | a | b | c | n | m | flags | scalar | addr |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | LOAD | H |  |  |  |  | 576 | BY_TOKEN SRC_BF16 |  | 0x0 |
+| 1 | LOAD | COS |  |  |  |  | 64 | BY_POSITION |  | 0x3600000 |
+| 2 | LOAD | SIN |  |  |  |  | 64 | BY_POSITION |  | 0x3800000 |
+| 3 | LOAD | W |  |  |  |  | 576 | SRC_BF16 |  | 0x3A00000 |
+| 4 | SUMSQ | R | H |  |  | 1 | 576 |  |  |  |
+| 5 | MUL | R | R |  |  | 1 | 1 |  | 0.00173611 |  |
+| 6 | ADD | R | R |  |  | 1 | 1 |  | 1e-05 |  |
+| 7 | RSQRT | R | R |  |  | 1 | 1 |  |  |  |
+| 8 | MUL | T | H | R |  | 1 | 576 | B_PER_ROW |  |  |
+| 9 | MUL | X | T | W |  | 1 | 576 |  |  |  |
+| 10 | MATVEC | Q | X |  |  | 576 | 576 |  |  | 0x3A01000 |
+| 11 | MATVEC | K | X |  |  | 192 | 576 |  |  | 0x3AA3000 |
+| 12 | MATVEC | V | X |  |  | 192 | 576 |  |  | 0x3AD9000 |
+| 13 | ROTATE_HALF | KR | K |  |  | 3 | 64 |  |  |  |
+| 14 | MUL | KR | KR | SIN |  | 3 | 64 | B_ROW |  |  |
+| 15 | FMA | KR | K | COS | KR | 3 | 64 | B_ROW |  |  |
+| 16 | KV_STORE |  | KR |  |  | 3 | 64 |  |  | 0x40C2000 |
+| 17 | KV_STORE |  | V |  |  | 3 | 64 |  |  | 0x43C2000 |
+| 18 | ROTATE_HALF | QT | Q |  |  | 9 | 64 |  |  |  |
+| 19 | MUL | QT | QT | SIN |  | 9 | 64 | B_ROW |  |  |
+| 20 | FMA | QR | Q | COS | QT | 9 | 64 | B_ROW |  |  |
+| 21 | SCORES | S | QR |  |  | 9 | 64 |  | 0.125 | 0x40C2000 |
+| 22 | MAX | R | S |  |  | 9 | 0 | LEN_T |  |  |
+| 23 | ADD | S | S | R |  | 9 | 0 | NEG_B B_PER_ROW LEN_T |  |  |
+| 24 | EXP | S | S |  |  | 9 | 0 | LEN_T |  |  |
+| 25 | SUM | R | S |  |  | 9 | 0 | LEN_T |  |  |
+| 26 | RECIP | R | R |  |  | 9 | 1 |  |  |  |
+| 27 | MUL | P | S | R |  | 9 | 0 | B_PER_ROW LEN_T |  |  |
+| 28 | VALUES | ATT | P |  |  | 9 | 64 |  |  | 0x43C2000 |
+| 29 | MATVEC | T | ATT |  |  | 576 | 576 |  |  | 0x3B0F000 |
+| 30 | ADD | H | H | T |  | 1 | 576 |  |  |  |
+| 31 | LOAD | W |  |  |  |  | 576 | SRC_BF16 |  | 0x3BB1000 |
+| 32 | SUMSQ | R | H |  |  | 1 | 576 |  |  |  |
+| 33 | MUL | R | R |  |  | 1 | 1 |  | 0.00173611 |  |
+| 34 | ADD | R | R |  |  | 1 | 1 |  | 1e-05 |  |
+| 35 | RSQRT | R | R |  |  | 1 | 1 |  |  |  |
+| 36 | MUL | T | H | R |  | 1 | 576 | B_PER_ROW |  |  |
+| 37 | MUL | X | T | W |  | 1 | 576 |  |  |  |
+| 38 | MATVEC | G | X |  |  | 1536 | 576 |  |  | 0x3BB2000 |
+| 39 | MATVEC | U | X |  |  | 1536 | 576 |  |  | 0x3D62000 |
+| 40 | EXP | E | G |  |  | 1 | 1536 | NEG_A |  |  |
+| 41 | ADD | E | E |  |  | 1 | 1536 |  | 1 |  |
+| 42 | RECIP | E | E |  |  | 1 | 1536 |  |  |  |
+| 43 | MUL | E | G | E |  | 1 | 1536 |  |  |  |
+| 44 | MUL | M | E | U |  | 1 | 1536 |  |  |  |
+| 45 | MATVEC | T | M |  |  | 576 | 1536 |  |  | 0x3F12000 |
+| 46 | ADD | H | H | T |  | 1 | 576 |  |  |  |
+| … | layers 1 to 29: the same, at their own addresses |  |  |  |  |  |  |  |  |  |
+| 1323 | LOAD | W |  |  |  |  | 576 | SRC_BF16 |  | 0x1B8BC000 |
+| 1324 | SUMSQ | R | H |  |  | 1 | 576 |  |  |  |
+| 1325 | MUL | R | R |  |  | 1 | 1 |  | 0.00173611 |  |
+| 1326 | ADD | R | R |  |  | 1 | 1 |  | 1e-05 |  |
+| 1327 | RSQRT | R | R |  |  | 1 | 1 |  |  |  |
+| 1328 | MUL | T | H | R |  | 1 | 576 | B_PER_ROW |  |  |
+| 1329 | MUL | X | T | W |  | 1 | 576 |  |  |  |
+| 1330 | MATVEC | LOGITS | X |  |  | 49152 | 576 |  |  | 0x0 |
+| 1331 | OUTPUT |  | LOGITS |  |  | 49152 |  |  |  |  |
+| 1332 | END |  |  |  |  |  |  |  |  |  |
 
-575 commands (19 per layer), 18,400 bytes. HBM in use: 440.7 MiB.
+1333 commands (44 per layer), 42,656 bytes. HBM in use: 440.7 MiB.
 <!-- end: token -->
