@@ -25,6 +25,10 @@ The path:
 - Training.
 - Batched or multi-user serving: one sequence at a time.
 - Fast prefill: the prompt goes through the decode path one token at a time.
+- Contexts beyond the model's trained window (attention sinks with a circular
+  cache, as in StreamingLLM). At the window's end the host runtime stops the
+  conversation with a message that longer contexts are not supported yet. A
+  possible later improvement; it changes the spec (was Q-24).
 - Beating commercial GPUs. We compare against our own bandwidth bound and our
   baseline.
 - General programmability. It is a fixed-function decode engine driven by
@@ -480,7 +484,8 @@ the extra pass shows up as a bottleneck. It needs a spec change.
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
 file, the top level, and the `sw/` runtime driving simulation through the
-same interface as the hardware.
+same interface as the hardware. At the end of the model's context window
+the runtime stops the conversation with a clear message (see Non-goals).
 **Why:** this is the main lesson from the baseline. The host only says
 "go", and everything else stays on the device.
 **Done when:** tiny configs are bit-exact for 3 prompts × 64 tokens.
@@ -520,7 +525,6 @@ checkpoint.
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
 | Q-17 | ECP5 board and host link. | Before M11. |
 | Q-18 | Do ECP5 before F2? | M7 checkpoint. |
