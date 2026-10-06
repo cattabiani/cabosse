@@ -6,10 +6,10 @@ computes, bit for bit) are in [numerics.md](numerics.md), the platform facts
 in [f2.md](f2.md), and every performance number in [perf.md](perf.md), which
 is generated from the perf model.
 
-Status: draft. This version covers the blocks, the engine, memory and
-clocks. Still to come in M2: the register map, the command format, one token
-written out as commands, the vector unit and the controller. Sections
-marked with a D-number are decided (PLAN.md decision log).
+Status: draft. Still to come in M2: the vector unit. Sections marked with a
+D-number are decided (PLAN.md decision log); **[proposed]** ones wait for the
+owner. The tables of the controller, command and register sections are
+generated from `model/commands.py` by `scripts/report_arch.py`.
 
 ## How a token runs
 
@@ -145,3 +145,155 @@ recipes, with crossings to the shell.
 The next step up (M9) is HBM at 450 MHz with 256 lanes (perf.md's last
 scenario): about 1.8× the memory bandwidth, the same `A` and so the same
 bits. It needs a second clock domain on the memory side.
+
+## Controller **[proposed]**
+
+A fixed-function sequencer, not a processor (Q-12): it reads the command
+list in order and starts each command when the units it needs are free. A
+decode step has no branches and no loops that depend on data: the list is
+unrolled over the layers, and what changes from token to token (the token
+id, the position) comes from registers, so the list is written once per
+model. The position sets which RoPE row is read, which KV cache row is
+written, and how many positions attention reads.
+
+Commands run in order; each one waits for the buffers it reads. Overlap
+comes from the memory front end streaming the next command's weights while
+the current one finishes; the perf model's "overlapped" bound assumes it.
+
+`model/commands.py` holds the command set, `build()` (the command list of
+one decode step for any model config) and `run()`, a reference controller
+built on the golden model's functions. A test runs the list token by token
+and checks that logits and KV cache match the golden decode step bit for
+bit: every operation of the step has a command, and no host work happens
+mid-token.
+
+## Commands **[proposed]**
+
+<!-- begin: opcodes -->
+| opcode | command | does |
+|---|---|---|
+| 0 | `END` | token done: set the status register's done bit, raise the interrupt |
+| 1 | `EMBED` | dst = up(table row `token`); table at addr, rows of m BF16 |
+| 2 | `RMSNORM` | dst = bf16(rmsnorm(a, gain at addr, eps = scalar)), n elements |
+| 3 | `MATVEC` | dst = W·a, W at addr: n rows × m cols BF16; a is BF16, dst FP32 |
+| 4 | `ROPE` | dst = bf16(rope(a)): n vectors of m; cos and sin rows at addr, row `position` |
+| 5 | `KV_STORE` | cache[h][position] = a[h] (rounded to BF16 if FP32), n heads of m; cache at addr |
+| 6 | `SCORES` | dst[h][t] = dot(a[h], K[h // group][t]) · scalar for t ≤ position |
+| 7 | `SOFTMAX` | dst = bf16(softmax(a)), n vectors of position + 1 |
+| 8 | `VALUES` | dst[h] = bf16(Σₜ a[h][t] · V[h // group][t]) for t ≤ position |
+| 9 | `SWIGLU` | dst = bf16(swiglu(a, b)), n elements |
+| 10 | `ADD` | dst = add(a, b), n elements |
+| 11 | `OUTPUT` | write a (n FP32) to host memory at the logits address register |
+<!-- end: opcodes -->
+
+Every command names its buffers (`dst`, `a`, `b`) and, where it reads or
+writes HBM, an address. BF16 rounding before a matrix product (D-011) is
+part of the command that produces the vector: RMSNORM, SWIGLU and VALUES
+write BF16, so every MATVEC input is already BF16.
+
+**Encoding.** One fixed size for every command, unused fields zero:
+
+<!-- begin: encoding -->
+| byte | bytes | field | meaning |
+|---|---|---|---|
+| 0 | 1 | `op` | opcode (Op) |
+| 1 | 1 | `dst` | destination buffer (Buf) |
+| 2 | 1 | `a` | first source buffer |
+| 3 | 1 | `b` | second source buffer |
+| 4 | 4 | `n` | rows, elements or vectors |
+| 8 | 4 | `m` | columns or vector length |
+| 12 | 2 | `heads` | query heads (SCORES, VALUES) |
+| 14 | 2 | `kv_heads` | KV heads (SCORES, VALUES) |
+| 16 | 4 | `cap` | KV cache rows per head (KV_STORE, SCORES, VALUES) |
+| 20 | 8 | `addr` | HBM byte address |
+| 28 | 4 | `scalar` | FP32 bits: eps (RMSNORM) or scale (SCORES) |
+
+32 bytes per command, little-endian.
+<!-- end: encoding -->
+
+**On-chip buffers.** One per kind of value in a step; the scores and
+probabilities grow with the cache size:
+
+<!-- begin: buffers -->
+| buffer | bytes |
+|---|---|
+| `H` | 2,304 |
+| `X` | 1,152 |
+| `Q` | 2,304 |
+| `K` | 768 |
+| `V` | 768 |
+| `QR` | 1,152 |
+| `KR` | 384 |
+| `S` | 294,912 |
+| `P` | 147,456 |
+| `ATT` | 1,152 |
+| `T` | 2,304 |
+| `G` | 6,144 |
+| `U` | 6,144 |
+| `M` | 3,072 |
+| `LOGITS` | 196,608 |
+
+Total 651 KiB for SmolLM2-135M-Instruct with a cache of 8192 positions.
+<!-- end: buffers -->
+
+## Registers **[proposed]**
+
+On the shell's OCL port (AXI-Lite, 32-bit). The host writes the command list
+once, then per token: TOKEN, POSITION, CONTROL start; it waits for STATUS
+done (or the interrupt) and finds the logits at the host address it set.
+
+<!-- begin: registers -->
+| offset | register | access | meaning |
+|---|---|---|---|
+| `0x0` | `ID` | R | 0x43424F53 ('CBOS'), then the version in the next word |
+| `0x4` | `VERSION` | R | architecture version |
+| `0x8` | `CONTROL` | W | bit 0: start a token; bit 1: reset the controller |
+| `0xC` | `STATUS` | R | bit 0: busy; bit 1: done; bit 2: error |
+| `0x10` | `TOKEN` | RW | token id of the next step |
+| `0x14` | `POSITION` | RW | position of the next step |
+| `0x18` | `COMMANDS` | RW | number of commands in the list |
+| `0x1C` | `ERROR` | R | index of the command that failed, and why |
+| `0x20` | `LOGITS_LO` | RW | host address for OUTPUT, low 32 bits |
+| `0x24` | `LOGITS_HI` | RW | host address for OUTPUT, high 32 bits |
+| `0x28` | `CYCLES_LO` | R | cycles of the last token, low 32 bits |
+| `0x2C` | `CYCLES_HI` | R | cycles of the last token, high 32 bits |
+| `0x10000` | `COMMAND_BUFFER` | W | the command list, COMMAND_BYTES per command |
+<!-- end: registers -->
+
+## One token as commands
+
+Generated by `build()`:
+
+<!-- begin: token -->
+SmolLM2-135M-Instruct, cache of 8192 positions:
+
+| # | command | dst | a | b | n | m | addr |
+|---|---|---|---|---|---|---|---|
+| 0 | EMBED | H |  |  |  | 576 | 0x0 |
+| 1 | RMSNORM | X | H |  | 576 |  | 0x3A00000 |
+| 2 | MATVEC | Q | X |  | 576 | 576 | 0x3A01000 |
+| 3 | MATVEC | K | X |  | 192 | 576 | 0x3AA3000 |
+| 4 | MATVEC | V | X |  | 192 | 576 | 0x3AD9000 |
+| 5 | ROPE | KR | K |  | 3 | 64 | 0x3600000 |
+| 6 | KV_STORE |  | KR |  | 3 | 64 | 0x40C2000 |
+| 7 | KV_STORE |  | V |  | 3 | 64 | 0x43C2000 |
+| 8 | ROPE | QR | Q |  | 9 | 64 | 0x3600000 |
+| 9 | SCORES | S | QR |  |  | 64 | 0x40C2000 |
+| 10 | SOFTMAX | P | S |  | 9 |  |  |
+| 11 | VALUES | ATT | P |  |  | 64 | 0x43C2000 |
+| 12 | MATVEC | T | ATT |  | 576 | 576 | 0x3B0F000 |
+| 13 | ADD | H | H | T | 576 |  |  |
+| 14 | RMSNORM | X | H |  | 576 |  | 0x3BB1000 |
+| 15 | MATVEC | G | X |  | 1536 | 576 | 0x3BB2000 |
+| 16 | MATVEC | U | X |  | 1536 | 576 | 0x3D62000 |
+| 17 | SWIGLU | M | G | U | 1536 |  |  |
+| 18 | MATVEC | T | M |  | 576 | 1536 | 0x3F12000 |
+| 19 | ADD | H | H | T | 576 |  |  |
+| … | layers 1 to 29: the same, at their own addresses |  |  |  |  |  |  |
+| 571 | RMSNORM | X | H |  | 576 |  | 0x1B8BC000 |
+| 572 | MATVEC | LOGITS | X |  | 49152 | 576 | 0x0 |
+| 573 | OUTPUT |  | LOGITS |  | 49152 |  |  |
+| 574 | END |  |  |  |  |  |  |
+
+575 commands (19 per layer), 18,400 bytes. HBM in use: 440.7 MiB.
+<!-- end: token -->

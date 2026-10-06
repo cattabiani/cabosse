@@ -352,8 +352,16 @@ golden model still passes M1.
   engine, memory and clocks. Decided: the engine, 128 lanes × 4 multiply-adds,
   `A` = 16 (D-027; resolves Q-25 and Q-22); memory and clocks (D-028;
   resolves Q-10 and Q-11). The perf model now counts idle lanes and the final sum of short
-  rows. Still to write: register map, command format, one token as
-  commands, vector unit, controller.
+  rows. Still to write: the vector unit.
+- [ ] Controller, commands and registers, proposed (`docs/architecture.md`,
+  tables generated from `model/commands.py`): a fixed-function sequencer
+  (Q-12) running one unrolled command list per model; token and position in
+  registers; 12 commands of 32 bytes; 575 commands for SmolLM2. A reference
+  controller (`commands.run()`) on the golden functions gives the golden
+  decode step's logits and KV cache bit for bit (tiny configs, 5 tokens):
+  every operation maps to a command, with no host work mid-token (M2 exit
+  criterion). The perf model still counts one command per operation (513
+  for SmolLM2, not 575); its command time is a guess either way.
 - [x] `A` = 16 (D-027) in `docs/numerics.md` and the golden model; greedy
   fixtures regenerated. Teacher-forced comparison rerun on the M1 set (10
   prompts × 256 positions, `reports/data/M2-accumulators-16-compare.json`):
@@ -464,7 +472,7 @@ checkpoint.
 |------|----------|----------------|
 | Q-04 | Vivado builds for F2: local machine or AWS build instance? | First F2 build (M8, D-026). Leaning AWS: the FPGA Developer AMI (Marketplace subscription done 2026-10-05) includes the Vivado license on EC2; local needs a license for the VU47P (to verify). |
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
-| Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. |
+| Q-12 | Controller: fixed-function sequencer or small RISC-V core? | Leaning sequencer. M2. Proposed in `docs/architecture.md`: a sequencer; the decode step has no data-dependent control. |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
 | Q-17 | ECP5 board and host link. | Before M11. |
 | Q-18 | Do ECP5 before F2? | M7 checkpoint. |
