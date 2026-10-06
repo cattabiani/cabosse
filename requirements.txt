@@ -10,4 +10,6 @@ huggingface_hub==1.33.0
 numpy==2.5.3
 pydantic==2.13.5   # perf model input files (MIT)
 pytest==9.1.1
+cocotb==2.1.0   # RTL testbenches in Python (BSD-3-Clause); needs Verilator >= 5.036
+find_libpython==0.5.1   # cocotb dependency (MIT)
 ruff==0.16.10

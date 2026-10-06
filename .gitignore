@@ -15,6 +15,7 @@ __pycache__/
 .eggs/
 dist/
 .venv/
+.tools/
 venv/
 .python-version
 .pytest_cache/

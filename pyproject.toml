@@ -1,8 +1,8 @@
 # Tool configuration only; Cabosse is not an installable Python package.
 
 [tool.pytest.ini_options]
-testpaths = ["model/tests"]
-pythonpath = ["model", "model/tests"]
+testpaths = ["model/tests", "verif/tests"]
+pythonpath = ["model", "model/tests", "verif"]
 markers = ["slow: exhaustive tests that take minutes (run with: pytest -m slow)"]
 addopts = "-m 'not slow'"
 
