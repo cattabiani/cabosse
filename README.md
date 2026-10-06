@@ -49,9 +49,13 @@ git-ignored.
   curl -LO https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-10-06/oss-cad-suite-linux-x64-20261006.tgz
   tar xzf oss-cad-suite-linux-x64-20261006.tgz && rm oss-cad-suite-linux-x64-20261006.tgz
   ```
-  Put `.tools/oss-cad-suite/bin` on `PATH` before `.venv/bin` (the suite
-  bundles its own cocotb; the venv's pinned one must win), for example with
-  direnv's `PATH_add` ahead of the venv activation. Do not source the
+  The suite provides the simulator and synthesis tools; `.venv` provides the
+  Python side. The suite also bundles cocotb, but in its own Python (3.11,
+  without torch or the golden model) and as a development snapshot, so the
+  testbenches use the pinned cocotb in `.venv`. Put
+  `.tools/oss-cad-suite/bin` on `PATH` before `.venv/bin`, so the venv's
+  cocotb wins, for example with direnv's `PATH_add` ahead of the venv
+  activation. Do not source the
   suite's `environment` script. The release, not distribution packages:
   cocotb 2.1 needs Verilator 5.036 or newer, which Ubuntu 26.04 does not
   have, and the slang plugin is not packaged. The tools sit in the repo
