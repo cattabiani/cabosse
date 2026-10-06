@@ -30,8 +30,38 @@ checkpoints.
 
 ## Status
 
-**M3 in progress** (toolchain and FP units). M2 is done: [reports/M2.md](reports/M2.md). See [PLAN.md](PLAN.md) for goals,
-decisions, milestones, and open questions.
+**M3 in progress** (toolchain and FP units). M2 is done:
+[reports/M2.md](reports/M2.md). See [PLAN.md](PLAN.md) for goals, decisions,
+milestones, and open questions.
+
+## Development setup
+
+Linux, nothing installed system-wide; everything lives in the repo,
+git-ignored.
+
+- **Python** (3.14): `python3.14 -m venv .venv && .venv/bin/pip install -r
+  requirements.txt`.
+- **RTL tools:** the [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build)
+  (Verilator, Yosys with the slang SystemVerilog plugin), unpacked in
+  `.tools/`:
+  ```bash
+  mkdir -p .tools && cd .tools
+  curl -LO https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-10-06/oss-cad-suite-linux-x64-20261006.tgz
+  tar xzf oss-cad-suite-linux-x64-20261006.tgz && rm oss-cad-suite-linux-x64-20261006.tgz
+  ```
+  Put `.tools/oss-cad-suite/bin` on `PATH` before `.venv/bin` (the suite
+  bundles its own cocotb; the venv's pinned one must win), for example with
+  direnv's `PATH_add` ahead of the venv activation. Do not source the
+  suite's `environment` script. The release, not distribution packages:
+  cocotb 2.1 needs Verilator 5.036 or newer, which Ubuntu 26.04 does not
+  have, and the slang plugin is not packaged. The tools sit in the repo
+  because nothing else uses them.
+- **Vivado** is not installed locally: F2 builds run on AWS (D-032,
+  [docs/aws-setup.md](docs/aws-setup.md)).
+- **Model weights** go in `weights/` (git-ignored), for example
+  `.venv/bin/hf download HuggingFaceTB/SmolLM2-135M-Instruct --local-dir
+  weights/SmolLM2-135M-Instruct`. Tests that need them are marked `slow`
+  and skip without them.
 
 ## Repository layout
 
