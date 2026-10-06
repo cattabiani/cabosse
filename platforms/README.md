@@ -5,8 +5,8 @@ target. The core exposes one standard interface (AXI-Lite for control, AXI for
 memory). Each platform adapts that interface to what the target provides.
 
 - `f2/`: AWS F2 (AMD Virtex UltraScale+ with HBM, PCIe host, Vivado flow).
-- `ecp5/`: Lattice ECP5 board, fully open flow (Yosys + nextpnr).
-- `asic/`: open-PDK ASIC flow for a small slice of the design.
+Other FPGAs (such as Lattice ECP5) and an ASIC are out of scope (D-034,
+D-036); the core keeps no vendor primitives so they can be added.
 
 Rule: no accelerator logic lives here, only adapters, clocks, resets, pin
 constraints, and build scripts.

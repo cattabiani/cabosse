@@ -149,9 +149,9 @@ All FP32 unless noted. `n ≥ 1` is the vector length.
   product is `bf16(·)` first. That applies to the RMSNorm outputs, the
   attention output `o`, and the SwiGLU output `h`.
 - **Logits:** `dot(E[v], bf16(final_norm(x)))` for every vocabulary entry `v`,
-  in FP32. Sampling or argmax is not part of this spec (Q-21).
+  in FP32. Sampling or argmax is not part of this spec (the host does it, D-035).
 - **Decode step**, one token at a time at position `pos = 0, 1, …` (a prompt
-  is fed the same way, Q-20). Weights are the checkpoint's BF16 tensors;
+  is fed the same way; PLAN.md, Non-goals). Weights are the checkpoint's BF16 tensors;
   `dot(W, x)` is one dot product per row of `W` (section 3):
   ```
   h = up(E[token])

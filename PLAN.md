@@ -15,16 +15,16 @@ The path:
 1. **Simulation:** a full decode step of a real model runs in RTL simulation
    and matches a bit-exact Python golden model.
 2. **FPGA:** the same RTL runs on AWS F2 as a PCIe device, measured against
-   our memory-bandwidth bound and the Gemmini hackathon baseline. Then it runs
-   on a cheap FPGA with a fully open toolchain (Lattice ECP5).
-3. **ASIC:** a small slice of the design passes signoff on an open PDK. If
-   a shuttle is affordable, we submit it.
+   our memory-bandwidth bound and the Gemmini hackathon baseline.
+3. **ASIC:** out of scope (D-036); a possible later development.
 
 ## Non-goals (for now)
 
 - Training.
 - Batched or multi-user serving: one sequence at a time.
-- Fast prefill: the prompt goes through the decode path one token at a time.
+- Fast prefill: the prompt goes through the decode path one token at a time
+  (about 0.5 s for 500 tokens of SmolLM2, estimate). Revisit if M9 shows
+  prompt latency matters (was Q-20).
 - Contexts beyond the model's trained window (attention sinks with a circular
   cache, as in StreamingLLM). At the window's end the host runtime stops the
   conversation with a message that longer contexts are not supported yet. A
@@ -35,8 +35,13 @@ The path:
   a command stream, for Llama-style models (RMSNorm, RoPE, GQA, SwiGLU).
 - Low-precision activations or KV cache. Weight-only quantization is a
   possible extension.
-- A fully open flow on F2, because Vivado is proprietary. The open flow is
-  ECP5 and the ASIC.
+- A fully open flow on F2, because Vivado is proprietary. Every other tool
+  stays open source.
+- Other FPGAs, such as a cheap Lattice ECP5 board with a fully open flow
+  (D-034). The RTL stays vendor-neutral, so others can port it.
+- An ASIC: neither signoff on an open PDK nor a manufactured chip (D-036). A
+  possible later development; the RTL stays vendor-neutral and synthesizable
+  with Yosys.
 
 ## Decision log
 
@@ -283,6 +288,27 @@ where the spec returns NaN. Resolves Q-14. *Why:* a mature, tested design
 saves the hardest numerics RTL; the bit-exactness tests keep the spec in
 charge.
 
+**D-034 (2026-10-06) — F2 is the only FPGA; ECP5 is out of scope.** The
+project has no FPGA but F2, so the ECP5 port (M11) is left as future work
+for others; wrappers target F2 and the ASIC (narrows D-004). The RTL keeps
+no vendor primitives, and tools stay open source wherever F2 allows.
+Resolves Q-17 and Q-18. *Why:* we can only measure what we can run.
+
+**D-035 (2026-10-06) — Logits go to the host; sampling runs on the host.**
+OUTPUT copies the FP32 logits to host memory every token (D-029), and the
+host picks the token (argmax or sampling). Argmax on the device comes only
+if M9 measures the copy costing tokens/s. Resolves Q-21. *Why:* for SmolLM2
+the copy is 192 KiB, about 20 µs at the PCIe rate measured on F2 against a
+token of about 1 ms (estimate); the host gets every sampling method for free.
+
+**D-036 (2026-10-06) — The ASIC is out of scope.** M12 (a slice of the
+design through signoff on an open PDK, and a shuttle run) is left as a
+possible later development; the project ends at F2. Narrows D-001, and
+D-004 and D-034 (wrappers target F2 only). Resolves Q-19. *Why:* signoff
+and a chip change nothing on F2, and each costs a milestone or money; the
+RTL stays vendor-neutral and synthesizable with Yosys, so the ASIC remains
+possible.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -527,21 +553,17 @@ figures: weight bytes/s and MACs/s.
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
 
-### M11 — Fully open FPGA flow (ECP5)
-The same core, built with open tools only, runs a tiny config on a
-cheap board. It may move earlier (Q-18).
+### M11 — Fully open FPGA flow (ECP5): out of scope (D-034)
+Future work for others: the same core, built with open tools only, running
+a tiny config on a cheap board.
 
-### M12 — ASIC slice on an open PDK
-A few lanes with a simple test interface. DRC/LVS clean, timing met,
-gate-level simulation bit-exact. Shuttle submission is decided at this
-checkpoint.
+### M12 — ASIC slice on an open PDK: out of scope (D-036)
+A possible later development: a few lanes with a simple test interface. DRC/LVS clean, timing met,
+gate-level simulation bit-exact; then, perhaps, a shuttle run.
 
 ## Open questions
 
+None open. New ones are added as a table:
+
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-17 | ECP5 board and host link. | Before M11. |
-| Q-18 | Do ECP5 before F2? | M7 checkpoint. |
-| Q-19 | Open PDK and shuttle (SKY130, GF180MCU, IHP SG13G2; Tiny Tapeout, …). | M11 checkpoint. |
-| Q-20 | Is one-token-at-a-time prefill acceptable long-term? | After M10. |
-| Q-21 | Sampling: argmax on device or logits to host? | Leaning both. |

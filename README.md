@@ -12,9 +12,10 @@ plan to get there in three steps:
 1. **Simulation:** run a small Llama-style model token by token in RTL
    simulation and match a bit-exact Python reference.
 2. **FPGA:** run the same design on an AWS F2 FPGA instance and measure
-   tokens/s. Later, run it on a low-cost FPGA with a fully open toolchain (Lattice ECP5).
-3. **ASIC:** tape out a small slice of the design on an open-source process
-   through a multi-project shuttle.
+   tokens/s.
+
+An ASIC on an open-source process is a possible later development, out of
+scope for now.
 
 The first target workload is single-stream decode (one token at a time) of
 small models, starting with SmolLM2-135M-Instruct (a small chat model). Numerics are BF16
@@ -35,7 +36,7 @@ decisions, milestones, and open questions.
 | `rtl/`       | Synthesizable SystemVerilog                                |
 | `verif/`     | cocotb testbenches                                         |
 | `sw/`        | Host runtime, driver, PyTorch integration                  |
-| `platforms/` | Thin wrappers for AWS F2, Lattice ECP5, and ASIC           |
+| `platforms/` | Thin wrapper for AWS F2                                    |
 | `scripts/`   | Developer tooling                                          |
 
 ## License
