@@ -240,6 +240,14 @@ for nothing used; a queue of token descriptors, a completion record in host
 memory or on-device argmax save microseconds per millisecond token, so they
 wait for Q-20 and Q-21 (`docs/architecture.md`, `model/commands.py`).
 
+**D-030 (2026-10-06) — Vector unit: 16 FP32 elements per cycle, `S` = 128.**
+`S` fits every vector unit planned: up to 32 elements per cycle with a
+4-cycle add loop, or 16 with an 8-cycle loop; v0 builds 16. `S` = 128
+replaces the provisional 8 in `docs/numerics.md`. *Why:* at 16 wide the
+vector unit stays below the engine's time at every position of both ladder
+models (`docs/perf.md`); a wider unit or online softmax (D-022) can come
+later, and widening does not change the bits (`docs/architecture.md`).
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -368,7 +376,7 @@ golden model still passes M1.
   engine, memory and clocks. Decided: the engine, 128 lanes × 4 multiply-adds,
   `A` = 16 (D-027; resolves Q-25 and Q-22); memory and clocks (D-028;
   resolves Q-10 and Q-11). The perf model now counts idle lanes and the final sum of short
-  rows. Still to write: the vector unit.
+  rows. Vector unit: 16 FP32 elements per cycle, `S` = 128 (D-030).
 - [x] Controller, commands and registers, D-029 (`docs/architecture.md`,
   tables generated from `model/commands.py`): a fixed-function sequencer
   (Q-12) running one unrolled command list per model; token and position in
@@ -385,6 +393,12 @@ golden model still passes M1.
   top-1 0.9965 vs 0.9930 and mean KL lower, mean logit error 1.6% higher.
   `S` (vector-unit reductions) stays provisional 8 until the vector unit is
   designed.
+- [x] `S` = 128 (D-030) in `docs/numerics.md` and the golden model; SmolLM2
+  greedy fixture regenerated (the tiny one keeps its bits: its 64-long sums
+  differ, but not after the BF16 roundings). Comparison rerun on the M1 set
+  (`reports/data/M2-reduce-width-128-compare.json`): against `S` = 8, top-1
+  (0.9965) and mean logit error unchanged; max logit error 1.91e-2 vs
+  2.20e-2, max KL 3.5e-3 vs 4.4e-3.
 - [x] Report-generation code in its own package, `model/reporting/`:
   `blocks.py` (generated blocks), `m1.py` (`reports/M1.md`), `perf_doc.py`
   (`docs/perf.md`), each with `PATH` and `render()`; scripts

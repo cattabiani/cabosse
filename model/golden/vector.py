@@ -13,9 +13,10 @@ import torch
 
 from golden import arith, dot, funcs
 
-# S: interleaved partial sums of the vector unit. Provisional until M2 derives
-# it from the adder pipeline depth; every function takes it as a parameter.
-REDUCE_WIDTH = 8
+# S: interleaved partial sums of the vector unit (D-030): 32 elements per cycle
+# x a 4-cycle add loop, the widest vector unit planned; a narrower one keeps
+# the same S partial sums. Every function takes it as a parameter.
+REDUCE_WIDTH = 128
 
 
 def reduce_sum(

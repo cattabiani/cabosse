@@ -70,7 +70,7 @@ v0: first-order design choices (M2), from `model/designs/v0.json`:
 | `lanes` | 128 lanes | choice | docs/architecture.md, engine |
 | `macs_per_lane` | 4 MAC/cycle | choice | docs/architecture.md, engine: 128 x 4 x 2 B = 1024 B/cycle, all 32 HBM ports at 250 MHz |
 | `accumulators` | 16 partial sums | choice | docs/architecture.md, engine: 4 multiply-adds x a 4-cycle loop (D-027) |
-| `vector_elems_per_cycle` | 16 elements/cycle | guess | none yet (M6 sizes the vector unit) |
+| `vector_elems_per_cycle` | 16 elements/cycle | choice | docs/architecture.md, vector unit (D-030) |
 | `command_cycles` | 64 cycles/command | guess | none yet (the controller is designed in M2/M7) |
 
 | scenario | changes |
@@ -150,6 +150,5 @@ Tokens/s (overlapped) at position 1023, with the input scaled ×0.5 / ×1 / ×2:
 |---|---|---|---|---|---|
 | `hbm_port_bytes` (to verify) | 437 / 714 / 714 | 437 / 580 / 580 | 437 / 555 / 555 | 357 / 357 / 357 | 787 / 1323 / 1323 |
 | `hbm_read_bytes_per_s` (measured by AWS) | 405 / 714 / 714 | 405 / 580 / 580 | 405 / 555 / 555 | 357 / 357 / 357 | 728 / 1323 / 1323 |
-| `vector_elems_per_cycle` (guess) | 714 / 714 / 714 | 580 / 580 / 580 | 555 / 555 / 555 | 357 / 357 / 357 | 1323 / 1323 / 1323 |
 | `command_cycles` (guess) | 714 / 714 / 714 | 580 / 580 / 580 | 555 / 555 / 555 | 357 / 357 / 357 | 1323 / 1323 / 1323 |
 <!-- end: sensitivity -->

@@ -6,7 +6,7 @@ computes, bit for bit) are in [numerics.md](numerics.md), the platform facts
 in [f2.md](f2.md), and every performance number in [perf.md](perf.md), which
 is generated from the perf model.
 
-Status: draft. Still to come in M2: the vector unit. Sections marked with a
+Status: draft. Sections marked with a
 D-number are decided (PLAN.md decision log); **[proposed]** ones wait for the
 owner. The tables of the controller, command and register sections are
 generated from `model/commands.py` by `scripts/report_arch.py`.
@@ -86,6 +86,36 @@ mean `A` = 32, with the losses of the 64 × 8 row above at long positions).
 
 **Left for later:** concatenating matrices that share an input (q, k and v;
 gate and up) into one, to fill the last pass; a small gain for SmolLM2.
+
+## Vector unit (D-030)
+
+**Shape:** 16 FP32 elements per cycle, with `S` = 128 partial sums for
+reductions. Each of the 16 slots has the FP32 add, multiply, FMA and max of
+numerics.md, section 2, and the rsqrt, recip and exp of section 5.
+
+- Elementwise work (RoPE, SwiGLU, residual adds, the roundings to BF16)
+  takes n ÷ 16 cycles.
+- A sum (RMSNorm's sum of squares, softmax's denominator) puts element `k`
+  into partial sum `k mod 128`. Each slot's adder owns 8 of the sums, so a
+  4-cycle add loop has slack. The 128 sums then go through the fixed tree of
+  section 3: 7 levels, about 30 cycles once per sum.
+- `max` is exact, so its order is free.
+
+**Why this width.** At short positions the vector unit is a few percent of
+the memory time. At long ones softmax's passes over the scores grow with
+the position, but so does attention on the engine, which stays the larger
+of the two: at 16 wide the vector unit is about half the engine's time at
+the full window of SmolLM2 and of Qwen2.5-0.5B (perf.md, "Predictions"). A
+wider unit, or online softmax (D-022), is for when the engine stops being
+the limit there.
+
+**Numerics.** Only `S` affects the bits. 128 partial sums fit any width up
+to 32 with a 4-cycle add loop, or 16 wide with an 8-cycle loop, so the unit
+can widen without a numerics change. Online softmax changes the spec.
+`S` = 128 replaces the provisional 8 of numerics.md.
+
+**Commands:** fused per model block today; primitive commands are open
+(Q-26).
 
 ## Memory (D-028)
 
