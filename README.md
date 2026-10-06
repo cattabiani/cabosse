@@ -4,6 +4,10 @@ Cabosse is an open-source hardware accelerator for LLM inference. The chip desig
 (SystemVerilog) and all software (golden model, testbenches, host runtime) are
 published in this repository.
 
+The name: Swiss chips → choco chips → *cabosse*, the cocoa pod where chocolate
+starts. Same as chocolate: everyone loves the chips, nobody remembers the pod.
+We're making the pod open source.
+
 ## Goal
 
 Show that open AI hardware can be built and reproduced from public sources:
