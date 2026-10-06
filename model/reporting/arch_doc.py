@@ -18,13 +18,16 @@ MODEL = "SmolLM2-135M-Instruct"  # the decode step written out
 # The model ladder after the tiny configs (D-014), each at its full context:
 # the on-chip buffers are sized for the largest of each.
 LADDER = ("SmolLM2-135M-Instruct", "Qwen2.5-0.5B-Instruct")
-COLUMNS = ("dst", "a", "b", "n", "m", "addr")  # of the decode-step table
+COLUMNS = ("dst", "a", "b", "c", "n", "m", "flags", "scalar", "addr")  # of the decode-step table
 
 
 def opcodes_table() -> str:
+    def accepts(op: commands.Op) -> str:
+        return " ".join(f.name for f in commands.ACCEPTS.get(op, commands.Flag.NONE))
+
     return blocks.table(
-        ["opcode", "command", "does"],
-        [[int(op), f"`{op.name}`", does] for op, (does, _) in commands.OPS.items()],
+        ["opcode", "command", "does", "flags"],
+        [[int(op), f"`{op.name}`", does, accepts(op)] for op, (does, _) in commands.OPS.items()],
     )
 
 
@@ -40,6 +43,16 @@ def encoding_table() -> str:
     return (
         blocks.table(["byte", "bytes", "field", "meaning", "used by"], rows)
         + f"\n\n{commands.COMMAND_BYTES} bytes per command, little-endian; unused fields are zero."
+    )
+
+
+def flags_table() -> str:
+    return blocks.table(
+        ["bit", "flag", "meaning"],
+        [
+            [flag.bit_length() - 1, f"`{flag.name}`", meaning]
+            for flag, meaning in commands.FLAGS.items()
+        ],
     )
 
 
@@ -118,7 +131,13 @@ def row(index: int | str, cmd: commands.Command) -> list:
         value = getattr(cmd, name)
         if name == "addr":
             return f"0x{value:X}"
-        return value.name if isinstance(value, commands.Buf) else str(value)
+        if name == "flags":
+            return " ".join(f.name for f in value)
+        if name == "scalar":  # an FP32 constant; 0 when unused
+            return f"{float(commands.f32_value(value)):.6g}" if value else ""
+        if isinstance(value, commands.Buf):
+            return "" if value == commands.Buf.NONE else value.name
+        return str(value)
 
     return [index, cmd.op.name, *(cell(name) for name in COLUMNS)]
 
@@ -149,6 +168,7 @@ def generated() -> dict[str, str]:
     return {
         "opcodes": opcodes_table(),
         "encoding": encoding_table(),
+        "flags": flags_table(),
         "registers": registers_table(),
         "buffers": buffers_table(),
         "ladder": ladder_table(),
