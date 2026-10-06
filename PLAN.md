@@ -16,8 +16,7 @@ The path:
    and matches a bit-exact Python golden model.
 2. **FPGA:** the same RTL runs on AWS F2 as a PCIe device, measured against
    our memory-bandwidth bound and the Gemmini hackathon baseline.
-3. **ASIC:** a small slice of the design passes signoff on an open PDK, with
-   open tools. Manufacturing it is out of scope (D-036).
+3. **ASIC:** out of scope (D-036); a possible later development.
 
 ## Non-goals (for now)
 
@@ -36,12 +35,13 @@ The path:
   a command stream, for Llama-style models (RMSNorm, RoPE, GQA, SwiGLU).
 - Low-precision activations or KV cache. Weight-only quantization is a
   possible extension.
-- A fully open flow on F2, because Vivado is proprietary. The open flow is
-  the ASIC.
+- A fully open flow on F2, because Vivado is proprietary. Every other tool
+  stays open source.
 - Other FPGAs, such as a cheap Lattice ECP5 board with a fully open flow
   (D-034). The RTL stays vendor-neutral, so others can port it.
-- Manufacturing a chip (a shuttle run, D-036). A possible later development;
-  M12 takes the design up to signoff.
+- An ASIC: neither signoff on an open PDK nor a manufactured chip (D-036). A
+  possible later development; the RTL stays vendor-neutral and synthesizable
+  with Yosys.
 
 ## Decision log
 
@@ -301,12 +301,13 @@ if M9 measures the copy costing tokens/s. Resolves Q-21. *Why:* for SmolLM2
 the copy is 192 KiB, about 20 µs at the PCIe rate measured on F2 against a
 token of about 1 ms (estimate); the host gets every sampling method for free.
 
-**D-036 (2026-10-06) — No chip manufacturing.** M12 takes a slice of the
-design through signoff on an open PDK, with open tools; submitting it to a
-shuttle is out of scope, a possible later development. Narrows D-001. The
-shuttle part of Q-19 is resolved; the PDK choice stays open. *Why:* signoff
-shows the design is buildable on an open process; a real chip costs money
-and time the project does not plan for.
+**D-036 (2026-10-06) — The ASIC is out of scope.** M12 (a slice of the
+design through signoff on an open PDK, and a shuttle run) is left as a
+possible later development; the project ends at F2. Narrows D-001, and
+D-004 and D-034 (wrappers target F2 only). Resolves Q-19. *Why:* signoff
+and a chip change nothing on F2, and each costs a milestone or money; the
+RTL stays vendor-neutral and synthesizable with Yosys, so the ASIC remains
+possible.
 
 ## Milestones
 
@@ -556,12 +557,13 @@ sub-milestone.
 Future work for others: the same core, built with open tools only, running
 a tiny config on a cheap board.
 
-### M12 — ASIC slice on an open PDK
-A few lanes with a simple test interface. DRC/LVS clean, timing met,
-gate-level simulation bit-exact. No shuttle submission (D-036).
+### M12 — ASIC slice on an open PDK: out of scope (D-036)
+A possible later development: a few lanes with a simple test interface. DRC/LVS clean, timing met,
+gate-level simulation bit-exact; then, perhaps, a shuttle run.
 
 ## Open questions
 
+None open. New ones are added as a table:
+
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-19 | Open PDK for M12's signoff (SKY130, GF180MCU, IHP SG13G2). | Before M12. |

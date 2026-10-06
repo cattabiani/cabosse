@@ -7,11 +7,10 @@ take precedence over your defaults.
 
 Cabosse is an open-source hardware accelerator for LLM inference. The chip
 design and all software are open source. The aim is to show that open AI
-hardware is real and reproducible. The path is simulation → FPGA (AWS F2) →
-a small ASIC slice through signoff on an open-source process (manufacturing
-is out of scope, D-036). The project owner
-is a software engineer and numerical scientist who is new to hardware. Explain
-hardware concepts briefly when you use them.
+hardware is real and reproducible. The path is simulation → FPGA (AWS F2);
+an ASIC on an open-source process is out of scope for now (D-036). The
+project owner is a software engineer and numerical scientist who is new to
+hardware. Explain hardware concepts briefly when you use them.
 
 ## Decisions already made
 
@@ -29,7 +28,7 @@ one is wrong, say so and explain why, and let the owner decide.
   accelerator memory. The host is not involved in individual operations.
 - **System:** host CPU + accelerator as a PCIe device, AWS F2 first. The core
   exposes AXI-Lite (control) + AXI (memory). Thin wrappers in `platforms/`
-  target F2 and an ASIC. Other FPGAs (ECP5) are out of scope (D-034).
+  target F2. Other FPGAs (ECP5) and an ASIC are out of scope (D-034, D-036).
 - **Languages/tools:** SystemVerilog (no Chisel), Verilator, cocotb. The golden
   model is written in PyTorch (torch tensors, explicit operations).
   Development happens on Linux.
@@ -112,7 +111,7 @@ one is wrong, say so and explain why, and let the owner decide.
 - `rtl/`: synthesizable SystemVerilog only (no testbenches, no platform code).
 - `verif/`: cocotb testbenches and shared test utilities.
 - `sw/`: host runtime, driver/platform glue, PyTorch integration.
-- `platforms/{f2,asic}/`: thin wrappers and build flows per target.
+- `platforms/f2/`: thin wrapper and build flow for F2.
 - `scripts/`: developer tooling.
 
 ## Licensing
