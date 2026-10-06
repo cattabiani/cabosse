@@ -9,6 +9,9 @@ matrix-vector engine, the vector unit, DMA engines, on-chip buffers, the
 controller, and the top level with one AXI-Lite control port and AXI memory
 port(s).
 
+Third-party RTL (CVFPU and its helpers) is in [`vendor/`](vendor/), pinned and
+unmodified.
+
 Platform-specific code (clocking, vendor IP, shells) goes in `../platforms/`.
 
 License: Solderpad Hardware License v2.1 (`SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1`),

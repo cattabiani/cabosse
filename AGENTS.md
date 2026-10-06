@@ -122,7 +122,8 @@ one is wrong, say so and explain why, and let the owner decide.
   `SPDX-License-Identifier: Apache-2.0`.
 - Copyright line: `Copyright <year> The Cabosse Authors`.
 - Never copy code from elsewhere without checking that its license is
-  compatible, and record where it came from.
+  compatible, and record where it came from (vendored RTL:
+  `rtl/vendor/README.md`; those files keep their own headers).
 
 ## Coding conventions
 
