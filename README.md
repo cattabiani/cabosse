@@ -6,8 +6,10 @@ published in this repository.
 
 ## Goal
 
-Show that open AI hardware can be built and reproduced from public sources. We
-plan to get there in three steps:
+Show that open AI hardware can be built and reproduced from public sources:
+anyone with an AWS account can rebuild it and run it on F2. Tools are open
+source wherever possible; Vivado, F2's build flow, is the exception. Two
+steps:
 
 1. **Simulation:** run a small Llama-style model token by token in RTL
    simulation and match a bit-exact Python reference.
@@ -24,7 +26,7 @@ checkpoints.
 
 ## Status
 
-**M1 in progress** (numerics spec and golden model). See [PLAN.md](PLAN.md) for goals,
+**M2 in progress** (architecture spec and performance model). See [PLAN.md](PLAN.md) for goals,
 decisions, milestones, and open questions.
 
 ## Repository layout
