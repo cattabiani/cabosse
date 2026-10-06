@@ -8,9 +8,10 @@ Last updated: 2026-10-02.
 
 ## Goal
 
-An open-source accelerator for LLM inference (chip design, verification, host
-software) that anyone can rebuild, with every published number reproducible.
-The path:
+An open-source accelerator for LLM inference (hardware design, verification,
+host software) that anyone with an AWS account can rebuild and run on F2,
+with every published number reproducible. Tools are open source wherever
+possible; Vivado, F2's only build flow, is the exception (D-032). The path:
 
 1. **Simulation:** a full decode step of a real model runs in RTL simulation
    and matches a bit-exact Python golden model.
@@ -481,7 +482,7 @@ golden model still passes M1.
 
 ### M3 — Toolchain and FP units
 **What:** OSS CAD Suite (Verilator, Yosys with the slang SystemVerilog
-plugin, nextpnr, cocotb; owner installs), one-command test runner, CI, lint.
+plugin, cocotb; owner installs), one-command test runner, CI, lint.
 CVFPU (D-033), vendored at a pinned version and configured for BF16 × BF16
 → FP32 multiply-add and the FP32 operations of the vector unit.
 **Why:** the FP units carry the numerics. Proving the toolchain and CVFPU's
@@ -491,8 +492,9 @@ against the golden model on ≥ 10⁸ random inputs plus every special-value
 class (the BF16 multiply exhaustively if that is fast enough); every
 mismatch is reported and settled by the owner (D-033). The multiply-add's
 accumulate loop closes in 4 cycles at 250 MHz, or `A` changes (D-027). Lint
-is clean, and the units synthesize in Yosys. The area cost of subnormal
-support is reported (D-016).
+is clean, and the units synthesize in Yosys (a vendor-neutral check). The
+cost of subnormal support is reported in Yosys cells (D-016); its F2
+resource cost comes with the first build.
 
 ### M4 — Dot-product lane
 **What:** a lane that streams BF16 pairs into an FP32 dot product.
