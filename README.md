@@ -5,7 +5,8 @@ Cabosse is an open-source hardware accelerator for LLM inference. The chip desig
 published in this repository.
 
 The name: Swiss chips → choco chips → *cabosse*, the cocoa pod where chocolate
-starts.
+starts. Same as chocolate: everyone loves the chips, nobody remembers the pod.
+We're making the pod open source.
 
 ## Goal
 
