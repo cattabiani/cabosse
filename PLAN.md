@@ -248,6 +248,18 @@ vector unit stays below the engine's time at every position of both ladder
 models (`docs/perf.md`); a wider unit or online softmax (D-022) can come
 later, and widening does not change the bits (`docs/architecture.md`).
 
+**D-031 (2026-10-06) — Vector-unit commands are primitives.** The vector
+unit takes elementwise operations (add, multiply, FMA, exp, recip, rsqrt)
+and reductions (sum, sum of squares, max); the command list chains them
+into RMSNorm, RoPE, softmax and SwiGLU. The engine keeps its fused commands
+(MATVEC, SCORES, VALUES). The opcode space leaves room for fused vector
+commands, added only if M9 measures command overhead costing tokens/s; a
+fused command runs the same operations in the same order, so the bits do
+not change. Resolves Q-26; to be applied to `model/commands.py`,
+`docs/architecture.md` and the perf model's command count. *Why:* a model
+needing a new step (Qwen2.5's q/k/v biases, Qwen3's q/k norm) needs a new
+command list, not new hardware; the vector unit is one generic pipeline.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -502,7 +514,6 @@ checkpoint.
 |------|----------|----------------|
 | Q-04 | Vivado builds for F2: local machine or AWS build instance? | First F2 build (M8, D-026). Leaning AWS: the FPGA Developer AMI (Marketplace subscription done 2026-10-05) includes the Vivado license on EC2; local needs a license for the VU47P (to verify). |
 | Q-24 | Contexts longer than the trained window, or several sequences at once: circular buffer with permanent "attention sink" tokens (StreamingLLM), and/or block paging? | Only with a model trained for it, or if multi-sequence serving becomes a goal (D-024). A circular buffer changes the spec: the order of positions in softmax and p·V after a wrap, and how positions past the trained range are handled. |
-| Q-26 | Vector-unit commands: fused per model block (RMSNORM, ROPE, SOFTMAX, SWIGLU: today's proposal) or primitives (elementwise ops, exp, recip, reductions) so that other model families need only a new command list? | M2, with the vector unit. Leaning: keep MATVEC and attention fused, make the vector unit primitive; its time is small next to memory and the engine (`docs/perf.md`). |
 | Q-14 | Own FP units or existing open IP (e.g. CVFPU)? | M3 start. |
 | Q-17 | ECP5 board and host link. | Before M11. |
 | Q-18 | Do ECP5 before F2? | M7 checkpoint. |
