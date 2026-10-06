@@ -517,6 +517,14 @@ is clean, and the units synthesize in Yosys (a vendor-neutral check). The
 cost of subnormal support is reported in Yosys cells (D-016); its F2
 resource cost comes with the first build.
 
+**Progress:**
+- Approved by the owner (2026-10-07), to apply in step 2 with the CVFPU
+  tests: `max` follows IEEE 754-2019 `maximumNumber`, as RISC-V's `fmax` and
+  CVFPU do (a NaN operand gives the other operand; two NaNs give NaN). It
+  changes only softmax's intermediate max, never its output: a NaN score
+  still gives NaN everywhere. Needs its decision entry, `docs/numerics.md`,
+  the golden model and tests together (rule 8).
+
 ### M4 — Dot-product lane
 **What:** a lane that streams BF16 pairs into an FP32 dot product.
 **Why:** a pipelined adder needs `A` rotating partial sums to take one input
