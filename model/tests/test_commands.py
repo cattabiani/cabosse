@@ -124,6 +124,26 @@ def test_a_list_without_end_is_rejected(drop: str) -> None:
         commands.run(cmds, layout, commands.load(model, layout), 3, 0)
 
 
+@pytest.mark.parametrize("byte", [0, 1])  # the opcode, the destination buffer
+def test_an_unknown_opcode_or_buffer_does_not_decode(byte: int) -> None:
+    raw = bytearray(commands.Command(commands.Op.END).encode())
+    raw[byte] = 0xFF
+    with pytest.raises(ValueError, match="255"):
+        commands.Command.decode(bytes(raw))
+
+
+def test_an_unknown_command_stops_the_run() -> None:
+    """A command run() has no case for (an opcode added to Op but not to
+    run()) is an error, not skipped."""
+    c = tiny.tiny_config()
+    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=1))
+    layout = commands.Layout.of(c, cap=2)
+    cmds = commands.build(layout)
+    cmds.insert(1, dataclasses.replace(cmds[0], op=99))
+    with pytest.raises(AssertionError, match="unknown command 99"):
+        commands.run(cmds, layout, commands.load(model, layout), 3, 0)
+
+
 def test_a_list_without_output_returns_nothing() -> None:
     """A prompt token whose logits the host skips: the KV cache is written
     all the same."""

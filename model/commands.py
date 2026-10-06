@@ -400,4 +400,6 @@ def run(
                 output = a.clone()
             case Op.END:
                 return output
+            case _:  # the controller stops with STATUS error and the index in ERROR
+                raise AssertionError(f"unknown command {cmd.op!r}")
     raise AssertionError("command list without END")
