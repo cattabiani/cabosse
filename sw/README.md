@@ -7,7 +7,7 @@ Planned contents:
 - **Runtime:** loads a checkpoint, lays out weights in accelerator memory,
   builds the command stream, runs decode, and reads back results.
 - **Driver/platform glue:** register access and DMA for each platform
-  (simulation, AWS F2, ECP5 board).
+  (simulation, AWS F2).
 - **PyTorch integration:** a later, optional way to call the accelerator from
   PyTorch.
 

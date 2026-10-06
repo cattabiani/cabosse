@@ -12,7 +12,7 @@ plan to get there in three steps:
 1. **Simulation:** run a small Llama-style model token by token in RTL
    simulation and match a bit-exact Python reference.
 2. **FPGA:** run the same design on an AWS F2 FPGA instance and measure
-   tokens/s. Later, run it on a low-cost FPGA with a fully open toolchain (Lattice ECP5).
+   tokens/s.
 3. **ASIC:** tape out a small slice of the design on an open-source process
    through a multi-project shuttle.
 
@@ -35,7 +35,7 @@ decisions, milestones, and open questions.
 | `rtl/`       | Synthesizable SystemVerilog                                |
 | `verif/`     | cocotb testbenches                                         |
 | `sw/`        | Host runtime, driver, PyTorch integration                  |
-| `platforms/` | Thin wrappers for AWS F2, Lattice ECP5, and ASIC           |
+| `platforms/` | Thin wrappers for AWS F2 and ASIC                          |
 | `scripts/`   | Developer tooling                                          |
 
 ## License
