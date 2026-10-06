@@ -7,6 +7,7 @@ encoding round-trips; the HBM layout is consistent."""
 import dataclasses
 
 import commands
+import paths
 import perf
 import pytest
 import torch
@@ -30,6 +31,25 @@ def test_commands_give_the_golden_decode_step(n_kv_heads: int, tied: bool) -> No
         got = commands.run(cmds, layout, hbm, token, position)
         assert torch.equal(arith.bits_f32(got), arith.bits_f32(expected)), position
     for i in range(c.num_hidden_layers):
+        for name, golden in (("k_cache", cache.k[i]), ("v_cache", cache.v[i])):
+            stored = hbm[layout.addr(f"layers.{i}.{name}")]
+            assert torch.equal(arith.bits_bf16(stored), arith.bits_bf16(golden)), (i, name)
+
+
+@pytest.mark.slow
+@pytest.mark.skipif(not paths.SMOLLM2.exists(), reason=f"needs the checkpoint in {paths.SMOLLM2}")
+def test_commands_give_the_golden_decode_step_on_smollm2() -> None:
+    """The same check on the real model, 7 tokens (about 20 s)."""
+    model = decoder.load(paths.SMOLLM2)
+    tokens = [1, 9690, 314, 253, 1789, 28, 2]
+    layout = commands.Layout.of(model.config, cap=len(tokens))
+    hbm, cmds = commands.load(model, layout), commands.build(layout)
+    cache = decoder.KVCache.empty(model, layout.cap)
+    for position, token in enumerate(tokens):
+        expected = decoder.decode_step(model, cache, token)
+        got = commands.run(cmds, layout, hbm, token, position)
+        assert torch.equal(arith.bits_f32(got), arith.bits_f32(expected)), position
+    for i in range(model.config.num_hidden_layers):
         for name, golden in (("k_cache", cache.k[i]), ("v_cache", cache.v[i])):
             stored = hbm[layout.addr(f"layers.{i}.{name}")]
             assert torch.equal(arith.bits_bf16(stored), arith.bits_bf16(golden)), (i, name)
