@@ -113,12 +113,29 @@ def test_buffer_capacities_cover_every_ladder_model() -> None:
             assert caps[b][0] == dtype and n <= caps[b][1], (b, layout.config)
 
 
-def test_a_list_without_end_is_rejected() -> None:
+@pytest.mark.parametrize("drop", ["end", "all"])
+def test_a_list_without_end_is_rejected(drop: str) -> None:
+    """The step without its END, and the empty list."""
     c = tiny.tiny_config()
     model = decoder.from_state_dict(c, tiny.random_weights(c, seed=1))
     layout = commands.Layout.of(c, cap=2)
+    cmds = commands.build(layout)[:-1] if drop == "end" else []
     with pytest.raises(AssertionError, match="without END"):
-        commands.run(commands.build(layout)[:-1], layout, commands.load(model, layout), 3, 0)
+        commands.run(cmds, layout, commands.load(model, layout), 3, 0)
+
+
+def test_a_list_without_output_returns_nothing() -> None:
+    """A prompt token whose logits the host skips: the KV cache is written
+    all the same."""
+    c = tiny.tiny_config()
+    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=1))
+    layout = commands.Layout.of(c, cap=2)
+    hbm = commands.load(model, layout)
+    cmds = [x for x in commands.build(layout) if x.op != commands.Op.OUTPUT]
+    assert commands.run(cmds, layout, hbm, 3, 0) is None
+    decoder.decode_step(model, cache := decoder.KVCache.empty(model, 2), 3)
+    stored = hbm[layout.addr("layers.0.k_cache")]
+    assert torch.equal(arith.bits_bf16(stored), arith.bits_bf16(cache.k[0]))
 
 
 def test_architecture_doc_is_up_to_date() -> None:

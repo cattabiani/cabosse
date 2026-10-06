@@ -346,10 +346,11 @@ def build(layout: Layout) -> list[Command]:
 
 def run(
     commands: list[Command], layout: Layout, hbm: dict[int, torch.Tensor], token: int, position: int
-) -> torch.Tensor:
+) -> torch.Tensor | None:
     """Execute a command list for one token, as the controller does: buffers
     start empty, HBM (the KV cache) is updated in place. Returns what OUTPUT
-    wrote to the host."""
+    wrote to the host, or None for a list without OUTPUT (a prompt token
+    whose logits the host does not need)."""
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
     formats = buffers(layout.config, layout.cap)
     buf: dict[Buf, torch.Tensor] = {}
