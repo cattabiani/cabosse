@@ -68,10 +68,13 @@ def simulate(top: str, test_module: str | None = None) -> None:
     )
 
 
-def lint(top: str, extra: Sequence[Path] = ()) -> subprocess.CompletedProcess:
-    """Verilator -Wall lint of rtl/ plus `extra` files, with `top` as the top."""
+def lint(
+    top: str, extra: Sequence[Path] = (), params: Sequence[tuple[str, int]] = ()
+) -> subprocess.CompletedProcess:
+    """Verilator -Wall lint of rtl/ plus `extra` files, with `top` as the top
+    and its parameters set to `params` ((name, value) pairs)."""
     argv = ["verilator", "--lint-only", "-Wall", "--top-module", top, *VERILATOR_FILES]
-    argv += [str(p) for p in extra]
+    argv += [str(p) for p in extra] + [f"-G{name}={value}" for name, value in params]
     return subprocess.run(argv, capture_output=True, text=True)
 
 

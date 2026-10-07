@@ -7,6 +7,10 @@
 package fp_pkg;
 
   localparam int unsigned SigW = 27;  // FP32's 24 significand bits, guard, round, sticky
+  // Unused in tops that never make a NaN (fp_product, leading_zeros, ...).
+  /* verilator lint_off UNUSEDPARAM */
+  localparam logic [31:0] CanonicalNaN = 32'h7FC0_0000;  // docs/numerics.md, section 2
+  /* verilator lint_on UNUSEDPARAM */
 
   // An operand: (-1)^sign * sig * 2^(exp - 126 - W) for a significand of W
   // bits (sig[W-1] has weight 2^(exp - 127)); exp is biased like FP32's.
@@ -23,6 +27,17 @@ package fp_pkg;
     logic            is_nan;
   } operand_t;
 
+  // W of fp_product's operand for M-bit significands: the whole 2M-bit
+  // product, at least FP32's 24 bits, then guard, round, sticky.
+  function automatic int unsigned prod_sig_w(int unsigned m);
+    return (2 * m > 24 ? 2 * m : 24) + 3;
+  endfunction
+
+  // Whether FP32 bits are a NaN, from all but the sign bit.
+  function automatic logic is_nan_f32(logic [30:0] f);
+    return (f[30:23] == 8'hFF) && (f[22:0] != 0);
+  endfunction
+
   // An FP32 value as an operand (a BF16 value b is decode_f32({b, 16'h0})).
   function automatic operand_t decode_f32(logic [31:0] f);
     operand_t o;
@@ -30,7 +45,7 @@ package fp_pkg;
     o.exp    = (f[30:23] == 0) ? 9'd1 : {1'b0, f[30:23]};
     o.sig    = {f[30:23] != 0, f[22:0], 3'b000};
     o.is_inf = (f[30:23] == 8'hFF) && (f[22:0] == 0);
-    o.is_nan = (f[30:23] == 8'hFF) && (f[22:0] != 0);
+    o.is_nan = is_nan_f32(f[30:0]);
     return o;
   endfunction
 

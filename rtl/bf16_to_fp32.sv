@@ -5,15 +5,13 @@
 // are zero. A NaN becomes the canonical NaN (docs/numerics.md, section 2).
 // Combinational. Golden model: golden.arith.up.
 
-module bf16_to_fp32 (
+module bf16_to_fp32
+  import fp_pkg::*;
+(
   input  logic [15:0] a_i,
   output logic [31:0] y_o
 );
 
-  localparam logic [31:0] CanonicalNaN = 32'h7FC0_0000;
-
-  logic is_nan;
-  assign is_nan = (a_i[14:7] == 8'hFF) && (a_i[6:0] != 7'h00);
-  assign y_o = is_nan ? CanonicalNaN : {a_i, 16'h0000};
+  assign y_o = is_nan_f32({a_i[14:0], 16'h0000}) ? CanonicalNaN : {a_i, 16'h0000};
 
 endmodule

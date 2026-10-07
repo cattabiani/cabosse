@@ -636,8 +636,20 @@ resource cost comes with the first build.
   retimed; a 3-cycle loop +0.813 ns retimed. The worst path is now the
   loop's own (accumulator to alignment, 3.3 ns). The fifth log's last run
   was read from the live console, its replay being cut by the shutdown.
-  To do: the PR. After it: the cost of subnormal support (D-016, exit
-  criterion), against a flush-to-zero variant.
+  Review cleanup (PR #36): `fp_mul_add` (product, register, adder) is the
+  one body of `bf16_mac` and `fp32_fma`; `fp_add` takes its second operand
+  as FP32 bits; `fp_pkg` holds the canonical NaN, the NaN test and the
+  product's width; `fp_product` refuses `Regs` > 2 (the callers' delay
+  lines assume at most 2); the exponent order comes from the subtractions'
+  borrows; `fp32_max` uses one magnitude compare. Yosys: `bf16_mac` 2,565
+  → 2,569 cells, `fp32_fma` 7,976 → 7,919. Not done, no gain in Yosys
+  cells: the significand compare beside the alignment shifter instead of
+  in front of it (+142 cells; it shortens `fp_add`'s first stage, now the
+  lanes' worst path, so worth a Vivado run only if that path limits), and
+  the product's zero flag from the operands (same cells, one more flop per
+  register). The RTL changed after the sixth log, so its slack needs a
+  Vivado rerun (owner's OK). Then the cost of subnormal support (D-016,
+  exit criterion), against a flush-to-zero variant.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op

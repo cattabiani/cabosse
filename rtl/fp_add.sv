@@ -1,32 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 // Copyright 2026 The Cabosse Authors
 //
-// y = a + b with one rounding to FP32, round to nearest even, for operands
-// in fp_pkg's layout with W-bit significands (D-038, D-039). Subnormals are
-// kept, Inf - Inf and any NaN give the canonical NaN, an exact zero sum is
-// -0 only if both operands are -0. W = 27 (fp_pkg::SigW) adds an FP32 value
-// or an exact BF16 product; fp32_fma uses W = 51 for its exact FP32
-// products. The bits below the rounding point are guard (bit W-25) and
-// sticky (the rest, ORed); the operands' own sticky bits stay below them.
+// y = a + b with one rounding to FP32, round to nearest even, for an operand
+// a in fp_pkg's layout with a W-bit significand (fp_product's) and an FP32
+// value b (D-038, D-039). Subnormals are kept, Inf - Inf and any NaN give the
+// canonical NaN, an exact zero sum is -0 only if both operands are -0.
+// W = 27 (fp_pkg::SigW) adds an exact BF16 product; fp32_fma uses W = 51 for
+// its exact FP32 products. The bits below the rounding point are guard (bit
+// W-25) and sticky (the rest, ORed); the operands' own sticky bits stay below
+// them.
 //
 // Three register stages: align | add, count leading zeros | normalize,
 // round. A result leaves 3 cycles after its operands enter; valid_o marks it.
 
-module fp_add #(
-  parameter  int unsigned W     = fp_pkg::SigW,
-  localparam int unsigned OpW   = W + 12,  // fp_pkg::operand_t's layout
-  localparam int unsigned LzW   = $clog2(W)
+module fp_add
+  import fp_pkg::*;
+#(
+  parameter  int unsigned W   = SigW,
+  localparam int unsigned OpW = W + 12,  // fp_pkg::operand_t's layout
+  localparam int unsigned LzW = $clog2(W)
 ) (
   input  logic           clk_i,
   input  logic           rst_ni,
   input  logic           valid_i,
   input  logic [OpW-1:0] a_i,
-  input  logic [OpW-1:0] b_i,
+  input  logic [31:0]    b_i,
   output logic           valid_o,
   output logic [31:0]    y_o
 );
-
-  localparam logic [31:0] QNaN = 32'h7FC0_0000;
 
   typedef struct packed {
     logic         sign;
@@ -38,21 +39,26 @@ module fp_add #(
 
   // --- Stage 1: specials, order by magnitude, align -------------------------
 
-  op_t a, b;
-  assign a = a_i;
-  assign b = b_i;
+  // b in a's layout: FP32's significand at the top of W bits.
+  op_t      a, b;
+  operand_t b_f32;
+  assign a     = a_i;
+  assign b_f32 = decode_f32(b_i);
+  assign b     = {b_f32.sign, b_f32.exp, W'(b_f32.sig) << (W - SigW), b_f32.is_inf, b_f32.is_nan};
 
   // The shift needs only the exponents (equal exponents shift by 0); the
-  // larger magnitude goes first, so the difference is never negative.
-  logic         a_exp_hi, a_hi;
-  logic [8:0]   diff;
-  logic         hi_sign, lo_sign;
+  // larger magnitude goes first, so the difference is never negative. Each
+  // subtraction's borrow gives the exponents' order.
+  logic         a_exp_hi, b_exp_hi, a_hi;
+  logic [8:0]   a_minus_b, b_minus_a, diff;
+  logic         hi_sign;
   logic [W-1:0] hi_sig, lo_sig, lo_aligned;
-  assign a_exp_hi = a.exp > b.exp;
-  assign diff     = a_exp_hi ? a.exp - b.exp : b.exp - a.exp;
-  assign a_hi     = a_exp_hi || ((a.exp == b.exp) && (a.sig > b.sig));
+  assign {b_exp_hi, a_minus_b} = {1'b0, a.exp} - {1'b0, b.exp};
+  assign {a_exp_hi, b_minus_a} = {1'b0, b.exp} - {1'b0, a.exp};
+  assign diff = a_exp_hi ? a_minus_b : b_minus_a;
+  assign a_hi = a_exp_hi || (!b_exp_hi && (a.sig > b.sig));
   assign {hi_sign, hi_sig} = a_hi ? {a.sign, a.sig} : {b.sign, b.sig};
-  assign {lo_sign, lo_sig} = a_hi ? {b.sign, b.sig} : {a.sign, a.sig};
+  assign lo_sig = a_hi ? b.sig : a.sig;
 
   sticky_shift #(
     .Width(W)
@@ -79,7 +85,7 @@ module fp_add #(
   s1_t s1_d, s1_q;
   always_comb begin
     s1_d.valid = valid_i;
-    s1_d.sub   = hi_sign != lo_sign;
+    s1_d.sub   = a.sign != b.sign;
     s1_d.sign  = !inf_s1 ? hi_sign : a.is_inf ? a.sign : b.sign;
     s1_d.exp   = a_hi ? a.exp : b.exp;
     s1_d.hi    = hi_sig;
@@ -163,7 +169,7 @@ module fp_add #(
 
   logic [31:0] y_d;
   always_comb begin
-    if (s2_q.nan) y_d = QNaN;
+    if (s2_q.nan) y_d = CanonicalNaN;
     else if (s2_q.inf || overflow) y_d = {s2_q.sign, 8'hFF, 23'h0};
     else y_d = {s2_q.sign, sig[23] ? exp : 8'h00, sig[22:0]};  // a zero: sig = 0
   end

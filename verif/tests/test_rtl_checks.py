@@ -36,3 +36,11 @@ def test_lint_is_clean(top: str, extra: tuple) -> None:
 def test_synthesizes(top: str, extra: tuple) -> None:
     result = rtl.synthesize(top, extra)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@rtl.needs_verilator
+def test_fp_product_rejects_more_than_two_registers() -> None:
+    """Its callers delay the addend by Regs cycles; a third register would not
+    be placed, so Regs = 3 must not elaborate."""
+    result = rtl.lint("fp_product", params=[("Regs", 3)])
+    assert result.returncode != 0 and "Regs must be 0, 1 or 2" in result.stderr, result.stderr

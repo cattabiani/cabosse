@@ -12,17 +12,17 @@
 // kept; Inf * 0 is NaN.
 //
 // Three steps: multiply | normalize | shift below exponent 1. Regs registers
-// split them (0: combinational, the lanes; 1: after the multiply, which lets
-// Vivado use the DSPs' own register; 2: after normalizing too). A result
-// leaves Regs cycles after its operands enter.
+// split them (0: combinational; 1: after the multiply, which lets Vivado use
+// the DSPs' own register; 2: after normalizing too). A result leaves Regs
+// cycles after its operands enter.
 
 module fp_product
   import fp_pkg::*;
 #(
   parameter  int unsigned M    = 24,
   parameter  int unsigned Regs = 0,
-  localparam int unsigned PW   = 2 * M,                    // the product's bits
-  localparam int unsigned W    = (PW > 24 ? PW : 24) + 3,  // and guard, round, sticky
+  localparam int unsigned PW   = 2 * M,  // the product's bits
+  localparam int unsigned W    = prod_sig_w(M),
   localparam int unsigned LzW  = $clog2(PW)
 ) (
   input  logic          clk_i,
@@ -110,10 +110,14 @@ module fp_product
 
   // --- Registers ------------------------------------------------------------------
 
+  if (Regs > 2) begin : gen_bad_regs
+    $error("fp_product: Regs must be 0, 1 or 2");
+  end
+
   if (Regs >= 1) begin : gen_mul_q
     always_ff @(posedge clk_i) mul <= mul_d;
   end else begin : gen_mul_comb
-    logic unused_clk;  // the lanes' product has no register
+    logic unused_clk;  // no register, no clock
     assign unused_clk = clk_i;
     assign mul = mul_d;
   end

@@ -26,8 +26,9 @@ N_FAMILY, N_RANDOM = 20_000, 100_000  # per rounding family, random bits: fast r
 N_FAMILY_SLOW, N_RANDOM_SLOW = 100_000, 200_000  # per chunk of the slow run
 N_SLOW = 10**8  # per operation, slow run
 W_PER_CHUNK = 16  # exhaustive BF16 run: 16 values of w against all 2^16 x
-# fp32_fma's product registers: the same bits either way (the slow run uses the default)
-PIPELINES = {f"mulregs{n}": (("MulRegs", n),) for n in (0, 1, 2)}
+# fp32_fma's product registers: the same bits either way. The default (2) is
+# built without parameters, the build the slow run uses.
+PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (("MulRegs", 1),), "mulregs2": ()}
 
 
 def batch(rng: np.random.Generator, n_family: int, n_random: int) -> np.ndarray:
@@ -70,9 +71,8 @@ def test_random(op: str, pipeline: str) -> None:
 @rtl.needs_verilator
 @pytest.mark.parametrize("op", ["mul", "fma"])
 def test_bf16_products_exhaustive(op: str) -> None:
-    """Every pair of BF16 inputs, 2^32, widened as the lane widens them
-    (rtl/bf16_to_fp32.sv equals golden.arith.up on every input): up(w) * up(x)
-    (mul), and up(w) * up(x) + acc (fma) with a random FP32 acc per pair,
+    """Every pair of BF16 inputs, 2^32, widened to FP32 (golden.arith.up):
+    up(w) * up(x) (mul), and up(w) * up(x) + acc (fma) with a random FP32 acc per pair,
     checked against golden.arith.mac_f32, the lane's own function. A BF16
     product is exact in FP32 unless it underflows or overflows, so those
     products are where this can fail."""

@@ -38,10 +38,10 @@ def batch(rng: np.random.Generator, n_near: int, n_random: int) -> np.ndarray:
     return np.concatenate([near_pairs(rng, n_near), random_bits(rng, (n_random, 2))])
 
 
-def check(ab: np.ndarray, seed: int | str, params: tuple = ()) -> None:
+def check(ab: np.ndarray, seed: int | str) -> None:
     a, b = torch.from_numpy(ab.view(np.float32)).unbind(1)
     want = arith.bits_f32(arith.maximum(a, b)).numpy().astype(np.uint32)
-    bulk.check("fp32_max", ab, want, f"seed {seed}", params)
+    bulk.check("fp32_max", ab, want, f"seed {seed}")
 
 
 @rtl.needs_verilator

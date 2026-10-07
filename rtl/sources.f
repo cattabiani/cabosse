@@ -7,6 +7,7 @@ leading_zeros.sv
 sticky_shift.sv
 fp_add.sv
 fp_product.sv
+fp_mul_add.sv
 bf16_mac.sv
 bf16_to_fp32.sv
 fp32_fma.sv
