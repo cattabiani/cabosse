@@ -615,16 +615,24 @@ resource cost comes with the first build.
   give the same bits (two were redundant logic, now removed). Yosys
   (generic `synth`, flattened): `bf16_mac` 2,513 cells, `fp32_fma` 7,798,
   `fp_add` (W = 27) 1,509. On F2's part at 250 MHz (2026-10-07, fourth
-  log, `platforms/f2/timing/fma_path.sv`): `fp32_fma` fails, -2.700 ns
-  without retiming (about 149 MHz), -2.023 ns with one more input register
-  and retiming (166 MHz); about 1,310 LUTs and 2 DSPs. The worst path is
-  one cycle of op mux, the 24 x 24 multiply (2 DSPs), normalize and the
-  shift below exponent 1 (6.7 ns, 24 logic levels); retiming cannot split
-  the DSP multiply. The lanes' loop after the refactor still closes 4
-  cycles without retiming, now +0.016 ns (was +0.146 ns); its worst path
-  is still the product, outside the loop (3.97 ns). To do: pipeline
-  `fp32_fma`'s product stage, and a Vivado run of it (owner's OK); then
-  the PR. After it: the cost of subnormal support (D-016, exit
+  log, `platforms/f2/timing/fma_path.sv`): `fp32_fma` with its product in
+  one cycle fails, -2.700 ns without retiming (about 149 MHz), -2.023 ns
+  with one more input register and retiming (166 MHz). The worst path was
+  op mux, the 24 x 24 multiply (2 DSPs), normalize and the shift below
+  exponent 1 (6.7 ns, 24 logic levels); retiming cannot split the DSP
+  multiply. So `fp_product` now splits multiply | normalize | shift below
+  exponent 1 with `Regs` registers, and `fp32_fma` has `MulRegs` (fifth log,
+  no retiming unless noted): 1 register +0.155 ns (+0.180 ns retimed), 2
+  registers +0.588 ns with 1,183 LUTs, 543 registers and 2 DSPs (1: 1,243
+  LUTs, 541 registers). `MulRegs` = 2 is the default: a 6-cycle fma, not
+  in a loop. The lanes' product (outside the loop) sits at the edge of
+  4 ns: the same logic gave +0.146, +0.016 and -0.053 ns slack in three
+  runs, its worst path always the product (about 4.0 ns, 19 logic levels).
+  `bf16_mac` now has one register inside the product too (`MulRegs` = 1,
+  a 5-cycle unit; `A` and the bits unchanged). The fifth log's last run was
+  read from the live console, its replay being cut by the shutdown. To do:
+  a Vivado run of the lanes' loop with the product register (owner's OK);
+  then the PR. After it: the cost of subnormal support (D-016, exit
   criterion), against a flush-to-zero variant.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
