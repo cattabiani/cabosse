@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 The Cabosse Authors
+"""High-volume RTL tests (PLAN.md, M3): a block runs under Verilator's own
+loop, driven by a small C++ program (verif/bulk/<top>.cpp) that streams
+records from stdin, one per clock cycle, and writes the results to stdout.
+Python makes the inputs and the expected bits with the golden model and
+compares whole arrays, so nothing returns to Python per input.
+"""
+
+import functools
+import subprocess
+from pathlib import Path
+
+import numpy as np
+
+import rtl
+
+DRIVERS = Path(__file__).parent / "bulk"
+CHUNK = 1 << 20  # records per run of the driver
+
+
+@functools.cache
+def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
+    """Verilate `top` (with parameter overrides) and its driver, and compile
+    it, once per test session (Verilator's make rebuilds only what changed)."""
+    build_dir = rtl.BUILD / ("_".join(["bulk", top, *(f"{k}{v}" for k, v in params)]))
+    argv = [
+        "verilator", "--cc", "--exe", "--build", "-j", "0", "-O3",
+        "-CFLAGS", "-O2", "--top-module", top, "-Mdir", str(build_dir), "-o", "bulk",
+        *(f"-G{k}={v}" for k, v in params),
+        *rtl.VERILATOR_FILES, str(DRIVERS / f"{top}.cpp"),
+    ]  # fmt: skip
+    result = subprocess.run(argv, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-4000:]
+    return build_dir / "bulk"
+
+
+def run(top: str, records: np.ndarray, params: tuple[tuple[str, int], ...] = ()) -> np.ndarray:
+    """Stream `records` (uint32, one row per input, in the driver's field
+    order) through `top`; one uint32 result per row, in order."""
+    binary = build(top, params)
+    records = np.ascontiguousarray(records, dtype="<u4")
+    out = []
+    for start in range(0, len(records), CHUNK):
+        chunk = records[start : start + CHUNK]
+        result = subprocess.run([str(binary)], input=chunk.tobytes(), capture_output=True)
+        assert result.returncode == 0, result.stderr.decode()
+        out.append(np.frombuffer(result.stdout, dtype="<u4"))
+    return np.concatenate(out) if out else np.empty(0, dtype="<u4")
+
+
+def mismatches(got: np.ndarray, want: np.ndarray, inputs: np.ndarray, limit: int = 10) -> str:
+    """The first `limit` rows where got and want differ, in hex, or ''."""
+    bad = np.flatnonzero(got != want)
+    rows = [
+        " ".join(f"0x{v:08X}" for v in inputs[i]) + f" -> got 0x{got[i]:08X}, want 0x{want[i]:08X}"
+        for i in bad[:limit]
+    ]
+    return f"{len(bad)} of {len(got)} differ:\n" + "\n".join(rows) if len(bad) else ""

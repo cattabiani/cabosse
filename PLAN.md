@@ -531,17 +531,17 @@ resource cost comes with the first build.
   and 3,000 random inputs per operation. The BF16 lane needs no
   multi-format unit: BF16 inputs widen to FP32 exactly, and a BF16 × BF16
   product is exact in FP32.
-- To do in step 2, before the first CVFPU test (from the review of PR #27):
-  the cocotb pattern of one simulator round trip per input costs about
-  5 µs per input (measured), so 10⁸ inputs per operation would take about
-  9 minutes and several GB of Python lists. High-volume numerics tests use
-  bulk vectors instead: inputs and expected bits from the golden model as
-  tensors, run through Verilator in chunks with no return to Python per
-  input, outputs compared in bulk; `slow`-marked and seeded per chunk.
-  cocotb stays for small exhaustive tests and handshakes. When measuring
-  its throughput, check Verilator's UNOPTFLAT warning (combinational loops
-  in fpnew_fma and lzc, waived in `rtl/vendor/lint.vlt`): it costs
-  simulation speed. Remove this note when the bulk harness exists.
+- [x] Bulk harness (`verif/bulk.py`, a C++ driver per block in
+  `verif/bulk/`): Python makes inputs and expected bits with the golden
+  model, Verilator streams them one per cycle, Python compares whole arrays.
+  About 6.7 million FMA inputs per second (measured), against about 0.2
+  million through cocotb. FMA, add and mul bit-exact against the golden
+  model on 10⁸ inputs each (the golden tests' rounding families plus random
+  bits, seeded per chunk of 10⁶; `slow`, about 20 s per operation), on every
+  triple of the special values, and with a 3-register pipeline. Verilator's
+  UNOPTFLAT warning (combinational loops in fpnew_fma and lzc, waived in
+  `rtl/vendor/lint.vlt`) costs simulation speed; not worth pursuing at this
+  rate.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op
