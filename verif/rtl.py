@@ -14,6 +14,8 @@ the RTL tests skip, unless CABOSSE_REQUIRE_RTL=1 makes that a failure.
 import os
 import shutil
 import subprocess
+from collections.abc import Sequence
+from pathlib import Path
 
 import pytest
 from cocotb_tools.runner import get_runner
@@ -41,8 +43,15 @@ needs_verilator, needs_yosys = needs("verilator"), needs("yosys")
 
 
 def modules() -> list[str]:
-    """Our modules: one per file in rtl/ (not rtl/vendor/), named after it."""
-    return [p.stem for p in sorted(RTL.glob("*.sv"))]
+    """Our modules: one per file in rtl/ (not rtl/vendor/), named after it;
+    packages (*_pkg.sv) are not modules."""
+    return [p.stem for p in sorted(RTL.glob("*.sv")) if not p.stem.endswith("_pkg")]
+
+
+def harnesses() -> list[Path]:
+    """The timing harnesses (platforms/f2/timing/): test-only modules built on
+    rtl/, one per file, named after it."""
+    return sorted((REPO / "platforms" / "f2" / "timing").glob("*.sv"))
 
 
 def simulate(top: str, test_module: str | None = None) -> None:
@@ -60,15 +69,19 @@ def simulate(top: str, test_module: str | None = None) -> None:
     )
 
 
-def lint(top: str) -> subprocess.CompletedProcess:
+def lint(top: str, extra: Sequence[Path] = ()) -> subprocess.CompletedProcess:
+    """Verilator -Wall lint of rtl/ plus `extra` files, with `top` as the top."""
     argv = ["verilator", "--lint-only", "-Wall", "--top-module", top, *VERILATOR_FILES]
+    argv += [str(p) for p in extra]
     return subprocess.run(argv, capture_output=True, text=True)
 
 
-def synthesize(top: str) -> subprocess.CompletedProcess:
-    """Generic Yosys synthesis with `top` as the top module; `check -assert`
-    fails on problems such as latches or undriven signals."""
-    script = f"read_slang -F {SOURCES} --top {top}; synth -top {top}; check -assert"
+def synthesize(top: str, extra: Sequence[Path] = ()) -> subprocess.CompletedProcess:
+    """Generic Yosys synthesis of rtl/ plus `extra` files with `top` as the
+    top module; `check -assert` fails on problems such as latches or undriven
+    signals."""
+    files = " ".join(str(p) for p in extra)
+    script = f"read_slang -F {SOURCES} {files} --top {top}; synth -top {top}; check -assert"
     return subprocess.run(
         ["yosys", "-q", "-m", "slang", "-p", script], capture_output=True, text=True
     )

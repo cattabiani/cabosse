@@ -5,8 +5,6 @@
 // are zero. A NaN becomes the canonical NaN (docs/numerics.md, section 2).
 // Combinational. Golden model: golden.arith.up.
 
-`default_nettype none
-
 module bf16_to_fp32 (
   input  logic [15:0] a_i,
   output logic [31:0] y_o
@@ -19,5 +17,3 @@ module bf16_to_fp32 (
   assign y_o = is_nan ? CanonicalNaN : {a_i, 16'h0000};
 
 endmodule
-
-`default_nettype wire

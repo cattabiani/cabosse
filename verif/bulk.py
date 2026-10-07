@@ -26,7 +26,7 @@ import numpy as np
 import rtl
 
 DRIVERS = Path(__file__).parent / "bulk"
-CHUNK = 1 << 20  # records per run of the driver
+CHUNK = 1 << 21  # records per run of the driver: one run per test chunk
 WORKERS = 8  # drivers run at once by in_parallel
 _BUILD_LOCK = threading.Lock()  # tests may run chunks from several threads
 

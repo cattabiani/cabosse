@@ -318,6 +318,29 @@ Softmax's output does not change: a NaN score's own `exp` is NaN, so the sum
 and every `p` are NaN, as before. *Why:* the spec follows a standard
 operation and a tested unit, at no cost to any result the model produces.
 
+**D-038 (2026-10-07) — The lanes' multiply-add is our own BF16 unit.** An
+exact BF16 × BF16 product (an 8 × 8-bit multiply) outside the accumulate
+loop, and inside it only that product plus the FP32 accumulator with one
+rounding: the same bits as `mac` (docs/numerics.md), so no numerics change.
+The vector unit keeps CVFPU (narrows D-033). If the unit does not close a
+4-cycle loop at 250 MHz on F2's part, the fallback is CVFPU in 256 lanes ×
+2 with an 8-cycle loop: the same `A` = 16 and bits, 5-9% fewer tokens/s
+(perf model, estimate). *Why:* CVFPU's FMA needs about 4.5 cycles at
+250 MHz for the loop even with retiming (measured, M3), and spends about
+1,100 LUTs on a general 24 × 24 multiply that BF16 inputs do not need.
+
+**D-039 (2026-10-07) — All FP units are our own; CVFPU is removed.** The
+vector unit's FP32 add, multiply, fma and max become our own RTL, built on
+the lanes' adder (`mac_add`, D-038), and must pass the same bit-exactness
+tests CVFPU passed (the golden functions, 10⁸ inputs, every special-value
+combination). Then `rtl/vendor/` goes, CVFPU and the common_cells files
+with it (our own leading-zero count replaces `lzc`). Supersedes D-033;
+D-037 (`max` as IEEE `maximumNumber`) stays. *Why:* CVFPU could serve only
+the vector unit (D-038), and needs Vivado's retiming to reach 250 MHz
+(measured, M3); two implementations of the same operations would have to
+be kept equal in different places. One set of units, written and tested
+for exactly what we need, is simpler to own.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -553,6 +576,36 @@ resource cost comes with the first build.
 - [x] CI runs the RTL tests (lint, Yosys synthesis, simulation) on x86
   Linux with the pinned suite (`scripts/get_rtl_tools.sh`), about 2
   minutes; the slow RTL tests run locally.
+- Accumulate loop at 250 MHz, first Vivado run (2026-10-07, Vivado 2025.2,
+  `xcvu47p-fsvh2892-2-e`, out of context, no retiming;
+  `scripts/f2/time_loops.sh`, log in `reports/data/f2/`): CVFPU's FP32
+  FMA with BF16 inputs fails 4.0 ns at every loop length tried. Slack
+  (computed max clock): 2 cycles -1.115 ns (196 MHz), 3 cycles -0.777 ns
+  (213 MHz), 4 cycles -0.694 ns (213 MHz), 5 cycles -0.527 ns (222 MHz);
+  about 1,100 LUTs and 2 DSPs. The worst paths are inside the FMA's fixed
+  stages (operands to the 76-bit sum: up to 27 logic levels, 13 of them
+  carry chains; then normalize and round), so more registers barely help.
+  With retiming (`synth_design -global_retiming on`, `phys_opt_design
+  -retime`; second log): 4 cycles -0.639 ns (216 MHz), 5 cycles +0.300 ns,
+  6 cycles +0.183 ns, 8 cycles +0.340 ns. At 4 cycles the worst path is the
+  loop's own normalize and round: CVFPU's loop needs about 4.5 cycles at
+  250 MHz, so 8 with `A` a power of two. Options (perf model, SmolLM2,
+  estimates) for the owner: our own BF16 unit for a 4-cycle loop; CVFPU in
+  256 lanes x 2 with an 8-cycle loop, the same `A` = 16 and bits, 5-9%
+  fewer tokens/s; a 200 MHz core, 20% fewer.
+- [x] Our own BF16 multiply-add (D-038): `rtl/bf16_mul.sv` (the exact
+  product, outside the loop) and `rtl/mac_add.sv` (product + accumulator,
+  one rounding, 3 stages). Bit-exact against `mac_f32` on every BF16 pair,
+  every special-value combination, and cancelling, scaled and range-edge
+  accumulators (`slow`, 2 minutes). On F2's part at 250 MHz (third log,
+  `platforms/f2/timing/mac_loop.sv`): the 4-cycle loop closes with +0.146 ns
+  without retiming, a 3-cycle loop with +0.057 ns (retiming); the worst
+  path is the product, outside the loop. About 625 LUTs, 247 registers and
+  no DSPs per unit (CVFPU's FMA: about 1,100 LUTs and 2 DSPs). The
+  accumulate-loop exit criterion is met with `A` = 16 unchanged.
+- Next (D-039): our own FP32 add, multiply, fma and max behind the current
+  `fp32_fma` and `fp32_max` ports, so their tests stay unchanged as the
+  acceptance tests; then CVFPU and `rtl/vendor/` are removed.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op
