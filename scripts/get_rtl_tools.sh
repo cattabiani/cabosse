@@ -4,17 +4,16 @@
 #
 # Fetch the OSS CAD Suite (Verilator, Yosys with slang) at its pinned release
 # into .tools/oss-cad-suite, where the tests find it (README, development
-# setup). Does nothing if it is already there; to change the pin, edit RELEASE
-# and remove .tools/oss-cad-suite.
+# setup). Does nothing if that release is already there; replaces any other.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 RELEASE=2026-10-06
-TGZ="oss-cad-suite-linux-x64-${RELEASE//-/}.tgz"
+SUITE=.tools/oss-cad-suite
 
-if [ -x .tools/oss-cad-suite/bin/verilator ]; then
-  exit 0
-fi
+[ "$(cat "$SUITE/.release" 2>/dev/null)" = "$RELEASE" ] && exit 0
+rm -rf "$SUITE"
 mkdir -p .tools
-curl -fsSL "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/$RELEASE/$TGZ" \
+curl -fsSL "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/$RELEASE/oss-cad-suite-linux-x64-${RELEASE//-/}.tgz" \
   | tar xz -C .tools
+echo "$RELEASE" > "$SUITE/.release"

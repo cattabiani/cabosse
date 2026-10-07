@@ -43,7 +43,8 @@ git-ignored.
   requirements.txt`.
 - **RTL tools:** the [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build)
   (Verilator, Yosys with the slang SystemVerilog plugin), unpacked in
-  `.tools/` by `scripts/get_rtl_tools.sh` (the pinned release, about 750 MB).
+  `.tools/` by `scripts/get_rtl_tools.sh` (the pinned release, about 750 MB). The bulk test drivers need a C++23
+  compiler with `<print>` (GCC 14 or newer; `CXX` picks another).
   The tests find it there by themselves; for the tools by hand, add its
   `bin/` to `PATH` (direnv: `PATH_add .tools/oss-cad-suite/bin`) and do not
   source its `environment` script. The suite also bundles cocotb, in its own
