@@ -9,8 +9,7 @@ matrix-vector engine, the vector unit, DMA engines, on-chip buffers, the
 controller, and the top level with one AXI-Lite control port and AXI memory
 port(s).
 
-Third-party RTL (CVFPU and its helpers) is in [`vendor/`](vendor/), pinned and
-unmodified.
+Every floating-point unit is our own (D-039); there is no third-party RTL.
 
 Platform-specific code (clocking, vendor IP, shells) goes in `../platforms/`.
 

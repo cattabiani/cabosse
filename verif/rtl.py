@@ -42,8 +42,8 @@ needs_verilator, needs_yosys = needs("verilator"), needs("yosys")
 
 
 def modules() -> list[str]:
-    """Our modules: one per file in rtl/ (not rtl/vendor/), named after it;
-    packages (*_pkg.sv) are not modules."""
+    """Our modules: one per file in rtl/, named after it; packages
+    (*_pkg.sv) are not modules."""
     return [p.stem for p in sorted(RTL.glob("*.sv")) if not p.stem.endswith("_pkg")]
 
 

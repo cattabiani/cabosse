@@ -44,7 +44,7 @@ Special values (D-012, D-016):
   nearest).
 
 Not used from IEEE 754, on purpose: the status flags (invalid, overflow and
-the rest; the RTL leaves CVFPU's unconnected), every rounding mode but round
+the rest; the RTL does not compute them), every rounding mode but round
 to nearest even, traps, and NaN payloads (results are canonical; a signalling
 NaN input gives the canonical quiet NaN). `exp`, `recip` and `rsqrt` are our
 own approximations (section 5), not correctly rounded operations. BF16 is not

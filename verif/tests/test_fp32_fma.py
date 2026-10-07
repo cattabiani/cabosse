@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""rtl/fp32_fma.sv (CVFPU's FMA, D-033) against golden.arith.fma, add and mul,
+"""rtl/fp32_fma.sv (our own FMA, D-039) against golden.arith.fma, add and mul,
 bit for bit, through the bulk harness (verif/bulk.py): every triple of the
 special values, the rounding families of the golden-model tests, and random
 bit patterns. The fast run checks a few hundred thousand inputs per

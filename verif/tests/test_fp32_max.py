@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""rtl/fp32_max.sv (CVFPU's MINMAX as MAX, D-033) against golden.arith.maximum
+"""rtl/fp32_max.sv (our own, D-039) against golden.arith.maximum
 (maximumNumber, D-037), bit for bit, through the bulk harness
 (verif/bulk.py): every pair of the special values, near pairs (ties, signed
 zeros, neighbours, NaN payloads) and random bit patterns. The fast run checks
