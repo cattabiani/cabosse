@@ -43,6 +43,13 @@ Special values (D-012, D-016):
 - **Zeros:** signed zeros follow IEEE 754 (`x + (-x) = +0` in round to
   nearest).
 
+Not used from IEEE 754, on purpose: the status flags (invalid, overflow and
+the rest; the RTL leaves CVFPU's unconnected), every rounding mode but round
+to nearest even, traps, and NaN payloads (results are canonical; a signalling
+NaN input gives the canonical quiet NaN). `exp`, `recip` and `rsqrt` are our
+own approximations (section 5), not correctly rounded operations. BF16 is not
+an IEEE format.
+
 ## 3. Dot product (the lanes)
 
 A dot product `y = Σₖ w[k]·x[k]` over `k = 0…K-1` with BF16 `w`, `x`
