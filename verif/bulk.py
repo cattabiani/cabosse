@@ -14,6 +14,7 @@ and no backpressure. Handshakes and wide or AXI ports belong in cocotb.
 """
 
 import functools
+import os
 import subprocess
 import threading
 from collections.abc import Callable, Iterable
@@ -33,6 +34,8 @@ _BUILD_LOCK = threading.Lock()  # tests may run chunks from several threads
 def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
     """Verilate `top` (with parameter overrides) and its driver, and compile
     it, once per test session (Verilator's make rebuilds only what changed).
+    The drivers need C++23 with <print> (GCC 14 or newer); the standard CXX
+    variable picks the compiler, which Verilator's makefile otherwise fixes.
     Thread-safe: the first caller builds, the others wait for it."""
     with _BUILD_LOCK:
         return _build(top, params)
@@ -41,11 +44,13 @@ def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
 @functools.cache
 def _build(top: str, params: tuple[tuple[str, int], ...]) -> Path:
     build_dir = rtl.BUILD / ("_".join(["bulk", top, *(f"{k}{v}" for k, v in params)]))
+    cxx = os.environ.get("CXX")
     argv = [
         "verilator", "--cc", "--exe", "--build", "-j", "0", "-O3",
         "--x-assign", "fast", "--x-initial", "fast", "-CFLAGS", f"-std=c++23 -O3 -I{DRIVERS}",
         "--top-module", top, "-Mdir", str(build_dir), "-o", "bulk",
         *(f"-G{k}={v}" for k, v in params),
+        *(["-MAKEFLAGS", f"CXX={cxx}", "-MAKEFLAGS", f"LINK={cxx}"] if cxx else []),
         *rtl.VERILATOR_FILES, str(DRIVERS / f"{top}.cpp"),
     ]  # fmt: skip
     result = subprocess.run(argv, capture_output=True, text=True)
