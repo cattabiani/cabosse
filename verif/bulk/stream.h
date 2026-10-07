@@ -41,6 +41,8 @@ void cycle(Top& dut, Output& output, std::vector<uint32_t>& results) {
   dut.eval();
 }
 
+// Every little-endian uint32 in `file` until its end, in order (a trailing
+// partial word is dropped).
 inline std::vector<uint32_t> read_words(std::FILE* file) {
   std::vector<uint32_t> words;
   uint32_t buf[4096];
@@ -50,6 +52,11 @@ inline std::vector<uint32_t> read_words(std::FILE* file) {
   return words;
 }
 
+// Run the bulk protocol on `Top`: read records of `fields` words from stdin,
+// reset the block, put one record per cycle on its inputs with
+// set_inputs(dut, record), collect output(dut) whenever valid_o is high, and
+// write the results to stdout. Returns 0, or nonzero (with a message on
+// stderr) if the input is not whole records or a result is missing.
 template <Block Top, typename SetInputs, typename Output>
   requires std::invocable<SetInputs, Top&, Record> && std::invocable<Output, Top&>
 int stream(int argc, char** argv, size_t fields, SetInputs set_inputs, Output output) {
