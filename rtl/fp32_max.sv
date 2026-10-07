@@ -6,8 +6,6 @@
 // canonical NaN, max(-0, +0) = +0. Exact. Golden model: golden.arith.maximum.
 // A result leaves NumPipeRegs cycles after its operands enter; valid_o marks it.
 
-`default_nettype none
-
 module fp32_max #(
   parameter int unsigned NumPipeRegs = 0
 ) (
@@ -61,5 +59,3 @@ module fp32_max #(
   );
 
 endmodule
-
-`default_nettype wire

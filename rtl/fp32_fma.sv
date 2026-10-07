@@ -9,8 +9,6 @@
 //   any other op_i (fma): y = a * b + c
 // A result leaves NumPipeRegs cycles after its operands enter; valid_o marks it.
 
-`default_nettype none
-
 module fp32_fma #(
   parameter int unsigned NumPipeRegs = 0
 ) (
@@ -86,5 +84,3 @@ module fp32_fma #(
   );
 
 endmodule
-
-`default_nettype wire

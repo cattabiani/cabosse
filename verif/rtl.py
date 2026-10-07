@@ -14,6 +14,8 @@ the RTL tests skip, unless CABOSSE_REQUIRE_RTL=1 makes that a failure.
 import os
 import shutil
 import subprocess
+from collections.abc import Sequence
+from pathlib import Path
 
 import pytest
 from cocotb_tools.runner import get_runner
@@ -45,6 +47,12 @@ def modules() -> list[str]:
     return [p.stem for p in sorted(RTL.glob("*.sv"))]
 
 
+def harnesses() -> list[Path]:
+    """Test-only modules in platforms/ built on rtl/ (such as timing
+    harnesses): one per file, named after it."""
+    return sorted((REPO / "platforms").rglob("*.sv"))
+
+
 def simulate(top: str, test_module: str | None = None) -> None:
     """Build rtl/ with `top` as the top module and run the cocotb tests in
     verif/tests/<test_module>.py (default test_<top>) against it; a failing
@@ -60,15 +68,19 @@ def simulate(top: str, test_module: str | None = None) -> None:
     )
 
 
-def lint(top: str) -> subprocess.CompletedProcess:
+def lint(top: str, extra: Sequence[Path] = ()) -> subprocess.CompletedProcess:
+    """Verilator -Wall lint of rtl/ plus `extra` files, with `top` as the top."""
     argv = ["verilator", "--lint-only", "-Wall", "--top-module", top, *VERILATOR_FILES]
+    argv += [str(p) for p in extra]
     return subprocess.run(argv, capture_output=True, text=True)
 
 
-def synthesize(top: str) -> subprocess.CompletedProcess:
-    """Generic Yosys synthesis with `top` as the top module; `check -assert`
-    fails on problems such as latches or undriven signals."""
-    script = f"read_slang -F {SOURCES} --top {top}; synth -top {top}; check -assert"
+def synthesize(top: str, extra: Sequence[Path] = ()) -> subprocess.CompletedProcess:
+    """Generic Yosys synthesis of rtl/ plus `extra` files with `top` as the
+    top module; `check -assert` fails on problems such as latches or undriven
+    signals."""
+    files = " ".join(str(p) for p in extra)
+    script = f"read_slang -F {SOURCES} {files} --top {top}; synth -top {top}; check -assert"
     return subprocess.run(
         ["yosys", "-q", "-m", "slang", "-p", script], capture_output=True, text=True
     )

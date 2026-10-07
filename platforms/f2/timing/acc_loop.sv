@@ -7,8 +7,6 @@
 // loop has NumPipeRegs + 1 cycles. Inputs and output are registered, so every
 // path is register to register. Not part of the design: M4 builds the lane.
 
-`default_nettype none
-
 module acc_loop #(
   parameter int unsigned NumPipeRegs = 3
 ) (
@@ -56,5 +54,3 @@ module acc_loop #(
   assign acc_o = acc_q;
 
 endmodule
-
-`default_nettype wire

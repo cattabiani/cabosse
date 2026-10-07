@@ -11,6 +11,8 @@ import pytest
 import rtl
 
 MODULES = rtl.modules()
+# (top, extra files): our modules, then the harnesses in platforms/.
+TOPS = [(m, ()) for m in MODULES] + [(p.stem, (p,)) for p in rtl.harnesses()]
 SUMS = rtl.RTL / "vendor" / "SHA256SUMS"
 
 
@@ -37,14 +39,14 @@ def test_vendored_files_are_unmodified() -> None:
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("top", MODULES)
-def test_lint_is_clean(top: str) -> None:
-    result = rtl.lint(top)
+@pytest.mark.parametrize(("top", "extra"), TOPS, ids=[t for t, _ in TOPS])
+def test_lint_is_clean(top: str, extra: tuple) -> None:
+    result = rtl.lint(top, extra)
     assert result.returncode == 0 and not result.stderr.strip(), result.stderr
 
 
 @rtl.needs_yosys
-@pytest.mark.parametrize("top", MODULES)
-def test_synthesizes(top: str) -> None:
-    result = rtl.synthesize(top)
+@pytest.mark.parametrize(("top", "extra"), TOPS, ids=[t for t, _ in TOPS])
+def test_synthesizes(top: str, extra: tuple) -> None:
+    result = rtl.synthesize(top, extra)
     assert result.returncode == 0, result.stdout + result.stderr
