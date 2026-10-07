@@ -559,8 +559,14 @@ resource cost comes with the first build.
   about 1,100 LUTs and 2 DSPs. The worst paths are inside the FMA's fixed
   stages (operands to the 76-bit sum: up to 27 logic levels, 13 of them
   carry chains; then normalize and round), so more registers barely help.
-  Open: retiming, or a lane unit of our own (the BF16 product is exact), or
-  `A` changes (D-027). Owner to decide.
+  With retiming (`synth_design -global_retiming on`, `phys_opt_design
+  -retime`; second log): 4 cycles -0.639 ns (216 MHz), 5 cycles +0.300 ns,
+  6 cycles +0.183 ns, 8 cycles +0.340 ns. At 4 cycles the worst path is the
+  loop's own normalize and round: CVFPU's loop needs about 4.5 cycles at
+  250 MHz, so 8 with `A` a power of two. Options (perf model, SmolLM2,
+  estimates) for the owner: our own BF16 unit for a 4-cycle loop; CVFPU in
+  256 lanes x 2 with an 8-cycle loop, the same `A` = 16 and bits, 5-9%
+  fewer tokens/s; a 200 MHz core, 20% fewer.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op

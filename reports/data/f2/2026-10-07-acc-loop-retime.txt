@@ -1,0 +1,727 @@
+CABOSSE-BEGIN host
+2026-10-07T09:59:02Z
+$ cat /etc/os-release
+PRETTY_NAME="Ubuntu 24.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.1 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+$ nproc
+16
+$ free -b
+               total        used        free      shared  buff/cache   available
+Mem:     33086889984   777097216 32399876096     2891776   310898688 32309792768
+Swap:    10737414144           0 10737414144
+CABOSSE-END host
+CABOSSE-BEGIN setup
+cabosse 948f377396dde13e843c9c6e8016f8f58a1329b3 2026-10-07T11:58:07+02:00
+aws-fpga b603a81f65666e0cf7a67ee5cf18b148eb6b08c3 2026-08-06T10:50:26-05:00
+$ which vivado
+/opt/Xilinx/2025.2/Vivado/bin/vivado
+$ vivado -version
+vivado v2025.2 (64-bit)
+Tool Version Limit: 2025.11
+SW Build 6299465 on Fri Nov 14 12:34:56 MST 2025
+IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
+SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+part xcvu47p-fsvh2892-2-e
+CABOSSE-END setup
+CABOSSE-BEGIN vivado
+2026-10-07T10:00:18Z
+run5 exit 0 10:08:27
+run7 exit 0 10:08:27
+run4 exit 0 10:08:38
+run3 exit 0 10:10:29
+2026-10-07T10:10:29Z
+CABOSSE-END vivado
+CABOSSE-BEGIN loop 4
+# puts "CABOSSE-RESULT loop_cycles=[expr {$n + 1}] retime=$retime wns_ns=$wns"
+CABOSSE-RESULT loop_cycles=4 retime=1 wns_ns=-0.639
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+     -0.639      -14.837                     98                  711        0.045        0.000                      0                  711        1.725        0.000                       0                   391  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                -0.639      -14.837                     98                  711        0.045        0.000                      0                  711        1.725        0.000                       0                   391  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Oct  7 10:10:28 2026
+| Host              : ip-172-31-44-200 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : acc_loop
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (VIOLATED) :        -0.639ns  (required time - arrival time)
+  Source:                 u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q_reg[1][75]_bret__3/C
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q_reg[1][sign]/D
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        4.621ns  (logic 1.900ns (41.116%)  route 2.721ns (58.884%))
+  Logic Levels:           19  (CARRY8=2 LUT2=1 LUT4=1 LUT6=15)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.028ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.028     0.028    
+    SLICE_X64Y140        FDCE                         0.000     0.028 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q_reg[1][75]_bret__3/C
+    SLICE_X64Y140        FDCE (Prop_DFF2_SLICEL_C_Q)
+                                                      0.081     0.109 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q_reg[1][75]_bret__3/Q
+                         net (fo=77, routed)          0.277     0.386    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q_reg[1][75]_bret__3_n_0
+    SLICE_X64Y142                                                     r  u_fma/u_fma/i__carry_i_109/I1
+    SLICE_X64Y142        LUT6 (Prop_D6LUT_SLICEL_I1_O)
+                                                      0.122     0.508 f  u_fma/u_fma/i__carry_i_109/O
+                         net (fo=9, routed)           0.164     0.672    u_fma/u_fma/mid_pipe_sum_q[0]_5[48]
+    SLICE_X64Y144                                                     f  u_fma/u_fma/i__carry_i_85/I1
+    SLICE_X64Y144        LUT6 (Prop_B6LUT_SLICEL_I1_O)
+                                                      0.051     0.723 f  u_fma/u_fma/i__carry_i_85/O
+                         net (fo=4, routed)           0.094     0.817    u_fma/u_fma/i__carry_i_85_n_0
+    SLICE_X64Y143                                                     f  u_fma/u_fma/i__carry_i_39/I0
+    SLICE_X64Y143        LUT6 (Prop_A6LUT_SLICEL_I0_O)
+                                                      0.098     0.915 r  u_fma/u_fma/i__carry_i_39/O
+                         net (fo=14, routed)          0.185     1.099    u_fma/u_fma/i__carry_i_39_n_0
+    SLICE_X65Y142                                                     r  u_fma/u_fma/i__carry_i_23/I4
+    SLICE_X65Y142        LUT6 (Prop_C6LUT_SLICEM_I4_O)
+                                                      0.123     1.222 f  u_fma/u_fma/i__carry_i_23/O
+                         net (fo=5, routed)           0.096     1.318    u_fma/u_fma/i__carry_i_23_n_0
+    SLICE_X65Y141                                                     f  u_fma/u_fma/i__carry_i_6/I0
+    SLICE_X65Y141        LUT6 (Prop_C6LUT_SLICEM_I0_O)
+                                                      0.098     1.416 r  u_fma/u_fma/i__carry_i_6/O
+                         net (fo=7, routed)           0.157     1.573    u_fma/u_fma/leading_zero_count[1]
+    SLICE_X66Y141                                                     r  u_fma/u_fma/i__carry_i_13/I0
+    SLICE_X66Y141        LUT2 (Prop_B6LUT_SLICEL_I0_O)
+                                                      0.090     1.663 r  u_fma/u_fma/i__carry_i_13/O
+                         net (fo=1, routed)           0.009     1.672    u_fma/u_fma/i__carry_i_13_n_0
+    SLICE_X66Y141                                                     r  u_fma/u_fma/p_1_out_inferred__2/i__carry/S[1]
+    SLICE_X66Y141        CARRY8 (Prop_CARRY8_SLICEL_S[1]_CO[7])
+                                                      0.186     1.858 f  u_fma/u_fma/p_1_out_inferred__2/i__carry/CO[7]
+                         net (fo=1, routed)           0.026     1.884    u_fma/u_fma/p_1_out_inferred__2/i__carry_n_0
+    SLICE_X66Y142                                                     f  u_fma/u_fma/p_1_out_inferred__2/i__carry__0/CI
+    SLICE_X66Y142        CARRY8 (Prop_CARRY8_SLICEL_CI_CO[1])
+                                                      0.042     1.926 f  u_fma/u_fma/p_1_out_inferred__2/i__carry__0/CO[1]
+                         net (fo=5, routed)           0.140     2.066    u_fma/u_fma/p_1_out_inferred__2/i__carry__0_n_6
+    SLICE_X66Y143                                                     f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__32_i_10/I5
+    SLICE_X66Y143        LUT6 (Prop_E6LUT_SLICEL_I5_O)
+                                                      0.035     2.101 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__32_i_10/O
+                         net (fo=18, routed)          0.103     2.204    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__32_i_10_n_0
+    SLICE_X66Y142                                                     r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__25_i_38/I1
+    SLICE_X66Y142        LUT6 (Prop_F6LUT_SLICEL_I1_O)
+                                                      0.089     2.293 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__25_i_38/O
+                         net (fo=83, routed)          0.270     2.563    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__25_i_38_n_0
+    SLICE_X68Y147                                                     r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_15/I3
+    SLICE_X68Y147        LUT6 (Prop_C6LUT_SLICEL_I3_O)
+                                                      0.096     2.659 f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_15/O
+                         net (fo=2, routed)           0.185     2.844    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_15_n_0
+    SLICE_X69Y146                                                     f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_12/I5
+    SLICE_X69Y146        LUT6 (Prop_D6LUT_SLICEL_I5_O)
+                                                      0.089     2.933 f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_12/O
+                         net (fo=1, routed)           0.087     3.020    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_12_n_0
+    SLICE_X69Y146                                                     f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_4/I5
+    SLICE_X69Y146        LUT6 (Prop_A6LUT_SLICEL_I5_O)
+                                                      0.098     3.118 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_4/O
+                         net (fo=2, routed)           0.161     3.279    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_4_n_0
+    SLICE_X71Y145                                                     r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_1/I5
+    SLICE_X71Y145        LUT6 (Prop_B6LUT_SLICEM_I5_O)
+                                                      0.125     3.404 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_1/O
+                         net (fo=39, routed)          0.144     3.548    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__29_i_1_n_0
+    SLICE_X71Y143                                                     r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__45_i_1/I4
+    SLICE_X71Y143        LUT6 (Prop_E6LUT_SLICEM_I4_O)
+                                                      0.124     3.672 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__45_i_1/O
+                         net (fo=3, routed)           0.165     3.837    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__45_i_1_n_0
+    SLICE_X72Y143                                                     r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__34_i_1/I2
+    SLICE_X72Y143        LUT4 (Prop_E6LUT_SLICEM_I2_O)
+                                                      0.124     3.961 f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__34_i_1/O
+                         net (fo=3, routed)           0.229     4.190    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__34_i_1_n_0
+    SLICE_X73Y143                                                     f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__91_i_1/I3
+    SLICE_X73Y143        LUT6 (Prop_D6LUT_SLICEL_I3_O)
+                                                      0.089     4.279 f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__91_i_1/O
+                         net (fo=2, routed)           0.141     4.420    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__91_i_1_n_0
+    SLICE_X73Y143                                                     f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_i_4/I0
+    SLICE_X73Y143        LUT6 (Prop_B6LUT_SLICEL_I0_O)
+                                                      0.090     4.510 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_i_4/O
+                         net (fo=1, routed)           0.041     4.551    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_i_4_n_0
+    SLICE_X73Y143                                                     r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_i_1/I5
+    SLICE_X73Y143        LUT6 (Prop_A6LUT_SLICEL_I5_O)
+                                                      0.050     4.601 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_i_1/O
+                         net (fo=1, routed)           0.048     4.649    u_fma/u_fma/out_pipe_result_q[0][sign]
+    SLICE_X73Y143        FDCE                                         r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q_reg[1][sign]/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.020     4.020    
+                         clock pessimism              0.000     4.020    
+                         clock uncertainty           -0.035     3.985    
+    SLICE_X73Y143        FDCE (Setup_AFF_SLICEL_C_D)
+                                                      0.025     4.010    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q_reg[1][sign]
+  -------------------------------------------------------------------
+                         required time                          4.010    
+                         arrival time                          -4.649    
+  -------------------------------------------------------------------
+                         slack                                 -0.639    
+Slack (VIOLATED) :        -0.520ns  (required time - arrival time)
+  Source:                 u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q_reg[1][75]_bret__3/C
+                 
+
+           (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q_reg[1][exponent][7]_bret_bret__94/D
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        4.502ns  (logic 1.829ns (40.630%)  route 2.673ns (59.370%))
+  Logic Levels:           18  (CARRY8=2 LUT2=1 LUT4=1 LUT6=14)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.028ns
+    Clock Pessimism Removal (CPR):    0.000ns
+| CLB LUTs                | 1087 |     0 |          0 |   1303680 |  0.08 |
+| CLB Registers           |  391 |     0 |          0 |   2607360 |  0.01 |
+| CARRY8                  |   32 |     0 |          0 |    162960 |  0.02 |
+| CLB Registers                              |  391 |     0 |          0 |   2607360 |  0.01 |
+| DSPs           |    2 |     0 |          0 |      9024 |  0.02 |
+| CARRY8   |   32 |                 CLB |
+| CLB LUTs                   | 1087 |    0 |    0 |   0.25 |   0.00 |   0.00 |
+| CLB Registers              |  391 |    0 |    0 |   0.04 |   0.00 |   0.00 |
+| CARRY8                     |   32 |    0 |    0 |   0.06 |   0.00 |   0.00 |
+| DSPs                       |    2 |    0 |    0 |   0.07 |   0.00 |   0.00 |
+CABOSSE-END loop 4
+CABOSSE-BEGIN loop 5
+# puts "CABOSSE-RESULT loop_cycles=[expr {$n + 1}] retime=$retime wns_ns=$wns"
+CABOSSE-RESULT loop_cycles=5 retime=1 wns_ns=0.300
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.300        0.000                      0                  979        0.046        0.000                      0                  979        1.725        0.000                       0                   535  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.300        0.000                      0                  979        0.046        0.000                      0                  979        1.725        0.000                       0                   535  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Oct  7 10:08:37 2026
+| Host              : ip-172-31-44-200 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : acc_loop
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (MET) :             0.300ns  (required time - arrival time)
+  Source:                 u_fma/u_fma/gen_input_pipeline[0].inp_pipe_operands_q_reg[1][1][19]/C
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q_reg[1][75]_bret__3_bret__39_bret/D
+                            (rising edge-triggered cell FDPE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.681ns  (logic 1.409ns (38.281%)  route 2.272ns (61.719%))
+  Logic Levels:           13  (CARRY8=3 LUT3=1 LUT4=2 LUT5=2 LUT6=5)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X72Y78         FDCE                         0.000     0.030 r  u_fma/u_fma/gen_input_pipeline[0].inp_pipe_operands_q_reg[1][1][19]/C
+    SLICE_X72Y78         FDCE (Prop_CFF2_SLICEM_C_Q)
+                                                      0.077     0.107 r  u_fma/u_fma/gen_input_pipeline[0].inp_pipe_operands_q_reg[1][1][19]/Q
+                         net (fo=3, routed)           0.204     0.311    u_fma/u_fma/gen_input_pipeline[0].inp_pipe_operands_q_reg_n_0_[1][1][19]
+    SLICE_X72Y78                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7/I2
+    SLICE_X72Y78         LUT4 (Prop_G6LUT_SLICEM_I2_O)
+                                                      0.123     0.434 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7/O
+                         net (fo=2, routed)           0.134     0.568    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7_n_0
+    SLICE_X73Y79                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4/I0
+    SLICE_X73Y79         LUT4 (Prop_E6LUT_SLICEL_I0_O)
+                                                      0.051     0.619 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4/O
+                         net (fo=17, routed)          0.156     0.775    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4_n_0
+    SLICE_X74Y80                                                      r  u_fma/u_fma/exponent_product0_carry_i_6/I0
+    SLICE_X74Y80         LUT5 (Prop_G6LUT_SLICEM_I0_O)
+                                                      0.100     0.875 r  u_fma/u_fma/exponent_product0_carry_i_6/O
+                         net (fo=1, routed)           0.159     1.034    u_fma/u_fma/exponent_product0_carry_i_6_n_0
+    SLICE_X73Y80                                                      r  u_fma/u_fma/exponent_product0_carry/DI[2]
+    SLICE_X73Y80         CARRY8 (Prop_CARRY8_SLICEL_DI[2]_O[5])
+                                                      0.180     1.214 r  u_fma/u_fma/exponent_product0_carry/O[5]
+                         net (fo=5, routed)           0.339     1.554    u_fma/u_fma/exponent_product0[5]
+    SLICE_X74Y86                                                      r  u_fma/u_fma/exponent_difference_carry_i_9/I1
+    SLICE_X74Y86         LUT5 (Prop_G6LUT_SLICEM_I1_O)
+                                                      0.123     1.677 r  u_fma/u_fma/exponent_difference_carry_i_9/O
+                         net (fo=1, routed)           0.016     1.693    u_fma/u_fma/exponent_difference_carry_i_9_n_0
+    SLICE_X74Y86                                                      r  u_fma/u_fma/exponent_difference_carry/S[6]
+    SLICE_X74Y86         CARRY8 (Prop_CARRY8_SLICEM_S[6]_CO[7])
+                                                      0.117     1.810 r  u_fma/u_fma/exponent_difference_carry/CO[7]
+                         net (fo=1, routed)           0.026     1.836    u_fma/u_fma/exponent_difference_carry_n_0
+    SLICE_X74Y87                                                      r  u_fma/u_fma/exponent_difference_carry__0/CI
+    SLICE_X74Y87         CARRY8 (Prop_CARRY8_SLICEM_CI_O[0])
+                                                      0.063     1.899 f  u_fma/u_fma/exponent_difference_carry__0/O[0]
+                         net (fo=4, routed)           0.197     2.096    u_fma/u_fma/sel0[8]
+    SLICE_X74Y87                                                      f  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_8/I4
+    SLICE_X74Y87         LUT6 (Prop_C6LUT_SLICEM_I4_O)
+                                                      0.123     2.219 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_8/O
+                         net (fo=2, routed)           0.095     2.315    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_8_n_0
+    SLICE_X74Y87                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_add_shamt_q[1][2]_i_3/I2
+    SLICE_X74Y87         LUT6 (Prop_G6LUT_SLICEM_I2_O)
+                                                      0.090     2.405 f  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_add_shamt_q[1][2]_i_3/O
+                         net (fo=36, routed)          0.176     2.580    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_add_shamt_q[1][2]_i_3_n_0
+    SLICE_X74Y91                                                      f  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_add_shamt_q[1][0]_i_1/I0
+    SLICE_X74Y91         LUT3 (Prop_C6LUT_SLICEM_I0_O)
+                                                      0.088     2.668 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_add_shamt_q[1][0]_i_1/O
+                         net (fo=22, routed)          0.224     2.892    u_fma/u_fma/addend_shamt[0]
+    SLICE_X73Y94                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__62_bret__1_i_2/I2
+    SLICE_X73Y94         LUT6 (Prop_F6LUT_SLICEL_I2_O)
+                                                      0.148     3.040 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__62_bret__1_i_2/O
+                         net (fo=3, routed)           0.180     3.220    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__62_bret__1_i_2_n_0
+    SLICE_X73Y90                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__202_bret__0_i_1/I1
+    SLICE_X73Y90         LUT6 (Prop_G6LUT_SLICEL_I1_O)
+                                                      0.089     3.309 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__202_bret__0_i_1/O
+                         net (fo=2, routed)           0.088     3.398    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__202_bret__0_i_1_n_0
+    SLICE_X72Y90                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__244_bret__3_i_1/I3
+    SLICE_X72Y90         LUT6 (Prop_E6LUT_SLICEM_I3_O)
+                                                      0.037     3.435 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__244_bret__3_i_1/O
+                         net (fo=2, routed)           0.276     3.711    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__244_bret__3_i_1_n_0
+    SLICE_X72Y90         FDPE                                         r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q_reg[1][75]_bret__3_bret__39_bret/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.021     4.021    
+                         clock pessimism              0.000     4.021    
+                         clock uncertainty           -0.035     3.986    
+    SLICE_X72Y90         FDPE (Setup_FFF2_SLICEM_C_D)
+                                                      0.025     4.011    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q_reg[1][75]_bret__3_bret__39_bret
+  -------------------------------------------------------------------
+                         required time                          4.011    
+                         arrival time                          -3.711    
+  -------------------------------------------------------------------
+                         slack                                  0.300    
+Slack (MET) :             0.321ns  (required time - arrival time)
+  Source:                 u_fma/u_fma/gen_input_pipeline[0].inp_pipe_operands_q_reg[1][1][19]/C
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q_reg[1][75]_bret__3_bret__244_bret__3/D
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.660ns  (logic 1.409ns (38.501%)  route 2.251ns (61.499%))
+  Logic Levels:           13  (CARRY8=3 LUT3=1 LUT4=2 LUT5=2 LUT6=5)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X72Y78         FDCE                         0.000     0.030 r  u_fma/u_fma/gen_input_pipeline[0].inp_pipe_operands_q_reg[1][1][19]/C
+    SLICE_X72Y78         FDCE (Prop_CFF2_SLICEM_C_Q)
+                                                      0.077     0.107 r  u_fma/u_fma/gen_input_pipeline[0].inp_pipe_operands_q_reg[1][1][19]/Q
+                         net (fo=3, routed)           0.204     0.311    u_fma/u_fma/gen_input_pipeline[0].inp_pipe_operands_q_reg_n_0_[1][1][19]
+    SLICE_X72Y78                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7/I2
+    SLICE_X72Y78         LUT4 (Prop_G6LUT_SLICEM_I2_O)
+                                                      0.123     0.434 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7/O
+                         net (fo=2, routed)           0.134    
+
+ 0.568    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7_n_0
+    SLICE_X73Y79                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4/I0
+    SLICE_X73Y79         LUT4 (Prop_E6LUT_SLICEL_I0_O)
+                                                      0.051     0.619 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4/O
+                         net (fo=17, routed)          0.156     0.775    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4_n_0
+    SLICE_X74Y80                                                      r  u_fma/u_fma/exponent_product0_carry_i_6/I0
+| CLB LUTs                |  994 |     0 |          0 |   1303680 |  0.08 |
+| CLB Registers           |  535 |     0 |          0 |   2607360 |  0.02 |
+| CARRY8                  |   32 |     0 |          0 |    162960 |  0.02 |
+| CLB Registers                              |  535 |     0 |          0 |   2607360 |  0.02 |
+| DSPs           |    2 |     0 |          0 |      9024 |  0.02 |
+| CARRY8   |   32 |                 CLB |
+| CLB LUTs                   |  994 |    0 |    0 |   0.23 |   0.00 |   0.00 |
+| CLB Registers              |  535 |    0 |    0 |   0.06 |   0.00 |   0.00 |
+| CARRY8                     |   32 |    0 |    0 |   0.06 |   0.00 |   0.00 |
+| DSPs                       |    2 |    0 |    0 |   0.07 |   0.00 |   0.00 |
+CABOSSE-END loop 5
+CABOSSE-BEGIN loop 6
+# puts "CABOSSE-RESULT loop_cycles=[expr {$n + 1}] retime=$retime wns_ns=$wns"
+CABOSSE-RESULT loop_cycles=6 retime=1 wns_ns=0.183
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.183        0.000                      0                 1110        0.044        0.000                      0                 1110        1.725        0.000                       0                   601  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.183        0.000                      0                 1110        0.044        0.000                      0                 1110        1.725        0.000                       0                   601  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Oct  7 10:08:26 2026
+| Host              : ip-172-31-44-200 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : acc_loop
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (MET) :             0.183ns  (required time - arrival time)
+  Source:                 u_fma/u_fma/gen_inside_pipeline[1].mid_pipe_sum_q_reg[2][10]_fret__0/C
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q_reg[1][exponent][7]_bret_bret__65/D
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.797ns  (logic 1.374ns (36.184%)  route 2.423ns (63.816%))
+  Logic Levels:           14  (CARRY8=2 LUT3=2 LUT4=1 LUT6=9)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X57Y17         FDCE                         0.000     0.030 r  u_fma/u_fma/gen_inside_pipeline[1].mid_pipe_sum_q_reg[2][10]_fret__0/C
+    SLICE_X57Y17         FDCE (Prop_AFF_SLICEM_C_Q)
+                                                      0.077     0.107 f  u_fma/u_fma/gen_inside_pipeline[1].mid_pipe_sum_q_reg[2][10]_fret__0/Q
+                         net (fo=1, routed)           0.171     0.278    u_fma/u_fma/gen_inside_pipeline[1].mid_pipe_sum_q_reg[2][10]_fret__0_n_0
+    SLICE_X55Y17                                                      f  u_fma/u_fma/i__carry_i_17/I0
+    SLICE_X55Y17         LUT6 (Prop_A6LUT_SLICEL_I0_O)
+                                                      0.149     0.427 f  u_fma/u_fma/i__carry_i_17/O
+                         net (fo=5, routed)           0.176     0.603    u_fma/u_fma/i__carry_i_17_n_0
+    SLICE_X55Y18                                                      f  u_fma/u_fma/i__carry_i_6/I1
+    SLICE_X55Y18         LUT6 (Prop_C6LUT_SLICEL_I1_O)
+                                                      0.123     0.726 r  u_fma/u_fma/i__carry_i_6/O
+                         net (fo=7, routed)           0.095     0.820    u_fma/u_fma/leading_zero_count[1]
+    SLICE_X55Y19                                                      r  u_fma/u_fma/i__carry_i_12/I0
+    SLICE_X55Y19         LUT3 (Prop_C6LUT_SLICEL_I0_O)
+                                                      0.088     0.908 r  u_fma/u_fma/i__carry_i_12/O
+                         net (fo=1, routed)           0.010     0.918    u_fma/u_fma/i__carry_i_12_n_0
+    SLICE_X55Y19                                                      r  u_fma/u_fma/p_1_out_inferred__2/i__carry/S[2]
+    SLICE_X55Y19         CARRY8 (Prop_CARRY8_SLICEL_S[2]_CO[7])
+                                                      0.155     1.073 f  u_fma/u_fma/p_1_out_inferred__2/i__carry/CO[7]
+                         net (fo=1, routed)           0.026     1.099    u_fma/u_fma/p_1_out_inferred__2/i__carry_n_0
+    SLICE_X55Y20                                                      f  u_fma/u_fma/p_1_out_inferred__2/i__carry__0/CI
+    SLICE_X55Y20         CARRY8 (Prop_CARRY8_SLICEL_CI_CO[1])
+                                                      0.042     1.141 f  u_fma/u_fma/p_1_out_inferred__2/i__carry__0/CO[1]
+                         net (fo=5, routed)           0.202     1.343    u_fma/u_fma/p_1_out_inferred__2/i__carry__0_n_6
+    SLICE_X55Y20                                                      f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__4_bret__3_i_4/I5
+    SLICE_X55Y20         LUT6 (Prop_H6LUT_SLICEL_I5_O)
+                                                      0.099     1.442 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__4_bret__3_i_4/O
+                         net (fo=18, routed)          0.108     1.550    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__4_bret__3_i_4_n_0
+    SLICE_X56Y20                                                      r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret_i_33/I1
+    SLICE_X56Y20         LUT6 (Prop_E6LUT_SLICEM_I1_O)
+                                                      0.052     1.602 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret_i_33/O
+                         net (fo=83, routed)          0.260     1.862    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret_i_33_n_0
+    SLICE_X58Y19                                                      r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_bret__0_bret__3_i_5/I4
+    SLICE_X58Y19         LUT6 (Prop_D6LUT_SLICEL_I4_O)
+                                                      0.146     2.008 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_bret__0_bret__3_i_5/O
+                         net (fo=4, routed)           0.212     2.220    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_bret__0_bret__3_i_5_n_0
+    SLICE_X58Y23                                                      r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_bret__0_bret__3_i_3/I0
+    SLICE_X58Y23         LUT6 (Prop_B6LUT_SLICEL_I0_O)
+                                                      0.098     2.318 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_bret__0_bret__3_i_3/O
+                         net (fo=2, routed)           0.133     2.451    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_bret__0_bret__3_i_3_n_0
+    SLICE_X57Y24                                                      r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__3_i_3/I2
+    SLICE_X57Y24         LUT3 (Prop_E6LUT_SLICEM_I2_O)
+                                                      0.037     2.488 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__3_i_3/O
+                         net (fo=3, routed)           0.161     2.649    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__3_i_3_n_0
+    SLICE_X56Y24                                                      r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__3_i_1/I4
+    SLICE_X56Y24         LUT6 (Prop_D6LUT_SLICEM_I4_O)
+                                                      0.099     2.748 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__3_i_1/O
+                         net (fo=36, routed)          0.286     3.034    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__3_i_1_n_0
+    SLICE_X54Y25                                                      r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__21_i_1/I4
+    SLICE_X54Y25         LUT6 (Prop_F6LUT_SLICEL_I4_O)
+                                                      0.123     3.157 f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__21_i_1/O
+                         net (fo=3, routed)           0.222     3.379    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__21_i_1_n_0
+    SLICE_X55Y25                                                      f  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__8_i_1/I1
+    SLICE_X55Y25         LUT4 (Prop_A6LUT_SLICEL_I1_O)
+                                                      0.035     3.414 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__8_i_1/O
+                         net (fo=2, routed)           0.289     3.703    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][exponent][7]_bret_bret__8_i_1_n_0
+    SLICE_X57Y26                                                      r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_bret_bret__4_i_1/I3
+    SLICE_X57Y26         LUT6 (Prop_C6LUT_SLICEM_I3_O)
+                                                      0.051     3.754 r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_bret_bret__4_i_1/O
+                         net (fo=2, routed)           0.073     3.827    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q[1][sign]_bret_bret__4_i_1_n_0
+    SLICE_X57Y26         FDCE                                         r  u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q_reg[1][exponent][7]_bret_bret__65/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.021     4.021    
+                         clock pessimism              0.000     4.021    
+                         clock uncertainty           -0.035     3.986    
+    SLICE_X57Y26         FDCE (Setup_CFF_SLICEM_C_D)
+                                                      0.025     4.011    u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q_reg[1][exponent][7]_bret_bret__65
+  -------------------------------------------------------------------
+                         required time                          4.011    
+                         arrival time                          -3.827    
+  -------------------------------------------------------------------
+                         slack                                  0.183    
+Slack (MET) :             0.185ns  (required time - arrival time)
+  Source:                 u_fma/u_fma/gen_inside_pipeline[1].mid_pipe_sum_q_reg[2][10]_fret__0/C
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/u_fma/gen_output_pipeline[0].out_pipe_result_q_reg[1][sign]_bret_bret__4/D
+                            (rising edge-triggered cell FDPE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.795ns  (logic 1.374ns (36.203%)  route 2.421ns (63.797%))
+  Logic Levels:           14  (CARRY8=2 LUT3=2 LUT4=1 LUT6=9)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X57Y17         FDCE                         0.000     0.030 r  u_fma/u_fma/gen_inside_pipeline[1].mid_pipe_sum_q_reg[2][10]_fret__0/C
+    SLICE_X57Y17         FDCE (Prop_AFF_SLICEM_C_Q)
+                                                      0.077     0.107 f  u_fma/u_fma/gen_inside_pipeline[1]
+
+.mid_pipe_sum_q_reg[2][10]_fret__0/Q
+                         net (fo=1, routed)           0.171     0.278    u_fma/u_fma/gen_inside_pipeline[1].mid_pipe_sum_q_reg[2][10]_fret__0_n_0
+    SLICE_X55Y17                                                      f  u_fma/u_fma/i__carry_i_17/I0
+    SLICE_X55Y17         LUT6 (Prop_A6LUT_SLICEL_I0_O)
+                                                      0.149     0.427 f  u_fma/u_fma/i__carry_i_17/O
+                         net (fo=5, routed)           0.176     0.603    u_fma/u_fma/i__carry_i_17_n_0
+    SLICE_X55Y18                                                      f  u_fma/u_fma/i__carry_i_6/I1
+| CLB LUTs                | 1040 |     0 |          0 |   1303680 |  0.08 |
+| CLB Registers           |  601 |     0 |          0 |   2607360 |  0.02 |
+| CARRY8                  |   32 |     0 |          0 |    162960 |  0.02 |
+| CLB Registers                              |  601 |     0 |          0 |   2607360 |  0.02 |
+| DSPs           |    2 |     0 |          0 |      9024 |  0.02 |
+| CARRY8   |   32 |                 CLB |
+| CLB LUTs                   | 1040 |    0 |    0 |   0.24 |   0.00 |   0.00 |
+| CLB Registers              |  601 |    0 |    0 |   0.07 |   0.00 |   0.00 |
+| CARRY8                     |   32 |    0 |    0 |   0.06 |   0.00 |   0.00 |
+| DSPs                       |    2 |    0 |    0 |   0.07 |   0.00 |   0.00 |
+CABOSSE-END loop 6
+CABOSSE-BEGIN loop 8
+# puts "CABOSSE-RESULT loop_cycles=[expr {$n + 1}] retime=$retime wns_ns=$wns"
+CABOSSE-RESULT loop_cycles=8 retime=1 wns_ns=0.340
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.340        0.000                      0                 1416        0.043        0.000                      0                 1416        1.725        0.000                       0                   755  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.340        0.000                      0                 1416        0.043        0.000                      0                 1416        1.725        0.000                       0                   755  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Oct  7 10:08:26 2026
+| Host              : ip-172-31-44-200 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : acc_loop
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (MET) :             0.340ns  (required time - arrival time)
+  Source:                 u_fma/u_fma/gen_input_pipeline[1].inp_pipe_operands_q_reg[2][1][20]/C
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sticky_q_reg[1]_bret__1_bret__3/D
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.640ns  (logic 1.298ns (35.663%)  route 2.342ns (64.337%))
+  Logic Levels:           12  (CARRY8=2 LUT3=1 LUT4=2 LUT6=7)
+  Clock Path Skew:        -0.010ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X71Y16         FDCE                         0.000     0.030 r  u_fma/u_fma/gen_input_pipeline[1].inp_pipe_operands_q_reg[2][1][20]/C
+    SLICE_X71Y16         FDCE (Prop_EFF2_SLICEM_C_Q)
+                                                      0.079     0.109 r  u_fma/u_fma/gen_input_pipeline[1].inp_pipe_operands_q_reg[2][1][20]/Q
+                         net (fo=3, routed)           0.178     0.287    u_fma/u_fma/gen_input_pipeline[1].inp_pipe_operands_q_reg_n_0_[2][1][20]
+    SLICE_X71Y16                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7/I0
+    SLICE_X71Y16         LUT4 (Prop_H6LUT_SLICEM_I0_O)
+                                                      0.152     0.439 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7/O
+                         net (fo=2, routed)           0.098     0.537    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7_n_0
+    SLICE_X70Y16                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4/I0
+    SLICE_X70Y16         LUT4 (Prop_G6LUT_SLICEL_I0_O)
+                                                      0.089     0.626 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4/O
+                         net (fo=17, routed)          0.245     0.871    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4_n_0
+    SLICE_X69Y16                                                      r  u_fma/u_fma/exponent_product0_carry_i_16/I1
+    SLICE_X69Y16         LUT6 (Prop_A6LUT_SLICEL_I1_O)
+                                                      0.035     0.906 r  u_fma/u_fma/exponent_product0_carry_i_16/O
+                         net (fo=1, routed)           0.009     0.915    u_fma/u_fma/exponent_product0_carry_i_16_n_0
+    SLICE_X69Y16                                                      r  u_fma/u_fma/exponent_product0_carry/S[0]
+    SLICE_X69Y16         CARRY8 (Prop_CARRY8_SLICEL_S[0]_O[2])
+                                                      0.132     1.047 f  u_fma/u_fma/exponent_product0_carry/O[2]
+                         net (fo=5, routed)           0.238     1.285    u_fma/u_fma/exponent_product0[2]
+    SLICE_X68Y15                                                      f  u_fma/u_fma/exponent_difference_carry_i_5/I4
+    SLICE_X68Y15         LUT6 (Prop_F6LUT_SLICEL_I4_O)
+                                                      0.035     1.320 r  u_fma/u_fma/exponent_difference_carry_i_5/O
+                         net (fo=1, routed)           0.206     1.526    u_fma/u_fma/exponent_difference_carry_i_5_n_0
+    SLICE_X68Y14                                                      r  u_fma/u_fma/exponent_difference_carry/DI[3]
+    SLICE_X68Y14         CARRY8 (Prop_CARRY8_SLICEL_DI[3]_O[5])
+                                                      0.184     1.710 f  u_fma/u_fma/exponent_difference_carry/O[5]
+                         net (fo=9, routed)           0.262     1.972    u_fma/u_fma/sel0[5]
+    SLICE_X67Y16                                                      f  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_8/I2
+    SLICE_X67Y16         LUT6 (Prop_E6LUT_SLICEL_I2_O)
+                                                      0.147     2.119 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_8/O
+                         net (fo=2, routed)           0.097     2.216    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_8_n_0
+    SLICE_X67Y16                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_add_shamt_q[1][2]_i_3/I2
+    SLICE_X67Y16         LUT6 (Prop_G6LUT_SLICEL_I2_O)
+                                                      0.097     2.313 f  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_add_shamt_q[1][2]_i_3/O
+                         net (fo=36, routed)          0.212     2.525    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_add_shamt_q[1][2]_i_3_n_0
+    SLICE_X67Y21                                                      f  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_add_shamt_q[1][0]_i_1/I0
+    SLICE_X67Y21         LUT3 (Prop_F6LUT_SLICEL_I0_O)
+                                                      0.035     2.560 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_add_shamt_q[1][0]_i_1/O
+                         net (fo=22, routed)          0.239     2.800    u_fma/u_fma/addend_shamt[0]
+    SLICE_X63Y24                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__241_bret_bret__4_i_1/I2
+    SLICE_X63Y24         LUT6 (Prop_E6LUT_SLICEM_I2_O)
+                                                      0.100     2.900 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__241_bret_bret__4_i_1/O
+                         net (fo=4, routed)           0.203     3.103    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__241_bret_bret__4_i_1_n_0
+    SLICE_X63Y21                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__72_bret__2_i_1/I1
+    SLICE_X63Y21         LUT6 (Prop_G6LUT_SLICEM_I1_O)
+                                                      0.123     3.226 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__72_bret__2_i_1/O
+                         net (fo=2, routed)           0.135     3.361    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q[1][75]_bret__3_bret__72_bret__2_i_1_n_0
+    SLICE_X64Y19                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sticky_q[1]_bret__1_bret__3_i_1/I5
+    SLICE_X64Y19         LUT6 (Prop_H6LUT_SLICEL_I5_O)
+                                                      0.090     3.451 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sticky_q[1]_bret__1_bret__3_i_1/O
+                         net (fo=2, routed)           0.219     3.670    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sticky_q[1]_bret__1_bret__3_i_1_n_0
+    SLICE_X64Y19         FDCE                                         r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sticky_q_reg[1]_bret__1_bret__3/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.020     4.020    
+                         clock pessimism              0.000     4.020    
+                         clock uncertainty           -0.035     3.985    
+    SLICE_X64Y19         FDCE (Setup_EFF_SLICEL_C_D)
+                                                      0.025     4.010    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sticky_q_reg[1]_bret__1_bret__3
+  -------------------------------------------------------------------
+                         required time                          4.010    
+                         arrival time                          -3.670    
+  -------------------------------------------------------------------
+                         slack                                  0.340    
+Slack (MET) :             0.393ns  (required time - arrival time)
+  Source:                 u_fma/u_fma/gen_input_pipeline[1].inp_pipe_operands_q_reg[2][1][20]/C
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_sum_q_reg[1][75]_bret__3_bret__244_bret__1/D
+                            (rising edge-triggered cell FDCE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.587ns  (logic 1.239ns (34.540%)  route 2.348ns (65.460%))
+  Logic Levels:           12  (CARRY8=2 LUT3=1 LUT4=2 LUT6=7)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X71Y16         FDCE                         0.000     0.030 r  u_fma/u_fma/gen_input_pipeline[1].inp_pipe_operands_q_reg[2][1][20]/C
+    SLICE_X71Y16         FDCE (Prop_EFF2_SLICEM_C_Q)
+                                                      0.079     0.109 r  u_fma/u_fma/gen_input_pipeline[1].inp_pipe_operands_q_reg[2][1][20]/Q
+                         net (fo=3, routed)           0.178     0.287    u_fma/u_fma/gen_input_pipeline[1].inp_pipe_operands_q_reg_n_0_[2][1][20]
+    SLICE_X71Y16                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7/I0
+    SLICE_X71Y16         LUT4 (Prop_H6LUT_SLICEM_I0_O)
+                                                      0.152     0.439 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7/O
+                         net (fo=2, routed)           0.098     0.537    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_7_n_0
+    SLICE_X70Y16                                                      r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4/I0
+    SLICE_X70Y16         LUT4 (Prop_G6LUT_SLICEL_I0_O)
+                                                      0.089     0.626 r  u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4/O
+                         net (fo=17, routed)          0.245     0.871    u_fma/u_fma/gen_inside_pipeline[0].mid_pipe_tent_exp_q[1][9]_i_4_n_0
+    SLICE_X69Y16                                                      r  u_fma/u_fma/exponent_product0_carry_i_16/I1
+    SLICE_X
+
+69Y16         LUT6 (Prop_A6LUT_SLICEL_I1_O)
+                                                      0.035     0.906 r  u_fma/u_fma/exponent_product0_carry_i_16/O
+                         net (fo=1, routed)           0.009     0.915    u_fma/u_fma/exponent_product0_carry_i_16_n_0
+    SLICE_X69Y16                                                      r  u_fma/u_fma/exponent_product0_carry/S[0]
+| CLB LUTs                |  980 |     0 |          0 |   1303680 |  0.08 |
+| CLB Registers           |  755 |     0 |          0 |   2607360 |  0.03 |
+| CARRY8                  |   32 |     0 |          0 |    162960 |  0.02 |
+| CLB Registers                              |  755 |     0 |          0 |   2607360 |  0.03 |
+| DSPs           |    2 |     0 |          0 |      9024 |  0.02 |
+| CARRY8   |   32 |                 CLB |
+| CLB LUTs                   |  980 |    0 |    0 |   0.22 |   0.00 |   0.00 |
+| CLB Registers              |  755 |    0 |    0 |   0.09 |   0.00 |   0.00 |
+| CARRY8                     |   32 |    0 |    0 |   0.06 |   0.00 |   0.00 |
+| DSPs                       |    2 |    0 |    0 |   0.07 |   0.00 |   0.00 |
+CABOSSE-END loop 8
+
