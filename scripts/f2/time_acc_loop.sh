@@ -4,7 +4,7 @@
 #
 # User data for one CPU instance (FPGA Developer AMI, no FPGA needed): place
 # and route platforms/f2/timing/acc_loop.sv on F2's part at 250 MHz, with
-# loops of 2 to 5 cycles, all at once, and print the slack and the worst
+# the loop lengths of PIPE_REGS, all at once, and print the slack and the worst
 # paths (M3, D-027). Results go to the serial console between CABOSSE
 # markers, read back with `aws ec2 get-console-output --latest`. The instance
 # powers off (and, launched with shutdown behaviour "terminate", terminates)
@@ -13,8 +13,9 @@
 REF=m3/acc-loop-timing         # branch of github.com/cattabiani/cabosse
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga, for the part name
 FALLBACK_PART=xcvu47p-fsvh2892-2-e
-PIPE_REGS="1 2 3 4"            # the FMA's registers; the loop adds one
-DEADLINE_MIN=110               # safety net: power off even if something hangs
+PIPE_REGS="3 4 5 7"            # the FMA's registers; the loop adds one
+RETIME=1                       # Vivado register retiming (acc_loop.tcl)
+DEADLINE_MIN=55                # safety net: power off even if something hangs
 
 shutdown -h +$DEADLINE_MIN
 export HOME=/root  # cloud-init runs this without HOME; Vivado needs it
@@ -60,7 +61,7 @@ for n in $PIPE_REGS; do
     cd /root/run$n || exit
     vivado -mode batch -nojournal -log vivado.log \
       -source /root/cabosse/platforms/f2/timing/acc_loop.tcl \
-      -tclargs /root/cabosse "$part" "$n" > vivado.out 2>&1
+      -tclargs /root/cabosse "$part" "$n" "$RETIME" > vivado.out 2>&1
     status=$?
     echo "run$n exit $status $(date -u +%T)"
     [ $status -eq 0 ] || tail -30 vivado.out
