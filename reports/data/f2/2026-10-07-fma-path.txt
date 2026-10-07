@@ -1,0 +1,557 @@
+CABOSSE-BEGIN host
+2026-10-07T12:25:54Z
+$ cat /etc/os-release
+PRETTY_NAME="Ubuntu 24.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.1 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+$ nproc
+16
+$ free -b
+               total        used        free      shared  buff/cache   available
+Mem:     33086885888   764985344 32413126656     2891776   309706752 32321900544
+Swap:    10737414144           0 10737414144
+CABOSSE-END host
+CABOSSE-BEGIN setup
+cabosse e01700106297d06d46d8a67e9d2b927e99522f8c 2026-10-07T14:16:08+02:00
+aws-fpga b603a81f65666e0cf7a67ee5cf18b148eb6b08c3 2026-08-06T10:50:26-05:00
+$ which vivado
+/opt/Xilinx/2025.2/Vivado/bin/vivado
+$ vivado -version
+vivado v2025.2 (64-bit)
+Tool Version Limit: 2025.11
+SW Build 6299465 on Fri Nov 14 12:34:56 MST 2025
+IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
+SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+part xcvu47p-fsvh2892-2-e
+CABOSSE-END setup
+CABOSSE-BEGIN vivado
+2026-10-07T12:27:17Z
+run3 (mac_loop:AccRegs:1:4:0) exit 0 12:36:03
+run2 (fma_path:InRegs:2:5:1) exit 0 12:36:55
+run1 (fma_path:InRegs:1:4:0) exit 0 12:37:51
+2026-10-07T12:37:51Z
+CABOSSE-END vivado
+CABOSSE-BEGIN run1 fma_path:InRegs:1:4:0
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=fma_path loop_cycles=4 retime=0 wns_ns=-2.700
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+     -2.700     -164.806                     68                  475        0.039        0.000                      0                  475        1.725        0.000                       0                   454  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                -2.700     -164.806                     68                  475        0.039        0.000                      0                  475        1.725        0.000                       0                   454  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Oct  7 12:37:50 2026
+| Host              : ip-172-31-15-4 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : fma_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (VIOLATED) :        -2.700ns  (required time - arrival time)
+  Source:                 gen_in[0].in_q_reg[1][op][0]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/p_q_reg[29]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        6.682ns  (logic 4.085ns (61.137%)  route 2.597ns (38.863%))
+  Logic Levels:           24  (CARRY8=1 DSP_A_B_DATA=1 DSP_ALU=2 DSP_M_DATA=1 DSP_MULTIPLIER=1 DSP_OUTPUT=2 DSP_PREADD_DATA=1 LUT3=1 LUT4=2 LUT5=3 LUT6=9)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.028ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.028     0.028    
+    SLICE_X86Y165        FDRE                         0.000     0.028 r  gen_in[0].in_q_reg[1][op][0]/C
+    SLICE_X86Y165        FDRE (Prop_BFF2_SLICEL_C_Q)
+                                                      0.080     0.108 r  gen_in[0].in_q_reg[1][op][0]/Q
+                         net (fo=86, routed)          0.110     0.218    u_fma/u_mul/Q[0]
+    SLICE_X86Y166                                                     r  u_fma/u_mul/prod_i_16/I2
+    SLICE_X86Y166        LUT3 (Prop_G5LUT_SLICEL_I2_O)
+                                                      0.135     0.353 f  u_fma/u_mul/prod_i_16/O
+                         net (fo=1, routed)           0.279     0.632    u_fma/u_mul/prod/A[8]
+    DSP48E2_X11Y60                                                    f  u_fma/u_mul/prod/DSP_A_B_DATA_INST/A[8]
+    DSP48E2_X11Y60       DSP_A_B_DATA (Prop_DSP_A_B_DATA_DSP48E2_A[8]_A2_DATA[8])
+                                                      0.192     0.824 r  u_fma/u_mul/prod/DSP_A_B_DATA_INST/A2_DATA[8]
+                         net (fo=1, routed)           0.000     0.824    u_fma/u_mul/prod/DSP_A_B_DATA.A2_DATA<8>
+    DSP48E2_X11Y60                                                    r  u_fma/u_mul/prod/DSP_PREADD_DATA_INST/A2_DATA[8]
+    DSP48E2_X11Y60       DSP_PREADD_DATA (Prop_DSP_PREADD_DATA_DSP48E2_A2_DATA[8]_A2A1[8])
+                                                      0.076     0.900 r  u_fma/u_mul/prod/DSP_PREADD_DATA_INST/A2A1[8]
+                         net (fo=1, routed)           0.000     0.900    u_fma/u_mul/prod/DSP_PREADD_DATA.A2A1<8>
+    DSP48E2_X11Y60                                                    r  u_fma/u_mul/prod/DSP_MULTIPLIER_INST/A2A1[8]
+    DSP48E2_X11Y60       DSP_MULTIPLIER (Prop_DSP_MULTIPLIER_DSP48E2_A2A1[8]_U[29])
+                                                      0.505     1.405 f  u_fma/u_mul/prod/DSP_MULTIPLIER_INST/U[29]
+                         net (fo=1, routed)           0.000     1.405    u_fma/u_mul/prod/DSP_MULTIPLIER.U<29>
+    DSP48E2_X11Y60                                                    f  u_fma/u_mul/prod/DSP_M_DATA_INST/U[29]
+    DSP48E2_X11Y60       DSP_M_DATA (Prop_DSP_M_DATA_DSP48E2_U[29]_U_DATA[29])
+                                                      0.047     1.452 r  u_fma/u_mul/prod/DSP_M_DATA_INST/U_DATA[29]
+                         net (fo=1, routed)           0.000     1.452    u_fma/u_mul/prod/DSP_M_DATA.U_DATA<29>
+    DSP48E2_X11Y60                                                    r  u_fma/u_mul/prod/DSP_ALU_INST/U_DATA[29]
+    DSP48E2_X11Y60       DSP_ALU (Prop_DSP_ALU_DSP48E2_U_DATA[29]_ALU_OUT[47])
+                                                      0.585     2.037 f  u_fma/u_mul/prod/DSP_ALU_INST/ALU_OUT[47]
+                         net (fo=1, routed)           0.000     2.037    u_fma/u_mul/prod/DSP_ALU.ALU_OUT<47>
+    DSP48E2_X11Y60                                                    f  u_fma/u_mul/prod/DSP_OUTPUT_INST/ALU_OUT[47]
+    DSP48E2_X11Y60       DSP_OUTPUT (Prop_DSP_OUTPUT_DSP48E2_ALU_OUT[47]_PCOUT[47])
+                                                      0.122     2.159 r  u_fma/u_mul/prod/DSP_OUTPUT_INST/PCOUT[47]
+                         net (fo=1, routed)           0.014     2.173    u_fma/u_mul/prod__0/PCIN[47]
+    DSP48E2_X11Y61                                                    r  u_fma/u_mul/prod__0/DSP_ALU_INST/PCIN[47]
+    DSP48E2_X11Y61       DSP_ALU (Prop_DSP_ALU_DSP48E2_PCIN[47]_ALU_OUT[18])
+                                                      0.546     2.719 r  u_fma/u_mul/prod__0/DSP_ALU_INST/ALU_OUT[18]
+                         net (fo=1, routed)           0.000     2.719    u_fma/u_mul/prod__0/DSP_ALU.ALU_OUT<18>
+    DSP48E2_X11Y61                                                    r  u_fma/u_mul/prod__0/DSP_OUTPUT_INST/ALU_OUT[18]
+    DSP48E2_X11Y61       DSP_OUTPUT (Prop_DSP_OUTPUT_DSP48E2_ALU_OUT[18]_P[18])
+                                                      0.109     2.828 f  u_fma/u_mul/prod__0/DSP_OUTPUT_INST/P[18]
+                         net (fo=4, routed)           0.238     3.065    u_fma/u_mul/prod__1[35]
+    SLICE_X88Y167                                                     f  u_fma/u_mul/p_q[61]_i_10/I2
+    SLICE_X88Y167        LUT4 (Prop_D6LUT_SLICEM_I2_O)
+                                                      0.088     3.153 f  u_fma/u_mul/p_q[61]_i_10/O
+                         net (fo=2, routed)           0.148     3.302    u_fma/u_mul/p_q[61]_i_10_n_0
+    SLICE_X88Y166                                                     f  u_fma/u_mul/p_q[52]_i_20/I0
+    SLICE_X88Y166        LUT4 (Prop_D6LUT_SLICEM_I0_O)
+                                                      0.145     3.447 r  u_fma/u_mul/p_q[52]_i_20/O
+                         net (fo=5, routed)           0.103     3.550    u_fma/u_mul/p_q[52]_i_20_n_0
+    SLICE_X88Y165                                                     r  u_fma/u_mul/p_q[51]_i_60/I4
+    SLICE_X88Y165        LUT6 (Prop_G6LUT_SLICEM_I4_O)
+                                                      0.052     3.602 r  u_fma/u_mul/p_q[51]_i_60/O
+                         net (fo=1, routed)           0.137     3.739    u_fma/u_mul/p_q[51]_i_60_n_0
+    SLICE_X88Y168                                                     r  u_fma/u_mul/p_q[51]_i_43/I5
+    SLICE_X88Y168        LUT6 (Prop_E6LUT_SLICEM_I5_O)
+                                                      0.037     3.776 r  u_fma/u_mul/p_q[51]_i_43/O
+                         net (fo=49, routed)          0.138     3.914    u_fma/u_mul/p_q[51]_i_43_n_0
+    SLICE_X88Y169                                                     r  u_fma/u_mul/p_q[51]_i_20/I2
+    SLICE_X88Y169        LUT6 (Prop_H6LUT_SLICEM_I2_O)
+                                                      0.152     4.066 r  u_fma/u_mul/p_q[51]_i_20/O
+                         net (fo=2, routed)           0.205     4.271    u_fma/u_mul/p_q[51]_i_20_n_0
+    SLICE_X87Y169                                                     r  u_fma/u_mul/p_q[48]_i_12/I0
+    SLICE_X87Y169        LUT6 (Prop_B6LUT_SLICEM_I0_O)
+                                                      0.125     4.396 r  u_fma/u_mul/p_q[48]_i_12/O
+                         net (fo=2, routed)           0.103     4.499    u_fma/u_mul/p_q[48]_i_12_n_0
+    SLICE_X87Y170                                                     r  u_fma/u_mul/p_q[51]_i_17/I0
+    SLICE_X87Y170        LUT6 (Prop_D6LUT_SLICEM_I0_O)
+                                                      0.145     4.644 f  u_fma/u_mul/p_q[51]_i_17/O
+                         net (fo=34, routed)          0.127     4.771    u_fma/u_mul/p_q[51]_i_17_n_0
+    SLICE_X86Y170                                                     f  u_fma/u_mul/p_q[51]_i_7_comp/I3
+    SLICE_X86Y170        LUT6 (Prop_B6LUT_SLICEL_I3_O)
+                                                      0.124     4.895 r  u_fma/u_mul/p_q[51]_i_7_comp/O
+                         net (fo=69, routed)          0.216     5.110    u_fma/u_mul/p_q[51]_i_7_n_0
+    SLICE_X84Y169                                                     r  u_fma/u_mul/p_q[60]_i_16_comp/I3
+    SLICE_X84Y169        LUT6 (Prop_B6LUT_SLICEL_I3_O)
+                                                      0.051     5.161 r  u_fma/u_mul/p_q[60]_i_16_comp/O
+                         net (fo=1, routed)           0.009     5.170    u_fma/u_mul/p_q[60]_i_16_n_0
+    SLICE_X84Y169                                                     r  u_fma/u_mul/p_q_reg[60]_i_1/S[1]
+    SLICE_X84Y169        CARRY8 (Prop_CARRY8_SLICEL_S[1]_O[5])
+                                                      0.240     5.410 r  u_fma/u_mul/p_q_reg[60]_i_1/O[5]
+                         net (fo=66, routed)          0.174     5.585    u_fma/u_mul/gen_in[0].in_q_reg[1][a][29][4]
+    SLICE_X84Y171                                                     r  u_fma/u_mul/p_q[2]_i_21/I0
+    SLICE_X84Y171        LUT5 (Prop_E5LUT_SLICEL_I0_O)
+                                                      0.138     5.723 r  u_fma/u_mul/p_q[2]_i_21/O
+                         net (fo=17, routed)          0.203     5.925    u_fma/u_mul/p_q[2]_i_21_n_0
+    SLICE_X82Y169                                                     r  u_fma/u_mul/p_q[36]_i_7/I0
+    SLICE_X82Y169        LUT5 (Prop_G6LUT_SLICEL_I0_O)
+                                                      0.035     5.960 f  u_fma/u_mul/p_q[36]_i_7/O
+                         net (fo=2, routed)           0.153     6.114    u_fma/u_mul/p_q[36]_i_7_n_0
+    SLICE_X81Y170                                                     f  u_fma/u_mul/p_q[36]_i_5/I0
+    SLICE_X81Y170        LUT5 (Prop_D6LUT_SLICEM_I0_O)
+                                                      0.145     6.259 f  u_fma/u_mul/p_q[36]_i_5/O
+                         net (fo=4, routed)           0.097     6.356    u_fma/u_mul/p_q[36]_i_5_n_0
+    SLICE_X81Y171                                                     f  u_fma/u_mul/p_q[30]_i_2/I0
+    SLICE_X81Y171        LUT6 (Prop_C6LUT_SLICEM_I0_O)
+                                                      0.088     6.444 f  u_fma/u_mul/p_q[30]_i_2/O
+                         net (fo=2, routed)           0.097     6.541    u_fma/u_mul/p_q[30]_i_2_n_0
+    SLICE_X80Y171                                                     f  u_fma/u_mul/p_q[29]_i_1/I3
+    SLICE_X80Y171        LUT6 (Prop_E6LUT_SLICEL_I3_O)
+                                                      0.123     6.664 r  u_fma/u_mul/p_q[29]_i_1/O
+                         net (fo=1, routed)           0.046     6.710    u_fma/p_d[29]
+    SLICE_X80Y171        FDRE                                         r  u_fma/p_q_reg[29]/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.020     4.020    
+                         clock pessimism              0.000     4.020    
+                         clock uncertainty           -0.035     3.985    
+    SLICE_X80Y171        FDRE (Setup_EFF_SLICEL_C_D)
+                                                      0.025     4.010    u_fma/p_q_reg[29]
+| CLB LUTs                | 1307 |     0 |          0 |   1303680 |  0.10 |
+| CLB Registers           |  454 |     0 |          0 |   2607360 |  0.02
+
+ |
+| CARRY8                  |   22 |     0 |          0 |    162960 |  0.01 |
+| CLB Registers                              |  454 |     0 |          0 |   2607360 |  0.02 |
+| DSPs           |    2 |     0 |          0 |      9024 |  0.02 |
+| CARRY8   |   22 |                 CLB |
+| CLB LUTs                   | 1307 |    0 |    0 |   0.30 |   0.00 |   0.00 |
+| CLB Registers              |  454 |    0 |    0 |   0.05 |   0.00 |   0.00 |
+| CARRY8                     |   22 |    0 |    0 |   0.04 |   0.00 |   0.00 |
+| DSPs                       |    2 |    0 |    0 |   0.07 |   0.00 |   0.00 |
+CABOSSE-END run1 fma_path:InRegs:1:4:0
+CABOSSE-BEGIN run2 fma_path:InRegs:2:5:1
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=fma_path loop_cycles=5 retime=1 wns_ns=-2.023
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+     -2.023     -305.987                    200                  725        0.041        0.000                      0                  725        1.725        0.000                       0                   702  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                -2.023     -305.987                    200                  725        0.041        0.000                      0                  725        1.725        0.000                       0                   702  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Oct  7 12:36:54 2026
+| Host              : ip-172-31-15-4 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : fma_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (VIOLATED) :        -2.023ns  (required time - arrival time)
+  Source:                 gen_in[1].in_q_reg[2][op][1]_fret__7/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/p_q_reg[4]_bret__2_bret__0/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        6.004ns  (logic 3.834ns (63.858%)  route 2.170ns (36.142%))
+  Logic Levels:           22  (CARRY8=1 DSP_A_B_DATA=1 DSP_ALU=2 DSP_M_DATA=1 DSP_MULTIPLIER=1 DSP_OUTPUT=2 DSP_PREADD_DATA=1 LUT4=4 LUT5=1 LUT6=8)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X71Y595        FDRE                         0.000     0.030 r  gen_in[1].in_q_reg[2][op][1]_fret__7/C
+    SLICE_X71Y595        FDRE (Prop_HFF_SLICEM_C_Q)
+                                                      0.079     0.109 f  gen_in[1].in_q_reg[2][op][1]_fret__7/Q
+                         net (fo=1, routed)           0.231     0.340    u_fma/u_mul/prod/A[7]
+    DSP48E2_X9Y232                                                    f  u_fma/u_mul/prod/DSP_A_B_DATA_INST/A[7]
+    DSP48E2_X9Y232       DSP_A_B_DATA (Prop_DSP_A_B_DATA_DSP48E2_A[7]_A2_DATA[7])
+                                                      0.192     0.532 r  u_fma/u_mul/prod/DSP_A_B_DATA_INST/A2_DATA[7]
+                         net (fo=1, routed)           0.000     0.532    u_fma/u_mul/prod/DSP_A_B_DATA.A2_DATA<7>
+    DSP48E2_X9Y232                                                    r  u_fma/u_mul/prod/DSP_PREADD_DATA_INST/A2_DATA[7]
+    DSP48E2_X9Y232       DSP_PREADD_DATA (Prop_DSP_PREADD_DATA_DSP48E2_A2_DATA[7]_A2A1[7])
+                                                      0.076     0.608 r  u_fma/u_mul/prod/DSP_PREADD_DATA_INST/A2A1[7]
+                         net (fo=1, routed)           0.000     0.608    u_fma/u_mul/prod/DSP_PREADD_DATA.A2A1<7>
+    DSP48E2_X9Y232                                                    r  u_fma/u_mul/prod/DSP_MULTIPLIER_INST/A2A1[7]
+    DSP48E2_X9Y232       DSP_MULTIPLIER (Prop_DSP_MULTIPLIER_DSP48E2_A2A1[7]_U[28])
+                                                      0.505     1.113 f  u_fma/u_mul/prod/DSP_MULTIPLIER_INST/U[28]
+                         net (fo=1, routed)           0.000     1.113    u_fma/u_mul/prod/DSP_MULTIPLIER.U<28>
+    DSP48E2_X9Y232                                                    f  u_fma/u_mul/prod/DSP_M_DATA_INST/U[28]
+    DSP48E2_X9Y232       DSP_M_DATA (Prop_DSP_M_DATA_DSP48E2_U[28]_U_DATA[28])
+                                                      0.047     1.160 r  u_fma/u_mul/prod/DSP_M_DATA_INST/U_DATA[28]
+                         net (fo=1, routed)           0.000     1.160    u_fma/u_mul/prod/DSP_M_DATA.U_DATA<28>
+    DSP48E2_X9Y232                                                    r  u_fma/u_mul/prod/DSP_ALU_INST/U_DATA[28]
+    DSP48E2_X9Y232       DSP_ALU (Prop_DSP_ALU_DSP48E2_U_DATA[28]_ALU_OUT[47])
+                                                      0.585     1.745 f  u_fma/u_mul/prod/DSP_ALU_INST/ALU_OUT[47]
+                         net (fo=1, routed)           0.000     1.745    u_fma/u_mul/prod/DSP_ALU.ALU_OUT<47>
+    DSP48E2_X9Y232                                                    f  u_fma/u_mul/prod/DSP_OUTPUT_INST/ALU_OUT[47]
+    DSP48E2_X9Y232       DSP_OUTPUT (Prop_DSP_OUTPUT_DSP48E2_ALU_OUT[47]_PCOUT[47])
+                                                      0.122     1.867 r  u_fma/u_mul/prod/DSP_OUTPUT_INST/PCOUT[47]
+                         net (fo=1, routed)           0.014     1.881    u_fma/u_mul/prod__0/PCIN[47]
+    DSP48E2_X9Y233                                                    r  u_fma/u_mul/prod__0/DSP_ALU_INST/PCIN[47]
+    DSP48E2_X9Y233       DSP_ALU (Prop_DSP_ALU_DSP48E2_PCIN[47]_ALU_OUT[30])
+                                                      0.546     2.427 r  u_fma/u_mul/prod__0/DSP_ALU_INST/ALU_OUT[30]
+                         net (fo=1, routed)           0.000     2.427    u_fma/u_mul/prod__0/DSP_ALU.ALU_OUT<30>
+    DSP48E2_X9Y233                                                    r  u_fma/u_mul/prod__0/DSP_OUTPUT_INST/ALU_OUT[30]
+    DSP48E2_X9Y233       DSP_OUTPUT (Prop_DSP_OUTPUT_DSP48E2_ALU_OUT[30]_P[30])
+                                                      0.109     2.536 f  u_fma/u_mul/prod__0/DSP_OUTPUT_INST/P[30]
+                         net (fo=4, routed)           0.260     2.796    u_fma/u_mul/prod__1[47]
+    SLICE_X71Y597                                                     f  u_fma/u_mul/p_q[2]_bret_bret__0_i_8/I2
+    SLICE_X71Y597        LUT4 (Prop_B6LUT_SLICEM_I2_O)
+                                                      0.125     2.921 f  u_fma/u_mul/p_q[2]_bret_bret__0_i_8/O
+                         net (fo=2, routed)           0.095     3.016    u_fma/u_mul/p_q[2]_bret_bret__0_i_8_n_0
+    SLICE_X71Y598                                                     f  u_fma/u_mul/p_q[2]_bret_bret_i_11/I2
+    SLICE_X71Y598        LUT4 (Prop_F6LUT_SLICEM_I2_O)
+                                                      0.123     3.139 f  u_fma/u_mul/p_q[2]_bret_bret_i_11/O
+                         net (fo=5, routed)           0.105     3.244    u_fma/u_mul/p_q[2]_bret_bret_i_11_n_0
+    SLICE_X70Y598                                                     f  u_fma/u_mul/p_q[2]_bret_bret_i_10/I3
+    SLICE_X70Y598        LUT6 (Prop_F6LUT_SLICEL_I3_O)
+                                                      0.089     3.333 r  u_fma/u_mul/p_q[2]_bret_bret_i_10/O
+                         net (fo=1, routed)           0.139     3.472    u_fma/u_mul/p_q[2]_bret_bret_i_10_n_0
+    SLICE_X71Y599                                                     r  u_fma/u_mul/p_q[2]_bret_bret_i_7/I5
+    SLICE_X71Y599        LUT6 (Prop_D6LUT_SLICEM_I5_O)
+                                                      0.037     3.509 r  u_fma/u_mul/p_q[2]_bret_bret_i_7/O
+                         net (fo=52, routed)          0.225     3.734    u_fma/u_mul/p_q[2]_bret_bret_i_7_n_0
+    SLICE_X69Y598                                                     r  u_fma/u_mul/p_q[6]_bret_bret_i_5/I4
+    SLICE_X69Y598        LUT6 (Prop_B6LUT_SLICEL_I4_O)
+                                                      0.148     3.882 f  u_fma/u_mul/p_q[6]_bret_bret_i_5/O
+                         net (fo=45, routed)          0.134     4.015    u_fma/u_mul/p_q[6]_bret_bret_i_5_n_0
+    SLICE_X69Y599                                                     f  u_fma/u_mul/p_q[46]_bret__1_i_11/I2
+    SLICE_X69Y599        LUT6 (Prop_D6LUT_SLICEL_I2_O)
+                                                      0.146     4.161 r  u_fma/u_mul/p_q[46]_bret__1_i_11/O
+                         net (fo=34, routed)          0.063     4.224    u_fma/u_mul/p_q[46]_bret__1_i_11_n_0
+    SLICE_X69Y599                                                     r  u_fma/u_mul/p_q[6]_bret_bret__0_i_6/I2
+    SLICE_X69Y599        LUT6 (Prop_C6LUT_SLICEL_I2_O)
+                                                      0.146     4.370 f  u_fma/u_mul/p_q[6]_bret_bret__0_i_6/O
+                         net (fo=32, routed)          0.107     4.478    u_fma/u_mul/p_q[6]_bret_bret__0_i_6_n_0
+    SLICE_X68Y599                                                     f  u_fma/u_mul/p_q[6]_bret_bret__1_i_1/I5
+    SLICE_X68Y599        LUT6 (Prop_C6LUT_SLICEL_I5_O)
+                                                      0.035     4.513 r  u_fma/u_mul/p_q[6]_bret_bret__1_i_1/O
+                         net (fo=24, routed)          0.122     4.634    u_fma/u_mul/p_q[6]_bret_bret__0_i_6_1
+    SLICE_X68Y599                                                     r  u_fma/u_mul/p_q[2]_bret__1_i_22/I0
+    SLICE_X68Y599        LUT4 (Prop_F6LUT_SLICEL_I0_O)
+                                                      0.035     4.669 r  u_fma/u_mul/p_q[2]_bret__1_i_22/O
+                         net (fo=3, routed)           0.141     4.810    u_fma/u_mul/p_q[2]_bret__1_i_22_n_0
+    SLICE_X67Y598                                                     r  u_fma/u_mul/p_q[2]_bret__1_i_15/I3
+    SLICE_X67Y598        LUT4 (Prop_C6LUT_SLICEL_I3_O)
+                                                      0.123     4.933 r  u_fma/u_mul/p_q[2]_bret__1_i_15/O
+                         net (fo=1, routed)           0.010     4.943    u_fma/u_mul/p_q[2]_bret__1_i_15_n_0
+    SLICE_X67Y598                                                     r  u_fma/u_mul/p_q_reg[2]_bret__1_i_1/S[2]
+    SLICE_X67Y598        CARRY8 (Prop_CARRY8_SLICEL_S[2]_O[5])
+                                                      0.203     5.146 r  u_fma/u_mul/p_q_reg[2]_bret__1_i_1/O[5]
+                         net (fo=66, routed)          0.177     5.323    u_fma/u_mul/exp[5]
+    SLICE_X66Y598                                                     r  u_fma/u_mul/p_q[2]_bret__2_bret__1_bret_bret_i_1/I0
+    SLICE_X66Y598        LUT5 (Prop_F6LUT_SLICEL_I0_O)
+                                                      0.148     5.471 r  u_fma/u_mul/p_q[2]_bret__2_bret__1_bret_bret_i_1/O
+                         net (fo=23, routed)          0.124     5.595    u_fma/u_mul/p_q_reg[2]_bret__1_i_1_3
+    SLICE_X65Y598                                                     r  u_fma/u_mul/p_q[12]_bret__4_bret_bret__4_i_1/I2
+    SLICE_X65Y598        LUT6 (Prop_H6LUT_SLICEM_I2_O)
+                                                      0.090     5.685 f  u_fma/u_mul/p_q[12]_bret__4_bret_bret__4_i_1/O
+                         net (fo=2, routed)           0.159     5.844    u_fma/u_mul/p_q[32]_bret__1_i_1_0
+    SLICE_X65Y594                                                     f  u_fma/u_mul/p_q[4]_bret__2_bret__0_i_1/I1
+    SLICE_X65Y594        LUT6 (Prop_H6LUT_SLICEM_I1_O)
+                                                      0.125     5.969 r  u_fma/u_mul/p_q[4]_bret__2_bret__0_i_1/O
+                         net (fo=2, routed)           0.065     6.034    u_fma/u_mul_n_1
+    SLICE_X65Y594        FDRE                                         r  u_fma/p_q_reg[4]_bret__2_bret__0/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.021     4.021    
+                         clock pessimism              0.000     4.021    
+                         clock uncertainty           -0.035     3.986    
+    SLICE_X65Y594        FDRE (Setup_HFF_SLICEM_C_D)
+                                                      0.025     4.011    u_fma/p_q_reg[4]_bret__2_bret__0
+  -------------------------------------------------------------------
+                         required time                          4.011    
+                         arrival time                          -6.034    
+  -------------------------------------------------------------------
+                         slack                                 -2.023    
+Slack (VIOLATED) :        -2.021ns  (required time - arrival time)
+  Source:                 gen_in[1].in_q_reg[2][op][1]_fret__7/C
+| CLB LUTs                | 1314 |     0 |          0 |   1303680 |  0.10 |
+| CLB Registers           |  701 |     0 |          0 |   2607360 |  0.03 |
+| CARRY8                  |   22 |     0 |          0 |    162960 |  0.01 |
+| CLB Registers                              |  701 |     0 |          0 |   2607360 |  0.03 |
+| DSPs           |    2 |     0 |          0 |      9024 |  0.02 |
+| CARRY8   |   22 |                 CLB |
+| CLB LUTs                   |    0 |    0 | 1314 |   0.00 |   0.00 |   0.30 |
+| CLB Registers              |    0 |    0 |  701 |   0.00 |   0.00 |   0.08 |
+| CARRY8                     |    0 |    0 |   22 |   0.00 |   0.00 |   0.04 |
+| DSPs                       |    0 |    0 |    2 |   0.00 |   0.00 |   0.07 |
+CABOSSE-END run2 fma_path:InRegs:2:5:1
+CABOSSE-BEGIN run3 mac_loop:AccRegs:1:4:0
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=mac_loop loop_cycles=4 retime=0 wns_ns=0.016
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2
+
+/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.016        0.000                      0                  286        0.051        0.000                      0                  286        1.725        0.000                       0                   247  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.016        0.000                      0                  286        0.051        0.000                      0                  286        1.725        0.000                       0                   247  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Oct  7 12:36:02 2026
+| Host              : ip-172-31-15-4 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : mac_loop
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (MET) :             0.016ns  (required time - arrival time)
+  Source:                 w_q_reg[14]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            p_q_reg[sig][0]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.966ns  (logic 1.618ns (40.800%)  route 2.348ns (59.200%))
+  Logic Levels:           18  (CARRY8=4 LUT4=4 LUT5=5 LUT6=5)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.028ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.028     0.028    
+    SLICE_X173Y620       FDRE                         0.000     0.028 r  w_q_reg[14]/C
+    SLICE_X173Y620       FDRE (Prop_BFF_SLICEL_C_Q)
+                                                      0.079     0.107 r  w_q_reg[14]/Q
+                         net (fo=5, routed)           0.104     0.211    u_mul/p_q_reg[exp][7][14]
+    SLICE_X174Y620                                                    r  u_mul/prod__0_carry__0_i_5/I0
+    SLICE_X174Y620       LUT4 (Prop_D6LUT_SLICEL_I0_O)
+                                                      0.099     0.310 r  u_mul/prod__0_carry__0_i_5/O
+                         net (fo=5, routed)           0.052     0.362    u_mul/prod__0_carry__0_i_5_n_0
+    SLICE_X174Y620                                                    r  u_mul/p_q[is_nan]_i_6/I0
+    SLICE_X174Y620       LUT5 (Prop_F6LUT_SLICEL_I0_O)
+                                                      0.035     0.397 f  u_mul/p_q[is_nan]_i_6/O
+                         net (fo=12, routed)          0.104     0.500    u_mul/w_q_reg[13]
+    SLICE_X174Y619                                                    f  u_mul/prod__0_carry__0_i_2/I5
+    SLICE_X174Y619       LUT6 (Prop_E6LUT_SLICEL_I5_O)
+                                                      0.090     0.590 r  u_mul/prod__0_carry__0_i_2/O
+                         net (fo=1, routed)           0.225     0.815    u_mul/prod__0_carry__0_i_2_n_0
+    SLICE_X172Y619                                                    r  u_mul/prod__0_carry__0/DI[0]
+    SLICE_X172Y619       CARRY8 (Prop_CARRY8_SLICEL_DI[0]_CO[1])
+                                                      0.082     0.897 r  u_mul/prod__0_carry__0/CO[1]
+                         net (fo=2, routed)           0.180     1.078    u_mul/prod__0_carry__0_n_6
+    SLICE_X174Y620                                                    r  u_mul/prod__60_carry_i_18/I2
+    SLICE_X174Y620       LUT4 (Prop_B6LUT_SLICEL_I2_O)
+                                                      0.036     1.114 r  u_mul/prod__60_carry_i_18/O
+                         net (fo=2, routed)           0.283     1.397    u_mul/prod__60_carry_i_18_n_0
+    SLICE_X171Y619                                                    r  u_mul/prod__60_carry_i_6/I2
+    SLICE_X171Y619       LUT5 (Prop_H6LUT_SLICEM_I2_O)
+                                                      0.090     1.487 r  u_mul/prod__60_carry_i_6/O
+                         net (fo=1, routed)           0.015     1.502    u_mul/prod__60_carry_i_6_n_0
+    SLICE_X171Y619                                                    r  u_mul/prod__60_carry/S[7]
+    SLICE_X171Y619       CARRY8 (Prop_CARRY8_SLICEM_S[7]_CO[7])
+                                                      0.117     1.619 r  u_mul/prod__60_carry/CO[7]
+                         net (fo=1, routed)           0.026     1.645    u_mul/prod__60_carry_n_0
+    SLICE_X171Y620                                                    r  u_mul/prod__60_carry__0/CI
+    SLICE_X171Y620       CARRY8 (Prop_CARRY8_SLICEM_CI_O[3])
+                                                      0.082     1.727 f  u_mul/prod__60_carry__0/O[3]
+                         net (fo=16, routed)          0.247     1.974    u_mul/prod[14]
+    SLICE_X171Y620                                                    f  u_mul/exp__0_carry_i_31/I0
+    SLICE_X171Y620       LUT6 (Prop_G6LUT_SLICEM_I0_O)
+                                                      0.150     2.124 f  u_mul/exp__0_carry_i_31/O
+                         net (fo=6, routed)           0.172     2.296    u_mul/exp__0_carry_i_31_n_0
+    SLICE_X169Y621                                                    f  u_mul/exp__0_carry_i_23/I3
+    SLICE_X169Y621       LUT5 (Prop_G6LUT_SLICEL_I3_O)
+                                                      0.123     2.419 f  u_mul/exp__0_carry_i_23/O
+                         net (fo=6, routed)           0.165     2.584    u_mul/exp__0_carry_i_23_n_0
+    SLICE_X169Y619                                                    f  u_mul/p_q[sig][21]_i_3/I4
+    SLICE_X169Y619       LUT5 (Prop_E6LUT_SLICEL_I4_O)
+                                                      0.035     2.619 r  u_mul/p_q[sig][21]_i_3/O
+                         net (fo=33, routed)          0.110     2.729    u_mul/p_q[sig][21]_i_3_n_0
+    SLICE_X170Y619                                                    r  u_mul/exp__0_carry_i_15/I3
+    SLICE_X170Y619       LUT5 (Prop_B6LUT_SLICEL_I3_O)
+                                                      0.051     2.780 r  u_mul/exp__0_carry_i_15/O
+                         net (fo=1, routed)           0.009     2.789    u_mul/exp__0_carry_i_15_n_0
+    SLICE_X170Y619                                                    r  u_mul/exp__0_carry/S[1]
+    SLICE_X170Y619       CARRY8 (Prop_CARRY8_SLICEL_S[1]_O[4])
+                                                      0.200     2.989 f  u_mul/exp__0_carry/O[4]
+                         net (fo=14, routed)          0.282     3.271    u_mul/x_q_reg[14][3]
+    SLICE_X169Y620                                                    f  u_mul/p_q[sig][0]_i_13/I0
+    SLICE_X169Y620       LUT4 (Prop_B6LUT_SLICEL_I0_O)
+                                                      0.036     3.307 r  u_mul/p_q[sig][0]_i_13/O
+                         net (fo=2, routed)           0.099     3.406    u_mul/p_q[sig][0]_i_13_n_0
+    SLICE_X169Y622                                                    r  u_mul/p_q[sig][0]_i_16/I0
+    SLICE_X169Y622       LUT4 (Prop_E6LUT_SLICEL_I0_O)
+                                                      0.035     3.441 r  u_mul/p_q[sig][0]_i_16/O
+                         net (fo=1, routed)           0.100     3.541    u_mul/p_q[sig][0]_i_16_n_0
+    SLICE_X169Y622                                                    r  u_mul/p_q[sig][0]_i_8/I3
+    SLICE_X169Y622       LUT6 (Prop_C6LUT_SLICEL_I3_O)
+                                                      0.146     3.687 r  u_mul/p_q[sig][0]_i_8/O
+                         net (fo=1, routed)           0.085     3.772    u_mul/p_q[sig][0]_i_8_n_0
+    SLICE_X168Y622                                                    r  u_mul/p_q[sig][0]_i_3/I3
+    SLICE_X168Y622       LUT6 (Prop_C6LUT_SLICEL_I3_O)
+                                                      0.096     3.868 r  u_mul/p_q[sig][0]_i_3/O
+                         net (fo=1, routed)           0.041     3.909    u_mul/p_q[sig][0]_i_3_n_0
+    SLICE_X168Y622                                                    r  u_mul/p_q[sig][0]_i_1/I2
+    SLICE_X168Y622       LUT6 (Prop_D6LUT_SLICEL_I2_O)
+                                                      0.036     3.945 r  u_mul/p_q[sig][0]_i_1/O
+                         net (fo=1, routed)           0.049     3.994    p_d[sig][0]
+    SLICE_X168Y622       FDRE                                         r  p_q_reg[sig][0]/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.020     4.020    
+                         clock pessimism              0.000     4.020    
+                         clock uncertainty           -0.035     3.985    
+    SLICE_X168Y622       FDRE (Setup_DFF_SLICEL_C_D)
+                                                      0.025     4.010    p_q_reg[sig][0]
+  -------------------------------------------------------------------
+                         required time                          4.010    
+                         arrival time                          -3.994    
+  -------------------------------------------------------------------
+                         slack                                  0.016    
+Slack (MET) :             0.097ns  (required time - arrival time)
+  Source:                 w_q_reg[14]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            p_q_reg[sig][4]/R
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.786ns  (logic 1.408ns (37.188%)  route 2.378ns (62.812%))
+  Logic Levels:           16  (CARRY8=4 LUT4=2 LUT5=6 LUT6=4)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.028ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+| CLB LUTs                |  642 |     0 |          0 |   1303680 |  0.05 |
+| CLB Registers           |  247 |     0 |          0 |   2607360 | <0.01 |
+| CARRY8                  |   23 |     0 |          0 |    162960 |  0.01 |
+| CLB Registers                              |  247 |     0 |          0 |   2607360 | <0.01 |
+| DSPs      |    0 |     0 |          0 |      9024 |  0.00 |
+| CARRY8   |   23 |                 CLB |
+| CLB LUTs                   |    0 |    0 |  642 |   0.00 |   0.00 |   0.15 |
+| CLB Registers              |    0 |    0 |  247 |   0.00 |   0.00 |   0.03 |
+| CARRY8                     |    0 |    0 |   23 |   0.00 |   0.00 |   0.04 |
+| DSPs                       |    0 |    0 |    0 |   0.00 |   0.00 |   0.00 |
+CABOSSE-END run3 mac_loop:AccRegs:1:4:0
+

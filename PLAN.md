@@ -614,8 +614,17 @@ resource cost comes with the first build.
   check (19 hand mutations of the units, fast tests): 15 caught; the 4 left
   give the same bits (two were redundant logic, now removed). Yosys
   (generic `synth`, flattened): `bf16_mac` 2,513 cells, `fp32_fma` 7,798,
-  `fp_add` (W = 27) 1,509. To do: a Vivado run of `fp32_fma` (owner's OK);
-  then the PR. After it: the cost of subnormal support (D-016, exit
+  `fp_add` (W = 27) 1,509. On F2's part at 250 MHz (2026-10-07, fourth
+  log, `platforms/f2/timing/fma_path.sv`): `fp32_fma` fails, -2.700 ns
+  without retiming (about 149 MHz), -2.023 ns with one more input register
+  and retiming (166 MHz); about 1,310 LUTs and 2 DSPs. The worst path is
+  one cycle of op mux, the 24 x 24 multiply (2 DSPs), normalize and the
+  shift below exponent 1 (6.7 ns, 24 logic levels); retiming cannot split
+  the DSP multiply. The lanes' loop after the refactor still closes 4
+  cycles without retiming, now +0.016 ns (was +0.146 ns); its worst path
+  is still the product, outside the loop (3.97 ns). To do: pipeline
+  `fp32_fma`'s product stage, and a Vivado run of it (owner's OK); then
+  the PR. After it: the cost of subnormal support (D-016, exit
   criterion), against a flush-to-zero variant.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
