@@ -5,13 +5,12 @@
 import numpy as np
 import pytest
 import torch
+from fp_inputs import F32, F32_SPECIAL_BITS, any_finite, families, moderate, special_triples
 from golden import arith, settings
 from oracle import add_ref, fma_ref, mul_ref
-from specials import F32_SPECIAL_BITS
 
 SEED = 20261002
 N_ORACLE = 20_000  # per input family; the Fraction oracle is slow
-F32 = np.float32
 SPECIALS = np.array(F32_SPECIAL_BITS, np.uint32).view(F32)
 
 
@@ -36,78 +35,6 @@ def assert_same_bits(got: torch.Tensor, want: np.ndarray, inputs: tuple, what: s
             f"{what}: {len(bad)}/{len(want)} mismatches (seed {SEED}). First: "
             f"{what}({args}) = {got_bits[i]:#010x}, expected {want_bits[i]:#010x}"
         )
-
-
-# --- input families ----------------------------------------------------------
-
-
-def moderate(rng: np.random.Generator, n: int) -> np.ndarray:
-    """Values around 1 with random signs: the common case."""
-    sign = rng.choice([-1.0, 1.0], n)
-    return F32(sign * rng.uniform(1, 2, n) * 2.0 ** rng.integers(-20, 21, n))
-
-
-def any_finite(rng: np.random.Generator, n: int) -> np.ndarray:
-    """Uniformly random finite bit patterns: extreme magnitudes, subnormals."""
-    x = rng.integers(0, 2**32, n, dtype=np.uint64).astype(np.uint32).view(F32)
-    return np.where(np.isfinite(x), x, F32(1.0))
-
-
-def families(rng: np.random.Generator, n: int) -> dict[str, tuple[np.ndarray, ...]]:
-    """(a, b, c) triples that stress different parts of the rounding."""
-
-    def sign() -> np.ndarray:
-        return rng.choice([-1.0, 1.0], n)
-
-    def mag(lo: int, hi: int) -> np.ndarray:
-        """Random magnitudes in [2**lo, 2**hi)."""
-        return rng.uniform(1, 2, n) * 2.0 ** rng.integers(lo, hi, n)
-
-    a, b, c = moderate(rng, n), moderate(rng, n), moderate(rng, n)
-    fam = {"moderate": (a, b, c), "any_finite": tuple(any_finite(rng, n) for _ in range(3))}
-
-    # Cancellation: c is close to -(a*b), so most leading bits cancel.
-    p = (a.astype(np.float64) * b).astype(F32)
-    k = rng.integers(-3, 4, n)
-    fam["cancellation"] = (a, b, _step_ulps(-p, k))
-
-    # Exact ties: a*b is exactly half an ulp of c (a is a power of two).
-    e = rng.integers(-100, 100, n)
-    c_t = F32(sign() * rng.uniform(1, 2, n) * 2.0**e)
-    i = rng.integers(-10, 11, n)
-    a_t = F32(2.0**i)
-    b_t = F32(sign() * 2.0 ** (e - 24 - i))
-    fam["ties"] = (a_t, b_t, c_t)
-
-    # Near ties: b moved by one of its own ulps, so a*b is just above or below
-    # half an ulp of c.
-    fam["near_ties"] = (a_t, _step_ulps(b_t, rng.choice([-1, 1], n)), c_t)
-
-    # Double-rounding traps: a*b = (1 + 2**-23)(1 - 2**-23) * half-ulp(c)
-    # = half-ulp(c) * (1 - 2**-46). The exact sum is a hair from a tie, closer
-    # than float64 can see, so a plain float64 FMA rounds twice and fails.
-    a_dr = F32((1 + 2.0**-23) * 2.0**i)
-    b_dr = F32(sign() * (1 - 2.0**-23) * 2.0 ** (e - 24 - i))
-    fam["double_rounding"] = (a_dr, b_dr, c_t)
-
-    # Subnormal results and products that underflow FP32.
-    c_tiny = F32(sign() * 2.0 ** rng.integers(-149, -126, n))
-    fam["tiny"] = (F32(mag(-80, -60)), F32(sign() * mag(-80, -60)), c_tiny)
-
-    # Results near the overflow threshold.
-    fam["huge"] = (F32(mag(60, 68)), F32(mag(60, 68)), F32(sign() * 2.0**127))
-    return fam
-
-
-def _step_ulps(x: np.ndarray, k: np.ndarray) -> np.ndarray:
-    """Move each x by k[i] FP32 ulps."""
-    out = np.asarray(x, F32).copy()
-    for direction in (1, -1):
-        for _ in range(int(np.abs(k).max())):
-            m = (np.sign(k) == direction) & (np.abs(k) > 0)
-            out[m] = np.nextafter(out[m], F32(direction * np.inf))
-            k = np.where(m, k - direction, k)
-    return out
 
 
 # --- bf16 / up -----------------------------------------------------------------
@@ -185,7 +112,7 @@ def test_against_oracle(op: str) -> None:
 
 def test_fma_special_values() -> None:
     """All combinations of special inputs; non-finite cases follow IEEE via float64."""
-    a, b, c = (x.ravel() for x in np.meshgrid(SPECIALS, SPECIALS, SPECIALS, indexing="ij"))
+    a, b, c = special_triples().view(F32).T
     got = arith.fma(t32(a), t32(b), t32(c))
     finite = np.isfinite(a) & np.isfinite(b) & np.isfinite(c)
     want = np.empty_like(a)
