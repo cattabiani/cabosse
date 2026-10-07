@@ -33,6 +33,7 @@ module mac_loop
   fp_product #(
     .M(8)
   ) u_mul (
+    .clk_i,
     .a_i({w_q, 16'h0}),
     .b_i({x_q, 16'h0}),
     .p_o(p_d)

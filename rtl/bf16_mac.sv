@@ -27,6 +27,7 @@ module bf16_mac
   fp_product #(
     .M(8)
   ) u_mul (
+    .clk_i,
     .a_i({w_i, 16'h0}),  // up(w)
     .b_i({x_i, 16'h0}),
     .p_o(p_d)
