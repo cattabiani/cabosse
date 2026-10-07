@@ -3,18 +3,19 @@
 # Copyright 2026 The Cabosse Authors
 #
 # User data for one CPU instance (FPGA Developer AMI, no FPGA needed): place
-# and route platforms/f2/timing/acc_loop.sv on F2's part at 250 MHz, with
-# the loop lengths of PIPE_REGS, all at once, and print the slack and the worst
-# paths (M3, D-027). Results go to the serial console between CABOSSE
+# and route the accumulate-loop harnesses of platforms/f2/timing/ on F2's
+# part at 250 MHz, the RUNS below all at once, and print the slack and the
+# worst paths (M3, D-027, D-038). Results go to the serial console between CABOSSE
 # markers, read back with `aws ec2 get-console-output --latest`. The instance
 # powers off (and, launched with shutdown behaviour "terminate", terminates)
 # when done or at the deadline.
 
-REF=m3/acc-loop-timing         # branch of github.com/cattabiani/cabosse
+REF=m3/bf16-mac                # branch of github.com/cattabiani/cabosse
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga, for the part name
 FALLBACK_PART=xcvu47p-fsvh2892-2-e
-PIPE_REGS="3 4 5 7"            # the FMA's registers; the loop adds one
-RETIME=1                       # Vivado register retiming (acc_loop.tcl)
+# top:param:value:loop cycles:retime (timing.tcl). mac_loop is our own unit
+# (D-038), acc_loop CVFPU's FMA (measured on 2026-10-07, reports/data/f2/).
+RUNS="mac_loop:AccRegs:1:4:0 mac_loop:AccRegs:1:4:1 mac_loop:AccRegs:0:3:1 mac_loop:AccRegs:2:5:0"
 DEADLINE_MIN=55                # safety net: power off even if something hangs
 
 shutdown -h +$DEADLINE_MIN
@@ -55,15 +56,17 @@ done_ setup
 section vivado
 date -u +%FT%TZ
 pids=()
-for n in $PIPE_REGS; do
-  mkdir -p /root/run$n
+i=0
+for run in $RUNS; do
+  i=$((i + 1))
+  mkdir -p /root/run$i
   (
-    cd /root/run$n || exit
+    cd /root/run$i || exit
     vivado -mode batch -nojournal -log vivado.log \
-      -source /root/cabosse/platforms/f2/timing/acc_loop.tcl \
-      -tclargs /root/cabosse "$part" "$n" "$RETIME" > vivado.out 2>&1
+      -source /root/cabosse/platforms/f2/timing/timing.tcl \
+      -tclargs /root/cabosse "$part" ${run//:/ } > vivado.out 2>&1
     status=$?
-    echo "run$n exit $status $(date -u +%T)"
+    echo "run$i ($run) exit $status $(date -u +%T)"
     [ $status -eq 0 ] || tail -30 vivado.out
   ) &
   pids+=($!)
@@ -72,15 +75,17 @@ wait "${pids[@]}"  # not a bare wait: it would also wait for the tee above
 date -u +%FT%TZ
 done_ vivado
 
-for n in $PIPE_REGS; do
-  section "loop $((n + 1))"
-  cd /root/run$n || continue
+i=0
+for run in $RUNS; do
+  i=$((i + 1))
+  section "run$i $run"
+  cd /root/run$i || continue
   grep -h "CABOSSE-RESULT" vivado.log
   grep -E "^(ERROR|CRITICAL WARNING)" vivado.log | head -20
   sed -n '/Design Timing Summary/,/^$/p;/WNS(ns)/,+3p' timing_summary.rpt 2>/dev/null | head -12
   cat worst_paths.rpt 2>/dev/null | head -150
   grep -E "^\| (CLB LUTs|CLB Registers|CARRY8|DSPs) " utilization.rpt 2>/dev/null
-  done_ "loop $((n + 1))"
+  done_ "run$i $run"
 done
 
 # The console keeps only its last 64 KiB: replay the log in pieces slow enough

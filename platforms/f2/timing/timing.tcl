@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 # Copyright 2026 The Cabosse Authors
 #
-# Out-of-context synthesis, placement and routing of acc_loop.sv on F2's part
-# at clk_main_a0's 250 MHz (docs/f2.md). Reports go to the current directory.
-# Usage: vivado -mode batch -source acc_loop.tcl -tclargs REPO PART NUM_PIPE_REGS RETIME
-# RETIME 1 lets Vivado move registers across logic (synthesis and physical
-# optimization), to balance the FMA's fixed stages.
+# Out-of-context synthesis, placement and routing of a timing harness in
+# this folder (acc_loop.sv, mac_loop.sv) on F2's part at clk_main_a0's
+# 250 MHz (docs/f2.md). Reports go to the current directory.
+# Usage: vivado -mode batch -source timing.tcl -tclargs REPO PART TOP PARAM VALUE LOOP RETIME
+# PARAM=VALUE is the harness's loop-length parameter, LOOP the loop's cycles
+# (for the report). RETIME 1 lets Vivado move registers across logic
+# (synthesis and physical optimization).
 
-lassign $argv repo part n retime
+lassign $argv repo part top param value loop retime
 set_param general.maxThreads 4
 
 # rtl/sources.f, without its comments; paths are relative to rtl/.
@@ -22,11 +24,11 @@ foreach line [split [read $f] "\n"] {
   }
 }
 close $f
-read_verilog -sv $repo/platforms/f2/timing/acc_loop.sv
-read_xdc -mode out_of_context $repo/platforms/f2/timing/acc_loop.xdc
+foreach harness [glob $repo/platforms/f2/timing/*.sv] {read_verilog -sv $harness}
+read_xdc -mode out_of_context $repo/platforms/f2/timing/timing.xdc
 
-synth_design -top acc_loop -part $part -mode out_of_context \
-  -include_dirs $incdirs -generic NumPipeRegs=$n \
+synth_design -top $top -part $part -mode out_of_context \
+  -include_dirs $incdirs -generic $param=$value \
   -global_retiming [expr {$retime ? "on" : "off"}]
 opt_design
 place_design
@@ -37,4 +39,4 @@ report_timing_summary -no_header -file timing_summary.rpt
 report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
 report_utilization -file utilization.rpt
 set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
-puts "CABOSSE-RESULT loop_cycles=[expr {$n + 1}] retime=$retime wns_ns=$wns"
+puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"

@@ -318,6 +318,17 @@ Softmax's output does not change: a NaN score's own `exp` is NaN, so the sum
 and every `p` are NaN, as before. *Why:* the spec follows a standard
 operation and a tested unit, at no cost to any result the model produces.
 
+**D-038 (2026-10-07) — The lanes' multiply-add is our own BF16 unit.** An
+exact BF16 × BF16 product (an 8 × 8-bit multiply) outside the accumulate
+loop, and inside it only that product plus the FP32 accumulator with one
+rounding: the same bits as `mac` (docs/numerics.md), so no numerics change.
+The vector unit keeps CVFPU (narrows D-033). If the unit does not close a
+4-cycle loop at 250 MHz on F2's part, the fallback is CVFPU in 256 lanes ×
+2 with an 8-cycle loop: the same `A` = 16 and bits, 5-9% fewer tokens/s
+(perf model, estimate). *Why:* CVFPU's FMA needs about 4.5 cycles at
+250 MHz for the loop even with retiming (measured, M3), and spends about
+1,100 LUTs on a general 24 × 24 multiply that BF16 inputs do not need.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
