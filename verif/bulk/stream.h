@@ -30,6 +30,17 @@ concept Block = requires(Top top) {
   top.eval();
 };
 
+// One clock cycle with the inputs already set: settle, collect the output
+// if it is valid, then the rising edge.
+template <Block Top, typename Output>
+void cycle(Top& dut, Output& output, std::vector<uint32_t>& results) {
+  dut.clk_i = 0;
+  dut.eval();
+  if (dut.valid_o) results.push_back(output(dut));
+  dut.clk_i = 1;
+  dut.eval();
+}
+
 inline std::vector<uint32_t> read_words(std::FILE* file) {
   std::vector<uint32_t> words;
   uint32_t buf[4096];
@@ -58,28 +69,19 @@ int stream(int argc, char** argv, size_t fields, SetInputs set_inputs, Output ou
   std::vector<uint32_t> results;
   results.reserve(n);
 
-  // One clock cycle with the inputs already set: settle, collect, rising edge.
-  auto cycle = [&] {
-    dut->clk_i = 0;
-    dut->eval();
-    if (dut->valid_o) results.push_back(output(*dut));
-    dut->clk_i = 1;
-    dut->eval();
-  };
-
   dut->rst_ni = 0;
   dut->valid_i = 0;
-  for (int i = 0; i < kResetCycles; ++i) cycle();
+  for (int i = 0; i < kResetCycles; ++i) cycle(*dut, output, results);
   results.clear();
   dut->rst_ni = 1;
 
   dut->valid_i = 1;
   for (Record record : std::views::chunk(std::span(words), fields)) {
     set_inputs(*dut, record);
-    cycle();
+    cycle(*dut, output, results);
   }
   dut->valid_i = 0;
-  for (int i = 0; i < kDrainCycles && results.size() < n; ++i) cycle();
+  for (int i = 0; i < kDrainCycles && results.size() < n; ++i) cycle(*dut, output, results);
 
   if (results.size() != n) {
     std::println(stderr, "got {} results for {} records", results.size(), n);
