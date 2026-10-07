@@ -4,8 +4,9 @@
 // Timing harness for our own BF16 multiply-add's accumulate loop (D-038):
 // acc = fp_add(fp_product(up(w), up(x)), acc). fp_add has 3 registers and AccRegs
 // more close the loop, so it has 3 + AccRegs cycles (4 for D-027). The
-// product is registered outside the loop, and so are the inputs and the
-// output, so every path is register to register. Not part of the design: M4
+// product has one register inside (as bf16_mac's default) and one after, all
+// outside the loop; the inputs and the output are registered too, so every
+// path is register to register. Not part of the design: M4
 // builds the lane.
 
 module mac_loop
@@ -31,7 +32,8 @@ module mac_loop
 
   operand_t p_d, p_q;
   fp_product #(
-    .M(8)
+    .M   (8),
+    .Regs(1)
   ) u_mul (
     .clk_i,
     .a_i({w_q, 16'h0}),
