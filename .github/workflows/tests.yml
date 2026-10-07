@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Lint and test the Python golden model on every push and pull request, on
-# x86 Linux, ARM Linux, and ARM macOS (different SIMD code paths in torch).
-# The exhaustive tests (minutes) run on pushes to main and on demand.
+# x86 Linux, ARM Linux, and ARM macOS (different SIMD code paths in torch),
+# and the RTL (lint, synthesis, simulation) on x86 Linux. The exhaustive
+# tests (minutes) run on pushes to main and on demand; the RTL's run locally.
 name: tests
 
 on:
@@ -27,6 +28,21 @@ jobs:
       - run: ruff format --check .
       - run: ruff check .
       - run: pytest
+
+  rtl:
+    runs-on: ubuntu-24.04
+    env:
+      CABOSSE_REQUIRE_RTL: "1"  # a missing tool fails instead of skipping
+      CXX: g++-14  # the bulk drivers' <print> needs GCC 14 (verif/bulk.py)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: scripts/get_rtl_tools.sh
+      - run: pip install -r requirements.txt
+      - run: pytest verif
 
   exhaustive:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
