@@ -578,6 +578,16 @@ resource cost comes with the first build.
   estimates) for the owner: our own BF16 unit for a 4-cycle loop; CVFPU in
   256 lanes x 2 with an 8-cycle loop, the same `A` = 16 and bits, 5-9%
   fewer tokens/s; a 200 MHz core, 20% fewer.
+- [x] Our own BF16 multiply-add (D-038): `rtl/bf16_mul.sv` (the exact
+  product, outside the loop) and `rtl/mac_add.sv` (product + accumulator,
+  one rounding, 3 stages). Bit-exact against `mac_f32` on every BF16 pair,
+  every special-value combination, and cancelling, scaled and range-edge
+  accumulators (`slow`, 2 minutes). On F2's part at 250 MHz (third log,
+  `platforms/f2/timing/mac_loop.sv`): the 4-cycle loop closes with +0.146 ns
+  without retiming, a 3-cycle loop with +0.057 ns (retiming); the worst
+  path is the product, outside the loop. About 625 LUTs, 247 registers and
+  no DSPs per unit (CVFPU's FMA: about 1,100 LUTs and 2 DSPs). The
+  accumulate-loop exit criterion is met with `A` = 16 unchanged.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op
