@@ -44,11 +44,9 @@ def check(op: str, abc: np.ndarray, seed: int | str, params: tuple = (), golden=
     op_i, default = OPS[op]
     golden = golden or default
     records = np.concatenate([np.full((len(abc), 1), op_i, dtype=np.uint32), abc], axis=1)
-    got = bulk.run("fp32_fma", records, params)
     x, y, z = torch.from_numpy(abc.view(np.float32)).unbind(1)
     want = arith.bits_f32(golden(x, y, z)).numpy().astype(np.uint32)
-    report = bulk.mismatches(got, want, records)
-    assert not report, f"{op}, seed {seed}: {report}"
+    bulk.check("fp32_fma", records, want, f"{op}, seed {seed}", params)
 
 
 @rtl.needs_verilator
@@ -97,7 +95,7 @@ def test_random_slow(op: str) -> None:
     """10⁸ inputs in chunks of about 10⁶, each with its own seed (printed on
     failure), bulk.WORKERS at a time."""
     per_chunk = len(batch(np.random.default_rng(0), N_FAMILY_SLOW, N_RANDOM_SLOW))
-    seeds = [SEED + 1 + k for k in range(-(-N_SLOW // per_chunk))]
+    seeds = bulk.chunk_seeds(SEED, N_SLOW, per_chunk)
 
     def one(seed: int) -> None:
         check(op, batch(np.random.default_rng(seed), N_FAMILY_SLOW, N_RANDOM_SLOW), seed)

@@ -67,6 +67,14 @@ def run(top: str, records: np.ndarray, params: tuple[tuple[str, int], ...] = ())
     return np.concatenate(out) if out else np.empty(0, dtype="<u4")
 
 
+def check(top: str, records: np.ndarray, want: np.ndarray, label: str, params: tuple = ()) -> None:
+    """Assert that `records` through `top` give `want` (uint32), bit for bit;
+    the failure names `label` (say, the seed) and the first rows that differ."""
+    got = run(top, records, params)
+    report = mismatches(got, want, records)
+    assert not report, f"{label}: {report}"
+
+
 def mismatches(got: np.ndarray, want: np.ndarray, inputs: np.ndarray, limit: int = 10) -> str:
     """The first `limit` rows where got and want differ, in hex, or ''."""
     bad = np.flatnonzero(got != want)
@@ -82,3 +90,9 @@ def in_parallel[T](fn: Callable[[T], None], items: Iterable[T]) -> None:
     re-raises the first failure."""
     with ThreadPoolExecutor(WORKERS) as pool:
         list(pool.map(fn, items))
+
+
+def chunk_seeds(seed: int, n_total: int, per_chunk: int) -> list[int]:
+    """One seed per chunk of `per_chunk` records, enough chunks for `n_total`:
+    seed + 1, seed + 2, ..."""
+    return [seed + 1 + k for k in range(-(-n_total // per_chunk))]

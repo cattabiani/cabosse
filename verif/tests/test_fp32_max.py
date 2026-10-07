@@ -40,11 +40,9 @@ def batch(rng: np.random.Generator, n_near: int, n_random: int) -> np.ndarray:
 
 
 def check(ab: np.ndarray, seed: int | str, params: tuple = ()) -> None:
-    got = bulk.run("fp32_max", ab, params)
     a, b = torch.from_numpy(ab.view(np.float32)).unbind(1)
     want = arith.bits_f32(arith.maximum(a, b)).numpy().astype(np.uint32)
-    report = bulk.mismatches(got, want, ab)
-    assert not report, f"seed {seed}: {report}"
+    bulk.check("fp32_max", ab, want, f"seed {seed}", params)
 
 
 @rtl.needs_verilator
@@ -54,8 +52,9 @@ def test_specials(pipeline: str) -> None:
 
 
 @rtl.needs_verilator
-def test_random() -> None:
-    check(batch(np.random.default_rng(SEED), N_NEAR, N_RANDOM), SEED)
+@pytest.mark.parametrize("pipeline", PIPELINES)
+def test_random(pipeline: str) -> None:
+    check(batch(np.random.default_rng(SEED), N_NEAR, N_RANDOM), SEED, PIPELINES[pipeline])
 
 
 @pytest.mark.slow
@@ -63,8 +62,7 @@ def test_random() -> None:
 def test_random_slow() -> None:
     """10⁸ inputs in chunks of 10⁶, each with its own seed (printed on
     failure), bulk.WORKERS at a time."""
-    per_chunk = N_NEAR_SLOW + N_RANDOM_SLOW
-    seeds = [SEED + 1 + k for k in range(-(-N_SLOW // per_chunk))]
+    seeds = bulk.chunk_seeds(SEED, N_SLOW, N_NEAR_SLOW + N_RANDOM_SLOW)
     bulk.in_parallel(
         lambda seed: check(batch(np.random.default_rng(seed), N_NEAR_SLOW, N_RANDOM_SLOW), seed),
         seeds,
