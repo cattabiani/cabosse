@@ -12,7 +12,7 @@ import bulk
 import numpy as np
 import pytest
 import torch
-from fp_inputs import families, random_bits, special_triples
+from fp_inputs import all_bf16_widened, families, random_bits, special_triples
 from golden import arith
 
 import rtl
@@ -28,6 +28,7 @@ N_FAMILY, N_RANDOM = 20_000, 100_000  # per rounding family, random bits: fast r
 N_FAMILY_SLOW, N_RANDOM_SLOW = 100_000, 200_000  # per chunk of the slow run
 N_SLOW = 10**8  # per operation, slow run
 WORKERS = 8  # slow-run chunks checked at once (each a driver process)
+W_PER_CHUNK = 16  # exhaustive BF16 run: 16 values of w against all 2^16 x
 PIPELINES = {"comb": (), "pipe3": (("NumPipeRegs", 3),)}  # the same bits either way
 
 
@@ -40,8 +41,11 @@ def batch(rng: np.random.Generator, n_family: int, n_random: int) -> np.ndarray:
     return np.concatenate(abc)
 
 
-def check(op: str, abc: np.ndarray, seed: int | str, params: tuple = ()) -> None:
-    op_i, golden = OPS[op]
+def check(op: str, abc: np.ndarray, seed: int | str, params: tuple = (), golden=None) -> None:
+    """Run (a, b, c) rows through the block as `op`, against OPS[op]'s golden
+    function, or `golden` (a, b, c -> result) when given."""
+    op_i, default = OPS[op]
+    golden = golden or default
     records = np.concatenate([np.full((len(abc), 1), op_i, dtype=np.uint32), abc], axis=1)
     got = bulk.run("fp32_fma", records, params)
     x, y, z = torch.from_numpy(abc.view(np.float32)).unbind(1)
@@ -65,6 +69,36 @@ def test_random(op: str) -> None:
     check(op, batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM), SEED)
 
 
+def in_parallel(fn, items) -> None:
+    """fn(item) for every item, WORKERS at a time (each runs a driver process)."""
+    with ThreadPoolExecutor(WORKERS) as pool:
+        list(pool.map(fn, items))
+
+
+@pytest.mark.slow
+@rtl.needs_verilator
+@pytest.mark.parametrize("op", ["mul", "fma"])
+def test_bf16_products_exhaustive(op: str) -> None:
+    """Every pair of BF16 inputs, 2^32, widened as the lane widens them
+    (rtl/bf16_to_fp32.sv equals golden.arith.up on every input): up(w) * up(x)
+    (mul), and up(w) * up(x) + acc (fma) with a random FP32 acc per pair,
+    checked against golden.arith.mac_f32, the lane's own function. A BF16
+    product is exact in FP32 unless it underflows or overflows, so those
+    products are where this can fail."""
+    up = all_bf16_widened()
+    x = np.tile(up, W_PER_CHUNK)
+    n = len(x)
+    golden = arith.mac_f32 if op == "fma" else None
+
+    def one(chunk: int) -> None:
+        seed = SEED + chunk
+        w = np.repeat(up[chunk * W_PER_CHUNK : (chunk + 1) * W_PER_CHUNK], 2**16)
+        acc = random_bits(np.random.default_rng(seed), n) if op == "fma" else np.zeros(n, np.uint32)
+        check(op, np.stack([w, x, acc], axis=1), f"w chunk {chunk}, seed {seed}", golden=golden)
+
+    in_parallel(one, range(2**16 // W_PER_CHUNK))
+
+
 @pytest.mark.slow
 @rtl.needs_verilator
 @pytest.mark.parametrize("op", OPS)
@@ -77,5 +111,4 @@ def test_random_slow(op: str) -> None:
     def one(seed: int) -> None:
         check(op, batch(np.random.default_rng(seed), N_FAMILY_SLOW, N_RANDOM_SLOW), seed)
 
-    with ThreadPoolExecutor(WORKERS) as pool:
-        list(pool.map(one, seeds))
+    in_parallel(one, seeds)

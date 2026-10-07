@@ -539,9 +539,12 @@ resource cost comes with the first build.
   are bit-exact against the golden model on 10⁸ inputs each (the golden
   tests' rounding families plus random bits, seeded per chunk of 10⁶;
   `slow`, about 4 s per operation), and on every triple of the special
-  values, also with a 3-register pipeline. The exhaustive BF16 run (2³²
-  inputs) has to generate and check chunk by chunk: the whole input would
-  be 64 GiB.
+  values, also with a 3-register pipeline.
+- [x] The lane's arithmetic on every BF16 pair: all 2³² products and all
+  2³² multiply-adds (a random accumulator per pair, against `mac_f32`) are
+  bit-exact (`slow`, about 4.5 minutes). The lane is `bf16_to_fp32` into
+  `fp32_fma`, each now checked over its whole input domain; M4 checks the
+  wiring.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op
