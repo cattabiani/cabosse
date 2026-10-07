@@ -28,6 +28,7 @@ N_FAMILY, N_RANDOM = 20_000, 100_000  # per rounding family, random bits: fast r
 N_FAMILY_SLOW, N_RANDOM_SLOW = 100_000, 200_000  # per chunk of the slow run
 N_SLOW = 10**8  # per operation, slow run
 WORKERS = 8  # slow-run chunks checked at once (each a driver process)
+W_PER_CHUNK = 16  # exhaustive BF16 run: 16 values of w against all 2^16 x
 PIPELINES = {"comb": (), "pipe3": (("NumPipeRegs", 3),)}  # the same bits either way
 
 
@@ -63,6 +64,35 @@ def test_specials(op: str, pipeline: str) -> None:
 @pytest.mark.parametrize("op", OPS)
 def test_random(op: str) -> None:
     check(op, batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM), SEED)
+
+
+def widened_bf16() -> np.ndarray:
+    """up(v) for every BF16 bit pattern v, as FP32 bits (golden.arith.up:
+    exact, NaN made canonical; rtl/bf16_to_fp32.sv matches it exhaustively)."""
+    v = arith.bf16_from_bits(torch.arange(2**16, dtype=torch.int64))
+    return arith.bits_f32(arith.up(v)).numpy().astype(np.uint32)
+
+
+@pytest.mark.slow
+@rtl.needs_verilator
+@pytest.mark.parametrize("op", ["mul", "fma"])
+def test_bf16_products_exhaustive(op: str) -> None:
+    """Every pair of BF16 inputs, 2^32, widened as the lane widens them:
+    up(w) * up(x) (mul), and up(w) * up(x) + acc (fma, the lane's mac) with a
+    random FP32 acc per pair. A BF16 product is exact in FP32 unless it
+    underflows, so the subnormal products are where this can fail."""
+    up = widened_bf16()
+    x = np.tile(up, W_PER_CHUNK)
+
+    def one(chunk: int) -> None:
+        w = np.repeat(up[chunk * W_PER_CHUNK : (chunk + 1) * W_PER_CHUNK], 2**16)
+        acc = random_bits(np.random.default_rng(SEED + chunk), len(w))
+        if op == "mul":
+            acc[:] = 0  # unused by mul
+        check(op, np.stack([w, x, acc], axis=1), f"w chunk {chunk}")
+
+    with ThreadPoolExecutor(WORKERS) as pool:
+        list(pool.map(one, range(2**16 // W_PER_CHUNK)))
 
 
 @pytest.mark.slow
