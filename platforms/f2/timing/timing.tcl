@@ -2,11 +2,11 @@
 # Copyright 2026 The Cabosse Authors
 #
 # Out-of-context synthesis, placement and routing of a timing harness in
-# this folder (mac_loop.sv) on F2's part at clk_main_a0's
+# this folder (mac_loop.sv, fma_path.sv) on F2's part at clk_main_a0's
 # 250 MHz (docs/f2.md). Reports go to the current directory.
 # Usage: vivado -mode batch -source timing.tcl -tclargs REPO PART TOP PARAM VALUE LOOP RETIME
-# PARAM=VALUE is the harness's loop-length parameter, LOOP the loop's cycles
-# (for the report). RETIME 1 lets Vivado move registers across logic
+# PARAM=VALUE is the harness's length parameter, LOOP the loop's (or the
+# path's) cycles, for the report. RETIME 1 lets Vivado move registers across logic
 # (synthesis and physical optimization).
 
 lassign $argv repo part top param value loop retime
