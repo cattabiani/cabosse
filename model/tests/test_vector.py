@@ -59,7 +59,7 @@ def extreme(rng: np.random.Generator, shape: tuple[int, ...]) -> np.ndarray:
 
 def spec_max(a: np.float32, b: np.float32) -> np.float32:
     if np.isnan(a) or np.isnan(b):
-        return F32(np.nan)
+        return b if np.isnan(a) else a  # maximumNumber (D-037)
     if a == 0 and b == 0:
         return F32(-0.0) if np.signbit(a) and np.signbit(b) else F32(0.0)
     return a if a > b else b
@@ -114,8 +114,10 @@ def test_maximum_signed_zeros_and_nan() -> None:
     assert bits_of(arith.maximum(t32([-0.0]), t32([0.0]))) == [0]
     assert bits_of(arith.maximum(t32([0.0]), t32([-0.0]))) == [0]
     assert bits_of(arith.maximum(t32([-0.0]), t32([-0.0]))) == [0x80000000]
-    assert bits_of(arith.maximum(neg_nan, t32([1.0]))) == [NAN_BITS]
-    assert bits_of(arith.maximum(t32([1.0]), neg_nan)) == [NAN_BITS]
+    assert bits_of(arith.maximum(neg_nan, t32([-1.0]))) == [0xBF800000]
+    assert bits_of(arith.maximum(t32([-1.0]), neg_nan)) == [0xBF800000]
+    assert bits_of(arith.maximum(neg_nan, t32([-np.inf]))) == [0xFF800000]
+    assert arith.bits_f32(arith.maximum(neg_nan, neg_nan)).tolist() == [NAN_BITS]
 
 
 @pytest.mark.parametrize("family", ["moderate", "extreme"])
@@ -134,7 +136,8 @@ def test_reduce_max_signed_zeros_and_single_nan() -> None:
     assert bits_of(vector.reduce_max(t32([-0.0, 0.0, -0.0]))) == [0]
     assert bits_of(vector.reduce_max(t32([-0.0, -0.0]))) == [0x80000000]
     neg_nan = arith.f32_from_bits(torch.tensor([0xFFFFFFFF]))
-    assert bits_of(vector.reduce_max(neg_nan)) == [NAN_BITS]  # n = 1: still canonical
+    assert arith.bits_f32(vector.reduce_max(neg_nan)).item() == NAN_BITS  # n = 1: canonical
+    assert bits_of(vector.reduce_max(t32([np.nan, -2.0, np.nan, -3.0]))) == [0xC0000000]
 
 
 # --- sums -------------------------------------------------------------------------
@@ -303,7 +306,9 @@ def test_softmax_non_finite_scores() -> None:
     assert bits_of(p) == bits_of(spec_softmax(F32([-np.inf, 1.0, 0.0]), vector.REDUCE_WIDTH))
     assert p[0].item() == 0.0 and torch.isfinite(p).all()
     s = t32([[1.0, np.inf, 0.0], [1.0, np.nan, 0.0], [-np.inf, -np.inf, -np.inf]])
-    assert torch.isnan(vector.softmax(s)).all()
+    s = torch.cat([s, t32([[np.nan, -np.inf, np.inf], [np.nan, np.nan, np.nan]])])
+    p = arith.bits_f32(vector.softmax(s))
+    assert (p == NAN_BITS).all(), p  # max skips a NaN score; its exp is NaN anyway (D-037)
 
 
 # --- flush to zero ----------------------------------------------------------------

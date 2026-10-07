@@ -142,15 +142,17 @@ def fma(a: torch.Tensor, b: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
 
 
 def maximum(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    """FP32 max(a, b): exact. max(-0, +0) = +0, and NaN if a or b is NaN.
+    """FP32 max(a, b): exact, IEEE 754-2019 maximumNumber (D-037). max(-0, +0)
+    = +0; a NaN operand gives the other operand, two NaNs give NaN.
 
-    torch.maximum is not used: it returns -0 for maximum(-0, +0).
+    torch.maximum is not used: it returns -0 for maximum(-0, +0), and NaN for
+    one NaN operand.
     """
     assert a.dtype == b.dtype == torch.float32, (a.dtype, b.dtype)
     a, b = apply_ftz(a), apply_ftz(b)
-    y = torch.where(a > b, a, b)
+    y = torch.where(a > b, a, b)  # false for a NaN operand: gives b
     y = torch.where((a == 0) & (b == 0) & ~torch.signbit(a), a, y)  # +0 wins over -0
-    y = torch.where(torch.isnan(a), a, y)  # a > b is false for NaN: pass it on
+    y = torch.where(torch.isnan(b), a, y)  # b is NaN: a (NaN only if a is too)
     return _finish_f32(y)
 
 
