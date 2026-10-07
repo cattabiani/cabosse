@@ -5,6 +5,7 @@ tests (verif/tests): special values as bit patterns, and random families
 that stress rounding."""
 
 import numpy as np
+import torch
 from golden import arith
 
 F32 = np.float32
@@ -31,6 +32,13 @@ def special_triples() -> np.ndarray:
     """Every (a, b, c) triple of the special values, as uint32 rows."""
     s = np.array(F32_SPECIAL_BITS, dtype=np.uint32)
     return np.stack([x.ravel() for x in np.meshgrid(s, s, s, indexing="ij")], axis=1)
+
+
+def all_bf16_widened() -> np.ndarray:
+    """golden.arith.up of every BF16 bit pattern, as FP32 bits (index = the
+    BF16 bits)."""
+    v = arith.bf16_from_bits(torch.arange(2**16, dtype=torch.int64))
+    return arith.bits_f32(arith.up(v)).numpy().astype(np.uint32)
 
 
 def random_bits(rng: np.random.Generator, shape) -> np.ndarray:

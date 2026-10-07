@@ -12,7 +12,7 @@ import bulk
 import numpy as np
 import pytest
 import torch
-from fp_inputs import families, random_bits, special_triples
+from fp_inputs import all_bf16_widened, families, random_bits, special_triples
 from golden import arith
 
 import rtl
@@ -41,8 +41,11 @@ def batch(rng: np.random.Generator, n_family: int, n_random: int) -> np.ndarray:
     return np.concatenate(abc)
 
 
-def check(op: str, abc: np.ndarray, seed: int | str, params: tuple = ()) -> None:
-    op_i, golden = OPS[op]
+def check(op: str, abc: np.ndarray, seed: int | str, params: tuple = (), golden=None) -> None:
+    """Run (a, b, c) rows through the block as `op`, against OPS[op]'s golden
+    function, or `golden` (a, b, c -> result) when given."""
+    op_i, default = OPS[op]
+    golden = golden or default
     records = np.concatenate([np.full((len(abc), 1), op_i, dtype=np.uint32), abc], axis=1)
     got = bulk.run("fp32_fma", records, params)
     x, y, z = torch.from_numpy(abc.view(np.float32)).unbind(1)
@@ -66,33 +69,34 @@ def test_random(op: str) -> None:
     check(op, batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM), SEED)
 
 
-def widened_bf16() -> np.ndarray:
-    """up(v) for every BF16 bit pattern v, as FP32 bits (golden.arith.up:
-    exact, NaN made canonical; rtl/bf16_to_fp32.sv matches it exhaustively)."""
-    v = arith.bf16_from_bits(torch.arange(2**16, dtype=torch.int64))
-    return arith.bits_f32(arith.up(v)).numpy().astype(np.uint32)
+def in_parallel(fn, items) -> None:
+    """fn(item) for every item, WORKERS at a time (each runs a driver process)."""
+    with ThreadPoolExecutor(WORKERS) as pool:
+        list(pool.map(fn, items))
 
 
 @pytest.mark.slow
 @rtl.needs_verilator
 @pytest.mark.parametrize("op", ["mul", "fma"])
 def test_bf16_products_exhaustive(op: str) -> None:
-    """Every pair of BF16 inputs, 2^32, widened as the lane widens them:
-    up(w) * up(x) (mul), and up(w) * up(x) + acc (fma, the lane's mac) with a
-    random FP32 acc per pair. A BF16 product is exact in FP32 unless it
-    underflows or overflows, so those products are where this can fail."""
-    up = widened_bf16()
+    """Every pair of BF16 inputs, 2^32, widened as the lane widens them
+    (rtl/bf16_to_fp32.sv equals golden.arith.up on every input): up(w) * up(x)
+    (mul), and up(w) * up(x) + acc (fma) with a random FP32 acc per pair,
+    checked against golden.arith.mac_f32, the lane's own function. A BF16
+    product is exact in FP32 unless it underflows or overflows, so those
+    products are where this can fail."""
+    up = all_bf16_widened()
     x = np.tile(up, W_PER_CHUNK)
+    n = len(x)
+    golden = arith.mac_f32 if op == "fma" else None
 
     def one(chunk: int) -> None:
+        seed = SEED + chunk
         w = np.repeat(up[chunk * W_PER_CHUNK : (chunk + 1) * W_PER_CHUNK], 2**16)
-        acc = random_bits(np.random.default_rng(SEED + chunk), len(w))
-        if op == "mul":
-            acc[:] = 0  # unused by mul
-        check(op, np.stack([w, x, acc], axis=1), f"w chunk {chunk}")
+        acc = random_bits(np.random.default_rng(seed), n) if op == "fma" else np.zeros(n, np.uint32)
+        check(op, np.stack([w, x, acc], axis=1), f"w chunk {chunk}, seed {seed}", golden=golden)
 
-    with ThreadPoolExecutor(WORKERS) as pool:
-        list(pool.map(one, range(2**16 // W_PER_CHUNK)))
+    in_parallel(one, range(2**16 // W_PER_CHUNK))
 
 
 @pytest.mark.slow
@@ -107,5 +111,4 @@ def test_random_slow(op: str) -> None:
     def one(seed: int) -> None:
         check(op, batch(np.random.default_rng(seed), N_FAMILY_SLOW, N_RANDOM_SLOW), seed)
 
-    with ThreadPoolExecutor(WORKERS) as pool:
-        list(pool.map(one, seeds))
+    in_parallel(one, seeds)
