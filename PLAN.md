@@ -531,17 +531,17 @@ resource cost comes with the first build.
   and 3,000 random inputs per operation. The BF16 lane needs no
   multi-format unit: BF16 inputs widen to FP32 exactly, and a BF16 × BF16
   product is exact in FP32.
-- [x] Bulk harness (`verif/bulk.py`, a C++ driver per block in
-  `verif/bulk/`): Python makes inputs and expected bits with the golden
-  model, Verilator streams them one per cycle, Python compares whole arrays.
-  About 6.7 million FMA inputs per second (measured), against about 0.2
-  million through cocotb. FMA, add and mul bit-exact against the golden
-  model on 10⁸ inputs each (the golden tests' rounding families plus random
-  bits, seeded per chunk of 10⁶; `slow`, about 20 s per operation), on every
-  triple of the special values, and with a 3-register pipeline. Verilator's
-  UNOPTFLAT warning (combinational loops in fpnew_fma and lzc, waived in
-  `rtl/vendor/lint.vlt`) costs simulation speed; not worth pursuing at this
-  rate.
+- [x] Bulk harness (`verif/bulk.py`; drivers in `verif/bulk/` share
+  `stream.h`): Python makes inputs and expected bits with the golden model,
+  Verilator streams them one per cycle, Python compares whole arrays. One
+  driver runs about 7 million FMA inputs per second (measured; cocotb about
+  0.2 million), and the slow run checks 8 chunks at a time. FMA, add and mul
+  are bit-exact against the golden model on 10⁸ inputs each (the golden
+  tests' rounding families plus random bits, seeded per chunk of 10⁶;
+  `slow`, about 4 s per operation), and on every triple of the special
+  values, also with a 3-register pipeline. The exhaustive BF16 run (2³²
+  inputs) has to generate and check chunk by chunk: the whole input would
+  be 64 GiB.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op

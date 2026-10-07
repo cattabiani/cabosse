@@ -27,6 +27,17 @@ F32_SPECIAL_BITS = [
 ] + [arith.NAN_F32_BITS, 0x7F80_0001]  # canonical NaN, a signalling NaN
 
 
+def special_triples() -> np.ndarray:
+    """Every (a, b, c) triple of the special values, as uint32 rows."""
+    s = np.array(F32_SPECIAL_BITS, dtype=np.uint32)
+    return np.stack([x.ravel() for x in np.meshgrid(s, s, s, indexing="ij")], axis=1)
+
+
+def random_bits(rng: np.random.Generator, shape) -> np.ndarray:
+    """Uniformly random 32-bit patterns."""
+    return rng.integers(0, 2**32, shape, dtype=np.uint32)
+
+
 def moderate(rng: np.random.Generator, n: int) -> np.ndarray:
     """Values around 1 with random signs: the common case."""
     sign = rng.choice([-1.0, 1.0], n)
@@ -35,7 +46,7 @@ def moderate(rng: np.random.Generator, n: int) -> np.ndarray:
 
 def any_finite(rng: np.random.Generator, n: int) -> np.ndarray:
     """Uniformly random finite bit patterns: extreme magnitudes, subnormals."""
-    x = rng.integers(0, 2**32, n, dtype=np.uint64).astype(np.uint32).view(F32)
+    x = random_bits(rng, n).view(F32)
     return np.where(np.isfinite(x), x, F32(1.0))
 
 

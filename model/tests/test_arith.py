@@ -5,13 +5,12 @@
 import numpy as np
 import pytest
 import torch
-from fp_inputs import F32_SPECIAL_BITS, any_finite, families, moderate
+from fp_inputs import F32, F32_SPECIAL_BITS, any_finite, families, moderate, special_triples
 from golden import arith, settings
 from oracle import add_ref, fma_ref, mul_ref
 
 SEED = 20261002
 N_ORACLE = 20_000  # per input family; the Fraction oracle is slow
-F32 = np.float32
 SPECIALS = np.array(F32_SPECIAL_BITS, np.uint32).view(F32)
 
 
@@ -36,9 +35,6 @@ def assert_same_bits(got: torch.Tensor, want: np.ndarray, inputs: tuple, what: s
             f"{what}: {len(bad)}/{len(want)} mismatches (seed {SEED}). First: "
             f"{what}({args}) = {got_bits[i]:#010x}, expected {want_bits[i]:#010x}"
         )
-
-
-# --- input families ----------------------------------------------------------
 
 
 # --- bf16 / up -----------------------------------------------------------------
@@ -116,7 +112,7 @@ def test_against_oracle(op: str) -> None:
 
 def test_fma_special_values() -> None:
     """All combinations of special inputs; non-finite cases follow IEEE via float64."""
-    a, b, c = (x.ravel() for x in np.meshgrid(SPECIALS, SPECIALS, SPECIALS, indexing="ij"))
+    a, b, c = special_triples().view(F32).T
     got = arith.fma(t32(a), t32(b), t32(c))
     finite = np.isfinite(a) & np.isfinite(b) & np.isfinite(c)
     want = np.empty_like(a)

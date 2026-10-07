@@ -1,10 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""High-volume RTL tests (PLAN.md, M3): a block runs under Verilator's own
-loop, driven by a small C++ program (verif/bulk/<top>.cpp) that streams
-records from stdin, one per clock cycle, and writes the results to stdout.
-Python makes the inputs and the expected bits with the golden model and
-compares whole arrays, so nothing returns to Python per input.
+"""High-volume numerics tests (PLAN.md, M3): a block runs under Verilator's
+own loop, so nothing returns to Python per input. Python makes the inputs and
+the expected bits with the golden model and compares whole arrays.
+
+Protocol: a driver (verif/bulk/<top>.cpp, built on verif/bulk/stream.h) reads
+records of little-endian uint32 from stdin, streams one per clock cycle into
+the block, and writes one uint32 result per record to stdout, in order,
+collected by valid_o. A record's fields are the order the driver documents.
+
+For blocks with clk_i, rst_ni, valid_i, valid_o, fields of at most 32 bits
+and no backpressure. Handshakes and wide or AXI ports belong in cocotb.
 """
 
 import functools
@@ -26,7 +32,8 @@ def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
     build_dir = rtl.BUILD / ("_".join(["bulk", top, *(f"{k}{v}" for k, v in params)]))
     argv = [
         "verilator", "--cc", "--exe", "--build", "-j", "0", "-O3",
-        "-CFLAGS", "-O2", "--top-module", top, "-Mdir", str(build_dir), "-o", "bulk",
+        "--x-assign", "fast", "--x-initial", "fast", "-CFLAGS", f"-O3 -I{DRIVERS}",
+        "--top-module", top, "-Mdir", str(build_dir), "-o", "bulk",
         *(f"-G{k}={v}" for k, v in params),
         *rtl.VERILATOR_FILES, str(DRIVERS / f"{top}.cpp"),
     ]  # fmt: skip
@@ -43,7 +50,7 @@ def run(top: str, records: np.ndarray, params: tuple[tuple[str, int], ...] = ())
     out = []
     for start in range(0, len(records), CHUNK):
         chunk = records[start : start + CHUNK]
-        result = subprocess.run([str(binary)], input=chunk.tobytes(), capture_output=True)
+        result = subprocess.run([str(binary)], input=memoryview(chunk), capture_output=True)
         assert result.returncode == 0, result.stderr.decode()
         out.append(np.frombuffer(result.stdout, dtype="<u4"))
     return np.concatenate(out) if out else np.empty(0, dtype="<u4")
