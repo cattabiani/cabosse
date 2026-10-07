@@ -44,11 +44,12 @@ one is wrong, say so and explain why, and let the owner decide.
 
 ## Hard rules
 
-1. **Commit freely; never push without the owner's explicit OK.** Local
-   commits are fine whenever they make sense: small, one logical change each,
-   with a clear message. Pushing to any remote (and creating or changing
-   remotes) needs explicit consent for that specific push. Do not rewrite
-   history that has already been pushed.
+1. **Commit freely; push only to branches, never to `main`.** Commits are
+   fine whenever they make sense: small, one logical change each, with a
+   clear message. Pushing a branch other than `main` needs no OK; `main`
+   changes only through pull requests the owner merges. Creating or changing
+   remotes needs explicit consent. Do not rewrite history that has already
+   been pushed.
 2. **Never run `sudo`.** If something needs it, print the exact command and
    ask the owner to run it.
 3. **No cloud resources** (AWS or other) unless the owner has authorized it
