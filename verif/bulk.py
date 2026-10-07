@@ -16,6 +16,8 @@ and no backpressure. Handshakes and wide or AXI ports belong in cocotb.
 import functools
 import subprocess
 import threading
+from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +26,7 @@ import rtl
 
 DRIVERS = Path(__file__).parent / "bulk"
 CHUNK = 1 << 20  # records per run of the driver
+WORKERS = 8  # drivers run at once by in_parallel
 _BUILD_LOCK = threading.Lock()  # tests may run chunks from several threads
 
 
@@ -72,3 +75,10 @@ def mismatches(got: np.ndarray, want: np.ndarray, inputs: np.ndarray, limit: int
         for i in bad[:limit]
     ]
     return f"{len(bad)} of {len(got)} differ:\n" + "\n".join(rows) if len(bad) else ""
+
+
+def in_parallel[T](fn: Callable[[T], None], items: Iterable[T]) -> None:
+    """fn(item) for every item, WORKERS at a time (each fn runs drivers);
+    re-raises the first failure."""
+    with ThreadPoolExecutor(WORKERS) as pool:
+        list(pool.map(fn, items))
