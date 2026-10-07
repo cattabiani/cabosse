@@ -49,9 +49,9 @@ def modules() -> list[str]:
 
 
 def harnesses() -> list[Path]:
-    """Test-only modules in platforms/ built on rtl/ (such as timing
-    harnesses): one per file, named after it."""
-    return sorted((REPO / "platforms").rglob("*.sv"))
+    """The timing harnesses (platforms/f2/timing/): test-only modules built on
+    rtl/, one per file, named after it."""
+    return sorted((REPO / "platforms" / "f2" / "timing").glob("*.sv"))
 
 
 def simulate(top: str, test_module: str | None = None) -> None:

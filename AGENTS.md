@@ -135,6 +135,7 @@ These are proposed in M0 and will be confirmed when the first code is written
 - Base style: the lowRISC Verilog style guide, unless this file says
   otherwise.
 - One module per file. The file name matches the module name (`snake_case`).
+  A package goes in its own file, `<name>_pkg.sv`.
 - No `` `default_nettype none ``: with it, the standard requires `input
   wire logic` ports, and Vivado enforces that. Verilator's `-Wall` lint
   (`IMPLICIT`) catches nets created by mistake instead.

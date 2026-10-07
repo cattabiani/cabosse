@@ -18,7 +18,7 @@ module bf16_mac (
   output logic [31:0] y_o
 );
 
-  bf16_mac_pkg::product_t p_d, p_q;
+  bf16_mac_pkg::operand_t p_d, p_q;
   logic [31:0]            acc_q;
   logic                   valid_q;
 

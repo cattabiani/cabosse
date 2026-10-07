@@ -563,7 +563,7 @@ resource cost comes with the first build.
   special values and on 10⁸ inputs (`slow`).
 - Accumulate loop at 250 MHz, first Vivado run (2026-10-07, Vivado 2025.2,
   `xcvu47p-fsvh2892-2-e`, out of context, no retiming;
-  `scripts/f2/time_acc_loop.sh`, log in `reports/data/f2/`): CVFPU's FP32
+  `scripts/f2/time_loops.sh`, log in `reports/data/f2/`): CVFPU's FP32
   FMA with BF16 inputs fails 4.0 ns at every loop length tried. Slack
   (computed max clock): 2 cycles -1.115 ns (196 MHz), 3 cycles -0.777 ns
   (213 MHz), 4 cycles -0.694 ns (213 MHz), 5 cycles -0.527 ns (222 MHz);

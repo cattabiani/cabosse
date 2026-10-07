@@ -10,7 +10,7 @@
 # powers off (and, launched with shutdown behaviour "terminate", terminates)
 # when done or at the deadline.
 
-REF=m3/bf16-mac                # branch of github.com/cattabiani/cabosse
+REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga, for the part name
 FALLBACK_PART=xcvu47p-fsvh2892-2-e
 # top:param:value:loop cycles:retime (timing.tcl). mac_loop is our own unit

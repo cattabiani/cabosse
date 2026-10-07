@@ -31,7 +31,7 @@ BF16_SPECIAL_BITS = [
     sign | bits
     for bits in (0x0000, 0x0001, 0x007F, 0x0080, 0x3F80, 0x3F81, 0x7F7F, 0x7F80)
     for sign in (0, 0x8000)
-] + [0x7FC0, 0x7F81]  # canonical NaN, a signalling NaN
+] + [arith.NAN_BF16_BITS, 0x7F81]  # canonical NaN, a signalling NaN
 
 
 def special_tuples(k: int) -> np.ndarray:

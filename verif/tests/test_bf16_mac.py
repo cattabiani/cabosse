@@ -37,7 +37,9 @@ def near_cancelling(rng: np.random.Generator, n: int) -> np.ndarray:
     w, x = bf16_bits(rng, n), bf16_bits(rng, n)
     with np.errstate(invalid="ignore", over="ignore"):
         acc = (-products(w, x)).astype(np.float32).view(np.uint32)
-    acc = acc + rng.integers(-4, 5, n).astype(np.uint32)  # wraps like the bits do
+    # On the bits, not by ulps: a step can cross zero into the other sign, or
+    # the largest finite value into Inf and NaN, which is wanted here.
+    acc = acc + rng.integers(-4, 5, n).astype(np.uint32)
     return np.stack([w, x, acc], axis=1)
 
 

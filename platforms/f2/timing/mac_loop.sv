@@ -27,7 +27,7 @@ module mac_loop #(
     valid_q <= valid_i;
   end
 
-  bf16_mac_pkg::product_t p_d, p_q;
+  bf16_mac_pkg::operand_t p_d, p_q;
   bf16_mul u_mul (
     .w_i(w_q),
     .x_i(x_q),
