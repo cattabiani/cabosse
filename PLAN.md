@@ -329,6 +329,18 @@ The vector unit keeps CVFPU (narrows D-033). If the unit does not close a
 250 MHz for the loop even with retiming (measured, M3), and spends about
 1,100 LUTs on a general 24 × 24 multiply that BF16 inputs do not need.
 
+**D-039 (2026-10-07) — All FP units are our own; CVFPU is removed.** The
+vector unit's FP32 add, multiply, fma and max become our own RTL, built on
+the lanes' adder (`mac_add`, D-038), and must pass the same bit-exactness
+tests CVFPU passed (the golden functions, 10⁸ inputs, every special-value
+combination). Then `rtl/vendor/` goes, CVFPU and the common_cells files
+with it (our own leading-zero count replaces `lzc`). Supersedes D-033;
+D-037 (`max` as IEEE `maximumNumber`) stays. *Why:* CVFPU could serve only
+the vector unit (D-038), and needs Vivado's retiming to reach 250 MHz
+(measured, M3); two implementations of the same operations would have to
+be kept equal in different places. One set of units, written and tested
+for exactly what we need, is simpler to own.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -588,6 +600,9 @@ resource cost comes with the first build.
   path is the product, outside the loop. About 625 LUTs, 247 registers and
   no DSPs per unit (CVFPU's FMA: about 1,100 LUTs and 2 DSPs). The
   accumulate-loop exit criterion is met with `A` = 16 unchanged.
+- Next (D-039): our own FP32 add, multiply, fma and max behind the current
+  `fp32_fma` and `fp32_max` ports, so their tests stay unchanged as the
+  acceptance tests; then CVFPU and `rtl/vendor/` are removed.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op
