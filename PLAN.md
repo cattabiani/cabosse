@@ -550,6 +550,17 @@ resource cost comes with the first build.
 - [x] `max` (D-037): `rtl/fp32_max.sv` wraps CVFPU's `fpnew_noncomp`
   (MINMAX, MAX). Bit-exact against the golden `max` on every pair of
   special values and on 10⁸ inputs (`slow`).
+- Accumulate loop at 250 MHz, first Vivado run (2026-10-07, Vivado 2025.2,
+  `xcvu47p-fsvh2892-2-e`, out of context, no retiming;
+  `scripts/f2/time_acc_loop.sh`, log in `reports/data/f2/`): CVFPU's FP32
+  FMA with BF16 inputs fails 4.0 ns at every loop length tried. Slack
+  (computed max clock): 2 cycles -1.115 ns (196 MHz), 3 cycles -0.777 ns
+  (213 MHz), 4 cycles -0.694 ns (213 MHz), 5 cycles -0.527 ns (222 MHz);
+  about 1,100 LUTs and 2 DSPs. The worst paths are inside the FMA's fixed
+  stages (operands to the 76-bit sum: up to 27 logic levels, 13 of them
+  carry chains; then normalize and round), so more registers barely help.
+  Open: retiming, or a lane unit of our own (the BF16 product is exact), or
+  `A` changes (D-027). Owner to decide.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op
