@@ -2,7 +2,7 @@
 // Copyright 2026 The Cabosse Authors
 //
 // Timing harness for our own BF16 multiply-add's accumulate loop (D-038):
-// acc = fp_add(bf16_mul(w, x), acc). fp_add has 3 registers and AccRegs
+// acc = fp_add(fp_product(up(w), up(x)), acc). fp_add has 3 registers and AccRegs
 // more close the loop, so it has 3 + AccRegs cycles (4 for D-027). The
 // product is registered outside the loop, and so are the inputs and the
 // output, so every path is register to register. Not part of the design: M4
@@ -30,9 +30,11 @@ module mac_loop
   end
 
   operand_t p_d, p_q;
-  bf16_mul u_mul (
-    .w_i(w_q),
-    .x_i(x_q),
+  fp_product #(
+    .M(8)
+  ) u_mul (
+    .a_i({w_q, 16'h0}),
+    .b_i({x_q, 16'h0}),
     .p_o(p_d)
   );
   always_ff @(posedge clk_i) begin

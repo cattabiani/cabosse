@@ -138,14 +138,15 @@ module fp_add #(
       norm     = {s2_q.sum[W:2], s2_q.sum[1] | s2_q.sum[0]};
       norm_exp = s2_q.exp + 9'd1;
     end else begin
-      left     = (s2_q.exp > 9'(W) || 9'(s2_q.lz) < s2_q.exp) ? s2_q.lz : LzW'(s2_q.exp - 9'd1);
+      left     = (9'(s2_q.lz) < s2_q.exp) ? s2_q.lz : LzW'(s2_q.exp - 9'd1);
       norm     = s2_q.sum[W-1:0] << left;
       norm_exp = s2_q.exp - 9'(left);
     end
   end
 
   // Round at FP32's 24 bits; an all-ones significand that rounds up carries
-  // into the exponent, so the overflow test looks at the exponent before it.
+  // into the exponent. From exponent 254 that gives exponent 255 and a zero
+  // fraction, which is Inf's pattern, so overflow needs no test of the carry.
   logic        guard, sticky, round_up, overflow;
   logic [24:0] rounded;
   logic [23:0] sig;
@@ -157,7 +158,7 @@ module fp_add #(
     rounded  = {1'b0, norm[W-1-:24]} + 25'(round_up);
     sig      = rounded[24] ? rounded[24:1] : rounded[23:0];
     exp      = norm_exp[7:0] + 8'(rounded[24]);
-    overflow = rounded[24] ? (norm_exp >= 9'd254) : (norm_exp >= 9'd255);
+    overflow = norm_exp >= 9'd255;
   end
 
   logic [31:0] y_d;

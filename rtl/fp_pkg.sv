@@ -2,7 +2,7 @@
 // Copyright 2026 The Cabosse Authors
 //
 // Operands of our FP units (D-038, D-039): fp_add adds two of them with one
-// rounding to FP32; bf16_mul and fp32_product make them from products.
+// rounding to FP32; fp_product makes them from products.
 
 package fp_pkg;
 

@@ -3,7 +3,7 @@
 //
 // The lanes' multiply-add (D-038), whole: y = mac(w, x, acc) = fma(up(w),
 // up(x), acc), one rounding (docs/numerics.md, section 2; golden model:
-// golden.arith.mac). bf16_mul, a register, then fp_add: a result leaves 4
+// golden.arith.mac). fp_product with M = 8, a register, then fp_add: a result leaves 4
 // cycles after its operands enter; valid_o marks it. The lane uses the parts
 // directly, with the accumulator fed back into fp_add.
 
@@ -24,9 +24,11 @@ module bf16_mac
   logic [31:0] acc_q;
   logic        valid_q;
 
-  bf16_mul u_mul (
-    .w_i,
-    .x_i,
+  fp_product #(
+    .M(8)
+  ) u_mul (
+    .a_i({w_i, 16'h0}),  // up(w)
+    .b_i({x_i, 16'h0}),
     .p_o(p_d)
   );
 

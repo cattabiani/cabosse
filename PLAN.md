@@ -605,14 +605,18 @@ resource cost comes with the first build.
   accumulate-loop exit criterion is met with `A` = 16 unchanged.
 - In progress (D-039, branch `m3/own-fp`): our own FP units replace CVFPU.
   `fp_add` (generic one-rounding adder, W-bit significands: 27 for the
-  lanes, 51 for FP32 fma), `fp32_product` (exact FP32 product), `fp32_fma`
-  (add = fma(a, 1, b), mul = fma(a, b, -0)), `fp32_max`, `leading_zeros`,
-  `sticky_shift`, `fp_pkg`; `rtl/vendor/` and `scripts/vendor_rtl.sh` are
-  gone. The old tests pass unchanged except for CVFPU's pipeline parameter:
-  fast and slow (10⁸ per op, all BF16 pairs). To do: README, AGENTS.md,
-  `rtl/README.md`, docs mentions of CVFPU and vendored files; /simplify,
-  /code-review; the full suite; a Vivado run of `fp32_fma` (owner's OK);
-  then the PR.
+  lanes, 51 for FP32 fma), `fp_product` (exact product, M-bit significands:
+  8 for BF16, 24 for FP32; replaces `bf16_mul`), `fp32_fma` (add = fma(a,
+  1, b), mul = fma(a, b, -0)), `fp32_max`, `leading_zeros`, `sticky_shift`,
+  `fp_pkg`; `rtl/vendor/` and `scripts/vendor_rtl.sh` are gone, and the docs
+  no longer mention them. The old tests pass unchanged except for CVFPU's
+  pipeline parameter: fast and slow (10⁸ per op, all BF16 pairs). Mutation
+  check (19 hand mutations of the units, fast tests): 15 caught; the 4 left
+  give the same bits (two were redundant logic, now removed). Yosys
+  (generic `synth`, flattened): `bf16_mac` 2,513 cells, `fp32_fma` 7,798,
+  `fp_add` (W = 27) 1,509. To do: a Vivado run of `fp32_fma` (owner's OK);
+  then the PR. After it: the cost of subnormal support (D-016, exit
+  criterion), against a flush-to-zero variant.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op

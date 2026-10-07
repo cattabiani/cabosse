@@ -7,7 +7,7 @@
 //   OpAdd: y = a + b      = fma(a, 1, b)
 //   OpMul: y = a * b      = fma(a, b, -0)  (x + -0 = x for every x, -0 too)
 //   any other op_i (fma): y = a * b + c
-// fp32_product, a register, then fp_add with W = 51: a result leaves 4
+// fp_product with M = 24, a register, then fp_add with W = 51: a result leaves 4
 // cycles after its operands enter; valid_o marks it.
 
 module fp32_fma
@@ -24,37 +24,39 @@ module fp32_fma
   output logic [31:0] y_o
 );
 
-  localparam int unsigned W     = 51;
+  localparam int unsigned W     = 51;  // fp_product's, for M = 24
   localparam logic [1:0]  OpAdd = 2'd1;
   localparam logic [1:0]  OpMul = 2'd2;
   localparam logic [31:0] One   = 32'h3F80_0000;
   localparam logic [31:0] NegZ  = 32'h8000_0000;
 
-  logic [31:0] x, y, z;  // y = x * y' + z, the operands of the fma
+  logic [31:0] fa, fb, fc;  // the fma's operands: fa * fb + fc
   always_comb begin
-    {x, y, z} = {a_i, b_i, c_i};
+    {fa, fb, fc} = {a_i, b_i, c_i};
     case (op_i)
-      OpAdd:   {x, y, z} = {a_i, One, b_i};
-      OpMul:   {x, y, z} = {a_i, b_i, NegZ};
+      OpAdd:   {fa, fb, fc} = {a_i, One, b_i};
+      OpMul:   {fa, fb, fc} = {a_i, b_i, NegZ};
       default: ;
     endcase
   end
 
   logic [W+11:0] p_d, p_q;
-  fp32_product u_mul (
-    .a_i(x),
-    .b_i(y),
+  fp_product #(
+    .M(24)
+  ) u_mul (
+    .a_i(fa),
+    .b_i(fb),
     .p_o(p_d)
   );
 
   // The addend in the product's layout: FP32's significand at the top.
-  operand_t      z_d;
-  logic [W+11:0] z_q;
+  operand_t      fc_op;
+  logic [W+11:0] fc_q;
   logic          valid_q;
-  assign z_d = decode_f32(z);
+  assign fc_op = decode_f32(fc);
   always_ff @(posedge clk_i) begin
     p_q     <= p_d;
-    z_q     <= {z_d.sign, z_d.exp, z_d.sig, 24'h0, z_d.is_inf, z_d.is_nan};
+    fc_q    <= {fc_op.sign, fc_op.exp, fc_op.sig, 24'h0, fc_op.is_inf, fc_op.is_nan};
     valid_q <= rst_ni && valid_i;
   end
 
@@ -65,7 +67,7 @@ module fp32_fma
     .rst_ni,
     .valid_i(valid_q),
     .a_i    (p_q),
-    .b_i    (z_q),
+    .b_i    (fc_q),
     .valid_o,
     .y_o
   );
