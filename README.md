@@ -43,12 +43,7 @@ git-ignored.
   requirements.txt`.
 - **RTL tools:** the [OSS CAD Suite](https://github.com/YosysHQ/oss-cad-suite-build)
   (Verilator, Yosys with the slang SystemVerilog plugin), unpacked in
-  `.tools/`:
-  ```bash
-  mkdir -p .tools && cd .tools
-  curl -LO https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-10-06/oss-cad-suite-linux-x64-20261006.tgz
-  tar xzf oss-cad-suite-linux-x64-20261006.tgz && rm oss-cad-suite-linux-x64-20261006.tgz
-  ```
+  `.tools/` by `scripts/get_rtl_tools.sh` (the pinned release, about 750 MB).
   The tests find it there by themselves; for the tools by hand, add its
   `bin/` to `PATH` (direnv: `PATH_add .tools/oss-cad-suite/bin`) and do not
   source its `environment` script. The suite also bundles cocotb, in its own
