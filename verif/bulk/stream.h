@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <concepts>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
