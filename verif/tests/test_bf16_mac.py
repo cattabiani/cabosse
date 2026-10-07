@@ -16,7 +16,7 @@ from golden import arith
 import rtl
 
 SEED = 20261007
-N_NEAR, N_SCALED, N_RANDOM = 100_000, 100_000, 100_000  # fast run, per family
+N_NEAR, N_SCALED, N_EDGE, N_RANDOM = 100_000, 100_000, 50_000, 100_000  # fast run, per family
 W_PER_CHUNK = 16  # exhaustive run: 16 values of w against all 2^16 x
 UP = all_bf16_widened()  # up(b) as FP32 bits, indexed by the BF16 bits
 
@@ -54,6 +54,27 @@ def scaled(rng: np.random.Generator, n: int) -> np.ndarray:
     return np.stack([w, x, acc], axis=1)
 
 
+def with_exponents(rng: np.random.Generator, n: int, lo: int, hi: int, width: int) -> np.ndarray:
+    """Random bits of a `width`-bit float whose exponent field is in lo..hi."""
+    frac_bits = 7 if width == 16 else 23
+    sign = rng.integers(0, 2, n, dtype=np.uint32) << (width - 1)
+    exp = rng.integers(lo, hi + 1, n, dtype=np.uint32) << frac_bits
+    return sign | exp | rng.integers(0, 2**frac_bits, n, dtype=np.uint32)
+
+
+def range_edges(rng: np.random.Generator, n: int) -> np.ndarray:
+    """Products far below FP32's range against accumulators near zero (the
+    sticky shift to exponent 1, subnormal results), and products above it
+    against accumulators near the largest value (overflow, or cancellation
+    back into range)."""
+    tiny = [with_exponents(rng, n, 0, 69, 16), with_exponents(rng, n, 0, 69, 16)]
+    huge = [with_exponents(rng, n, 190, 254, 16), with_exponents(rng, n, 190, 254, 16)]
+    return np.concatenate([
+        np.stack([*tiny, with_exponents(rng, n, 0, 5, 32)], axis=1),
+        np.stack([*huge, with_exponents(rng, n, 240, 254, 32)], axis=1),
+    ])  # fmt: skip
+
+
 def specials() -> np.ndarray:
     """Every (w, x, acc) of the BF16 and FP32 special values."""
     b = np.array(BF16_SPECIAL_BITS, dtype=np.uint32)
@@ -65,7 +86,8 @@ def batch(rng: np.random.Generator) -> np.ndarray:
     rand = np.stack(
         [bf16_bits(rng, N_RANDOM), bf16_bits(rng, N_RANDOM), random_bits(rng, N_RANDOM)], 1
     )
-    return np.concatenate([near_cancelling(rng, N_NEAR), scaled(rng, N_SCALED), rand])
+    edges = range_edges(rng, N_EDGE)
+    return np.concatenate([near_cancelling(rng, N_NEAR), scaled(rng, N_SCALED), edges, rand])
 
 
 def check(wxa: np.ndarray, label: str) -> None:
@@ -90,7 +112,7 @@ def test_random() -> None:
 @rtl.needs_verilator
 def test_bf16_pairs_exhaustive() -> None:
     """Every pair of BF16 inputs, 2^32, each with a random FP32 accumulator,
-    and the near-cancelling and scaled families once per chunk."""
+    and the near-cancelling, scaled and range-edge families once per chunk."""
     x = np.tile(np.arange(2**16, dtype=np.uint32), W_PER_CHUNK)
 
     def one(chunk: int) -> None:
@@ -101,7 +123,9 @@ def test_bf16_pairs_exhaustive() -> None:
         )
         pairs = np.stack([w, x, random_bits(rng, len(x))], axis=1)
         check(
-            np.concatenate([pairs, near_cancelling(rng, 2**14), scaled(rng, 2**14)]),
+            np.concatenate(
+                [pairs, near_cancelling(rng, 2**14), scaled(rng, 2**14), range_edges(rng, 2**13)]
+            ),
             f"w chunk {chunk}, seed {seed}",
         )
 
