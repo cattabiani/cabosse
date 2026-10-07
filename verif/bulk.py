@@ -40,7 +40,7 @@ def _build(top: str, params: tuple[tuple[str, int], ...]) -> Path:
     build_dir = rtl.BUILD / ("_".join(["bulk", top, *(f"{k}{v}" for k, v in params)]))
     argv = [
         "verilator", "--cc", "--exe", "--build", "-j", "0", "-O3",
-        "--x-assign", "fast", "--x-initial", "fast", "-CFLAGS", f"-O3 -I{DRIVERS}",
+        "--x-assign", "fast", "--x-initial", "fast", "-CFLAGS", f"-std=c++23 -O3 -I{DRIVERS}",
         "--top-module", top, "-Mdir", str(build_dir), "-o", "bulk",
         *(f"-G{k}={v}" for k, v in params),
         *rtl.VERILATOR_FILES, str(DRIVERS / f"{top}.cpp"),

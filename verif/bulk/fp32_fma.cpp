@@ -7,13 +7,12 @@
 #include "stream.h"
 
 int main(int argc, char** argv) {
-  return stream<Vfp32_fma>(
-      argc, argv, 4,
-      [](Vfp32_fma& dut, const uint32_t* r) {
-        dut.op_i = r[0];
-        dut.a_i = r[1];
-        dut.b_i = r[2];
-        dut.c_i = r[3];
-      },
-      [](Vfp32_fma& dut) { return dut.y_o; });
+  auto set_inputs = [](Vfp32_fma& dut, Record r) {
+    dut.op_i = r[0];
+    dut.a_i = r[1];
+    dut.b_i = r[2];
+    dut.c_i = r[3];
+  };
+  auto output = [](Vfp32_fma& dut) { return dut.y_o; };
+  return stream<Vfp32_fma>(argc, argv, 4, set_inputs, output);
 }
