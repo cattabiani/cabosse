@@ -550,6 +550,9 @@ resource cost comes with the first build.
 - [x] `max` (D-037): `rtl/fp32_max.sv` wraps CVFPU's `fpnew_noncomp`
   (MINMAX, MAX). Bit-exact against the golden `max` on every pair of
   special values and on 10⁸ inputs (`slow`).
+- [x] CI runs the RTL tests (lint, Yosys synthesis, simulation) on x86
+  Linux with the pinned suite (`scripts/get_rtl_tools.sh`), about 2.5
+  minutes; the slow RTL tests run locally.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op
