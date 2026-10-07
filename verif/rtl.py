@@ -23,10 +23,9 @@ from paths import REPO
 
 RTL = REPO / "rtl"
 SOURCES = RTL / "sources.f"  # every RTL file in compile order
-VENDOR_LINT = RTL / "vendor" / "lint.vlt"  # vendored code is not held to -Wall
 BUILD = REPO / "verif" / "sim_build"  # git-ignored
 TOOLS_BIN = REPO / ".tools" / "oss-cad-suite" / "bin"
-VERILATOR_FILES = [str(VENDOR_LINT), "-F", str(SOURCES)]
+VERILATOR_FILES = ["-F", str(SOURCES)]
 
 if TOOLS_BIN.is_dir():
     os.environ["PATH"] = os.pathsep.join([str(TOOLS_BIN), os.environ["PATH"]])

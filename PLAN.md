@@ -603,9 +603,16 @@ resource cost comes with the first build.
   path is the product, outside the loop. About 625 LUTs, 247 registers and
   no DSPs per unit (CVFPU's FMA: about 1,100 LUTs and 2 DSPs). The
   accumulate-loop exit criterion is met with `A` = 16 unchanged.
-- Next (D-039): our own FP32 add, multiply, fma and max behind the current
-  `fp32_fma` and `fp32_max` ports, so their tests stay unchanged as the
-  acceptance tests; then CVFPU and `rtl/vendor/` are removed.
+- In progress (D-039, branch `m3/own-fp`): our own FP units replace CVFPU.
+  `fp_add` (generic one-rounding adder, W-bit significands: 27 for the
+  lanes, 51 for FP32 fma), `fp32_product` (exact FP32 product), `fp32_fma`
+  (add = fma(a, 1, b), mul = fma(a, b, -0)), `fp32_max`, `leading_zeros`,
+  `sticky_shift`, `fp_pkg`; `rtl/vendor/` and `scripts/vendor_rtl.sh` are
+  gone. The old tests pass unchanged except for CVFPU's pipeline parameter:
+  fast and slow (10⁸ per op, all BF16 pairs). To do: README, AGENTS.md,
+  `rtl/README.md`, docs mentions of CVFPU and vendored files; /simplify,
+  /code-review; the full suite; a Vivado run of `fp32_fma` (owner's OK);
+  then the PR.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op

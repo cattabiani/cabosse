@@ -14,7 +14,7 @@ REF=main                       # branch of github.com/cattabiani/cabosse; set an
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga, for the part name
 FALLBACK_PART=xcvu47p-fsvh2892-2-e
 # top:param:value:loop cycles:retime (timing.tcl). mac_loop is our own unit
-# (D-038), acc_loop CVFPU's FMA (measured on 2026-10-07, reports/data/f2/).
+# (D-038); CVFPU's FMA was measured on 2026-10-07 (reports/data/f2/).
 RUNS="mac_loop:AccRegs:1:4:0 mac_loop:AccRegs:1:4:1 mac_loop:AccRegs:0:3:1 mac_loop:AccRegs:2:5:0"
 DEADLINE_MIN=55                # safety net: power off even if something hangs
 

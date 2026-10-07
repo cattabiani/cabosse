@@ -2,13 +2,15 @@
 // Copyright 2026 The Cabosse Authors
 //
 // Timing harness for our own BF16 multiply-add's accumulate loop (D-038):
-// acc = mac_add(bf16_mul(w, x), acc). mac_add has 3 registers and AccRegs
+// acc = fp_add(bf16_mul(w, x), acc). fp_add has 3 registers and AccRegs
 // more close the loop, so it has 3 + AccRegs cycles (4 for D-027). The
 // product is registered outside the loop, and so are the inputs and the
 // output, so every path is register to register. Not part of the design: M4
 // builds the lane.
 
-module mac_loop #(
+module mac_loop
+  import fp_pkg::*;
+#(
   parameter int unsigned AccRegs = 1
 ) (
   input  logic        clk_i,
@@ -27,7 +29,7 @@ module mac_loop #(
     valid_q <= valid_i;
   end
 
-  bf16_mac_pkg::operand_t p_d, p_q;
+  operand_t p_d, p_q;
   bf16_mul u_mul (
     .w_i(w_q),
     .x_i(x_q),
@@ -40,17 +42,17 @@ module mac_loop #(
 
   logic [31:0] acc, sum;
   logic        unused_sum_valid;  // the loop runs every cycle
-  mac_add u_add (
+  fp_add u_add (
     .clk_i,
     .rst_ni,
     .valid_i(p_valid_q),
-    .p_i    (p_q),
-    .acc_i  (acc),
+    .a_i    (p_q),
+    .b_i    (decode_f32(acc)),
     .valid_o(unused_sum_valid),
     .y_o    (sum)
   );
 
-  // AccRegs registers from the sum back to mac_add's accumulator input.
+  // AccRegs registers from the sum back to fp_add's accumulator input.
   logic [31:0] acc_q[AccRegs+1];
   assign acc_q[0] = sum;
   for (genvar i = 0; i < AccRegs; i++) begin : gen_acc

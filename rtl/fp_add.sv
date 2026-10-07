@@ -1,51 +1,70 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 // Copyright 2026 The Cabosse Authors
 //
-// The accumulate step of the lanes' multiply-add (D-038): y = p + acc with
-// one rounding to FP32, round to nearest even, where p is bf16_mul's
-// product. Together they compute mac(w, x, acc) = fma(up(w), up(x), acc)
-// (docs/numerics.md, section 2; golden model: golden.arith.mac). Subnormals
-// are kept, Inf - Inf and any NaN give the canonical NaN, an exact zero sum
-// is -0 only if both operands are -0.
+// y = a + b with one rounding to FP32, round to nearest even, for operands
+// in fp_pkg's layout with W-bit significands (D-038, D-039). Subnormals are
+// kept, Inf - Inf and any NaN give the canonical NaN, an exact zero sum is
+// -0 only if both operands are -0. W = 27 (fp_pkg::SigW) adds an FP32 value
+// or an exact BF16 product; fp32_fma uses W = 51 for its exact FP32
+// products. The bits below the rounding point are guard (bit W-25) and
+// sticky (the rest, ORed); the operands' own sticky bits stay below them.
 //
 // Three register stages: align | add, count leading zeros | normalize,
 // round. A result leaves 3 cycles after its operands enter; valid_o marks it.
-// With the lane's accumulator register the loop has 4 cycles (D-027).
 
-module mac_add
-  import bf16_mac_pkg::*;
-(
-  input  logic        clk_i,
-  input  logic        rst_ni,
-  input  logic        valid_i,
-  input  operand_t    p_i,
-  input  logic [31:0] acc_i,
-  output logic        valid_o,
-  output logic [31:0] y_o
+module fp_add #(
+  parameter  int unsigned W     = fp_pkg::SigW,
+  localparam int unsigned OpW   = W + 12,  // fp_pkg::operand_t's layout
+  localparam int unsigned LzW   = $clog2(W)
+) (
+  input  logic           clk_i,
+  input  logic           rst_ni,
+  input  logic           valid_i,
+  input  logic [OpW-1:0] a_i,
+  input  logic [OpW-1:0] b_i,
+  output logic           valid_o,
+  output logic [31:0]    y_o
 );
 
   localparam logic [31:0] QNaN = 32'h7FC0_0000;
 
+  typedef struct packed {
+    logic         sign;
+    logic [8:0]   exp;
+    logic [W-1:0] sig;
+    logic         is_inf;
+    logic         is_nan;
+  } op_t;
+
   // --- Stage 1: specials, order by magnitude, align -------------------------
 
-  operand_t a;
-  assign a = decode_f32(acc_i);
+  op_t a, b;
+  assign a = a_i;
+  assign b = b_i;
 
   // The shift needs only the exponents (equal exponents shift by 0); the
   // larger magnitude goes first, so the difference is never negative.
-  logic         p_exp_hi, p_hi;
+  logic         a_exp_hi, a_hi;
   logic [8:0]   diff;
   logic         hi_sign, lo_sign;
-  logic [W-1:0] hi_sig, lo_sig;
-  assign p_exp_hi = p_i.exp > a.exp;
-  assign diff     = p_exp_hi ? p_i.exp - a.exp : a.exp - p_i.exp;
-  assign p_hi     = p_exp_hi || ((p_i.exp == a.exp) && (p_i.sig > a.sig));
-  assign {hi_sign, hi_sig} = p_hi ? {p_i.sign, p_i.sig} : {a.sign, a.sig};
-  assign {lo_sign, lo_sig} = p_hi ? {a.sign, a.sig} : {p_i.sign, p_i.sig};
+  logic [W-1:0] hi_sig, lo_sig, lo_aligned;
+  assign a_exp_hi = a.exp > b.exp;
+  assign diff     = a_exp_hi ? a.exp - b.exp : b.exp - a.exp;
+  assign a_hi     = a_exp_hi || ((a.exp == b.exp) && (a.sig > b.sig));
+  assign {hi_sign, hi_sig} = a_hi ? {a.sign, a.sig} : {b.sign, b.sig};
+  assign {lo_sign, lo_sig} = a_hi ? {b.sign, b.sig} : {a.sign, a.sig};
+
+  sticky_shift #(
+    .Width(W)
+  ) u_align (
+    .in_i   (lo_sig),
+    .shift_i(diff),
+    .out_o  (lo_aligned)
+  );
 
   logic nan_s1, inf_s1;
-  assign nan_s1 = p_i.is_nan || a.is_nan || (p_i.is_inf && a.is_inf && (p_i.sign != a.sign));
-  assign inf_s1 = (p_i.is_inf || a.is_inf) && !nan_s1;
+  assign nan_s1 = a.is_nan || b.is_nan || (a.is_inf && b.is_inf && (a.sign != b.sign));
+  assign inf_s1 = (a.is_inf || b.is_inf) && !nan_s1;
 
   typedef struct packed {
     logic         valid;
@@ -61,10 +80,10 @@ module mac_add
   always_comb begin
     s1_d.valid = valid_i;
     s1_d.sub   = hi_sign != lo_sign;
-    s1_d.sign  = !inf_s1 ? hi_sign : p_i.is_inf ? p_i.sign : a.sign;
-    s1_d.exp   = p_hi ? p_i.exp : a.exp;
+    s1_d.sign  = !inf_s1 ? hi_sign : a.is_inf ? a.sign : b.sign;
+    s1_d.exp   = a_hi ? a.exp : b.exp;
     s1_d.hi    = hi_sig;
-    s1_d.lo    = shift_right_sticky(lo_sig, diff);
+    s1_d.lo    = lo_aligned;
     s1_d.nan   = nan_s1;
     s1_d.inf   = inf_s1;
   end
@@ -74,25 +93,24 @@ module mac_add
   logic [W:0] sum;
   assign sum = s1_q.sub ? {1'b0, s1_q.hi} - {1'b0, s1_q.lo} : {1'b0, s1_q.hi} + {1'b0, s1_q.lo};
 
-  logic [4:0] lz;
-  logic       sum_low_zero;
-  lzc #(
-    .WIDTH(W),
-    .MODE (1'b1)
-  ) u_lzc (
+  logic [LzW-1:0] lz;
+  logic           sum_low_zero;
+  leading_zeros #(
+    .Width(W)
+  ) u_lz (
     .in_i   (sum[W-1:0]),
     .cnt_o  (lz),
     .empty_o(sum_low_zero)
   );
 
   typedef struct packed {
-    logic       valid;
-    logic       sign;
-    logic [8:0] exp;
-    logic [W:0] sum;
-    logic [4:0] lz;
-    logic       nan;
-    logic       inf;
+    logic           valid;
+    logic           sign;
+    logic [8:0]     exp;
+    logic [W:0]     sum;
+    logic [LzW-1:0] lz;
+    logic           nan;
+    logic           inf;
   } s2_t;
   s2_t s2_d, s2_q;
   always_comb begin
@@ -111,30 +129,32 @@ module mac_add
 
   // A carry shifts right by one; otherwise shift left past the leading zeros,
   // but not below exponent 1 (a subnormal result keeps its leading zeros).
-  logic [W-1:0] norm;
-  logic [8:0]   norm_exp;
-  logic [4:0]   left;
+  logic [W-1:0]   norm;
+  logic [8:0]     norm_exp;
+  logic [LzW-1:0] left;
   always_comb begin
     left = '0;
     if (s2_q.sum[W]) begin
       norm     = {s2_q.sum[W:2], s2_q.sum[1] | s2_q.sum[0]};
       norm_exp = s2_q.exp + 9'd1;
     end else begin
-      left     = (s2_q.exp > 9'(W) || s2_q.lz < s2_q.exp[4:0]) ? s2_q.lz : 5'(s2_q.exp - 9'd1);
+      left     = (s2_q.exp > 9'(W) || 9'(s2_q.lz) < s2_q.exp) ? s2_q.lz : LzW'(s2_q.exp - 9'd1);
       norm     = s2_q.sum[W-1:0] << left;
       norm_exp = s2_q.exp - 9'(left);
     end
   end
 
-  // Round; an all-ones significand that rounds up carries into the exponent,
-  // so the overflow test looks at the exponent before the carry.
-  logic        round_up, overflow;
+  // Round at FP32's 24 bits; an all-ones significand that rounds up carries
+  // into the exponent, so the overflow test looks at the exponent before it.
+  logic        guard, sticky, round_up, overflow;
   logic [24:0] rounded;
   logic [23:0] sig;
   logic [7:0]  exp;  // when there is no overflow
   always_comb begin
-    round_up = norm[2] && (norm[1] || norm[0] || norm[3]);
-    rounded  = {1'b0, norm[W-1:3]} + 25'(round_up);
+    guard    = norm[W-25];
+    sticky   = |norm[W-26:0];
+    round_up = guard && (sticky || norm[W-24]);
+    rounded  = {1'b0, norm[W-1-:24]} + 25'(round_up);
     sig      = rounded[24] ? rounded[24:1] : rounded[23:0];
     exp      = norm_exp[7:0] + 8'(rounded[24]);
     overflow = rounded[24] ? (norm_exp >= 9'd254) : (norm_exp >= 9'd255);

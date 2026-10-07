@@ -21,7 +21,6 @@ N_NEAR, N_RANDOM = 100_000, 100_000  # near pairs, random bits: fast run
 N_NEAR_SLOW, N_RANDOM_SLOW = 500_000, 500_000  # per chunk of the slow run
 N_SLOW = 10**8
 SIGN = np.uint32(0x8000_0000)
-PIPELINES = {"comb": (), "pipe2": (("NumPipeRegs", 2),)}  # the same bits either way
 
 
 def near_pairs(rng: np.random.Generator, n: int) -> np.ndarray:
@@ -46,15 +45,13 @@ def check(ab: np.ndarray, seed: int | str, params: tuple = ()) -> None:
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("pipeline", PIPELINES)
-def test_specials(pipeline: str) -> None:
-    check(special_tuples(2), "specials", PIPELINES[pipeline])
+def test_specials() -> None:
+    check(special_tuples(2), "specials")
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("pipeline", PIPELINES)
-def test_random(pipeline: str) -> None:
-    check(batch(np.random.default_rng(SEED), N_NEAR, N_RANDOM), SEED, PIPELINES[pipeline])
+def test_random() -> None:
+    check(batch(np.random.default_rng(SEED), N_NEAR, N_RANDOM), SEED)
 
 
 @pytest.mark.slow

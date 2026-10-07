@@ -26,7 +26,6 @@ N_FAMILY, N_RANDOM = 20_000, 100_000  # per rounding family, random bits: fast r
 N_FAMILY_SLOW, N_RANDOM_SLOW = 100_000, 200_000  # per chunk of the slow run
 N_SLOW = 10**8  # per operation, slow run
 W_PER_CHUNK = 16  # exhaustive BF16 run: 16 values of w against all 2^16 x
-PIPELINES = {"comb": (), "pipe3": (("NumPipeRegs", 3),)}  # the same bits either way
 
 
 def batch(rng: np.random.Generator, n_family: int, n_random: int) -> np.ndarray:
@@ -50,12 +49,11 @@ def check(op: str, abc: np.ndarray, seed: int | str, params: tuple = (), golden=
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("pipeline", PIPELINES)
 @pytest.mark.parametrize("op", OPS)
-def test_specials(op: str, pipeline: str) -> None:
+def test_specials(op: str) -> None:
     """Every triple of special values; the driver collects results by
-    valid_o, whatever the pipeline depth."""
-    check(op, special_tuples(3), "specials", PIPELINES[pipeline])
+    valid_o."""
+    check(op, special_tuples(3), "specials")
 
 
 @rtl.needs_verilator

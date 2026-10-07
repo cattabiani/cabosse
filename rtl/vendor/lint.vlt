@@ -1,7 +1,0 @@
-`verilator_config
-// Vendored code (rtl/vendor/) is linted by its authors, not held to our
-// -Wall rule. Our own files are. SPLITVAR and UNOPTFLAT are not lint
-// warnings, so they are named: they appear when cocotb builds with --public.
-lint_off -file "*rtl/vendor/*"
-lint_off -rule SPLITVAR -file "*rtl/vendor/*"
-lint_off -rule UNOPTFLAT -file "*rtl/vendor/*"
