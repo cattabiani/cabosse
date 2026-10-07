@@ -15,6 +15,7 @@ and no backpressure. Handshakes and wide or AXI ports belong in cocotb.
 
 import functools
 import subprocess
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -23,12 +24,19 @@ import rtl
 
 DRIVERS = Path(__file__).parent / "bulk"
 CHUNK = 1 << 20  # records per run of the driver
+_BUILD_LOCK = threading.Lock()  # tests may run chunks from several threads
+
+
+def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
+    """Verilate `top` (with parameter overrides) and its driver, and compile
+    it, once per test session (Verilator's make rebuilds only what changed).
+    Thread-safe: the first caller builds, the others wait for it."""
+    with _BUILD_LOCK:
+        return _build(top, params)
 
 
 @functools.cache
-def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
-    """Verilate `top` (with parameter overrides) and its driver, and compile
-    it, once per test session (Verilator's make rebuilds only what changed)."""
+def _build(top: str, params: tuple[tuple[str, int], ...]) -> Path:
     build_dir = rtl.BUILD / ("_".join(["bulk", top, *(f"{k}{v}" for k, v in params)]))
     argv = [
         "verilator", "--cc", "--exe", "--build", "-j", "0", "-O3",
