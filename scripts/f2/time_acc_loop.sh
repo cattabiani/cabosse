@@ -17,6 +17,7 @@ PIPE_REGS="1 2 3 4"            # the FMA's registers; the loop adds one
 DEADLINE_MIN=110               # safety net: power off even if something hangs
 
 shutdown -h +$DEADLINE_MIN
+export HOME=/root  # cloud-init runs this without HOME; Vivado needs it
 out=/var/log/cabosse.log
 exec > >(tee -a $out > /dev/console) 2>&1
 log=/var/log/cabosse-build.log
@@ -52,13 +53,21 @@ done_ setup
 
 section vivado
 date -u +%FT%TZ
+pids=()
 for n in $PIPE_REGS; do
   mkdir -p /root/run$n
-  (cd /root/run$n && vivado -mode batch -nojournal -log vivado.log \
-    -source /root/cabosse/platforms/f2/timing/acc_loop.tcl \
-    -tclargs /root/cabosse "$part" "$n" >/dev/null 2>&1; echo "run$n exit $?") &
+  (
+    cd /root/run$n || exit
+    vivado -mode batch -nojournal -log vivado.log \
+      -source /root/cabosse/platforms/f2/timing/acc_loop.tcl \
+      -tclargs /root/cabosse "$part" "$n" > vivado.out 2>&1
+    status=$?
+    echo "run$n exit $status $(date -u +%T)"
+    [ $status -eq 0 ] || tail -30 vivado.out
+  ) &
+  pids+=($!)
 done
-wait
+wait "${pids[@]}"  # not a bare wait: it would also wait for the tee above
 date -u +%FT%TZ
 done_ vivado
 
