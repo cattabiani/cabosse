@@ -28,10 +28,10 @@ F32_SPECIAL_BITS = [
 ] + [arith.NAN_F32_BITS, 0x7F80_0001]  # canonical NaN, a signalling NaN
 
 
-def special_triples() -> np.ndarray:
-    """Every (a, b, c) triple of the special values, as uint32 rows."""
+def special_tuples(k: int) -> np.ndarray:
+    """Every k-tuple of the special values, as uint32 rows of k."""
     s = np.array(F32_SPECIAL_BITS, dtype=np.uint32)
-    return np.stack([x.ravel() for x in np.meshgrid(s, s, s, indexing="ij")], axis=1)
+    return np.stack([x.ravel() for x in np.meshgrid(*[s] * k, indexing="ij")], axis=1)
 
 
 def all_bf16_widened() -> np.ndarray:

@@ -310,6 +310,14 @@ and a chip change nothing on F2, and each costs a milestone or money; the
 RTL stays vendor-neutral and synthesizable with Yosys, so the ASIC remains
 possible.
 
+**D-037 (2026-10-07) — `max` is IEEE 754-2019 `maximumNumber`.** A NaN
+operand gives the other operand; two NaNs give the canonical NaN; `max(-0,
++0) = +0` as before. This is RISC-V's `fmax`, which CVFPU implements, so the
+vector unit uses CVFPU's unit unchanged (settles the mismatch D-033 named).
+Softmax's output does not change: a NaN score's own `exp` is NaN, so the sum
+and every `p` are NaN, as before. *Why:* the spec follows a standard
+operation and a tested unit, at no cost to any result the model produces.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -518,12 +526,6 @@ cost of subnormal support is reported in Yosys cells (D-016); its F2
 resource cost comes with the first build.
 
 **Progress:**
-- Approved by the owner (2026-10-07), to apply in step 2 with the CVFPU
-  tests: `max` follows IEEE 754-2019 `maximumNumber`, as RISC-V's `fmax` and
-  CVFPU do (a NaN operand gives the other operand; two NaNs give NaN). It
-  changes only softmax's intermediate max, never its output: a NaN score
-  still gives NaN everywhere. Needs its decision entry, `docs/numerics.md`,
-  the golden model and tests together (rule 8).
 - [x] CVFPU vendored (`rtl/vendor/`, D-033; pins and reasons in its
   README; checksums tested). `rtl/sources.f` is the one compile list for
   every tool. `rtl/fp32_fma.sv` wraps the FMA (fma, add, mul, round to
@@ -545,6 +547,9 @@ resource cost comes with the first build.
   bit-exact (`slow`, about 4.5 minutes). The lane is `bf16_to_fp32` into
   `fp32_fma`, each now checked over its whole input domain; M4 checks the
   wiring.
+- [x] `max` (D-037): `rtl/fp32_max.sv` wraps CVFPU's `fpnew_noncomp`
+  (MINMAX, MAX). Bit-exact against the golden `max` on every pair of
+  special values and on 10⁸ inputs (`slow`).
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op

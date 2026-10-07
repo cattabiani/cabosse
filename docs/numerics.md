@@ -30,7 +30,7 @@ round to nearest, ties to even.
 | `mul(a, b)` | `f32(a · b)` |
 | `fma(a, b, c)` | `f32(a · b + c)`: one rounding (D-019) |
 | `mac(w, x, acc)` | `fma(up(w), up(x), acc)` for BF16 `w`, `x` and FP32 `acc` |
-| `max(a, b)` | the larger of a and b, with `max(-0, +0) = +0`; NaN if a or b is NaN |
+| `max(a, b)` | the larger of a and b, with `max(-0, +0) = +0`; if one is NaN, the other; NaN if both are (IEEE 754-2019 `maximumNumber`, D-037) |
 | `int bit tricks` | integer add/subtract/shift on the 32-bit pattern of an FP32 value (section 5) |
 
 Special values (D-012, D-016):
@@ -42,6 +42,13 @@ Special values (D-012, D-016):
   bits, because torch's CPU conversion produces `0xFFFF`.
 - **Zeros:** signed zeros follow IEEE 754 (`x + (-x) = +0` in round to
   nearest).
+
+Not used from IEEE 754, on purpose: the status flags (invalid, overflow and
+the rest; the RTL leaves CVFPU's unconnected), every rounding mode but round
+to nearest even, traps, and NaN payloads (results are canonical; a signalling
+NaN input gives the canonical quiet NaN). `exp`, `recip` and `rsqrt` are our
+own approximations (section 5), not correctly rounded operations. BF16 is not
+an IEEE format.
 
 ## 3. Dot product (the lanes)
 
@@ -104,7 +111,8 @@ All FP32 unless noted. `n ≥ 1` is the vector length.
   ```
   For finite scores the largest gives `exp(+0) = 1` exactly, so `z ≥ 1` and
   `recip(z)` needs no scaling. A score of -Inf gets `p = 0`. A score of +Inf
-  or NaN, or all scores -Inf, gives NaN everywhere (IEEE propagation). Decode
+  or NaN, or all scores -Inf, gives NaN everywhere (IEEE propagation; `m`
+  skips a NaN score, but that score's `eᵢ` is NaN). Decode
   has no masked scores, so only finite scores occur there.
   `e` need not be stored: recomputing `exp(add(sᵢ, -m))` gives the same bits
   (D-022).

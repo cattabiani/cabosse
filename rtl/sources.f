@@ -11,3 +11,4 @@ vendor/cvfpu/src/fpnew_fma.sv
 vendor/cvfpu/src/fpnew_noncomp.sv
 bf16_to_fp32.sv
 fp32_fma.sv
+fp32_max.sv

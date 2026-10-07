@@ -16,6 +16,8 @@ and no backpressure. Handshakes and wide or AXI ports belong in cocotb.
 import functools
 import subprocess
 import threading
+from collections.abc import Callable, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import numpy as np
@@ -24,6 +26,7 @@ import rtl
 
 DRIVERS = Path(__file__).parent / "bulk"
 CHUNK = 1 << 20  # records per run of the driver
+WORKERS = 8  # drivers run at once by in_parallel
 _BUILD_LOCK = threading.Lock()  # tests may run chunks from several threads
 
 
@@ -64,6 +67,14 @@ def run(top: str, records: np.ndarray, params: tuple[tuple[str, int], ...] = ())
     return np.concatenate(out) if out else np.empty(0, dtype="<u4")
 
 
+def check(top: str, records: np.ndarray, want: np.ndarray, label: str, params: tuple = ()) -> None:
+    """Assert that `records` through `top` give `want` (uint32), bit for bit;
+    the failure names `label` (say, the seed) and the first rows that differ."""
+    got = run(top, records, params)
+    report = mismatches(got, want, records)
+    assert not report, f"{label}: {report}"
+
+
 def mismatches(got: np.ndarray, want: np.ndarray, inputs: np.ndarray, limit: int = 10) -> str:
     """The first `limit` rows where got and want differ, in hex, or ''."""
     bad = np.flatnonzero(got != want)
@@ -72,3 +83,16 @@ def mismatches(got: np.ndarray, want: np.ndarray, inputs: np.ndarray, limit: int
         for i in bad[:limit]
     ]
     return f"{len(bad)} of {len(got)} differ:\n" + "\n".join(rows) if len(bad) else ""
+
+
+def in_parallel[T](fn: Callable[[T], None], items: Iterable[T]) -> None:
+    """fn(item) for every item, WORKERS at a time (each fn runs drivers);
+    re-raises the first failure."""
+    with ThreadPoolExecutor(WORKERS) as pool:
+        list(pool.map(fn, items))
+
+
+def chunk_seeds(seed: int, n_total: int, per_chunk: int) -> list[int]:
+    """One seed per chunk of `per_chunk` records, enough chunks for `n_total`:
+    seed + 1, seed + 2, ..."""
+    return [seed + 1 + k for k in range(-(-n_total // per_chunk))]

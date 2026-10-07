@@ -6,13 +6,11 @@ special values, the rounding families of the golden-model tests, and random
 bit patterns. The fast run checks a few hundred thousand inputs per
 operation; the slow run 10⁸ (PLAN.md, M3 exit criterion)."""
 
-from concurrent.futures import ThreadPoolExecutor
-
 import bulk
 import numpy as np
 import pytest
 import torch
-from fp_inputs import all_bf16_widened, families, random_bits, special_triples
+from fp_inputs import all_bf16_widened, families, random_bits, special_tuples
 from golden import arith
 
 import rtl
@@ -27,7 +25,6 @@ OPS = {
 N_FAMILY, N_RANDOM = 20_000, 100_000  # per rounding family, random bits: fast run
 N_FAMILY_SLOW, N_RANDOM_SLOW = 100_000, 200_000  # per chunk of the slow run
 N_SLOW = 10**8  # per operation, slow run
-WORKERS = 8  # slow-run chunks checked at once (each a driver process)
 W_PER_CHUNK = 16  # exhaustive BF16 run: 16 values of w against all 2^16 x
 PIPELINES = {"comb": (), "pipe3": (("NumPipeRegs", 3),)}  # the same bits either way
 
@@ -47,11 +44,9 @@ def check(op: str, abc: np.ndarray, seed: int | str, params: tuple = (), golden=
     op_i, default = OPS[op]
     golden = golden or default
     records = np.concatenate([np.full((len(abc), 1), op_i, dtype=np.uint32), abc], axis=1)
-    got = bulk.run("fp32_fma", records, params)
     x, y, z = torch.from_numpy(abc.view(np.float32)).unbind(1)
     want = arith.bits_f32(golden(x, y, z)).numpy().astype(np.uint32)
-    report = bulk.mismatches(got, want, records)
-    assert not report, f"{op}, seed {seed}: {report}"
+    bulk.check("fp32_fma", records, want, f"{op}, seed {seed}", params)
 
 
 @rtl.needs_verilator
@@ -60,19 +55,13 @@ def check(op: str, abc: np.ndarray, seed: int | str, params: tuple = (), golden=
 def test_specials(op: str, pipeline: str) -> None:
     """Every triple of special values; the driver collects results by
     valid_o, whatever the pipeline depth."""
-    check(op, special_triples(), "specials", PIPELINES[pipeline])
+    check(op, special_tuples(3), "specials", PIPELINES[pipeline])
 
 
 @rtl.needs_verilator
 @pytest.mark.parametrize("op", OPS)
 def test_random(op: str) -> None:
     check(op, batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM), SEED)
-
-
-def in_parallel(fn, items) -> None:
-    """fn(item) for every item, WORKERS at a time (each runs a driver process)."""
-    with ThreadPoolExecutor(WORKERS) as pool:
-        list(pool.map(fn, items))
 
 
 @pytest.mark.slow
@@ -96,7 +85,7 @@ def test_bf16_products_exhaustive(op: str) -> None:
         acc = random_bits(np.random.default_rng(seed), n) if op == "fma" else np.zeros(n, np.uint32)
         check(op, np.stack([w, x, acc], axis=1), f"w chunk {chunk}, seed {seed}", golden=golden)
 
-    in_parallel(one, range(2**16 // W_PER_CHUNK))
+    bulk.in_parallel(one, range(2**16 // W_PER_CHUNK))
 
 
 @pytest.mark.slow
@@ -104,11 +93,11 @@ def test_bf16_products_exhaustive(op: str) -> None:
 @pytest.mark.parametrize("op", OPS)
 def test_random_slow(op: str) -> None:
     """10⁸ inputs in chunks of about 10⁶, each with its own seed (printed on
-    failure), WORKERS at a time."""
+    failure), bulk.WORKERS at a time."""
     per_chunk = len(batch(np.random.default_rng(0), N_FAMILY_SLOW, N_RANDOM_SLOW))
-    seeds = [SEED + 1 + k for k in range(-(-N_SLOW // per_chunk))]
+    seeds = bulk.chunk_seeds(SEED, N_SLOW, per_chunk)
 
     def one(seed: int) -> None:
         check(op, batch(np.random.default_rng(seed), N_FAMILY_SLOW, N_RANDOM_SLOW), seed)
 
-    in_parallel(one, seeds)
+    bulk.in_parallel(one, seeds)

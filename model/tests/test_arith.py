@@ -5,7 +5,7 @@
 import numpy as np
 import pytest
 import torch
-from fp_inputs import F32, F32_SPECIAL_BITS, any_finite, families, moderate, special_triples
+from fp_inputs import F32, F32_SPECIAL_BITS, any_finite, families, moderate, special_tuples
 from golden import arith, settings
 from oracle import add_ref, fma_ref, mul_ref
 
@@ -112,7 +112,7 @@ def test_against_oracle(op: str) -> None:
 
 def test_fma_special_values() -> None:
     """All combinations of special inputs; non-finite cases follow IEEE via float64."""
-    a, b, c = special_triples().view(F32).T
+    a, b, c = special_tuples(3).view(F32).T
     got = arith.fma(t32(a), t32(b), t32(c))
     finite = np.isfinite(a) & np.isfinite(b) & np.isfinite(c)
     want = np.empty_like(a)
