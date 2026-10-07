@@ -625,14 +625,18 @@ resource cost comes with the first build.
   no retiming unless noted): 1 register +0.155 ns (+0.180 ns retimed), 2
   registers +0.588 ns with 1,183 LUTs, 543 registers and 2 DSPs (1: 1,243
   LUTs, 541 registers). `MulRegs` = 2 is the default: a 6-cycle fma, not
-  in a loop. The lanes' product (outside the loop) sits at the edge of
-  4 ns: the same logic gave +0.146, +0.016 and -0.053 ns slack in three
-  runs, its worst path always the product (about 4.0 ns, 19 logic levels).
-  `bf16_mac` now has one register inside the product too (`MulRegs` = 1,
-  a 5-cycle unit; `A` and the bits unchanged). The fifth log's last run was
-  read from the live console, its replay being cut by the shutdown. To do:
-  a Vivado run of the lanes' loop with the product register (owner's OK);
-  then the PR. After it: the cost of subnormal support (D-016, exit
+  in a loop. The lanes' product (outside the loop) sat at the edge of
+  4 ns: the same function, written three ways in this branch, gave +0.146,
+  +0.016 and -0.053 ns, its worst path always the product (about 4.0 ns, 19
+  logic levels). Vivado repeats a result for the same RTL (the fma's
+  +0.588 ns twice), so the spread came from the rewrites. `bf16_mac` now
+  has one register inside the product too (`MulRegs` = 1, a 5-cycle unit;
+  `A` and the bits unchanged). With it (sixth log): the 4-cycle loop
+  +0.657 ns without retiming (596 LUTs, 275 registers, no DSPs), +0.770 ns
+  retimed; a 3-cycle loop +0.813 ns retimed. The worst path is now the
+  loop's own (accumulator to alignment, 3.3 ns). The fifth log's last run
+  was read from the live console, its replay being cut by the shutdown.
+  To do: the PR. After it: the cost of subnormal support (D-016, exit
   criterion), against a flush-to-zero variant.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
