@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The Cabosse Authors
-//
-// Bulk driver for rtl/fp32_fma.sv (verif/bulk.py). Record: op, a, b, c.
+
+/// @file
+/// @brief Bulk driver for rtl/fp32_fma.sv (verif/bulk.py). Record: op, a, b, c.
 
 #include "Vfp32_fma.h"
 #include "stream.h"

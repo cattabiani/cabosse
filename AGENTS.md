@@ -171,6 +171,8 @@ These are proposed in M0 and will be confirmed when the first code is written
 
 - C++23, built with `-std=c++23`. Prefer the standard library's modern
   pieces (`std::span`, ranges, `std::print`, concepts) to C-style code.
+- Doxygen comments (`///`, `@brief`, `@tparam`, `@param`, `@return`) on
+  every file, type and function.
 
 ### Docs
 

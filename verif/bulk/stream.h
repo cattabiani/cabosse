@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 The Cabosse Authors
-//
-// The loop every bulk driver shares (protocol: verif/bulk.py). A driver says
-// how many fields a record has, how to put a record on the block's inputs,
-// and which output to collect; stream() does the rest.
+
+/// @file
+/// @brief The loop every bulk driver shares (protocol: verif/bulk.py).
+///
+/// A driver says how many fields a record has, how to put a record on the
+/// block's inputs, and which output to collect; stream() does the rest.
 
 #pragma once
 
@@ -17,10 +19,11 @@
 
 #include "verilated.h"
 
+/// @brief One record: the words of one input, in the driver's field order.
 using Record = std::span<const uint32_t>;
 
-// What stream() needs from a Verilated block: our clock, reset and valid
-// ports (AGENTS.md, SystemVerilog conventions).
+/// @brief What stream() needs from a Verilated block: our clock, reset and
+/// valid ports (AGENTS.md, SystemVerilog conventions).
 template <typename Top>
 concept Block = requires(Top top) {
   top.clk_i;
@@ -30,8 +33,12 @@ concept Block = requires(Top top) {
   top.eval();
 };
 
-// One clock cycle with the inputs already set: settle, collect the output
-// if it is valid, then the rising edge.
+/// @brief One clock cycle with the inputs already set: settle, collect the
+/// output if it is valid, then the rising edge.
+/// @tparam Top the Verilated block.
+/// @param dut the block.
+/// @param output returns the result word from the block's ports.
+/// @param results receives output(dut) if valid_o is high.
 template <Block Top, typename Output>
 void cycle(Top& dut, Output& output, std::vector<uint32_t>& results) {
   dut.clk_i = 0;
@@ -41,8 +48,9 @@ void cycle(Top& dut, Output& output, std::vector<uint32_t>& results) {
   dut.eval();
 }
 
-// Every little-endian uint32 in `file` until its end, in order (a trailing
-// partial word is dropped).
+/// @brief Read every little-endian uint32 in a file, in order.
+/// @param file an open binary stream, read to its end.
+/// @return the words; a trailing partial word is dropped.
 inline std::vector<uint32_t> read_words(std::FILE* file) {
   std::vector<uint32_t> words;
   uint32_t buf[4096];
@@ -52,11 +60,16 @@ inline std::vector<uint32_t> read_words(std::FILE* file) {
   return words;
 }
 
-// Run the bulk protocol on `Top`: read records of `fields` words from stdin,
-// reset the block, put one record per cycle on its inputs with
-// set_inputs(dut, record), collect output(dut) whenever valid_o is high, and
-// write the results to stdout. Returns 0, or nonzero (with a message on
-// stderr) if the input is not whole records or a result is missing.
+/// @brief Run the bulk protocol: read records from stdin, stream one per
+/// clock cycle through the block after a reset, collect a result whenever
+/// valid_o is high, and write the results to stdout in order.
+/// @tparam Top the Verilated block.
+/// @param argc, argv the program's arguments, passed to Verilator.
+/// @param fields words per record.
+/// @param set_inputs puts a Record on the block's input ports.
+/// @param output returns the result word from the block's ports.
+/// @return 0; 2 if the input is not whole records; 3 if a result is missing
+///   (each with a message on stderr).
 template <Block Top, typename SetInputs, typename Output>
   requires std::invocable<SetInputs, Top&, Record> && std::invocable<Output, Top&>
 int stream(int argc, char** argv, size_t fields, SetInputs set_inputs, Output output) {
