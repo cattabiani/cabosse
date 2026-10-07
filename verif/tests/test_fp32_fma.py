@@ -80,7 +80,7 @@ def test_bf16_products_exhaustive(op: str) -> None:
     """Every pair of BF16 inputs, 2^32, widened as the lane widens them:
     up(w) * up(x) (mul), and up(w) * up(x) + acc (fma, the lane's mac) with a
     random FP32 acc per pair. A BF16 product is exact in FP32 unless it
-    underflows, so the subnormal products are where this can fail."""
+    underflows or overflows, so those products are where this can fail."""
     up = widened_bf16()
     x = np.tile(up, W_PER_CHUNK)
 
