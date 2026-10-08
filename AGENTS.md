@@ -95,6 +95,12 @@ one is wrong, say so and explain why, and let the owner decide.
 - A pull request that changes behaviour comes with tests for it. A PR without
   tests is incomplete unless tests make no sense for it (docs, a one-line
   config change). Use judgement: test what could break, not trivia.
+- Match a subagent's model and effort to its task, to keep cost down.
+  Clearly specified work (a known edit, running tests, collecting logs,
+  searching the code) uses Sonnet at low effort. Design, debugging,
+  numerics, code review and simplification use the default model at high
+  effort. Give the subagent the context it needs in the prompt so it does
+  not have to rediscover it.
 - When you make a decision that is not already in PLAN.md, write it down:
   either as a proposed decision for the owner to confirm, or as an open
   question.
