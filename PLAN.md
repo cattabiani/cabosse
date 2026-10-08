@@ -656,9 +656,14 @@ resource cost comes with the first build.
   SystemVerilog conventions; approved by the owner). Yosys: `bf16_mac`
   2,569 → 2,552 cells, `fp32_fma` 7,919 → 7,964 (no logic change for
   M = 24; to verify whether this is only Yosys's optimization varying).
-  The RTL changed after the sixth log, so its slack needs a
-  Vivado rerun (owner's OK). Then the cost of subnormal support (D-016,
-  exit criterion), against a flush-to-zero variant.
+  Seventh log (2026-10-08, the same four runs on this RTL, commit
+  4897dad): the 4-cycle loop +0.877 ns without retiming (633 LUTs, 275
+  registers, no DSPs), +0.953 ns retimed; the 3-cycle loop +0.841 ns
+  retimed; `fp32_fma` +0.514 ns (1,262 LUTs, 535 registers, 2 DSPs). All
+  four pass. The loop's worst path is now inside `fp_add`'s round stage
+  (3.1 ns), the fma's still the product's normalize stage (3.4 ns). Next:
+  the cost of subnormal support (D-016, exit criterion), against a
+  flush-to-zero variant.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op
