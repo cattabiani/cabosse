@@ -6,7 +6,8 @@
 // value b (D-038, D-039). Subnormals are kept, Inf - Inf and any NaN give the
 // canonical NaN, an exact zero sum is -0 only if both operands are -0.
 // Ftz = 1 flushes a subnormal b and a subnormal result to zero
-// (fp_pkg::flush_f32); a, from fp_product, is flushed there.
+// (fp_pkg::flush_f32). fp_product flushes its own inputs, but a product
+// below exponent 1 still reaches a exactly, so the fma rounds once.
 // W = 27 (fp_pkg::SigW) adds an exact BF16 product; fp32_fma uses W = 51 for
 // its exact FP32 products. The bits below the rounding point are guard (bit
 // W-25) and sticky (the rest, ORed); the operands' own sticky bits stay below

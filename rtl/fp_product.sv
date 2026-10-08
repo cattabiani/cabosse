@@ -36,7 +36,8 @@ module fp_product
   // --- Multiply ---------------------------------------------------------------
 
   operand_t a, b;
-  // Widened to FP32, exactly.
+  // Widened to FP32, exactly. With Ftz, the flush makes every input normal
+  // or zero, which gen_lz_ftz below relies on.
   assign a = decode_f32(flush_f32(32'(a_i) << (F32SigW - M), Ftz));
   assign b = decode_f32(flush_f32(32'(b_i) << (F32SigW - M), Ftz));
 

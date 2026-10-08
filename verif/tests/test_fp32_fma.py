@@ -10,7 +10,7 @@ import bulk
 import numpy as np
 import pytest
 import torch
-from fp_inputs import all_bf16_widened, families, random_bits, special_tuples
+from fp_inputs import all_bf16_widened, families, random_bits, special_tuples, subnormal_f32
 from golden import arith, settings
 
 import rtl
@@ -29,8 +29,11 @@ W_PER_CHUNK = 16  # exhaustive BF16 run: 16 values of w against all 2^16 x
 # fp32_fma's product registers: the same bits either way. The default (2) is
 # built without parameters, the build the slow run uses.
 PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (("MulRegs", 1),), "mulregs2": ()}
-FTZ = (("Ftz", 1),)  # the flush-to-zero variant (D-016's cost), default pipeline
-N_FLUSHED = 500  # results the flushes change, at least, per operation (add: 881)
+FTZ = (("Ftz", 1),)  # the flush-to-zero variant (D-016's cost)
+N_FLUSHED = 500  # results each flush changes, at least, per operation
+# Per operation, the (a, b, c) columns that reach fp_product's inputs and
+# fp_add's FP32 input: add is fma(a, 1, b); mul adds -0, never subnormal.
+FLUSH_SITES = {"fma": ((0, 1), (2,)), "add": ((0,), (1,)), "mul": ((0, 1), ())}
 
 
 def batch(rng: np.random.Generator, n_family: int, n_random: int) -> np.ndarray:
@@ -76,20 +79,46 @@ def test_random(op: str, pipeline: str) -> None:
     check(op, batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM), SEED, PIPELINES[pipeline])
 
 
-@rtl.needs_verilator
-@pytest.mark.parametrize("op", OPS)
-def test_flush_to_zero(op: str) -> None:
-    """The variant with Ftz = 1 against the golden model's ftz switch, on the
-    specials and the random batch. The inputs reach the flushes: at least
-    N_FLUSHED results differ from the default mode's."""
-    abc = np.concatenate(
+def ftz_inputs() -> np.ndarray:
+    """The flush-to-zero test's (a, b, c) rows: the specials, the random batch."""
+    return np.concatenate(
         [special_tuples(3), batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM)]
     )
+
+
+def flush_hits(op: str, abc: np.ndarray) -> dict[str, int]:
+    """Per flush `op` has (a subnormal product input, addend or result), how
+    many rows the ftz switch changes: the rows that test that flush."""
     with settings.override(ftz=True):
         flushed = expected(op, abc)
-    bulk.check("fp32_fma", records(op, abc), flushed, f"{op}, ftz, seed {SEED}", FTZ)
-    n_changed = int((flushed != expected(op, abc)).sum())
-    assert n_changed >= N_FLUSHED, n_changed
+    default = expected(op, abc)
+    changed = flushed != default
+    product, addend = FLUSH_SITES[op]
+    hits = {"product input": subnormal_f32(abc[:, product]).any(axis=1)}
+    if addend:
+        hits["addend"] = subnormal_f32(abc[:, addend]).any(axis=1)
+    hits["result"] = subnormal_f32(default)
+    return {site: int((changed & rows).sum()) for site, rows in hits.items()}
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize("pipeline", PIPELINES)
+@pytest.mark.parametrize("op", OPS)
+def test_flush_to_zero(op: str, pipeline: str) -> None:
+    """The variant with Ftz = 1 against the golden model's ftz switch, on
+    ftz_inputs(), at every pipeline depth."""
+    abc = ftz_inputs()
+    with settings.override(ftz=True):
+        flushed = expected(op, abc)
+    params = PIPELINES[pipeline] + FTZ
+    bulk.check("fp32_fma", records(op, abc), flushed, f"{op}, ftz, seed {SEED}", params)
+
+
+@pytest.mark.parametrize("op", OPS)
+def test_flush_to_zero_inputs_reach_every_flush(op: str) -> None:
+    """Each flush `op` has changes at least N_FLUSHED of ftz_inputs()'s results."""
+    hits = flush_hits(op, ftz_inputs())
+    assert min(hits.values()) >= N_FLUSHED, hits
 
 
 @pytest.mark.slow
