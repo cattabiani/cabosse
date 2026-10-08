@@ -1,0 +1,633 @@
+CABOSSE-BEGIN host
+2026-10-08T15:26:11Z
+$ cat /etc/os-release
+PRETTY_NAME="Ubuntu 24.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.1 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+$ nproc
+16
+$ free -b
+               total        used        free      shared  buff/cache   available
+Mem:     33086894080   792322048 32388055040     2891776   307609600 32294572032
+Swap:    10737414144           0 10737414144
+CABOSSE-END host
+CABOSSE-BEGIN setup
+cabosse 3347b2258aba942edcf0875aa73480bf62e108b7 2026-10-08T17:25:03+02:00
+aws-fpga e1514ebcc3fd0a8bab7333a4a88c177a4b21a3a3 2026-10-07T16:14:36-05:00
+$ which vivado
+/opt/Xilinx/2025.2/Vivado/bin/vivado
+$ vivado -version
+vivado v2025.2 (64-bit)
+Tool Version Limit: 2025.11
+SW Build 6299465 on Fri Nov 14 12:34:56 MST 2025
+IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
+SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+part xcvu47p-fsvh2892-2-e
+CABOSSE-END setup
+CABOSSE-BEGIN vivado
+2026-10-08T15:27:34Z
+run2 (lane_path:MulRegs:1:4:1) exit 0 15:36:57
+run3 (lane_path:MulRegs:2:4:0) exit 0 15:37:00
+run1 (lane_path:MulRegs:1:4:0) exit 0 15:37:09
+2026-10-08T15:37:09Z
+CABOSSE-END vivado
+CABOSSE-BEGIN run1 lane_path:MulRegs:1:4:0
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=lane_path loop_cycles=4 retime=0 wns_ns=0.173
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.173        0.000                      0                 6843        0.042        0.000                      0                 6843        1.468        0.000                       0                  3624  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.173        0.000                      0                 6843        0.042        0.000                      0                 6843        1.468        0.000                       0                  3624  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Thu Oct  8 15:37:07 2026
+| Host              : ip-172-31-47-187 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : lane_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (MET) :             0.173ns  (required time - arrival time)
+  Source:                 u_lane/busy_q_reg[1]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_lane/op_b_q_reg[28]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.809ns  (logic 1.275ns (33.478%)  route 2.534ns (66.522%))
+  Logic Levels:           16  (LUT2=1 LUT5=3 LUT6=11 MUXF7=1)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.029ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.029     0.029    
+    SLICE_X43Y162        FDRE                         0.000     0.029 r  u_lane/busy_q_reg[1]/C
+    SLICE_X43Y162        FDRE (Prop_FFF_SLICEL_C_Q)
+                                                      0.079     0.108 f  u_lane/busy_q_reg[1]/Q
+                         net (fo=28, routed)          0.326     0.434    u_lane/u_tree/p_1_in159_in
+    SLICE_X41Y162                                                     f  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_49/I0
+    SLICE_X41Y162        LUT2 (Prop_B6LUT_SLICEM_I0_O)
+                                                      0.037     0.471 f  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_49/O
+                         net (fo=3, routed)           0.090     0.561    u_lane/u_tree/ready[1]_43[6]
+    SLICE_X41Y163                                                     f  u_lane/u_tree/tree_tag_q_reg[1][j][3]_srl3_i_33/I5
+    SLICE_X41Y163        LUT6 (Prop_B6LUT_SLICEM_I5_O)
+                                                      0.100     0.661 f  u_lane/u_tree/tree_tag_q_reg[1][j][3]_srl3_i_33/O
+                         net (fo=3, routed)           0.161     0.822    u_lane/u_tree/busy_q_reg[0]_23
+    SLICE_X42Y163                                                     f  u_lane/u_tree/tree_tag_q_reg[1][j][3]_srl3_i_17/I5
+    SLICE_X42Y163        LUT6 (Prop_H6LUT_SLICEM_I5_O)
+                                                      0.090     0.912 f  u_lane/u_tree/tree_tag_q_reg[1][j][3]_srl3_i_17/O
+                         net (fo=9, routed)           0.098     1.011    u_lane/u_tree/busy_q_reg[0]_18
+    SLICE_X43Y163                                                     f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_15/I3
+    SLICE_X43Y163        LUT6 (Prop_G6LUT_SLICEL_I3_O)
+                                                      0.050     1.061 f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_15/O
+                         net (fo=8, routed)           0.119     1.180    u_lane/u_tree/old_ptr_q_reg[0]_14
+    SLICE_X43Y164                                                     f  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_22/I3
+    SLICE_X43Y164        LUT6 (Prop_E6LUT_SLICEL_I3_O)
+                                                      0.035     1.215 f  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_22/O
+                         net (fo=9, routed)           0.089     1.304    u_lane/u_tree/busy_q_reg[0]_13
+    SLICE_X43Y165                                                     f  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_29/I3
+    SLICE_X43Y165        LUT6 (Prop_B6LUT_SLICEL_I3_O)
+                                                      0.036     1.340 f  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_29/O
+                         net (fo=6, routed)           0.052     1.392    u_lane/u_tree/busy_q_reg[0]_9
+    SLICE_X43Y165                                                     f  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_41/I3
+    SLICE_X43Y165        LUT6 (Prop_E6LUT_SLICEL_I3_O)
+                                                      0.035     1.427 f  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_41/O
+                         net (fo=10, routed)          0.160     1.588    u_lane/u_tree/old_ptr_q_reg[0]_6
+    SLICE_X44Y164                                                     f  u_lane/u_tree/tree_tag_q_reg[1][j][3]_srl3_i_29/I3
+    SLICE_X44Y164        LUT6 (Prop_E6LUT_SLICEM_I3_O)
+                                                      0.052     1.640 f  u_lane/u_tree/tree_tag_q_reg[1][j][3]_srl3_i_29/O
+                         net (fo=10, routed)          0.095     1.735    u_lane/u_tree/busy_q_reg[0]_4
+    SLICE_X45Y164                                                     f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_25/I3
+    SLICE_X45Y164        LUT6 (Prop_B6LUT_SLICEL_I3_O)
+                                                      0.051     1.786 f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_25/O
+                         net (fo=11, routed)          0.159     1.945    u_lane/u_tree_n_90
+    SLICE_X44Y166                                                     f  u_lane/tree_tag_q_reg[1][c][1]_srl3_i_18/I2
+    SLICE_X44Y166        LUT5 (Prop_F6LUT_SLICEM_I2_O)
+                                                      0.123     2.068 f  u_lane/tree_tag_q_reg[1][c][1]_srl3_i_18/O
+                         net (fo=4, routed)           0.150     2.218    u_lane/tree_tag_q_reg[1][c][1]_srl3_i_18_n_0
+    SLICE_X42Y168                                                     f  u_lane/tree_tag_q_reg[1][c][1]_srl3_i_4/I2
+    SLICE_X42Y168        LUT6 (Prop_F6LUT_SLICEM_I2_O)
+                                                      0.098     2.316 r  u_lane/tree_tag_q_reg[1][c][1]_srl3_i_4/O
+                         net (fo=18, routed)          0.159     2.475    u_lane/tree_tag_q_reg[1][c][1]_srl3_i_4_n_0
+    SLICE_X43Y170                                                     r  u_lane/op_a_q[30]_i_12/I0
+    SLICE_X43Y170        LUT5 (Prop_E6LUT_SLICEL_I0_O)
+                                                      0.090     2.565 r  u_lane/op_a_q[30]_i_12/O
+                         net (fo=115, routed)         0.486     3.051    u_lane/op_a_q[30]_i_12_n_0
+    SLICE_X47Y173                                                     r  u_lane/op_b_q[28]_i_14/I0
+    SLICE_X47Y173        LUT6 (Prop_H6LUT_SLICEL_I0_O)
+                                                      0.090     3.141 r  u_lane/op_b_q[28]_i_14/O
+                         net (fo=1, routed)           0.175     3.316    u_lane/data6[28]
+    SLICE_X45Y172                                                     r  u_lane/op_b_q[28]_i_8/I1
+    SLICE_X45Y172        LUT6 (Prop_G6LUT_SLICEL_I1_O)
+                                                      0.123     3.439 r  u_lane/op_b_q[28]_i_8/O
+                         net (fo=1, routed)           0.008     3.447    u_lane/op_b_q[28]_i_8_n_0
+    SLICE_X45Y172                                                     r  u_lane/op_b_q_reg[28]_i_3/I1
+    SLICE_X45Y172        MUXF7 (Prop_F7MUX_GH_SLICEL_I1_O)
+                                                      0.063     3.510 r  u_lane/op_b_q_reg[28]_i_3/O
+                         net (fo=1, routed)           0.138     3.648    u_lane/op_b_q_reg[28]_i_3_n_0
+    SLICE_X46Y172                                                     r  u_lane/op_b_q[28]_i_1/I2
+    SLICE_X46Y172        LUT5 (Prop_F6LUT_SLICEM_I2_O)
+                                                      0.123     3.771 r  u_lane/op_b_q[28]_i_1/O
+                         net (fo=1, routed)           0.067     3.838    u_lane/op_b_q[28]_i_1_n_0
+    SLICE_X46Y172        FDRE                                         r  u_lane/op_b_q_reg[28]/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.021     4.021    
+                         clock pessimism              0.000     4.021    
+                         clock uncertainty           -0.035     3.986    
+    SLICE_X46Y172        FDRE (Setup_FFF_SLICEM_C_D)
+                                                      0.025     4.011    u_lane/op_b_q_reg[28]
+  -------------------------------------------------------------------
+                         required time                          4.011    
+                         arrival time                          -3.838    
+  -------------------------------------------------------------------
+                         slack                                  0.173    
+Slack (MET) :             0.176ns  (required time - arrival time)
+  Source:                 u_lane/issued_q_reg[1][0]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_lane/op_b_q_reg[16]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.806ns  (logic 1.303ns (34.236%)  route 2.503ns (65.764%))
+  Logic Levels:           13  (LUT2=1 LUT5=2 LUT6=9 MUXF7=1)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.028ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.028     0.028    
+    SLICE_X43Y162        FDRE                         0.000     0.028 r  u_lane/issued_q_reg[1][0]/C
+| CLB LUTs                   | 5191 |     0 |          0 |   1303680 |  0.40 |
+|   LUT as Logic             | 5152 |     0 |          0 |   1303680 |  0.40 |
+|   LUT as Memory            |   39 |     0 |          0 |    600960 | <0.01 |
+| CLB Registers              | 3565 |     0 |          0 |   2607360 |  0.14 |
+| CARRY8                     |  106 |     0 |          0 |    162960 |  0.07 |
+|   LUT as Distributed RAM                   |   20 |     0 |            |           |       |
+|   LUT as Shift Register                    |   19 |     0 |            |           |       |
+| CLB Registers                              | 3565 |     0 |          0 |   2607360 |  0.14 |
+| DSPs      |    0 |     0 |          0 |      9024 |  0.00 |
+| CARRY8   |  106 |                 CLB |
+| CLB LUTs                   | 5191 |    0 |    0 |   1.18 |   0.00 |   0.00 |
+|   LUT as Logic             | 5152 |    0 |    0 |   1.17 |   0.00 |   0.00 |
+|   LUT as Memory            |   39 |    0 |    0 |   0.02 |   0.00 |   0.00 |
+| CLB Registers              | 3565 |    0 |    0 |   0.41 |   0.00 |   0.00 |
+| CARRY8      
+               |  106 |    0 |    0 |   0.19 |   0.00 |   0.00 |
+| DSPs                       |    0 |    0 |    0 |   0.00 |   0.00 |   0.00 |
+1. Utilization by Hierarchy
+1. Utilization by Hierarchy
+---------------------------
++-----------------------+--------------+------------+------------+---------+------+------+--------+--------+------+------------+
+|        Instance       |    Module    | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | URAM | DSP Blocks |
++-----------------------+--------------+------------+------------+---------+------+------+--------+--------+------+------------+
+| lane_path             |        (top) |       5191 |       5152 |      20 |   19 | 3565 |      0 |      0 |    0 |          0 |
+|   (lane_path)         |        (top) |          0 |          0 |       0 |    0 |  170 |      0 |      0 |    0 |          0 |
+|   u_lane              |     dot_lane |       5191 |       5152 |      20 |   19 | 3395 |      0 |      0 |    0 |          0 |
+|     (u_lane)          |     dot_lane |       1077 |       1039 |      20 |   18 | 2551 |      0 |      0 |    0 |          0 |
+|     gen_unit[0].u_add |       fp_add |        476 |        476 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[0].u_mul |   fp_product |        223 |        223 |       0 |    0 |   28 |      0 |      0 |    0 |          0 |
+|     gen_unit[1].u_add |     fp_add_0 |        486 |        486 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[1].u_mul | fp_product_1 |        226 |        226 |       0 |    0 |   28 |      0 |      0 |    0 |          0 |
+|     gen_unit[2].u_add |     fp_add_2 |        466 |        466 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[2].u_mul | fp_product_3 |        223 |        223 |       0 |    0 |   28 |      0 |      0 |    0 |          0 |
+|     gen_unit[3].u_add |     fp_add_4 |        467 |        467 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[3].u_mul | fp_product_5 |        223 |        223 |       0 |    0 |   28 |      0 |      0 |    0 |          0 |
+|     u_tree            |     fp_add_6 |       1325 |       1324 |       0 |    1 |  144 |      0 |      0 |    0 |          0 |
++-----------------------+--------------+------------+------------+---------+------+------+--------+--------+------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+CABOSSE-END run1 lane_path:MulRegs:1:4:0
+CABOSSE-BEGIN run2 lane_path:MulRegs:1:4:1
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=lane_path loop_cycles=4 retime=1 wns_ns=0.070
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.070        0.000                      0                 6909        0.042        0.000                      0                 6909        1.468        0.000                       0                  3690  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.070        0.000                      0                 6909        0.042        0.000                      0                 6909        1.468        0.000                       0                  3690  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Thu Oct  8 15:36:54 2026
+| Host              : ip-172-31-47-187 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : lane_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (MET) :             0.070ns  (required time - arrival time)
+  Source:                 u_lane/busy_q_reg[2]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_lane/op_b_q_reg[29]_bret/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.910ns  (logic 1.226ns (31.356%)  route 2.684ns (68.644%))
+  Logic Levels:           14  (LUT5=2 LUT6=12)
+  Clock Path Skew:        -0.010ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X88Y9          FDRE                         0.000     0.030 r  u_lane/busy_q_reg[2]/C
+    SLICE_X88Y9          FDRE (Prop_BFF_SLICEM_C_Q)
+                                                      0.078     0.108 f  u_lane/busy_q_reg[2]/Q
+                         net (fo=28, routed)          0.267     0.375    u_lane/u_tree/p_1_in130_in
+    SLICE_X89Y11                                                      f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_52/I4
+    SLICE_X89Y11         LUT6 (Prop_G6LUT_SLICEL_I4_O)
+                                                      0.089     0.464 f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_52/O
+                         net (fo=4, routed)           0.200     0.664    u_lane/u_tree/busy_q_reg[1]_2
+    SLICE_X90Y9                                                       f  u_lane/u_tree/op_b_q[25]_bret__2_i_54/I4
+    SLICE_X90Y9          LUT6 (Prop_H6LUT_SLICEL_I4_O)
+                                                      0.090     0.754 f  u_lane/u_tree/op_b_q[25]_bret__2_i_54/O
+                         net (fo=2, routed)           0.091     0.846    u_lane/u_tree/issued_q_reg[0][2]
+    SLICE_X90Y9                                                       f  u_lane/u_tree/op_b_q[25]_bret__2_i_22/I3
+    SLICE_X90Y9          LUT6 (Prop_D6LUT_SLICEL_I3_O)
+                                                      0.099     0.945 f  u_lane/u_tree/op_b_q[25]_bret__2_i_22/O
+                         net (fo=9, routed)           0.295     1.239    u_lane/u_tree/busy_q_reg[0]_18
+    SLICE_X87Y9                                                       f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_15/I3
+    SLICE_X87Y9          LUT6 (Prop_B6LUT_SLICEM_I3_O)
+                                                      0.089     1.328 f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_15/O
+                         net (fo=8, routed)           0.091     1.420    u_lane/u_tree/old_ptr_q_reg[0]_14
+    SLICE_X87Y10                                                      f  u_lane/u_tree/op_b_q[25]_bret__2_i_43/I3
+    SLICE_X87Y10         LUT6 (Prop_E6LUT_SLICEM_I3_O)
+                                                      0.037     1.457 f  u_lane/u_tree/op_b_q[25]_bret__2_i_43/O
+                         net (fo=9, routed)           0.109     1.566    u_lane/u_tree/busy_q_reg[0]_13
+    SLICE_X86Y10                                                      f  u_lane/u_tree/op_b_q[25]_bret__2_i_29/I3
+    SLICE_X86Y10         LUT6 (Prop_C6LUT_SLICEL_I3_O)
+                                                      0.088     1.654 f  u_lane/u_tree/op_b_q[25]_bret__2_i_29/O
+                         net (fo=6, routed)           0.096     1.750    u_lane/u_tree/busy_q_reg[0]_9
+    SLICE_X86Y12                                                      f  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_22/I3
+    SLICE_X86Y12         LUT6 (Prop_A6LUT_SLICEL_I3_O)
+                                                      0.090     1.840 f  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_22/O
+                         net (fo=10, routed)          0.062     1.903    u_lane/u_tree/old_ptr_q_reg[0]_6
+    SLICE_X86Y11                                                      f  u_lane/u_tree/op_b_q[25]_bret__2_i_38/I3
+    SLICE_X86Y11         LUT6 (Prop_G6LUT_SLICEL_I3_O)
+                                                      0.035     1.938 f  u_lane/u_tree/op_b_q[25]_bret__2_i_38/O
+                         net (fo=10, routed)          0.111     2.049    u_lane/u_tree/busy_q_reg[0]_4
+    SLICE_X86Y12                                                      f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_25/I3
+    SLICE_X86Y12         LUT6 (Prop_E6LUT_SLICEL_I3_O)
+                                                      0.099     2.148 f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_25/O
+                         net (fo=11, routed)          0.185     2.333    u_lane/u_tree_n_90
+    SLICE_X84Y14                                                      f  u_lane/op_b_q[25]_bret__2_i_19/I3
+    SLICE_X84Y14         LUT5 (Prop_A6LUT_SLICEL_I3_O)
+                                                      0.050     2.383 r  u_lane/op_b_q[25]_bret__2_i_19/O
+                         net (fo=2, routed)           0.116     2.499    u_lane/op_b_q[25]_bret__2_i_19_n_0
+    SLICE_X84Y16                                                      r  u_lane/tree_tag_q_reg[1][c][1]_srl3_i_4/I0
+    SLICE_X84Y16         LUT6 (Prop_E6LUT_SLICEL_I0_O)
+                                                      0.147     2.646 r  u_lane/tree_tag_q_reg[1][c][1]_srl3_i_4/O
+                         net (fo=18, routed)          0.239     2.885    u_lane/tree_tag_q_reg[1][c][1]_srl3_i_4_n_0
+    SLICE_X85Y18                                                      r  u_lane/busy_q[2]_i_2/I0
+    SLICE_X85Y18         LUT5 (Prop_B6LUT_SLICEM_I0_O)
+                                                      0.052     2.937 r  u_lane/busy_q[2]_i_2/O
+                         net (fo=79, routed)          0.533     3.470    u_lane/busy_q[2]_i_2_n_0
+    SLICE_X84Y31                                                      r  u_lane/op_b_q[29]_bret_i_2/I3
+    SLICE_X84Y31         LUT6 (Prop_C6LUT_SLICEL_I3_O)
+                                                      0.035     3.505 r  u_lane/op_b_q[29]_bret_i_2/O
+                         net (fo=1, routed)           0.236     3.741    u_lane/data2[29]
+    SLICE_X86Y25                                                      r  u_lane/op_b_q[29]_bret_i_1/I4
+    SLICE_X86Y25         LUT6 (Prop_F6LUT_SLICEL_I4_O)
+                                                      0.148     3.889 r  u_lane/op_b_q[29]_bret_i_1/O
+                         net (fo=1, routed)           0.051     3.940    u_lane/op_b_q[29]_bret_i_1_n_0
+    SLICE_X86Y25         FDRE                                         r  u_lane/op_b_q_reg[29]_bret/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.020     4.020    
+                         clock pessimism              0.000     4.020    
+                         clock uncertainty           -0.035     3.985    
+    SLICE_X86Y25         FDRE (Setup_FFF_SLICEL_C_D)
+                                                      0.025     4.010    u_lane/op_b_q_reg[29]_bret
+  -------------------------------------------------------------------
+                         required time                          4.010    
+                         arrival time                          -3.940    
+  -------------------------------------------------------------------
+                         slack                                  0.070    
+Slack (MET) :             0.128ns  (required time - arrival time)
+  Source:                 u_lane/busy_q_reg[2]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_lane/op_a_q_reg[31]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.852ns  (logic 1.410ns (36.600%)  route 2.442ns (63.400%))
+  Logic Levels:           15  (LUT5=2 LUT6=12 MUXF7=1)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X88Y9          FDRE                         0.000     0.030 r  u_lane/busy_q_reg[2]/C
+    SLICE_X88Y9          FDRE (Prop_BFF_SLICEM_C_Q)
+                                                      0.078     0.108 f  u_lane/busy_q_reg[2]/Q
+                         net (fo=28, routed)          0.267     0.375    u_lane/u_tree/p_1_in130_in
+    SLICE_X89Y11                                                      f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_52/I4
+    SLICE_X89Y11         LUT6 (Prop_G6LUT_SLICEL_I4_O)
+                                                      0.089     0.464 f  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_52/O
+                         net (fo=4, routed)           0.200     0.664    u_lane/u_tree/busy_q_reg[1]_2
+    SLICE_X90Y9                                                       f  u_lane/u_tree/op_b_q[25]_bret__2_i_54/I4
+| CLB LUTs                   | 5160 |     0 |          0 |   1303680 |  0.40 |
+|   LUT as Logic             | 5121 |     0 |          0 |   1303680 
+|  0.39 |
+|   LUT as Memory            |   39 |     0 |          0 |    600960 | <0.01 |
+| CLB Registers              | 3631 |     0 |          0 |   2607360 |  0.14 |
+| CARRY8                     |  106 |     0 |          0 |    162960 |  0.07 |
+|   LUT as Distributed RAM                   |   20 |     0 |            |           |       |
+|   LUT as Shift Register                    |   19 |     0 |            |           |       |
+| CLB Registers                              | 3631 |     0 |          0 |   2607360 |  0.14 |
+| DSPs      |    0 |     0 |          0 |      9024 |  0.00 |
+| CARRY8   |  106 |                 CLB |
+| CLB LUTs                   | 5160 |    0 |    0 |   1.17 |   0.00 |   0.00 |
+|   LUT as Logic             | 5121 |    0 |    0 |   1.16 |   0.00 |   0.00 |
+|   LUT as Memory            |   39 |    0 |    0 |   0.02 |   0.00 |   0.00 |
+| CLB Registers              | 3631 |    0 |    0 |   0.41 |   0.00 |   0.00 |
+| CARRY8                     |  106 |    0 |    0 |   0.19 |   0.00 |   0.00 |
+| DSPs                       |    0 |    0 |    0 |   0.00 |   0.00 |   0.00 |
+1. Utilization by Hierarchy
+1. Utilization by Hierarchy
+---------------------------
++-----------------------+--------------+------------+------------+---------+------+------+--------+--------+------+------------+
+|        Instance       |    Module    | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | URAM | DSP Blocks |
++-----------------------+--------------+------------+------------+---------+------+------+--------+--------+------+------------+
+| lane_path             |        (top) |       5160 |       5121 |      20 |   19 | 3631 |      0 |      0 |    0 |          0 |
+|   (lane_path)         |        (top) |          0 |          0 |       0 |    0 |  170 |      0 |      0 |    0 |          0 |
+|   u_lane              |     dot_lane |       5160 |       5121 |      20 |   19 | 3461 |      0 |      0 |    0 |          0 |
+|     (u_lane)          |     dot_lane |       1046 |       1008 |      20 |   18 | 2617 |      0 |      0 |    0 |          0 |
+|     gen_unit[0].u_add |       fp_add |        485 |        485 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[0].u_mul |   fp_product |        225 |        225 |       0 |    0 |   28 |      0 |      0 |    0 |          0 |
+|     gen_unit[1].u_add |     fp_add_0 |        457 |        457 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[1].u_mul | fp_product_1 |        225 |        225 |       0 |    0 |   28 |      0 |      0 |    0 |          0 |
+|     gen_unit[2].u_add |     fp_add_2 |        457 |        457 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[2].u_mul | fp_product_3 |        225 |        225 |       0 |    0 |   28 |      0 |      0 |    0 |          0 |
+|     gen_unit[3].u_add |     fp_add_4 |        461 |        461 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[3].u_mul | fp_product_5 |        225 |        225 |       0 |    0 |   28 |      0 |      0 |    0 |          0 |
+|     u_tree            |     fp_add_6 |       1356 |       1355 |       0 |    1 |  144 |      0 |      0 |    0 |          0 |
++-----------------------+--------------+------------+------------+---------+------+------+--------+--------+------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+CABOSSE-END run2 lane_path:MulRegs:1:4:1
+CABOSSE-BEGIN run3 lane_path:MulRegs:2:4:0
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=lane_path loop_cycles=4 retime=0 wns_ns=0.166
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.166        0.000                      0                 6952        0.042        0.000                      0                 6952        1.468        0.000                       0                  3731  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.166        0.000                      0                 6952        0.042        0.000                      0                 6952        1.468        0.000                       0                  3731  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Thu Oct  8 15:36:57 2026
+| Host              : ip-172-31-47-187 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : lane_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (MET) :             0.166ns  (required time - arrival time)
+  Source:                 u_lane/old_ptr_q_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_lane/op_b_q_reg[20]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.815ns  (logic 1.343ns (35.202%)  route 2.472ns (64.798%))
+  Logic Levels:           14  (LUT2=1 LUT3=1 LUT5=3 LUT6=8 MUXF7=1)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.028ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.028     0.028    
+    SLICE_X86Y145        FDRE                         0.000     0.028 r  u_lane/old_ptr_q_reg[0]/C
+    SLICE_X86Y145        FDRE (Prop_CFF_SLICEL_C_Q)
+                                                      0.079     0.107 f  u_lane/old_ptr_q_reg[0]/Q
+                         net (fo=91, routed)          0.141     0.248    u_lane/u_tree/s2_q_reg[valid]_u_lane_u_tree_s2_q_reg_r_0[0]
+    SLICE_X85Y144                                                     f  u_lane/u_tree/s1_q_reg[valid]_srl2___u_lane_u_tree_s1_q_reg_r_i_7/I0
+    SLICE_X85Y144        LUT2 (Prop_E6LUT_SLICEM_I0_O)
+                                                      0.091     0.339 r  u_lane/u_tree/s1_q_reg[valid]_srl2___u_lane_u_tree_s1_q_reg_r_i_7/O
+                         net (fo=6, routed)           0.284     0.623    u_lane/u_tree/old_ptr_q_reg[0]_21
+    SLICE_X87Y145                                                     r  u_lane/u_tree/s1_q_reg[valid]_srl2___u_lane_u_tree_s1_q_reg_r_i_2/I4
+    SLICE_X87Y145        LUT6 (Prop_A6LUT_SLICEM_I4_O)
+                                                      0.038     0.661 r  u_lane/u_tree/s1_q_reg[valid]_srl2___u_lane_u_tree_s1_q_reg_r_i_2/O
+                         net (fo=4, routed)           0.152     0.814    u_lane/u_tree/busy_q_reg[0][2]
+    SLICE_X86Y145                                                     r  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_14/I0
+    SLICE_X86Y145        LUT5 (Prop_B6LUT_SLICEL_I0_O)
+                                                      0.098     0.912 r  u_lane/u_tree/tree_tag_q_reg[1][j][2]_srl3_i_14/O
+                         net (fo=7, routed)           0.217     1.129    u_lane/u_tree/old_ptr_q_reg[0]_15
+    SLICE_X84Y144                                                     r  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_22/I4
+    SLICE_X84Y144        LUT6 (Prop_G6LUT_SLICEL_I4_O)
+                                                      0.097     1.226 r  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_22/O
+                         net (fo=9, routed)           0.127     1.353    u_lane/u_tree/busy_q_reg[0]_13
+    SLICE_X84Y146                                                     r  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_29/I3
+    SLICE_X84Y146        LUT6 (Prop_E6LUT_SLICEL_I3_O)
+                                                      0.099     1.452 r  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_29/O
+                         net (fo=6, routed)           0.098     1.550    u_lane/u_tree/busy_q_reg[0]_9
+    SLICE_X84Y147                                                     r  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_41/I3
+    SLICE_X84Y147        LUT6 (Prop_C6LUT_SLICEL_I3_O)
+                                                      0.035     1.585 r  u_lane/u_tree/tree_tag_q_reg[1][c][1]_srl3_i_41/O
+                         net (fo=10, routed)          0.101     1.686    u_lane/u_tree_n_102
+    SLICE_X84Y148                                                     r  u_lane/tree_tag_q_reg[1][j][2]_srl3_i_8/I1
+    SLICE_X84Y148        LUT3 (Prop_A6LUT_SLICEL_I1_O)
+                                                      0.098     1.784 f  u_lane/tree_tag_q_reg[1][j][2]_srl3_i_8/O
+                         net (fo=6, routed)           0.150     1.934    u_lane/pick183_out
+    SLICE_X83Y146                                                     f  u_lane/tree_tag_q_reg[1][c][1]_srl3_i_9/I0
+    SLICE_X83Y146        LUT6 (Prop_D6LUT_SLICEL_I0_O)
+                                                      0.099     2.033 f  u_lane/tree_tag_q_reg[1][c][1]_srl3_i_9/O
+                         net (fo=2, routed)           0.154     2.187    u_lane/tree_tag_q_reg[1][c][1]_srl3_i_9_n_0
+    SLICE_X82Y146                                                     f  u_lane/tree_tag_q_reg[1][c][1]_srl3_i_2/I4
+    SLICE_X82Y146        LUT6 (Prop_D6LUT_SLICEL_I4_O)
+                                                      0.036     2.223 f  u_lane/tree_tag_q_reg[1][c][1]_srl3_i_2/O
+                         net (fo=18, routed)          0.238     2.461    u_lane/tree_tag_q_reg[1][c][1]_srl3_i_2_n_0
+    SLICE_X80Y148                                                     f  u_lane/op_a_q[22]_i_12/I4
+    SLICE_X80Y148        LUT5 (Prop_E6LUT_SLICEL_I4_O)
+                                                      0.123     2.584 r  u_lane/op_a_q[22]_i_12/O
+                         net (fo=120, routed)         0.427     3.011    u_lane/op_a_q[22]_i_12_n_0
+    SLICE_X78Y153                                                     r  u_lane/op_a_q[20]_i_10/I0
+    SLICE_X78Y153        LUT6 (Prop_G6LUT_SLICEL_I0_O)
+                                                      0.149     3.160 r  u_lane/op_a_q[20]_i_10/O
+                         net (fo=2, routed)           0.155     3.315    u_lane/data9[20]
+    SLICE_X79Y152                                                     r  u_lane/op_b_q[20]_i_5/I0
+    SLICE_X79Y152        LUT6 (Prop_B6LUT_SLICEL_I0_O)
+                                                      0.148     3.463 r  u_lane/op_b_q[20]_i_5/O
+                         net (fo=1, routed)           0.009     3.472    u_lane/op_b_q[20]_i_5_n_0
+    SLICE_X79Y152                                                     r  u_lane/op_b_q_reg[20]_i_2/I0
+    SLICE_X79Y152        MUXF7 (Prop_F7MUX_AB_SLICEL_I0_O)
+                                                      0.063     3.535 r  u_lane/op_b_q_reg[20]_i_2/O
+                         net (fo=1, routed)           0.167     3.702    u_lane/op_b_q_reg[20]_i_2_n_0
+    SLICE_X78Y151                                                     r  u_lane/op_b_q[20]_i_1/I0
+    SLICE_X78Y151        LUT5 (Prop_H6LUT_SLICEL_I0_O)
+                                                      0.090     3.792 r  u_lane/op_b_q[20]_i_1/O
+                         net (fo=1, routed)           0.051     3.843    u_lane/op_b_q[20]_i_1_n_0
+    SLICE_X78Y151        FDRE                                         r  u_lane/op_b_q_reg[20]/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.020     4.020    
+                         clock pessimism              0.000     4.020    
+                         clock uncertainty           -0.035     3.985    
+    SLICE_X78Y151        FDRE (Setup_HFF_SLICEL_C_D)
+                                                      0.025     4.010    u_lane/op_b_q_reg[20]
+  -------------------------------------------------------------------
+                         required time                          4.010    
+                         arrival time                          -3.843    
+  -------------------------------------------------------------------
+                         slack                                  0.166    
+Slack (MET) :             0.177ns  (required time - arrival time)
+  Source:                 u_lane/old_ptr_q_reg[0]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_lane/op_b_q_reg[13]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.804ns  (logic 1.288ns (33.857%)  route 2.516ns (66.143%))
+  Logic Levels:           15  (LUT2=1 LUT5=4 LUT6=9 MUXF7=1)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.028ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.028     0.028    
+    SLICE_X86Y145        FDRE                         0.000     0.028 r  u_lane/old_ptr_q_reg[0]/C
+    SLICE_X86Y145        FDRE (Prop_CFF_SLICEL_C_Q)
+                                                
+CABOSSE-REPLAY 03
+      0.079     0.107 r  u_lane/old_ptr_q_reg[0]/Q
+                         net (fo=91, routed)          0.141     0.248    u_lane/u_tree/s2_q_reg[valid]_u_lane_u_tree_s2_q_reg_r_0[0]
+    SLICE_X85Y144                                                     r  u_lane/u_tree/s1_q_reg[valid]_srl2___u_lane_u_tree_s1_q_reg_r_i_7/I0
+    SLICE_X85Y144        LUT2 (Prop_E6LUT_SLICEM_I0_O)
+                                                      0.091     0.339 f  u_lane/u_tree/s1_q_reg[valid]_srl2___u_lane_u_tree_s1_q_reg_r_i_7/O
+                         net (fo=6, routed)           0.284     0.623    u_lane/u_tree/old_ptr_q_reg[0]_21
+    SLICE_X87Y145                                                     f  u_lane/u_tree/s1_q_reg[valid]_srl2___u_lane_u_tree_s1_q_reg_r_i_2/I4
+| CLB LUTs                   | 5195 |     0 |          0 |   1303680 |  0.40 |
+|   LUT as Logic             | 5143 |     0 |          0 |   1303680 |  0.39 |
+|   LUT as Memory            |   52 |     0 |          0 |    600960 | <0.01 |
+| CLB Registers              | 3659 |     0 |          0 |   2607360 |  0.14 |
+| CARRY8                     |  114 |     0 |          0 |    162960 |  0.07 |
+|   LUT as Distributed RAM                   |   20 |     0 |            |           |       |
+|   LUT as Shift Register                    |   32 |     0 |            |           |       |
+| CLB Registers                              | 3659 |     0 |          0 |   2607360 |  0.14 |
+| DSPs      |    0 |     0 |          0 |      9024 |  0.00 |
+| CARRY8   |  114 |                 CLB |
+| CLB LUTs                   | 5195 |    0 |    0 |   1.18 |   0.00 |   0.00 |
+|   LUT as Logic             | 5143 |    0 |    0 |   1.17 |   0.00 |   0.00 |
+|   LUT as Memory            |   52 |    0 |    0 |   0.03 |   0.00 |   0.00 |
+| CLB Registers              | 3659 |    0 |    0 |   0.42 |   0.00 |   0.00 |
+| CARRY8                     |  114 |    0 |    0 |   0.21 |   0.00 |   0.00 |
+| DSPs                       |    0 |    0 |    0 |   0.00 |   0.00 |   0.00 |
+1. Utilization by Hierarchy
+1. Utilization by Hierarchy
+---------------------------
++-----------------------+--------------+------------+------------+---------+------+------+--------+--------+------+------------+
+|        Instance       |    Module    | Total LUTs | Logic LUTs | LUTRAMs | SRLs |  FFs | RAMB36 | RAMB18 | URAM | DSP Blocks |
++-----------------------+--------------+------------+------------+---------+------+------+--------+--------+------+------------+
+| lane_path             |        (top) |       5195 |       5143 |      20 |   32 | 3659 |      0 |      0 |    0 |          0 |
+|   (lane_path)         |        (top) |          0 |          0 |       0 |    0 |  170 |      0 |      0 |    0 |          0 |
+|   u_lane              |     dot_lane |       5195 |       5143 |      20 |   32 | 3489 |      0 |      0 |    0 |          0 |
+|     (u_lane)          |     dot_lane |       1080 |       1041 |      20 |   19 | 2549 |      0 |      0 |    0 |          0 |
+|     gen_unit[0].u_add |       fp_add |        467 |        467 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[0].u_mul |   fp_product |        232 |        229 |       0 |    3 |   52 |      0 |      0 |    0 |          0 |
+|     gen_unit[1].u_add |     fp_add_0 |        470 |        470 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[1].u_mul | fp_product_1 |        232 |        229 |       0 |    3 |   52 |      0 |      0 |    0 |          0 |
+|     gen_unit[2].u_add |     fp_add_2 |        464 |        464 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[2].u_mul | fp_product_3 |        232 |        229 |       0 |    3 |   52 |      0 |      0 |    0 |          0 |
+|     gen_unit[3].u_add |     fp_add_4 |        468 |        468 |       0 |    0 |  147 |      0 |      0 |    0 |          0 |
+|     gen_unit[3].u_mul | fp_product_5 |        232 |        229 |       0 |    3 |   52 |      0 |      0 |    0 |          0 |
+|     u_tree            |     fp_add_6 |       1320 |       1319 |       0 |    1 |  144 |      0 |      0 |    0 |          0 |
++-----------------------+--------------+------------+------------+---------+------+------+--------+--------+------+------------+
+* Note: The sum of lower-level cells may be larger than their parent cells total, due to cross-hierarchy LUT combining
+CABOSSE-END run3 lane_path:MulRegs:2:4:0
