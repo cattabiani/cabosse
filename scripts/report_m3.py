@@ -18,7 +18,6 @@ first: the data records the commit it was measured on.
 import argparse
 import datetime
 import json
-import platform
 import subprocess
 import sys
 import tempfile
@@ -32,7 +31,11 @@ import paths  # noqa: E402
 import test_bf16_mac  # noqa: E402
 import test_fp32_fma  # noqa: E402
 import test_fp32_max  # noqa: E402
-from reporting import blocks, m3  # noqa: E402
+from reporting import (  # noqa: E402
+    blocks,
+    m3,
+    measure,  # noqa: E402
+)
 from reporting import m3_subnormal as cells_log  # noqa: E402
 from reporting.measure import commit_and_dirty, pytest_summary  # noqa: E402
 
@@ -112,14 +115,8 @@ def measure_cells() -> None:
 
 
 def measure_tests() -> None:
-    commit, dirty = commit_and_dirty()
     data = {
-        "provenance": {
-            "commit": commit,
-            "dirty": dirty,
-            "date": datetime.date.today().isoformat(),
-            "machine": f"{platform.system()} {platform.machine()}",
-        },
+        "provenance": measure.provenance(),
         # What the slow suite's bit-exactness tests run, from their own constants.
         "inputs": {
             "fma_add_mul": test_fp32_fma.N_SLOW,

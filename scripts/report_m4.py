@@ -14,9 +14,7 @@ measured on.
 """
 
 import argparse
-import datetime
 import json
-import platform
 import sys
 from pathlib import Path
 
@@ -28,8 +26,12 @@ import lane  # noqa: E402
 import paths  # noqa: E402
 import test_dot_lane_bulk  # noqa: E402
 from golden import decoder  # noqa: E402
-from reporting import blocks, m4  # noqa: E402
-from reporting.measure import commit_and_dirty, pytest_summary  # noqa: E402
+from reporting import (  # noqa: E402
+    blocks,
+    m4,
+    measure,  # noqa: E402
+)
+from reporting.measure import pytest_summary  # noqa: E402
 
 import rtl  # noqa: E402, F401  (puts .tools/ on PATH for the suites)
 
@@ -52,16 +54,10 @@ def volume_counts() -> tuple[int, int]:
 
 
 def measure_tests() -> None:
-    commit, dirty = commit_and_dirty()
     rows, pairs = smollm2_counts()
     chunks, bulk_pairs = volume_counts()
     data = {
-        "provenance": {
-            "commit": commit,
-            "dirty": dirty,
-            "date": datetime.date.today().isoformat(),
-            "machine": f"{platform.system()} {platform.machine()}",
-        },
+        "provenance": measure.provenance(),
         # What the tests run, from their own constants and rows.
         "inputs": {
             "bulk_pairs": bulk_pairs,

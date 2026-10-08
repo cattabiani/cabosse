@@ -1,8 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """What the report scripts (scripts/report_m*.py) share when they measure:
-the commit the data comes from, and pytest's summary of a suite."""
+where the data comes from, and pytest's summary of a suite."""
 
+import datetime
+import platform
 import subprocess
 import sys
 
@@ -21,6 +23,18 @@ def commit_and_dirty() -> tuple[str, bool]:
     if dirty:
         print("warning: uncommitted changes; the report will say so")
     return commit, dirty
+
+
+def provenance() -> dict:
+    """Where the data comes from: commit, uncommitted changes, date, machine
+    (the keys blocks.provenance_text reads)."""
+    commit, dirty = commit_and_dirty()
+    return {
+        "commit": commit,
+        "dirty": dirty,
+        "date": datetime.date.today().isoformat(),
+        "machine": f"{platform.system()} {platform.machine()}",
+    }
 
 
 def pytest_summary(extra: list[str]) -> str:

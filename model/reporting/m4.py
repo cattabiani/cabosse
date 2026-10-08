@@ -19,7 +19,7 @@ import paths
 import perf
 from golden import dot
 
-from reporting import blocks, m1, m3
+from reporting import blocks, m3
 
 PATH = paths.REPORTS / "M4.md"
 DATA = paths.REPORTS / "data" / "M4.json"
@@ -28,6 +28,7 @@ LOGS = {
     "2026-10-08-lane.txt": "3 contexts and a scheduler",
     "2026-10-08-lane-belt.txt": "the conveyor belt",
 }
+DESCRIPTIONS = list(LOGS.values())  # by log number - 1
 ENGINE_SETTING = ("MulRegs = 1", False)  # the run the engine estimate uses: setting, retimed
 
 BEGIN = re.compile(r"^CABOSSE-BEGIN run\d+ \S+$", re.M)
@@ -61,10 +62,11 @@ def sections(text: str) -> list[str]:
 def hierarchy(section: str) -> dict[str, tuple[int, int]]:
     """Instance -> (total LUTs, flip-flops) from the utilization by hierarchy."""
     table = section[section.index("Utilization by Hierarchy") :]
-    return {m[1].strip(): (int(m[2]), int(m[3])) for m in HIER_ROW.finditer(table)}
+    return {m[1]: (int(m[2]), int(m[3])) for m in HIER_ROW.finditer(table)}
 
 
 def lanes(texts: dict[str, str], parsed: list[tuple[str, str, list[m3.Run]]]) -> list[Lane]:
+    """Every run of every log, with the lane's resources."""
     out = []
     for name, _, runs in parsed:
         for run, section in zip(runs, sections(texts[name]), strict=True):
@@ -80,11 +82,11 @@ def available(text: str) -> dict[str, int]:
 
 
 def runs_table(runs: list[Lane]) -> str:
-    names = list(LOGS)
+    """Every run: timing, and the lane's resources split by part."""
     rows = [
         [
             r.run.log,
-            LOGS[names[r.run.log - 1]],
+            DESCRIPTIONS[r.run.log - 1],
             r.run.setting,
             "yes" if r.run.retime else "no",
             f"{r.run.slack_ns:+.3f}",
@@ -117,14 +119,13 @@ def runs_table(runs: list[Lane]) -> str:
 
 def engine_table(runs: list[Lane], n_lanes: int, part: dict[str, int]) -> str:
     """n_lanes lanes of each log's ENGINE_SETTING run."""
-    names = list(LOGS)
     rows = []
     for r in runs:
         if (r.run.setting, r.run.retime) == ENGINE_SETTING:
             luts, regs = n_lanes * r.luts, n_lanes * r.registers
             rows.append(
                 [
-                    LOGS[names[r.run.log - 1]],
+                    DESCRIPTIONS[r.run.log - 1],
                     f"{luts:,} ({luts / part['CLB LUTs']:.1%})",
                     f"{regs:,} ({regs / part['CLB Registers']:.1%})",
                 ]
@@ -135,16 +136,18 @@ def engine_table(runs: list[Lane], n_lanes: int, part: dict[str, int]) -> str:
 
 
 def generated() -> dict[str, str]:
+    """Every block of the report, by name."""
     data = json.loads(DATA.read_text())
     tests, inputs = data["tests"], data["inputs"]
     design = perf.load_design("v0").values()
     n_lanes, per_cycle = int(design["lanes"]), int(design["macs_per_lane"])
     texts = {name: (m3.F2 / name).read_text() for name in LOGS}
-    parsed = m3.logs(LOGS)
+    parsed = [(name, *m3.parse_log(i, texts[name])) for i, name in enumerate(LOGS, 1)]
+    last = texts[list(LOGS)[-1]]
     runs = lanes(texts, parsed)
     worst = min(r.run.slack_ns for r in runs if r.run.log == len(LOGS))
 
-    slow_ok, fast_ok = m1.tests_passed(tests["slow"]), m1.tests_passed(tests["fast"])
+    slow_ok, fast_ok = blocks.tests_passed(tests["slow"]), blocks.tests_passed(tests["fast"])
     exit_rows = [
         [
             "Bit-exact on random lengths, SmolLM2 row lengths and adversarial inputs",
@@ -153,7 +156,7 @@ def generated() -> dict[str, str]:
             f"step's rows, {inputs['smollm2_rows']:,} rows and {inputs['smollm2_pairs']:,} "
             "pairs of real weights and activations (slow suite); the handshake's corner "
             "cases (cocotb, fast suite)",
-            m1.met(slow_ok and fast_ok),
+            blocks.met(slow_ok and fast_ok),
         ],
         [
             f"{per_cycle} pairs per cycle sustained under randomized backpressure "
@@ -161,24 +164,24 @@ def generated() -> dict[str, str]:
             f"rows of {inputs['full_rate_len']} elements or more: no stall with input "
             "gaps, cycles = beats + gaps + latency; random output ready loses nothing "
             "(fast suite)",
-            m1.met(fast_ok),
+            blocks.met(fast_ok),
         ],
     ]
     timing_row = [
         "The lane meets 250 MHz on F2's part (Q6; not an exit criterion)",
         f"every run of the final RTL, worst {worst:+.3f} ns (log {len(LOGS)})",
-        m1.met(worst >= 0),
+        blocks.met(worst >= 0),
     ]
     return {
-        "verdict": m1.verdict(exit_rows, "M4"),
+        "verdict": blocks.verdict(exit_rows, "M4"),
         "exit-criteria": blocks.table(["criterion", "measured", "met"], [*exit_rows, timing_row]),
         "shape": f"`E` = {per_cycle} pairs per cycle, `A` = {dot.ACCUMULATORS} "
         f"partial sums, {n_lanes} lanes in M5 (D-027).",
-        "tools": m3.tools_text(texts[list(LOGS)[-1]]),
+        "tools": m3.tools_text(last),
         "logs": m3.logs_table(parsed, LOGS, "final sum"),
         "runs": runs_table(runs),
-        "engine": engine_table(runs, n_lanes, available(texts[list(LOGS)[-1]])),
-        "tests-provenance": m1.provenance_text(data["provenance"]),
+        "engine": engine_table(runs, n_lanes, available(last)),
+        "tests-provenance": blocks.provenance_text(data["provenance"]),
         "tests": m3.tests_table(tests),
     }
 

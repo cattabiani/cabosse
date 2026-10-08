@@ -14,7 +14,6 @@ records the commit it was measured on. Run it under the memory cap.
 """
 
 import argparse
-import datetime
 import json
 import os
 import platform
@@ -34,7 +33,8 @@ import fixtures  # noqa: E402
 import paths  # noqa: E402
 from golden import decoder  # noqa: E402
 from reporting import blocks, m1  # noqa: E402
-from reporting.measure import git, pytest_summary  # noqa: E402
+from reporting.measure import provenance as common_provenance  # noqa: E402
+from reporting.measure import pytest_summary  # noqa: E402
 
 POSITIONS = 256  # per comparison sequence
 DECODE_WARMUP = 4  # untimed decode steps first (caches, allocator)
@@ -48,11 +48,7 @@ SUITES = {"fast": ["--deselect", UP_TO_DATE], "slow": ["-m", "slow"]}
 def provenance() -> dict:
     cpuinfo = Path("/proc/cpuinfo").read_text().splitlines()  # Linux: the reference platform
     cpu = next(line.split(":", 1)[1].strip() for line in cpuinfo if line.startswith("model name"))
-    return {
-        "commit": git("rev-parse", "HEAD").strip(),
-        "dirty": bool(git("status", "--porcelain").strip()),
-        "date": datetime.date.today().isoformat(),
-        "machine": f"{platform.system()} {platform.machine()}",
+    return common_provenance() | {
         "cpu": cpu,
         "threads": torch.get_num_threads(),
         "load_average": list(os.getloadavg()),  # 1, 5, 15 min, before measuring

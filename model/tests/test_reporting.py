@@ -47,7 +47,7 @@ def test_fill_needs_exactly_the_blocks_in_the_text(given: dict[str, str]) -> Non
     ],
 )
 def test_tests_passed(summary: str, passed: bool) -> None:
-    assert m1.tests_passed(summary) == passed
+    assert blocks.tests_passed(summary) == passed
 
 
 def test_m1_report_is_up_to_date() -> None:
