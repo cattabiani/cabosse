@@ -29,8 +29,8 @@ module bf16_mac #(
     .clk_i,
     .rst_ni,
     .valid_i,
-    .a_i({w_i, 16'h0}),  // up(w)
-    .b_i({x_i, 16'h0}),
+    .a_i(w_i),
+    .b_i(x_i),
     .c_i(acc_i),
     .valid_o,
     .y_o

@@ -145,7 +145,10 @@ These are proposed in M0 and will be confirmed when the first code is written
 - `always_ff` for flops, `always_comb` for combinational logic. No latches.
   No `initial` blocks in synthesizable code.
 - Valid/ready handshakes on all streaming interfaces. Data must not change
-  while `valid && !ready`.
+  while `valid && !ready`. Exception: a fixed-latency arithmetic pipeline
+  (`fp_add`, `fp_mul_add`, ...) has `valid` only and never stalls. A stall
+  there would need an enable on every register, including the accumulator
+  loop; the block that uses it handles backpressure at its own boundary.
 - Parameters for widths and counts (`L` lanes, etc.). No magic numbers.
 - Synthesizable by Verilator, Yosys, and Vivado. No vendor primitives in
   `rtl/`. They belong in `platforms/`.

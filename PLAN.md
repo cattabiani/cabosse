@@ -639,15 +639,24 @@ resource cost comes with the first build.
   Review cleanup (PR #36): `fp_mul_add` (product, register, adder) is the
   one body of `bf16_mac` and `fp32_fma`; `fp_add` takes its second operand
   as FP32 bits; `fp_pkg` holds the canonical NaN, the NaN test and the
-  product's width; `fp_product` refuses `Regs` > 2 (the callers' delay
-  lines assume at most 2); the exponent order comes from the subtractions'
+  product's width; `fp_product` refuses `Regs` > 2 (it has places for two
+  registers only); the exponent order comes from the subtractions'
   borrows; `fp32_max` uses one magnitude compare. Yosys: `bf16_mac` 2,565
   → 2,569 cells, `fp32_fma` 7,976 → 7,919. Not done, no gain in Yosys
   cells: the significand compare beside the alignment shifter instead of
   in front of it (+142 cells; it shortens `fp_add`'s first stage, now the
   lanes' worst path, so worth a Vivado run only if that path limits), and
   the product's zero flag from the operands (same cells, one more flop per
-  register). The RTL changed after the sixth log, so its slack needs a
+  register). Second review: `fp_product` and `fp_mul_add` take a and b in
+  an M + 8-bit format (BF16 for M = 8), so a BF16 product cannot drop
+  input bits; the timing harness's valid follows the product's registers;
+  register names follow `_q`; FP32's significand width is one constant
+  (`fp_pkg::F32SigW`); `bf16_mac` is tested with `MulRegs` = 2 too.
+  Fixed-latency arithmetic pipelines have `valid` only (AGENTS.md,
+  SystemVerilog conventions; approved by the owner). Yosys: `bf16_mac`
+  2,569 → 2,552 cells, `fp32_fma` 7,919 → 7,964 (no logic change for
+  M = 24; to verify whether this is only Yosys's optimization varying).
+  The RTL changed after the sixth log, so its slack needs a
   Vivado rerun (owner's OK). Then the cost of subnormal support (D-016,
   exit criterion), against a flush-to-zero variant.
 - Later: synthesizing every module as its own top re-synthesizes the FMA

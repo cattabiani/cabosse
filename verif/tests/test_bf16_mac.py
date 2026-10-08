@@ -21,7 +21,7 @@ W_PER_CHUNK = 16  # exhaustive run: 16 values of w against all 2^16 x
 UP = all_bf16_widened()  # up(b) as FP32 bits, indexed by the BF16 bits
 # bf16_mac's product registers: the same bits either way. The default (1) is
 # built without parameters, the build the slow run uses.
-PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": ()}
+PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (), "mulregs2": (("MulRegs", 2),)}
 
 
 def bf16_bits(rng: np.random.Generator, n: int) -> np.ndarray:

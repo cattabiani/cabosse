@@ -25,11 +25,9 @@ module mac_loop
 );
 
   logic [15:0] w_q, x_q;
-  logic        valid_q, p_valid_q;
   always_ff @(posedge clk_i) begin
-    w_q     <= w_i;
-    x_q     <= x_i;
-    valid_q <= valid_i;
+    w_q <= w_i;
+    x_q <= x_i;
   end
 
   logic [W+11:0] p_d, p_q;
@@ -38,13 +36,17 @@ module mac_loop
     .Regs(MulRegs)
   ) u_mul (
     .clk_i,
-    .a_i({w_q, 16'h0}),
-    .b_i({x_q, 16'h0}),
+    .a_i(w_q),
+    .b_i(x_q),
     .p_o(p_d)
   );
-  always_ff @(posedge clk_i) begin
-    p_q       <= p_d;
-    p_valid_q <= valid_q;
+  always_ff @(posedge clk_i) p_q <= p_d;
+
+  // valid, delayed like the product: the input register, MulRegs, p_q.
+  logic valid_q[MulRegs+2];
+  always_ff @(posedge clk_i) valid_q[0] <= valid_i;
+  for (genvar i = 0; i <= MulRegs; i++) begin : gen_valid
+    always_ff @(posedge clk_i) valid_q[i+1] <= valid_q[i];
   end
 
   logic [31:0] acc, sum;
@@ -52,7 +54,7 @@ module mac_loop
   fp_add u_add (
     .clk_i,
     .rst_ni,
-    .valid_i(p_valid_q),
+    .valid_i(valid_q[MulRegs+1]),
     .a_i    (p_q),
     .b_i    (acc),
     .valid_o(unused_sum_valid),
@@ -60,15 +62,16 @@ module mac_loop
   );
 
   // AccRegs registers from the sum back to fp_add's accumulator input.
-  logic [31:0] acc_q[AccRegs+1];
-  assign acc_q[0] = sum;
+  // acc_pipe[0] is the sum; acc_pipe[1..AccRegs] are registers.
+  logic [31:0] acc_pipe[AccRegs+1];
+  assign acc_pipe[0] = sum;
   for (genvar i = 0; i < AccRegs; i++) begin : gen_acc
     always_ff @(posedge clk_i) begin
-      if (!rst_ni) acc_q[i+1] <= '0;
-      else acc_q[i+1] <= acc_q[i];
+      if (!rst_ni) acc_pipe[i+1] <= '0;
+      else acc_pipe[i+1] <= acc_pipe[i];
     end
   end
-  assign acc   = acc_q[AccRegs];
+  assign acc   = acc_pipe[AccRegs];
   assign acc_o = acc;
 
 endmodule

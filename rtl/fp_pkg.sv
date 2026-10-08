@@ -6,7 +6,8 @@
 
 package fp_pkg;
 
-  localparam int unsigned SigW = 27;  // FP32's 24 significand bits, guard, round, sticky
+  localparam int unsigned F32SigW = 24;  // FP32's significand bits, hidden bit included
+  localparam int unsigned SigW = F32SigW + 3;  // then guard, round, sticky
   // Unused in tops that never make a NaN (fp_product, leading_zeros, ...).
   /* verilator lint_off UNUSEDPARAM */
   localparam logic [31:0] CanonicalNaN = 32'h7FC0_0000;  // docs/numerics.md, section 2
@@ -30,7 +31,7 @@ package fp_pkg;
   // W of fp_product's operand for M-bit significands: the whole 2M-bit
   // product, at least FP32's 24 bits, then guard, round, sticky.
   function automatic int unsigned prod_sig_w(int unsigned m);
-    return (2 * m > 24 ? 2 * m : 24) + 3;
+    return (2 * m > F32SigW ? 2 * m : F32SigW) + 3;
   endfunction
 
   // Whether FP32 bits are a NaN, from all but the sign bit.

@@ -153,17 +153,17 @@ module fp_add
   // Round at FP32's 24 bits; an all-ones significand that rounds up carries
   // into the exponent. From exponent 254 that gives exponent 255 and a zero
   // fraction, which is Inf's pattern, so overflow needs no test of the carry.
-  logic        guard, sticky, round_up, overflow;
-  logic [24:0] rounded;
-  logic [23:0] sig;
-  logic [7:0]  exp;  // when there is no overflow
+  logic               guard, sticky, round_up, overflow;
+  logic [F32SigW:0]   rounded;
+  logic [F32SigW-1:0] sig;
+  logic [7:0]         exp;  // when there is no overflow
   always_comb begin
-    guard    = norm[W-25];
-    sticky   = |norm[W-26:0];
-    round_up = guard && (sticky || norm[W-24]);
-    rounded  = {1'b0, norm[W-1-:24]} + 25'(round_up);
-    sig      = rounded[24] ? rounded[24:1] : rounded[23:0];
-    exp      = norm_exp[7:0] + 8'(rounded[24]);
+    guard    = norm[W-F32SigW-1];
+    sticky   = |norm[W-F32SigW-2:0];
+    round_up = guard && (sticky || norm[W-F32SigW]);
+    rounded  = {1'b0, norm[W-1-:F32SigW]} + (F32SigW + 1)'(round_up);
+    sig      = rounded[F32SigW] ? rounded[F32SigW:1] : rounded[F32SigW-1:0];
+    exp      = norm_exp[7:0] + 8'(rounded[F32SigW]);
     overflow = norm_exp >= 9'd255;
   end
 
@@ -171,7 +171,7 @@ module fp_add
   always_comb begin
     if (s2_q.nan) y_d = CanonicalNaN;
     else if (s2_q.inf || overflow) y_d = {s2_q.sign, 8'hFF, 23'h0};
-    else y_d = {s2_q.sign, sig[23] ? exp : 8'h00, sig[22:0]};  // a zero: sig = 0
+    else y_d = {s2_q.sign, sig[F32SigW-1] ? exp : 8'h00, sig[F32SigW-2:0]};  // a zero: sig = 0
   end
 
   // --- Registers --------------------------------------------------------------
