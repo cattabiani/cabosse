@@ -11,4 +11,6 @@ Planned contents:
   and data layouts (M2).
 - `perf-model.md`: first-order performance model and its assumptions (M2).
 
+- `community.md`: community, partner and foundry suggestions (notes only).
+
 The project plan and decision log live in [`../PLAN.md`](../PLAN.md).
