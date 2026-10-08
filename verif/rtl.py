@@ -12,6 +12,7 @@ the RTL tests skip, unless CABOSSE_REQUIRE_RTL=1 makes that a failure.
 """
 
 import os
+import re
 import shutil
 import subprocess
 from collections.abc import Sequence
@@ -53,13 +54,21 @@ def harnesses() -> list[Path]:
     return sorted((REPO / "platforms" / "f2" / "timing").glob("*.sv"))
 
 
-def simulate(top: str, test_module: str | None = None) -> None:
-    """Build rtl/ with `top` as the top module and run the cocotb tests in
+def simulate(
+    top: str, test_module: str | None = None, params: Sequence[tuple[str, int]] = ()
+) -> None:
+    """Build rtl/ with `top` as the top module and its parameters set to
+    `params` ((name, value) pairs), and run the cocotb tests in
     verif/tests/<test_module>.py (default test_<top>) against it; a failing
     test fails here."""
     runner = get_runner("verilator")
-    build_dir = BUILD / top
-    runner.build(build_args=VERILATOR_FILES, hdl_toplevel=top, build_dir=build_dir)
+    build_dir = BUILD / "_".join([top, *(f"{k}{v}" for k, v in params)])
+    runner.build(
+        build_args=VERILATOR_FILES,
+        hdl_toplevel=top,
+        build_dir=build_dir,
+        parameters=dict(params),
+    )
     runner.test(
         hdl_toplevel=top,
         hdl_toplevel_lang="verilog",  # the runner cannot infer it from a file list
@@ -92,3 +101,24 @@ def synthesize(
     return subprocess.run(
         ["yosys", "-q", "-m", "slang", "-p", script], capture_output=True, text=True
     )
+
+
+def logic_depth(
+    top: str, extra: Sequence[Path] = (), params: Sequence[tuple[str, int]] = ()
+) -> int:
+    """The longest register-to-register path of `top`, in cells (LUTs, carry
+    chains, muxes), after Yosys's synthesis for UltraScale+ (F2's family): a
+    proxy for timing, not a timing analysis. Flip-flops are deleted, so every
+    path ends at one."""
+    files = " ".join(str(p) for p in extra)
+    overrides = " ".join(f"-G {name}={value}" for name, value in params)
+    script = (
+        f"read_slang -F {SOURCES} {files} --top {top} {overrides}; "
+        f"synth_xilinx -family xcup -flatten -noiopad -noclkbuf -top {top}; "
+        "delete t:FD*; ltp -noff"
+    )
+    result = subprocess.run(["yosys", "-m", "slang", "-p", script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout[-2000:] + result.stderr
+    match = re.search(r"Longest topological path in \S+ \(length=(\d+)\)", result.stdout)
+    assert match, result.stdout[-2000:]
+    return int(match.group(1))
