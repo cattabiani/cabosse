@@ -103,22 +103,17 @@ def logs() -> list[tuple[str, str, list[Run]]]:
 
 
 def logs_table(parsed: list[tuple[str, str, list[Run]]]) -> str:
-    rows = []
-    for name, commit, runs in parsed:
-        results = "; ".join(
-            f"{UNITS[r.top]}{f' ({r.setting})' if r.setting else ''}, {r.cycles} cycles"
-            f"{', retimed' if r.retime else ''}: {r.slack_ns:+.3f} ns"
-            for r in runs
-        )
-        rows.append(
-            [f"{runs[0].log} [{name}](data/f2/{name})", LOGS[name], f"`{commit[:7]}`", results]
-        )
-    return blocks.table(["log", "what was tried", "commit", "slack per run"], rows)
+    rows = [
+        [runs[0].log, f"[{name}](data/f2/{name})", LOGS[name], f"`{commit[:7]}`"]
+        for name, commit, runs in parsed
+    ]
+    return blocks.table(["log", "file", "what was tried", "commit"], rows)
 
 
 def runs_table(runs: list[Run]) -> str:
     rows = [
         [
+            r.log,
             UNITS[r.top],
             r.setting or "–",
             r.cycles,
@@ -132,6 +127,7 @@ def runs_table(runs: list[Run]) -> str:
         for r in runs
     ]
     header = [
+        "log",
         "unit",
         "setting",
         "cycles",
@@ -177,8 +173,8 @@ def generated() -> dict[str, str]:
         [
             "Each FP operation bit-exact against the golden model on ≥ 10⁸ random "
             "inputs and every special-value class (the BF16 multiply exhaustively)",
-            f"fma, add, mul: {inputs['fma_add_mul']:.0e} inputs each; max: "
-            f"{inputs['max']:.0e}; the lanes' multiply-add: all {inputs['bf16_pairs']:,} "
+            f"fma, add, mul: {inputs['fma_add_mul']:,} inputs each; max: "
+            f"{inputs['max']:,}; the lanes' multiply-add: all {inputs['bf16_pairs']:,} "
             "BF16 pairs; every combination of the special values (slow suite)",
             met(slow_ok),
         ],
@@ -214,8 +210,7 @@ def generated() -> dict[str, str]:
         "exit-criteria": blocks.table(["criterion", "measured", "met"], exit_rows),
         "tools": tools_text((F2 / list(LOGS)[-1]).read_text()),
         "logs": logs_table(parsed),
-        "final-runs": runs_table(parsed[-1][2]),
-        "all-runs": runs_table([r for _, _, runs in parsed for r in runs]),
+        "runs": runs_table([r for _, _, runs in parsed for r in runs]),
         "cells-provenance": m3_subnormal.provenance_text(cells_provenance),
         "cost": m3_subnormal.cost_table(cells),
         "parts": m3_subnormal.parts_table(cells),
