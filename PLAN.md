@@ -682,7 +682,7 @@ resource cost comes with the first build.
   together (measured 2026-10-08, dev machine), so every module stays a
   top; revisit only if a larger top (M5's engine) makes it slow.
 
-### M4 — Dot-product lane
+### M4 — Dot-product lane ✅
 **What:** a lane that streams BF16 pairs into an FP32 dot product.
 **Why:** a pipelined adder needs `A` rotating partial sums to take one input
 per cycle. That fixes the summation order, which the golden model must match.
@@ -809,6 +809,10 @@ Vivado run; bulk driver and slow tests; checkpoint report.
   `model/tests/fp_inputs.py`, lane helpers to `verif/lane.py`, `plusarg`
   to `verif/bulk/stream.h`. Left for later: a handshake loop in
   `stream.h` (when a second handshake driver exists, M5).
+- [x] Checkpoint report: [reports/M4.md](reports/M4.md), tables generated
+  by `scripts/report_m4.py` from the lane's Vivado logs and the test runs
+  (`reports/data/M4.json`): exit criteria, the lane, timing and area,
+  tests, open issues.
 
 ### M5 — Matrix-vector engine with simulated memory
 **What:** `L` lanes, weight DMA over AXI, tiling, and an AXI memory model
