@@ -656,36 +656,23 @@ resource cost comes with the first build.
   SystemVerilog conventions; approved by the owner). Yosys: `bf16_mac`
   2,569 → 2,552 cells, `fp32_fma` 7,919 → 7,964 (no logic change for
   M = 24: Yosys gives the same count on every run, but rewrites with the
-  same logic move it, by up to 38 cells so far).
+  same logic move it; see reports/M3-interim-subnormal.md).
   Seventh log (2026-10-08, the same four runs on this RTL, commit
   4897dad): the 4-cycle loop +0.877 ns without retiming (633 LUTs, 275
   registers, no DSPs), +0.953 ns retimed; the 3-cycle loop +0.841 ns
   retimed; `fp32_fma` +0.514 ns (1,262 LUTs, 535 registers, 2 DSPs). All
   four pass. The loop's worst path is now inside `fp_add`'s round stage
   (3.1 ns), the fma's still the product's normalize stage (3.4 ns).
-- [x] Cost of subnormal support (D-016). `Ftz` = 1 (default 0) builds the
-  units' flush-to-zero variant, bit-exact against the golden model's ftz
-  switch: subnormal inputs and results become signed zeros, and the
-  product is still exact and rounded once at subnormal precision before
-  the flush. Tested on the specials and the random batch (`bf16_mac`;
-  `fp32_fma`'s fma, add, mul), whose inputs reach the flushes (881 to
-  34,077 results differ from the default mode's); dropping any one flush
-  fails the tests. Yosys cells (generic `synth`, `-G Ftz=0/1`), with
-  subnormals / without: `bf16_mac` 2,553 / 2,503 (+50, 2.0 %),
-  `fp32_fma` 7,926 / 7,508 (+418, 5.3 %); in the parts, `fp_product`
-  M = 8 870 / 750, M = 24 4,937 / 4,406 (with normal inputs the product
-  is in [1, 4), so its leading-zero count and normalize shift become one
-  bit); `fp_add` W = 27 1,535 / 1,552, W = 51 2,564 / 2,597 (the flushes
-  add logic, nothing goes). Yosys's own spread across rewrites with the
-  same logic is up to 38 cells. `fp32_max` and `bf16_to_fp32` move bits
-  only: subnormals cost them nothing, and the flush would add logic.
-  FTZ as the golden model defines it keeps the shift below exponent 1
-  (fp_product, 331 cells at W = 27, 666 at W = 51) and the rounding at
-  subnormal precision, because a tiny exact product still changes the
-  fma's rounding. A non-fused FTZ that flushes the product would drop them
-  too, but would differ from the golden switch. D-016 stands unless the
-  owner decides otherwise; the F2 resource cost comes with the first
-  build.
+- [x] Cost of subnormal support (D-016). `Ftz` = 1 (default 0) builds
+  `bf16_mac`'s and `fp32_fma`'s flush-to-zero variant, bit-exact against
+  the golden model's ftz switch at every pipeline depth; the cost is the
+  Yosys cells between the two builds: a few percent of each unit, more for
+  the fma. Numbers, method and how far to trust them:
+  [reports/M3-interim-subnormal.md](reports/M3-interim-subnormal.md),
+  generated from Yosys's log by `scripts/report_m3_subnormal.py`. D-016
+  stands unless the owner decides otherwise; the F2 resource cost comes
+  with the first build. `Ftz` stays in the RTL (owner, 2026-10-08), to
+  measure that cost and to re-measure later.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op
