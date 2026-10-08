@@ -30,9 +30,11 @@ checkpoints.
 
 ## Status
 
-**M3 in progress** (toolchain and FP units). M2 is done:
-[reports/M2.md](reports/M2.md). See [PLAN.md](PLAN.md) for goals, decisions,
-milestones, and open questions.
+**M3 is done** (toolchain and FP units): our own BF16 and FP32 units,
+bit-exact against the golden model, with the lanes' accumulate loop closing
+at 250 MHz on F2's part (Vivado, out of context). Report:
+[reports/M3.md](reports/M3.md). Next is M4, the dot-product lane. See
+[PLAN.md](PLAN.md) for goals, decisions, milestones, and open questions.
 
 ## Development setup
 
