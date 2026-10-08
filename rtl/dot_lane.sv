@@ -11,7 +11,7 @@
 // there; a missing element leaves its partial sum unchanged, as the golden
 // model's `valid`. last_i ends the row. Output: one FP32 result per row, in
 // row order, valid/ready. Ready may drop only on a beat with last_i set: a
-// row's end needs a context for its final sum (below).
+// row's end needs a level-1 buffer for its final sum (below).
 //
 // Units: unit e takes element e of each beat, so the S = A / E partial sums
 // e, e + E, e + 2E, ... are its own. Group g of a row (its g-th beat) adds
@@ -26,13 +26,15 @@
 //
 // Final sum: LoopCycles cycles after the row's last group enters fp_add, its
 // sums (+0 for a slot no element of the row reached) are copied into a free
-// context, Ctx of them (3: a final sum takes about 30 cycles from the
-// row's last beat, two rows' worth at 16 beats a row). One more fp_add sums each context in the tree of
-// section 3, one add per cycle, oldest context first; a node issues once
-// its two children are done. An add writes its result over its left operand.
-// The root, which frees the context, issues only for the oldest context and
-// when the output FIFO has room for it, so results leave in row order (oldest
-// first already gives that order; the condition makes it certain).
+// level-1 buffer, Banks of them. One more fp_add adds them in the tree of
+// section 3 like a conveyor belt, one add per cycle: level 1 takes pairs
+// (2m, 2m + 1) from the buffer in order; level l > 1 takes the front pair of
+// its queue, which the results of level l - 1 enter in the order they leave
+// the adder. Every row brings an even number of items to each level, so a
+// pair never mixes rows, and its two items are the two the tree adds. Each
+// cycle the deepest level with a pair, and room for its result in the next
+// queue (the output FIFO for the last level), goes; any order gives the same
+// bits, the deepest first keeps the queues short. Results leave in row order.
 // A tree is A - 1 adds, so the lane keeps E pairs per cycle on rows of
 // (A - 1) * E elements or more; shorter rows make ready drop at their end.
 
@@ -61,12 +63,11 @@ module dot_lane
   localparam int unsigned W          = prod_sig_w(8);
   localparam int unsigned LoopCycles = 4;  // fp_add's 3 registers, then the file
   localparam int unsigned SW         = $clog2(S);
-  localparam int unsigned Levels     = $clog2(A);
-  localparam int unsigned Nodes      = A - 1;  // adds of the tree; the root is the last
-  localparam int unsigned NW         = $clog2(Nodes);
-  localparam int unsigned AW         = $clog2(A);
-  localparam int unsigned Ctx        = 3;  // rows whose final sum is under way
-  localparam int unsigned CW         = $clog2(Ctx);
+  localparam int unsigned Levels     = $clog2(A);  // of the tree; level i here is i + 1 there
+  localparam int unsigned LW         = $clog2(Levels);
+  localparam int unsigned PW         = $clog2(A / 2);  // a level-1 pair's index
+  localparam int unsigned Banks      = 2;  // level-1 buffers
+  localparam int unsigned BW         = $clog2(Banks);
   localparam int unsigned OutDepth   = 2;
   localparam int unsigned OW         = $clog2(OutDepth);
   // Stages of a beat's tag: 0 is the input register; it enters fp_add at
@@ -84,9 +85,9 @@ module dot_lane
 
   // --- Input: handshake, group counter, input register ------------------------
 
-  logic [CW:0] reserved_q;  // rows past their last beat whose root has not issued
-  logic        fire, root_issue;
-  assign in_ready_o = !last_i || (reserved_q < (CW + 1)'(Ctx));
+  logic [BW:0] reserved_q;  // rows past their last beat whose level-1 pairs are not all taken
+  logic        fire, bank_done, root_issue;
+  assign in_ready_o = !last_i || (reserved_q < (BW + 1)'(Banks));
   assign fire       = in_valid_i && in_ready_o;
 
   // The beat's place in its row: slot = group mod S, first = group < S.
@@ -184,94 +185,87 @@ module dot_lane
     assign written[e] = written_q;
   end
 
-  // --- Final sum: contexts and the tree's adder ------------------------------
+  // --- Final sum: level-1 buffers, queues and the tree's adder ---------------
 
-  // Node j of level l (1 .. Levels; n-th of its level) adds entries n * 2^l
-  // and n * 2^l + 2^(l-1) of its context and writes the first; its children
-  // are nodes 2n and 2n + 1 of level l - 1.
-  logic [AW-1:0]  left_of[Nodes], right_of[Nodes];
-  logic [31:0]    ent_q[Ctx][A];
-  logic [Ctx-1:0] busy_q;
-  logic [Nodes-1:0] issued_q[Ctx];
-  logic [Nodes-2:0] done_q[Ctx];  // the root's result leaves the context
-  logic [CW-1:0]  snap_ptr_q, old_ptr_q;
-  logic           out_room;
-  logic [Nodes-1:0] ready[Ctx];
+  // Per tree level i (0 is level 1): whether a pair is ready, its two items,
+  // and whether its result has room.
+  logic [Levels-1:0] has_pair, room;
+  logic [31:0]       front_a[Levels], front_b[Levels];
+  logic              out_room;
 
-  function automatic logic [CW-1:0] next_ctx(logic [CW-1:0] c);
-    return (c == CW'(Ctx - 1)) ? '0 : c + 1'b1;
-  endfunction
-
-  for (genvar l = 1; l <= Levels; l++) begin : gen_level
-    localparam int unsigned Base = A - (A >> (l - 1));  // the level's first node
-    for (genvar n = 0; n < (A >> l); n++) begin : gen_node
-      localparam int unsigned J = Base + n;
-      assign left_of[J]  = AW'(n << l);
-      assign right_of[J] = AW'((n << l) + (1 << (l - 1)));
-      for (genvar c = 0; c < Ctx; c++) begin : gen_ctx
-        logic children_done;
-        if (l == 1) begin : gen_leaf
-          assign children_done = 1'b1;
-        end else begin : gen_inner
-          localparam int unsigned Child = A - (A >> (l - 2)) + 2 * n;
-          assign children_done = done_q[c][Child] && done_q[c][Child+1];
-        end
-        if (l == Levels) begin : gen_root
-          assign ready[c][J] = busy_q[c] && !issued_q[c][J] && children_done
-                               && CW'(c) == old_ptr_q && out_room;
-        end else begin : gen_other
-          assign ready[c][J] = busy_q[c] && !issued_q[c][J] && children_done;
-        end
-      end
-    end
-  end
-
-  // Oldest context first, then the lowest node: any order gives the same bits.
   logic          pick;
-  logic [CW-1:0] pick_c, scan;
-  logic [NW-1:0] pick_j;
+  logic [LW-1:0] pick_lvl;
   always_comb begin
-    pick   = 1'b0;
-    pick_c = '0;
-    pick_j = '0;
-    scan = old_ptr_q;
-    for (int unsigned r = 0; r < Ctx; r++) begin
-      for (int unsigned j = 0; j < Nodes; j++) begin
-        if (!pick && ready[scan][j]) begin
-          pick   = 1'b1;
-          pick_c = scan;
-          pick_j = NW'(j);
-        end
+    pick     = 1'b0;
+    pick_lvl = '0;
+    for (int i = Levels - 1; i >= 0; i--) begin
+      if (!pick && has_pair[i] && room[i]) begin
+        pick     = 1'b1;
+        pick_lvl = LW'(i);
       end
-      scan = next_ctx(scan);
     end
   end
-  assign root_issue = pick && pick_j == NW'(Nodes - 1);
+  assign root_issue = pick && pick_lvl == LW'(Levels - 1);
 
-  // Issue register: the operands, then the adder.
-  typedef struct packed {
-    logic          valid;
-    logic          root;
-    logic [CW-1:0] c;
-    logic [NW-1:0] j;
-  } tree_tag_t;
+  // Level 1: the buffers, read pair by pair.
+  logic [31:0]      bank_q[Banks][A];
+  logic [Banks-1:0] full_q;
+  logic [BW-1:0]    load_ptr_q, read_ptr_q;
+  logic [PW-1:0]    pair_q;
+  assign has_pair[0] = full_q[read_ptr_q];
+  assign front_a[0]  = bank_q[read_ptr_q][{pair_q, 1'b0}];
+  assign front_b[0]  = bank_q[read_ptr_q][{pair_q, 1'b1}];
+  assign bank_done   = pick && pick_lvl == '0 && pair_q == PW'(A / 2 - 1);
 
-  tree_tag_t   iss_q;
-  logic [31:0] op_a_q, op_b_q;
   always_ff @(posedge clk_i) begin
-    iss_q  <= '{valid: pick, root: root_issue, c: pick_c, j: pick_j};
-    op_a_q <= ent_q[pick_c][left_of[pick_j]];
-    op_b_q <= ent_q[pick_c][right_of[pick_j]];
-    if (!rst_ni) iss_q.valid <= 1'b0;
+    if (snap) begin
+      for (int unsigned s = 0; s < S; s++) begin
+        for (int unsigned e = 0; e < E; e++) begin
+          bank_q[load_ptr_q][s*E+e] <= written[e][s] ? acc[e][s] : 32'h0;
+        end
+      end
+    end
+  end
+  // A copy goes to a free buffer (ready keeps the rows in flight to Banks).
+  always_ff @(posedge clk_i) begin
+    if (!rst_ni) begin
+      full_q     <= '0;
+      load_ptr_q <= '0;
+      read_ptr_q <= '0;
+      pair_q     <= '0;
+      reserved_q <= '0;
+    end else begin
+      if (snap) begin
+        full_q[load_ptr_q] <= 1'b1;
+        load_ptr_q         <= load_ptr_q + 1'b1;
+      end
+      if (pick && pick_lvl == '0) pair_q <= pair_q + 1'b1;
+      if (bank_done) begin
+        full_q[read_ptr_q] <= 1'b0;
+        read_ptr_q         <= read_ptr_q + 1'b1;
+      end
+      reserved_q <= reserved_q + (BW + 1)'(fire && last_i) - (BW + 1)'(bank_done);
+    end
   end
 
-  tree_tag_t   tree_tag_q[3];  // iss_q through fp_add's registers
-  logic        tree_valid;
-  logic [31:0] tree_sum;
+  // The adder, after an issue register.
+  logic          iss_valid_q;
+  logic [LW-1:0] iss_lvl_q;
+  logic [31:0]   op_a_q, op_b_q;
   always_ff @(posedge clk_i) begin
-    tree_tag_q[0] <= iss_q;
-    tree_tag_q[1] <= tree_tag_q[0];
-    tree_tag_q[2] <= tree_tag_q[1];
+    iss_valid_q <= rst_ni && pick;
+    iss_lvl_q   <= pick_lvl;
+    op_a_q      <= front_a[pick_lvl];
+    op_b_q      <= front_b[pick_lvl];
+  end
+
+  logic [LW-1:0] tree_lvl_q[3];  // iss_lvl_q through fp_add's registers
+  logic          tree_valid;
+  logic [31:0]   tree_sum;
+  always_ff @(posedge clk_i) begin
+    tree_lvl_q[0] <= iss_lvl_q;
+    tree_lvl_q[1] <= tree_lvl_q[0];
+    tree_lvl_q[2] <= tree_lvl_q[1];
   end
 
   fp_add #(
@@ -280,54 +274,49 @@ module dot_lane
   ) u_tree (
     .clk_i,
     .rst_ni,
-    .valid_i(iss_q.valid),
+    .valid_i(iss_valid_q),
     .a_i    (decode_f32(op_a_q)),
     .b_i    (op_b_q),
     .valid_o(tree_valid),
     .y_o    (tree_sum)
   );
 
-  logic tree_result, root_result;  // an inner node's sum, the row's result
-  assign tree_result = tree_valid && !tree_tag_q[2].root;
-  assign root_result = tree_valid && tree_tag_q[2].root;
+  logic root_result;  // the row's result
+  assign root_result = tree_valid && tree_lvl_q[2] == LW'(Levels - 1);
+  assign room[Levels-1] = out_room;
 
-  always_ff @(posedge clk_i) begin
-    if (snap) begin
-      for (int unsigned s = 0; s < S; s++) begin
-        for (int unsigned e = 0; e < E; e++) begin
-          ent_q[snap_ptr_q][s*E+e] <= written[e][s] ? acc[e][s] : 32'h0;
-        end
-      end
+  // Levels 2 and up: a queue each, one row's items deep (A >> i), counting
+  // the results still in the adder against its room.
+  for (genvar i = 1; i < Levels; i++) begin : gen_queue
+    localparam int unsigned D  = A >> i;
+    localparam int unsigned QW = $clog2(D);
+    logic [31:0] q_q[D];
+    logic [QW-1:0] rd_q, wr_q;
+    logic [QW:0]   count_q, flying_q;  // items held, results on their way
+    logic          push, pop2, issue_below;
+    assign push        = tree_valid && tree_lvl_q[2] == LW'(i - 1);
+    assign pop2        = pick && pick_lvl == LW'(i);
+    assign issue_below = pick && pick_lvl == LW'(i - 1);
+    assign has_pair[i] = count_q >= 2;
+    assign front_a[i]  = q_q[rd_q];
+    assign front_b[i]  = q_q[rd_q+1'b1];
+    assign room[i-1]   = count_q + flying_q < (QW + 1)'(D);
+
+    always_ff @(posedge clk_i) begin
+      if (push) q_q[wr_q] <= tree_sum;
     end
-    if (tree_result) ent_q[tree_tag_q[2].c][left_of[tree_tag_q[2].j]] <= tree_sum;
-  end
-
-  always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
-      busy_q     <= '0;
-      snap_ptr_q <= '0;
-      old_ptr_q  <= '0;
-      reserved_q <= '0;
-      for (int unsigned c = 0; c < Ctx; c++) begin
-        issued_q[c] <= '0;
-        done_q[c]   <= '0;
+    always_ff @(posedge clk_i) begin
+      if (!rst_ni) begin
+        rd_q     <= '0;
+        wr_q     <= '0;
+        count_q  <= '0;
+        flying_q <= '0;
+      end else begin
+        if (push) wr_q <= wr_q + 1'b1;
+        if (pop2) rd_q <= rd_q + QW'(2);
+        count_q  <= count_q + (QW + 1)'(push) - (pop2 ? (QW + 1)'(2) : '0);
+        flying_q <= flying_q + (QW + 1)'(issue_below) - (QW + 1)'(push);
       end
-    end else begin
-      // A copy goes to a free context, and a root frees a busy one: never the
-      // same context in one cycle.
-      if (snap) begin
-        busy_q[snap_ptr_q]   <= 1'b1;
-        issued_q[snap_ptr_q] <= '0;
-        done_q[snap_ptr_q]   <= '0;
-        snap_ptr_q           <= next_ctx(snap_ptr_q);
-      end
-      if (pick) issued_q[pick_c][pick_j] <= 1'b1;
-      if (root_issue) begin
-        busy_q[pick_c] <= 1'b0;
-        old_ptr_q      <= next_ctx(old_ptr_q);
-      end
-      if (tree_result) done_q[tree_tag_q[2].c][tree_tag_q[2].j] <= 1'b1;
-      reserved_q <= reserved_q + (CW + 1)'(fire && last_i) - (CW + 1)'(root_issue);
     end
   end
 

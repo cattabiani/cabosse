@@ -735,7 +735,8 @@ Vivado run; bulk driver and slow tests; checkpoint report.
   the output ready, rows of 60 or more ((`A` - 1) × `E`, the tree's adds) never see ready drop; rows of 56 do. Mutation check
   (11 hand mutations): 10 caught; the one left (the root waiting for the
   oldest context) gives the same order anyway, kept as a guarantee.
-  Changed from the answers above: 3 final-sum contexts, not 2. A final
+  Changed from the answers above: 3 final-sum contexts, not 2 (since
+  replaced by the conveyor belt, below). A final
   sum holds its context about 30 cycles from the row's last beat
   (measured in simulation: with 2, 64-long rows stalled about once a
   row); bypasses could save about 4 cycles and keep 2, with little margin.
@@ -761,8 +762,19 @@ Vivado run; bulk driver and slow tests; checkpoint report.
   LUTs (a unit's adder about 470, so the operand multiplexers are likely
   counted there) and the lane's own logic (contexts, copy, control) 1,077.
   ×128 lanes: 664,448 LUTs, 51.0% of the part, and 434,560 flip-flops,
-  16.7% (Q6 guessed 25-30%). Open for the owner: whether to make the final
-  sum cheaper before M5.
+  16.7% (Q6 guessed 25-30%).
+- [x] Final sum as a conveyor belt (owner, 2026-10-08), replacing the 3
+  contexts and their scheduler: at a row's end its sums go to one of 2
+  level-1 buffers, read pair by pair in order; levels 2 to 4 each have a
+  queue one row deep that the previous level's results enter in order; the
+  adder takes the deepest level with a pair and room for its result. The
+  adder's operands come from 4 places instead of 48; `log2(A)` levels for
+  any `A`. Same bits and interface: the step 1 tests pass unchanged, full
+  rate from 60 elements included. Mutation check of the new part plus the
+  old ones that still apply (13): 12 caught; shallowest-level-first is
+  harmless (same pairs, still full rate). Yosys (UltraScale+ mapping):
+  6,249 → 4,149 LUTs, 3,407 → 1,850 flip-flops per lane; depth proxy
+  unchanged at 19. Vivado run to confirm.
 
 ### M5 — Matrix-vector engine with simulated memory
 **What:** `L` lanes, weight DMA over AXI, tiling, and an AXI memory model
