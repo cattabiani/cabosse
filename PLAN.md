@@ -525,7 +525,7 @@ golden model still passes M1.
   themselves at the limit, and every session ends with a check that
   nothing is left.
 
-### M3 — Toolchain and FP units
+### M3 — Toolchain and FP units ✅
 **What:** in this order:
 1. OSS CAD Suite (Verilator, Yosys with the slang SystemVerilog plugin,
    cocotb; owner installs) and a one-command test runner.
