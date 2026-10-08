@@ -39,11 +39,11 @@ package fp_pkg;
     return (f[30:23] == 8'hFF) && (f[22:0] != 0);
   endfunction
 
-  // FP32 bits with a subnormal flushed to the zero of its sign: the units'
-  // flush-to-zero variant (Ftz = 1), golden settings.ftz. Not the spec:
-  // subnormals are kept (D-016); the variant measures what that costs.
-  function automatic logic [31:0] flush_f32(logic [31:0] f);
-    return (f[30:23] == 0) ? {f[31], 31'h0} : f;
+  // FP32 bits, with a subnormal flushed to the zero of its sign if en: the
+  // units' flush-to-zero variant (Ftz = 1), golden settings.ftz. Not the
+  // spec: subnormals are kept (D-016); the variant measures what that costs.
+  function automatic logic [31:0] flush_f32(logic [31:0] f, bit en);
+    return (en && f[30:23] == 0) ? {f[31], 31'h0} : f;
   endfunction
 
   // An FP32 value as an operand (a BF16 value b is decode_f32({b, 16'h0})).

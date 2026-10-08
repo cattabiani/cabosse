@@ -42,15 +42,22 @@ def batch(rng: np.random.Generator, n_family: int, n_random: int) -> np.ndarray:
     return np.concatenate(abc)
 
 
-def check(op: str, abc: np.ndarray, seed: int | str, params: tuple = (), golden=None) -> None:
-    """Run (a, b, c) rows through the block as `op`, against OPS[op]'s golden
-    function, or `golden` (a, b, c -> result) when given."""
-    op_i, default = OPS[op]
-    golden = golden or default
-    records = np.concatenate([np.full((len(abc), 1), op_i, dtype=np.uint32), abc], axis=1)
+def records(op: str, abc: np.ndarray) -> np.ndarray:
+    """The driver's rows: op_i, then a, b, c."""
+    return np.concatenate([np.full((len(abc), 1), OPS[op][0], dtype=np.uint32), abc], axis=1)
+
+
+def expected(op: str, abc: np.ndarray, golden=None) -> np.ndarray:
+    """OPS[op]'s golden function, or `golden` (a, b, c -> result) when given,
+    on (a, b, c) rows, as FP32 bits."""
     x, y, z = torch.from_numpy(abc.view(np.float32)).unbind(1)
-    want = arith.bits_f32(golden(x, y, z)).numpy().astype(np.uint32)
-    bulk.check("fp32_fma", records, want, f"{op}, seed {seed}", params)
+    return arith.bits_f32((golden or OPS[op][1])(x, y, z)).numpy().astype(np.uint32)
+
+
+def check(op: str, abc: np.ndarray, seed: int | str, params: tuple = (), golden=None) -> None:
+    """Run (a, b, c) rows through the block as `op`, against expected()."""
+    want = expected(op, abc, golden)
+    bulk.check("fp32_fma", records(op, abc), want, f"{op}, seed {seed}", params)
 
 
 @rtl.needs_verilator
@@ -78,12 +85,10 @@ def test_flush_to_zero(op: str) -> None:
     abc = np.concatenate(
         [special_tuples(3), batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM)]
     )
-    x, y, z = torch.from_numpy(abc.view(np.float32)).unbind(1)
-    golden = OPS[op][1]
     with settings.override(ftz=True):
-        flushed = arith.bits_f32(golden(x, y, z))
-        check(op, abc, f"ftz, {SEED}", FTZ)
-    n_changed = int((flushed != arith.bits_f32(golden(x, y, z))).sum())
+        flushed = expected(op, abc)
+    bulk.check("fp32_fma", records(op, abc), flushed, f"{op}, ftz, seed {SEED}", FTZ)
+    n_changed = int((flushed != expected(op, abc)).sum())
     assert n_changed >= N_FLUSHED, n_changed
 
 

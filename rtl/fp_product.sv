@@ -36,11 +36,9 @@ module fp_product
   // --- Multiply ---------------------------------------------------------------
 
   operand_t a, b;
-  logic [31:0] a32, b32;  // widened to FP32, exactly
-  assign a32 = 32'(a_i) << (F32SigW - M);
-  assign b32 = 32'(b_i) << (F32SigW - M);
-  assign a   = decode_f32(Ftz ? flush_f32(a32) : a32);
-  assign b   = decode_f32(Ftz ? flush_f32(b32) : b32);
+  // Widened to FP32, exactly.
+  assign a = decode_f32(flush_f32(32'(a_i) << (F32SigW - M), Ftz));
+  assign b = decode_f32(flush_f32(32'(b_i) << (F32SigW - M), Ftz));
 
   typedef struct packed {
     logic          sign;

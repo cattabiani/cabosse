@@ -127,7 +127,7 @@ def test_flush_to_zero() -> None:
     wxa = np.concatenate([specials(), batch(np.random.default_rng(SEED))])
     with settings.override(ftz=True):
         flushed = expected(wxa)
-        check(wxa, f"ftz, seed {SEED}", FTZ)
+    bulk.check("bf16_mac", wxa, flushed, f"ftz, seed {SEED}", FTZ)
     n_changed = int((flushed != expected(wxa)).sum())
     assert n_changed >= N_FLUSHED, n_changed
 

@@ -46,7 +46,7 @@ module fp_add
   op_t      a, b;
   operand_t b_f32;
   assign a     = a_i;
-  assign b_f32 = decode_f32(Ftz ? flush_f32(b_i) : b_i);
+  assign b_f32 = decode_f32(flush_f32(b_i, Ftz));
   assign b     = {b_f32.sign, b_f32.exp, W'(b_f32.sig) << (W - SigW), b_f32.is_inf, b_f32.is_nan};
 
   // The shift needs only the exponents (equal exponents shift by 0); the
@@ -175,7 +175,7 @@ module fp_add
     if (s2_q.nan) y_d = CanonicalNaN;
     else if (s2_q.inf || overflow) y_d = {s2_q.sign, 8'hFF, 23'h0};
     else y_d = {s2_q.sign, sig[F32SigW-1] ? exp : 8'h00, sig[F32SigW-2:0]};  // a zero: sig = 0
-    if (Ftz) y_d = flush_f32(y_d);  // after rounding, as the golden model
+    y_d = flush_f32(y_d, Ftz);  // after rounding, as the golden model
   end
 
   // --- Registers --------------------------------------------------------------
