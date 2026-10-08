@@ -732,7 +732,7 @@ Vivado run; bulk driver and slow tests; checkpoint report.
   to 20, random lengths to 300, single bubbles at each beat of a row, runs
   of 1 to 5 and 40, random gaps, random output ready, masks anywhere,
   signed zeros, special values; bit-exact against `golden.dot.dot`. With
-  the output ready, rows of 64 or more never see ready drop. Mutation check
+  the output ready, rows of 60 or more ((`A` - 1) × `E`, the tree's adds) never see ready drop; rows of 56 do. Mutation check
   (11 hand mutations): 10 caught; the one left (the root waiting for the
   oldest context) gives the same order anyway, kept as a guarantee.
   Changed from the answers above: 3 final-sum contexts, not 2. A final

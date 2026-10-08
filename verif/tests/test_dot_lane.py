@@ -4,7 +4,7 @@
 its valid/ready handshake: bubbles on the input one by one, in runs and at
 random; random ready on the output; every row length up to 20 and random ones
 to 300; missing elements (mask) anywhere in a row; special values. With the
-output always ready, rows of 64 elements or more never see ready drop, so a
+output always ready, rows of 60 elements or more never see ready drop, so a
 bubble costs exactly its own cycle; shorter rows may, with the same bits.
 
 The arithmetic itself is tested exhaustively in test_bf16_mac; here it is the
@@ -27,7 +27,8 @@ import rtl
 
 SEED = 20261008
 E = 4  # pairs per beat: dot_lane's default
-FULL_RATE_LEN = 64  # rows at least this long keep E pairs per cycle
+FULL_RATE_LEN = 60  # (A - 1) * E: shorter rows end before their tree's adds are issued
+BUBBLE_ROW_LEN = 64  # 16 beats: each slot of the rotation 4 times
 MAX_CYCLES = 1_000_000  # a hung handshake fails instead of running forever
 # dot_lane's product registers: the same bits and handshake either way.
 PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (), "mulregs2": (("MulRegs", 2),)}
@@ -189,8 +190,8 @@ async def every_short_length_back_to_back(dut) -> None:
 
 @cocotb.test()
 async def full_rate_without_gaps(dut) -> None:
-    """Rows of 64 and of random lengths up to 300, back to back: ready never
-    drops."""
+    """Rows of FULL_RATE_LEN and of random lengths up to 300, back to back:
+    ready never drops."""
     start_clock(dut)
     rng = np.random.default_rng(SEED + 2)
     lengths = [FULL_RATE_LEN] * 20 + list(rng.integers(FULL_RATE_LEN, 301, 20))
@@ -204,7 +205,7 @@ def bubble_cases() -> list[tuple[str, list[int]]]:
     """Gaps before each beat of four 64-long rows (16 beats each): one bubble
     at each beat of the second row, runs of 1 .. 5 and of 40 bubbles there,
     and a bubble before every beat."""
-    n_beats = 4 * FULL_RATE_LEN // E
+    n_beats = 4 * BUBBLE_ROW_LEN // E
     cases = []
     for b in range(16, 32):
         gaps = [0] * n_beats
@@ -226,7 +227,7 @@ async def bubbles(dut) -> None:
     start_clock(dut)
     rng = np.random.default_rng(SEED + 3)
     for label, gaps in bubble_cases():
-        rows = [normal_row(rng, FULL_RATE_LEN) for _ in range(4)]
+        rows = [normal_row(rng, BUBBLE_ROW_LEN) for _ in range(4)]
         got = await run(dut, rows, gaps)
         check_bits(rows, got, label)
         assert got.stalls == 0, f"{label}: {got.stalls} stalls"
@@ -234,7 +235,8 @@ async def bubbles(dut) -> None:
 
 @cocotb.test()
 async def random_bubbles(dut) -> None:
-    """Random gaps at three densities on rows of 64 .. 300: no stalls."""
+    """Random gaps at three densities on rows of FULL_RATE_LEN .. 300: no
+    stalls."""
     start_clock(dut)
     rng = np.random.default_rng(SEED + 4)
     for p_gap in (0.05, 0.3, 0.7):
@@ -291,11 +293,12 @@ def signed_zero_rows() -> list[Row]:
     partial sum is -0 and so is the result. A missing element must keep a -0
     partial sum; adding a zero product instead makes it +0 (numerics.md,
     section 3). Fewer than A of them leave +0 partial sums, so +0."""
-    neg, pos = 0xD780, 0x1780  # BF16 -2^-80, 2^-80
+    neg, pos = 0x9780, 0x1780  # BF16 -2^-80, 2^-80
     rows = []
     for n, n_valid in ((16, 16), (20, 17), (32, 16), (64, 16), (8, 8)):
         valid = np.arange(n) < n_valid
-        rows.append(Row(np.full(n, neg, np.uint16), np.full(n, pos, np.uint16), valid))
+        w = np.where(valid, neg, 0).astype(np.uint16)  # a missing element as a zero
+        rows.append(Row(w, np.full(n, pos, np.uint16), valid))
     return rows
 
 
@@ -318,7 +321,7 @@ def special_rows(rng: np.random.Generator) -> list[Row]:
     sign = np.where(np.arange(64) % 32 < 16, 0, 0x8000).astype(np.uint16)
     rows.append(Row(big, big ^ sign, np.ones(64, bool)))
     rows.append(Row(big, big, np.ones(64, bool)))
-    w = bf16_bits(rng.normal(0, 1, 64))
+    w = bf16_bits(rng.integers(-8, 9, 64))  # exact products and sums: exactly zero
     rows.append(Row(np.concatenate([w, w]), np.concatenate([w, w ^ 0x8000]), np.ones(128, bool)))
     tiny = bf16_bits(rng.normal(0, 1, 80) * 2.0**-70)
     rows.append(Row(tiny, bf16_bits(rng.normal(0, 1, 80) * 2.0**-70), np.ones(80, bool)))
