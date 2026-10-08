@@ -11,30 +11,21 @@
 /// 1000) is the share of cycles with out_ready_i high, drawn from +seed=<n>.
 /// Output: one word per row (a beat with last), in order, then two words:
 /// the cycles run and the stalls (cycles with in_valid_i high and in_ready_o
-/// low).
+/// low). After the last result the lane must stay quiet for kDrainCycles
+/// cycles with every beat taken; an extra result is an error.
 
-#include <cstdlib>
 #include <random>
-#include <string>
 
 #include "Vdot_lane.h"
 #include "stream.h"
 
 namespace {
 
-constexpr size_t kFields = 5;
+constexpr size_t kFields = 5;              ///< words per beat record
 constexpr uint64_t kMaxCyclesPerBeat = 64;  ///< a hung handshake fails instead of running forever
-
-/// @brief The value of plusarg +<name>=<n>, or `fallback` if it is absent.
-/// @param context the Verilator context holding the arguments.
-/// @param name the plusarg's name, without + and =.
-/// @param fallback returned when the plusarg is absent.
-/// @return the parsed number.
-uint64_t plusarg(VerilatedContext& context, const std::string& name, uint64_t fallback) {
-  const std::string match = context.commandArgsPlusMatch((name + "=").c_str());
-  if (match.empty()) return fallback;
-  return std::stoull(match.substr(name.size() + 2));  // skip "+name="
-}
+constexpr int kDrainCycles = 64;            ///< quiet cycles checked after the last result
+constexpr int kResetCycles = 2;              ///< cycles in reset before the first beat
+constexpr uint64_t kSlackBeats = 16;  ///< the hang limit's allowance beyond the beats
 
 /// @brief One clock cycle with the inputs already set: settle with the clock
 /// low, record the handshakes, then the rising edge.
@@ -55,6 +46,12 @@ bool cycle(Vdot_lane& dut, std::vector<uint32_t>& results, uint64_t& stalls) {
 
 }  // namespace
 
+/// @brief Run the protocol of this file's header: beats from stdin, results,
+/// cycles and stalls to stdout.
+/// @param argc, argv the program's arguments: Verilator's, +ready and +seed.
+/// @return 0; 2 if the input is not whole beats or a plusarg is not a number;
+///   3 if the lane hangs; 4 if it gives an extra result or leaves a beat
+///   untaken (each with a message on stderr).
 int main(int argc, char** argv) {
   const std::vector<uint32_t> words = read_words(stdin);
   if (words.size() % kFields != 0) {
@@ -77,12 +74,12 @@ int main(int argc, char** argv) {
   dut->rst_ni = 0;
   dut->in_valid_i = 0;
   dut->out_ready_i = 0;
-  for (int i = 0; i < 2; ++i) cycle(*dut, results, stalls);
+  for (int i = 0; i < kResetCycles; ++i) cycle(*dut, results, stalls);
   dut->rst_ni = 1;
 
   uint64_t gaps = 0;
   for (Record b : beats) gaps += b[4] >> 8;
-  const uint64_t max_cycles = kMaxCyclesPerBeat * (beats.size() + 16) + gaps;
+  const uint64_t max_cycles = kMaxCyclesPerBeat * (beats.size() + kSlackBeats) + gaps;
   uint64_t cycles = 0;
   size_t next = 0;
   uint32_t idle = 0;
@@ -94,7 +91,7 @@ int main(int argc, char** argv) {
       dut->x_i = b[2] | uint64_t{b[3]} << 32;
       dut->mask_i = b[4] & 0xF;
       dut->last_i = (b[4] >> 4) & 1;
-    } else if (next < beats.size()) {
+    } else {
       ++idle;
     }
     dut->in_valid_i = valid;
@@ -107,6 +104,15 @@ int main(int argc, char** argv) {
       std::println(stderr, "hung: {} of {} results after {} cycles", results.size(), n_rows, cycles);
       return 3;
     }
+  }
+  const size_t n_results = results.size();
+  dut->in_valid_i = 0;
+  dut->out_ready_i = 1;
+  for (int i = 0; i < kDrainCycles; ++i) cycle(*dut, results, stalls);
+  if (results.size() != n_results || next != beats.size()) {
+    std::println(stderr, "{} extra results, {} of {} beats taken", results.size() - n_results, next,
+                 beats.size());
+    return 4;
   }
   results.push_back(static_cast<uint32_t>(cycles));
   results.push_back(static_cast<uint32_t>(stalls));

@@ -789,18 +789,26 @@ Vivado run; bulk driver and slow tests; checkpoint report.
   drawn from a seed; `verif/tests/test_dot_lane_bulk.py`). Families:
   model-like rows at SmolLM2's lengths (64, 576, 1536) and a p.V row of
   8192, random bits (short rows), products near both ends of FP32's range,
-  cancelling rows (exactly for small integers), missing elements and -0
-  rows; each checked to reach its result classes (subnormal, ±0, Inf, NaN).
+  cancelling rows (exactly for small integers), missing elements (carrying
+  random bits) and -0 rows; a fast test counts each family's result classes
+  (subnormal, ±0, Inf, NaN) against a minimum. The driver also checks that
+  every beat is taken and no result follows the last.
   Fast (CI, about 15 s): about 300,000 pairs at output ready 100%, 50% and
   5% with gaps; full rate with and without gaps (no stalls, and cycles =
   beats + gaps + under 64 of latency); the `Ftz` = 1 build against the
-  golden ftz switch. Slow: 10^8 pairs in 50 chunks (143 s on the dev
-  machine), and one SmolLM2 decode step at position 63: every row of the
+  golden ftz switch. Slow: 10^8 pairs in 48 chunks (143 to 171 s on the
+  dev machine over three runs), and one SmolLM2 decode step at position 63: every row of the
   first and last layers' seven matrices, their attention scores and p.V
   rows, and 4,096 classifier rows, 16,768 rows and 9.6 million pairs of
   real weights and activations (10 s). All bit-exact. Mutations against
   the bulk tests alone: 5 of 5 caught. The driver runs about 0.6 million
   beats (2.3 million pairs) per second (one fast-test run).
+  Reviewed with `/code-review` and `/simplify` (owner's request): the
+  output-ready seed was the same for every chunk (fixed), the drain check
+  and the class-count test added, FP test helpers moved to
+  `model/tests/fp_inputs.py`, lane helpers to `verif/lane.py`, `plusarg`
+  to `verif/bulk/stream.h`. Left for later: a handshake loop in
+  `stream.h` (when a second handshake driver exists, M5).
 
 ### M5 — Matrix-vector engine with simulated memory
 **What:** `L` lanes, weight DMA over AXI, tiling, and an AXI memory model
@@ -812,6 +820,11 @@ matrices. Verilator speed is measured, to plan M7. Row edge cases tested:
 rows fewer than `L`, rows not a multiple of `L` (masked last pass, e.g.
 SmolLM2's 192-row k/v with `L` = 128), a single row. Idle lanes must not
 write results.
+**Notes from M4:** the lane's real-data test takes SmolLM2's rows by
+patching `dot.matvec` and the attention functions and counting calls
+(`verif/tests/test_dot_lane_bulk.py`). M5 needs the same rows; a trace
+hook in `golden.decoder` that names each call site would be sturdier than
+counting.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,

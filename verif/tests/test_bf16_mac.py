@@ -16,6 +16,7 @@ from fp_inputs import (
     all_bf16_widened,
     random_bits,
     subnormal_f32,
+    with_exponents,
 )
 from golden import arith, settings
 
@@ -63,14 +64,6 @@ def scaled(rng: np.random.Generator, n: int) -> np.ndarray:
         acc = (products(w, x) * scale).astype(np.float32).view(np.uint32)
     acc ^= rng.integers(0, 2**12, n, dtype=np.uint32)
     return np.stack([w, x, acc], axis=1)
-
-
-def with_exponents(rng: np.random.Generator, n: int, lo: int, hi: int, width: int) -> np.ndarray:
-    """Random bits of a `width`-bit float whose exponent field is in lo..hi."""
-    frac_bits = 7 if width == 16 else 23
-    sign = rng.integers(0, 2, n, dtype=np.uint32) << (width - 1)
-    exp = rng.integers(lo, hi + 1, n, dtype=np.uint32) << frac_bits
-    return sign | exp | rng.integers(0, 2**frac_bits, n, dtype=np.uint32)
 
 
 def range_edges(rng: np.random.Generator, n: int) -> np.ndarray:

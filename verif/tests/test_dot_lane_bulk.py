@@ -13,7 +13,9 @@ model's ftz switch.
 The handshake's corner cases are in test_dot_lane (cocotb); here it is
 volume."""
 
+import itertools
 import subprocess
+from collections import Counter
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
@@ -22,20 +24,21 @@ import numpy as np
 import paths
 import pytest
 import torch
+from fp_inputs import bf16_rounded, f32_classes, with_exponents
 from golden import arith, decoder, dot, settings
+from lane import FULL_RATE_LEN, E, golden_dot, random_gaps
 
 import rtl
 
 SEED = 20261009
-E = 4  # pairs per beat: dot_lane's default
-FULL_RATE_LEN = 60  # (A - 1) * E, as test_dot_lane
 SMOLLM2_LENGTHS = (64, 576, 1536)  # head dimension, hidden, intermediate
 LONG_LEN = 8192  # p.V rows at SmolLM2's full window
 FTZ = (("Ftz", 1),)
+FIELDS = E + 1  # words per beat record: E / 2 of w, E / 2 of x, then control
 N_FAST = 300_000  # pairs per fast test
 N_SLOW = 10**8
-PAIRS_PER_CHUNK = 2_000_000  # slow run: one driver run per chunk
-DRAIN_CYCLES = 64  # more than the lane's latency from last beat to result
+PAIRS_PER_CHUNK = N_SLOW // (6 * bulk.WORKERS)  # slow run: 48 driver runs, 8 at a time
+MAX_LATENCY_CYCLES = 64  # from a row's last beat to its result, more than the lane's
 N_FLUSHED = 50  # rows the ftz switch changes, at least
 # Output ready, permille of cycles, cycled through the chunks.
 READY_PERMILLE = (1000, 500, 50)
@@ -44,15 +47,15 @@ READY_PERMILLE = (1000, 500, 50)
 @dataclass
 class Rows:
     """Rows of one length: BF16 bits w, x [rows, K] and which elements are
-    there."""
+    there (default: all)."""
 
     w: np.ndarray  # uint16
     x: np.ndarray  # uint16
-    valid: np.ndarray  # bool
+    valid: np.ndarray | None = None  # bool
 
-    @property
-    def n_pairs(self) -> int:
-        return self.w.size
+    def __post_init__(self) -> None:
+        if self.valid is None:
+            self.valid = np.ones(self.w.shape, bool)
 
 
 @dataclass
@@ -60,68 +63,56 @@ class Run:
     results: np.ndarray  # uint32, one per row
     cycles: int
     stalls: int
-
-
-def bf16_bits(values: np.ndarray) -> np.ndarray:
-    t = torch.from_numpy(np.asarray(values, dtype=np.float32)).to(torch.bfloat16)
-    return arith.bits_bf16(t).numpy().astype(np.uint16)
+    n_beats: int
+    n_gaps: int  # idle cycles requested before the beats
 
 
 def expected(groups: list[Rows]) -> np.ndarray:
     """golden.dot.dot of every row, as FP32 bits, in order."""
-    out = []
-    for g in groups:
-        w, x = (arith.bf16_from_bits(torch.from_numpy(v.astype(np.int64))) for v in (g.w, g.x))
-        y = dot.dot(w, x, valid=torch.from_numpy(g.valid))
-        out.append(arith.bits_f32(y).numpy().astype(np.uint32))
-    return np.concatenate(out)
+    return np.concatenate([golden_dot(g.w, g.x, g.valid) for g in groups])
 
 
-def records(groups: list[Rows], gaps: np.ndarray | None = None) -> np.ndarray:
+def records(groups: list[Rows]) -> np.ndarray:
     """The driver's beats for every row, in order (verif/bulk/dot_lane.cpp):
-    E elements a beat, a short last beat masked, gaps[i] idle cycles before
-    beat i (default none)."""
+    E elements a beat, two BF16 values to a word, a short last beat masked;
+    no gaps yet."""
     out = []
     for g in groups:
         n_rows, k = g.w.shape
         n_beats = -(-k // E)
-        pad = n_beats * E - k
-        w, x = (
-            np.pad(v, ((0, 0), (0, pad))).astype(np.uint32).reshape(n_rows, n_beats, E)
-            for v in (g.w, g.x)
-        )
-        valid = np.pad(g.valid, ((0, 0), (0, pad))).reshape(n_rows, n_beats, E)
+        pad = ((0, 0), (0, n_beats * E - k))
+        w, x = (np.pad(v, pad).astype(np.uint32).reshape(n_rows, n_beats, E) for v in (g.w, g.x))
+        valid = np.pad(g.valid, pad).reshape(n_rows, n_beats, E)
         mask = (valid.astype(np.uint32) << np.arange(E, dtype=np.uint32)).sum(-1, dtype=np.uint32)
         last = np.zeros((n_rows, n_beats), np.uint32)
         last[:, -1] = 1
-        rec = np.stack(
-            [w[..., 0] | w[..., 1] << 16, w[..., 2] | w[..., 3] << 16,
-             x[..., 0] | x[..., 1] << 16, x[..., 2] | x[..., 3] << 16, mask | last << 4],
-            axis=-1,
-        )  # fmt: skip
-        out.append(rec.reshape(-1, 5))
-    rec = np.concatenate(out)
-    if gaps is not None:
-        rec[:, 4] |= gaps.astype(np.uint32) << 8
-    return rec
+        words = [v[..., 0::2] | v[..., 1::2] << 16 for v in (w, x)]
+        out.append(np.concatenate([*words, (mask | last << 4)[..., None]], -1).reshape(-1, FIELDS))
+    return np.concatenate(out)
 
 
-def run(rec: np.ndarray, params: tuple = (), ready_permille: int = 1000, seed: int = SEED) -> Run:
-    """Stream the beats through the lane; its results, cycles and stalls."""
-    binary = bulk.build("dot_lane", params)
-    argv = [str(binary), f"+ready={ready_permille}", f"+seed={seed}"]
-    data = memoryview(np.ascontiguousarray(rec, dtype="<u4"))
-    result = subprocess.run(argv, input=data, capture_output=True)
-    assert result.returncode == 0, result.stderr.decode()
+def check(
+    groups: list[Rows],
+    label: str,
+    params: tuple = (),
+    ready: int = 1000,
+    p_gap: float = 0.0,
+    seed: int = SEED,
+    want: np.ndarray | None = None,
+) -> Run:
+    """Stream the rows through the lane, with random gaps (lane.random_gaps)
+    and output ready both drawn from `seed`, and compare every result with
+    the golden model's, or with `want` when given."""
+    rec = records(groups)
+    gaps = random_gaps(np.random.default_rng(seed), len(rec), p_gap)
+    rec[:, -1] |= gaps.astype(np.uint32) << 8
+    argv = [str(bulk.build("dot_lane", params)), f"+ready={ready}", f"+seed={seed}"]
+    result = subprocess.run(argv, input=memoryview(rec), capture_output=True)
+    assert result.returncode == 0, f"{label}: {result.stderr.decode()}"
     words = np.frombuffer(result.stdout, dtype="<u4")
-    return Run(words[:-2], int(words[-2]), int(words[-1]))
+    got = Run(words[:-2], int(words[-2]), int(words[-1]), len(rec), int(gaps.sum()))
 
-
-def check(groups: list[Rows], label: str, params: tuple = (), ready: int = 1000, gaps=None) -> Run:
-    """Run the rows and compare every result with the golden model."""
-    rec = records(groups, gaps)
-    got = run(rec, params, ready)
-    want = expected(groups)
+    want = expected(groups) if want is None else want
     assert len(got.results) == len(want), (
         f"{label}: {len(got.results)} results for {len(want)} rows"
     )
@@ -152,19 +143,17 @@ def lengths_for(
 
 def grouped(make: Callable[[int, int], Rows], ks: Iterator[int]) -> list[Rows]:
     """make(k, rows) for each distinct length, as many rows as it occurs."""
-    counts: dict[int, int] = {}
-    for k in ks:
-        counts[k] = counts.get(k, 0) + 1
-    return [make(k, r) for k, r in counts.items()]
+    return [make(k, r) for k, r in Counter(ks).items()]
 
 
-def model_like(rng: np.random.Generator, n: int, choices=SMOLLM2_LENGTHS) -> list[Rows]:
+def model_like(
+    rng: np.random.Generator, n: int, choices: tuple[int, ...] | None = SMOLLM2_LENGTHS
+) -> list[Rows]:
     """Normal values at a spread of scales, both signs, as a model's."""
 
     def make(k: int, r: int) -> Rows:
-        w = bf16_bits(rng.normal(0, 1, (r, k)) * 2.0 ** rng.integers(-8, 8, (r, k)))
-        x = bf16_bits(rng.normal(0, 1, (r, k)) * 2.0 ** rng.integers(-8, 8, (r, k)))
-        return Rows(w, x, np.ones((r, k), bool))
+        scaled = (rng.normal(0, 1, (r, k)) * 2.0 ** rng.integers(-8, 8, (r, k)) for _ in range(2))
+        return Rows(*(bf16_rounded(v) for v in scaled))
 
     return grouped(make, lengths_for(rng, n, choices))
 
@@ -174,17 +163,9 @@ def random_bits(rng: np.random.Generator, n: int) -> list[Rows]:
     are short (1 .. 32): a long one almost always holds a NaN or Inf * 0."""
 
     def make(k: int, r: int) -> Rows:
-        w, x = (rng.integers(0, 2**16, (r, k)).astype(np.uint16) for _ in range(2))
-        return Rows(w, x, np.ones((r, k), bool))
+        return Rows(*(rng.integers(0, 2**16, (r, k)).astype(np.uint16) for _ in range(2)))
 
     return grouped(make, lengths_for(rng, n, None, longest=32))
-
-
-def with_exponents(rng: np.random.Generator, shape: tuple, lo: int, hi: int) -> np.ndarray:
-    """BF16 bits of either sign with an exponent field in lo .. hi."""
-    sign = rng.integers(0, 2, shape).astype(np.uint16) << 15
-    exp = rng.integers(lo, hi + 1, shape).astype(np.uint16) << 7
-    return sign | exp | rng.integers(0, 128, shape).astype(np.uint16)
 
 
 def range_edges(rng: np.random.Generator, n: int) -> list[Rows]:
@@ -195,8 +176,7 @@ def range_edges(rng: np.random.Generator, n: int) -> list[Rows]:
 
     def make(k: int, r: int) -> Rows:
         lo, hi = (55, 63) if rng.random() < 0.5 else (180, 200)
-        w, x = (with_exponents(rng, (r, k), lo, hi) for _ in range(2))
-        return Rows(w, x, np.ones((r, k), bool))
+        return Rows(*(with_exponents(rng, (r, k), lo, hi, 16).astype(np.uint16) for _ in range(2)))
 
     return grouped(make, lengths_for(rng, n, None))
 
@@ -209,26 +189,27 @@ def cancelling(rng: np.random.Generator, n: int) -> list[Rows]:
     def make(k: int, r: int) -> Rows:
         half = (k + 1) // 2
         if rng.random() < 0.5:
-            a, b = (bf16_bits(rng.integers(-8, 9, (r, half))) for _ in range(2))
+            a, b = (bf16_rounded(rng.integers(-8, 9, (r, half))) for _ in range(2))
         else:
-            a, b = (bf16_bits(rng.normal(0, 1, (r, half))) for _ in range(2))
+            a, b = (bf16_rounded(rng.normal(0, 1, (r, half))) for _ in range(2))
         w = np.concatenate([a, a], axis=1)[:, :k]
         x = np.concatenate([b, b ^ 0x8000], axis=1)[:, :k]
-        return Rows(w, x, np.ones((r, k), bool))
+        return Rows(w, x)
 
     return grouped(make, lengths_for(rng, n, None))
 
 
 def masked(rng: np.random.Generator, n: int) -> list[Rows]:
     """Model-like rows with missing elements at random, a missing element
-    carrying zeros (feeding it would show); and rows of products that
-    underflow to -0 with missing elements, whose result is -0 only if every
-    partial sum kept its -0."""
+    carrying random bits (feeding it would show); and rows of products that
+    underflow to -0 with missing elements carrying zeros, whose result is -0
+    only if every partial sum kept its -0 (numerics.md, section 3)."""
     groups = model_like(rng, n // 2, None)
     for g in groups:
         g.valid = rng.random(g.w.shape) >= rng.choice([0.1, 0.5, 0.9])
-        g.w[~g.valid] = 0
-        g.x[~g.valid] = 0
+        n_missing = int((~g.valid).sum())
+        g.w[~g.valid] = rng.integers(0, 2**16, n_missing)
+        g.x[~g.valid] = rng.integers(0, 2**16, n_missing)
 
     def make(k: int, r: int) -> Rows:
         valid = rng.random((r, k)) >= 0.3
@@ -248,11 +229,23 @@ def mixed(rng: np.random.Generator, n: int) -> list[Rows]:
     return groups + model_like(rng, LONG_LEN, (LONG_LEN,))
 
 
-def random_gaps(rng: np.random.Generator, groups: list[Rows], p_gap: float) -> np.ndarray:
-    """Idle cycles before each beat: geometric, a gap of k with probability
-    (1 - p_gap) * p_gap^k."""
-    n_beats = sum(g.w.shape[0] * -(-g.w.shape[1] // E) for g in groups)
-    return rng.geometric(1 - p_gap, n_beats) - 1
+# The results each family must reach, at least, on N_REACH pairs: a family
+# that never reaches its case tests nothing (REVIEW.md).
+N_REACH = 60_000
+REACHES = {
+    random_bits: {"nan": 100, "inf": 100, "normal": 100},
+    range_edges: {"subnormal": 50, "nan": 50, "normal": 20},
+    cancelling: {"+0": 50},
+    masked: {"-0": 50},
+}
+
+
+@pytest.mark.parametrize("family", REACHES, ids=lambda f: f.__name__)
+def test_families_reach_their_cases(family: Callable) -> None:
+    """Golden model only: the expected results' classes, counted."""
+    counts = f32_classes(expected(family(np.random.default_rng(SEED), N_REACH)))
+    short = {c: n for c, n in REACHES[family].items() if counts[c] < n}
+    assert not short, f"{family.__name__} reaches {dict(counts)}, needs {REACHES[family]}"
 
 
 # --- Fast tests ------------------------------------------------------------------
@@ -261,9 +254,9 @@ def random_gaps(rng: np.random.Generator, groups: list[Rows], p_gap: float) -> n
 @rtl.needs_verilator
 @pytest.mark.parametrize("ready", READY_PERMILLE)
 def test_families(ready: int) -> None:
-    rng = np.random.default_rng([SEED, ready])
-    groups = mixed(rng, N_FAST)
-    check(groups, f"ready {ready}‰, seed {SEED}", ready=ready, gaps=random_gaps(rng, groups, 0.2))
+    seed = SEED + ready
+    groups = mixed(np.random.default_rng(seed), N_FAST)
+    check(groups, f"ready {ready}‰, seed {seed}", ready=ready, p_gap=0.2, seed=seed)
 
 
 @rtl.needs_verilator
@@ -276,13 +269,11 @@ def test_full_rate(p_gap: float) -> None:
     groups = model_like(rng, N_FAST) + model_like(
         rng, N_FAST // 4, tuple(range(FULL_RATE_LEN, 301))
     )
-    gaps = random_gaps(rng, groups, p_gap)
-    got = check(groups, f"full rate, gap probability {p_gap}", gaps=gaps)
-    n_beats = len(gaps)
+    got = check(groups, f"full rate, gap probability {p_gap}", p_gap=p_gap)
     assert got.stalls == 0, f"{got.stalls} stalls"
-    extra = got.cycles - n_beats - int(gaps.sum())
-    assert 0 < extra <= DRAIN_CYCLES, (
-        f"{got.cycles} cycles for {n_beats} beats and {gaps.sum()} gaps"
+    latency = got.cycles - got.n_beats - got.n_gaps
+    assert 0 < latency <= MAX_LATENCY_CYCLES, (
+        f"{got.cycles} cycles for {got.n_beats} beats and {got.n_gaps} gaps"
     )
 
 
@@ -290,8 +281,7 @@ def ftz_rows(rng: np.random.Generator) -> list[Rows]:
     """Rows whose products and sums cross FP32's subnormal range."""
 
     def make(k: int, r: int) -> Rows:
-        w, x = (with_exponents(rng, (r, k), 0, 70) for _ in range(2))
-        return Rows(w, x, np.ones((r, k), bool))
+        return Rows(*(with_exponents(rng, (r, k), 0, 70, 16).astype(np.uint16) for _ in range(2)))
 
     return grouped(make, lengths_for(rng, N_FAST // 2, None)) + model_like(rng, N_FAST // 4, None)
 
@@ -304,7 +294,7 @@ def test_ftz() -> None:
     groups = ftz_rows(rng)
     with settings.override(ftz=True):
         flushed = expected(groups)
-        check(groups, f"ftz, seed {SEED}", FTZ, ready=500, gaps=random_gaps(rng, groups, 0.2))
+    check(groups, f"ftz, seed {SEED}", FTZ, ready=500, p_gap=0.2, want=flushed)
     n_changed = int((flushed != expected(groups)).sum())
     assert n_changed >= N_FLUSHED, f"only {n_changed} rows change with ftz"
 
@@ -322,8 +312,8 @@ def test_volume() -> None:
         rng = np.random.default_rng(seed)
         ready = READY_PERMILLE[seed % len(READY_PERMILLE)]
         groups = mixed(rng, PAIRS_PER_CHUNK)
-        gaps = random_gaps(rng, groups, 0.2 if seed % 2 else 0.0)
-        check(groups, f"chunk seed {seed}, ready {ready}‰", ready=ready, gaps=gaps)
+        p_gap = 0.2 if seed % 2 else 0.0
+        check(groups, f"chunk seed {seed}, ready {ready}‰", ready=ready, p_gap=p_gap, seed=seed)
 
     bulk.in_parallel(one, seeds)
 
@@ -334,9 +324,10 @@ def smollm2_rows(model: decoder.Model) -> dict[str, list[Rows]]:
     attention scores and p.V rows of those layers, and the first 4096 rows
     of the classifier. The step runs at position 63 after a 63-token prompt."""
     seen: dict[str, list[Rows]] = {}
-    layers = {0, len(model.layers) - 1}
-    calls = {"matvec": 0, "scores": 0, "values": 0}
+    n_layers = len(model.layers)
+    layers = {0, n_layers - 1}
     matrices = ("q", "k", "v", "o", "gate", "up", "down")  # a layer's matvec calls, in order
+    n_matvec, n_scores, n_values = itertools.count(), itertools.count(), itertools.count()
 
     def bits(t: torch.Tensor) -> np.ndarray:
         return arith.bits_bf16(t.contiguous()).numpy().astype(np.uint16)
@@ -352,29 +343,22 @@ def smollm2_rows(model: decoder.Model) -> dict[str, list[Rows]]:
     matvec, scores, values = dot.matvec, decoder.attention_scores, decoder.attention_values
 
     def rec_matvec(w: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-        i, calls["matvec"] = calls["matvec"], calls["matvec"] + 1
-        layer = i // len(matrices)
-        if layer in layers or layer == len(model.layers):
-            name = (
-                "classifier"
-                if layer == len(model.layers)
-                else f"layer {layer} {matrices[i % len(matrices)]}"
-            )
-            rows = w[:4096] if layer == len(model.layers) else w
-            add(name, rows, x[-1][None, :], None)
+        layer, j = divmod(next(n_matvec), len(matrices))
+        if layer == n_layers:
+            add("classifier", w[:4096], x[-1][None, :], None)
+        elif layer in layers:
+            add(f"layer {layer} {matrices[j]}", w, x[-1][None, :], None)
         return matvec(w, x)
 
     def rec_scores(q: torch.Tensor, k: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-        i, calls["scores"] = calls["scores"], calls["scores"] + 1
-        if i in layers:
+        if (i := next(n_scores)) in layers:
             add(f"layer {i} scores", k, q[..., None, :], None)
         return scores(q, k, scale)
 
     def rec_values(
         p: torch.Tensor, v: torch.Tensor, valid: torch.Tensor | None = None
     ) -> torch.Tensor:
-        i, calls["values"] = calls["values"], calls["values"] + 1
-        if i in layers:
+        if (i := next(n_values)) in layers:
             mask = None if valid is None else valid[..., None, :]
             add(f"layer {i} p.V", v.transpose(-1, -2), p[..., None, :], mask)
         return values(p, v, valid)
