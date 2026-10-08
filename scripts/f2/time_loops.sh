@@ -8,16 +8,18 @@
 # worst paths (M3, D-027, D-038). Results go to the serial console between CABOSSE
 # markers, read back with `aws ec2 get-console-output --latest`. The instance
 # powers off (and, launched with shutdown behaviour "terminate", terminates)
-# when done or at the deadline.
+# when done or at the deadline. A run whose worst slack is negative exits
+# with an error (timing.tcl), shown as its exit status.
 
 REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga, for the part name
 FALLBACK_PART=xcvu47p-fsvh2892-2-e
 # top:param:value:cycles:retime (timing.tcl). mac_loop is the lanes' unit
-# (D-038), fma_path the vector unit's fma (D-039); CVFPU's FMA was measured on
-# 2026-10-07 (reports/data/f2/).
-RUNS="mac_loop:AccRegs:1:4:0 mac_loop:AccRegs:1:4:1 mac_loop:AccRegs:0:3:1 fma_path:MulRegs:2:6:0"
-DEADLINE_MIN=55                # safety net: power off even if something hangs
+# (D-038) and fma_path the vector unit's fma (D-039), measured on
+# 2026-10-07 and 2026-10-08 (reports/data/f2/); lane_path is the whole lane
+# (M4), its loop 4 cycles.
+RUNS="lane_path:MulRegs:1:4:0 lane_path:MulRegs:1:4:1 lane_path:MulRegs:2:4:0"
+DEADLINE_MIN=110               # safety net: power off even if something hangs
 
 shutdown -h +$DEADLINE_MIN
 export HOME=/root  # cloud-init runs this without HOME; Vivado needs it
@@ -85,7 +87,8 @@ for run in $RUNS; do
   grep -E "^(ERROR|CRITICAL WARNING)" vivado.log | head -20
   sed -n '/Design Timing Summary/,/^$/p;/WNS(ns)/,+3p' timing_summary.rpt 2>/dev/null | head -12
   cat worst_paths.rpt 2>/dev/null | head -150
-  grep -E "^\| (CLB LUTs|CLB Registers|CARRY8|DSPs) " utilization.rpt 2>/dev/null
+  grep -E "^\| (CLB LUTs|CLB Registers|CARRY8|DSPs|  LUT as) " utilization.rpt 2>/dev/null
+  sed -n '/Utilization by Hierarchy/,$p' utilization_hier.rpt 2>/dev/null | head -60
   done_ "run$i $run"
 done
 

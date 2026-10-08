@@ -2,8 +2,8 @@
 # Copyright 2026 The Cabosse Authors
 #
 # Out-of-context synthesis, placement and routing of a timing harness in
-# this folder (mac_loop.sv, fma_path.sv) on F2's part at clk_main_a0's
-# 250 MHz (docs/f2.md). Reports go to the current directory.
+# this folder (mac_loop.sv, fma_path.sv, lane_path.sv) on F2's part at
+# clk_main_a0's 250 MHz (docs/f2.md). Reports go to the current directory.
 # Usage: vivado -mode batch -source timing.tcl -tclargs REPO PART TOP PARAM VALUE LOOP RETIME
 # PARAM=VALUE is the harness's length parameter, LOOP the loop's (or the
 # path's) cycles, for the report. RETIME 1 lets Vivado move registers across logic
@@ -34,5 +34,11 @@ route_design
 report_timing_summary -no_header -file timing_summary.rpt
 report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
 report_utilization -file utilization.rpt
+report_utilization -hierarchical -hierarchical_depth 4 -file utilization_hier.rpt
 set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
 puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+# A design that misses 250 MHz must not pass as measured (PLAN.md, M8 notes).
+if {$wns < 0} {
+  puts "CABOSSE-TIMING-FAILED top=$top wns_ns=$wns"
+  exit 1
+}

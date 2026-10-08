@@ -747,6 +747,22 @@ Vivado run; bulk driver and slow tests; checkpoint report.
   the 25-30% guessed for Q6, so the Vivado run checks area as much as
   timing. `leading_zeros` gets an `UNOPTFLAT` waiver: Verilator saw its
   step array as a loop once the lane inlines four of them.
+- [x] Vivado run of the whole lane (2026-10-08, Vivado 2025.2,
+  `xcvu47p-fsvh2892-2-e`, out of context; harness
+  `platforms/f2/timing/lane_path.sv` registers every port; log
+  `reports/data/f2/2026-10-08-lane.txt`, cabosse 3347b22). All three runs
+  meet 250 MHz: `MulRegs` = 1 +0.173 ns, retimed +0.070 ns, `MulRegs` = 2
+  +0.166 ns. The worst paths are the final sum's scheduler (context state,
+  the choice of the next add, the operand multiplexer: 14 to 16 logic
+  levels), not the accumulate loop. A negative slack now fails the run
+  (`timing.tcl`). Area, `MulRegs` = 1: 5,191 LUTs, 3,395 flip-flops, no
+  DSPs per lane (Yosys estimated 6,250 LUTs). The four units take 2,790
+  LUTs (54%); the final sum the rest: its adder's instance shows 1,325
+  LUTs (a unit's adder about 470, so the operand multiplexers are likely
+  counted there) and the lane's own logic (contexts, copy, control) 1,077.
+  ×128 lanes: 664,448 LUTs, 51.0% of the part, and 434,560 flip-flops,
+  16.7% (Q6 guessed 25-30%). Open for the owner: whether to make the final
+  sum cheaper before M5.
 
 ### M5 — Matrix-vector engine with simulated memory
 **What:** `L` lanes, weight DMA over AXI, tiling, and an AXI memory model
