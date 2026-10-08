@@ -36,6 +36,23 @@ uint64_t plusarg(VerilatedContext& context, const std::string& name, uint64_t fa
   return std::stoull(match.substr(name.size() + 2));  // skip "+name="
 }
 
+/// @brief One clock cycle with the inputs already set: settle with the clock
+/// low, record the handshakes, then the rising edge.
+/// @param dut the lane.
+/// @param results receives out_o if out_valid_o and out_ready_i are high.
+/// @param stalls counts the cycle if in_valid_i is high and in_ready_o low.
+/// @return whether the input beat was taken (in_valid_i and in_ready_o).
+bool cycle(Vdot_lane& dut, std::vector<uint32_t>& results, uint64_t& stalls) {
+  dut.clk_i = 0;
+  dut.eval();
+  const bool fired = dut.in_valid_i && dut.in_ready_o;
+  if (dut.in_valid_i && !dut.in_ready_o) ++stalls;
+  if (dut.out_valid_o && dut.out_ready_i) results.push_back(dut.out_o);
+  dut.clk_i = 1;
+  dut.eval();
+  return fired;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -53,26 +70,14 @@ int main(int argc, char** argv) {
   std::mt19937_64 rng(plusarg(context, "seed", 1));
   auto dut = std::make_unique<Vdot_lane>(&context);
 
-  /// One cycle: settle with the inputs set and the clock low, record the
-  /// handshakes, then the rising edge. Returns whether the input beat fired.
   std::vector<uint32_t> results;
   results.reserve(n_rows + 2);
   uint64_t stalls = 0;
-  auto cycle = [&] {
-    dut->clk_i = 0;
-    dut->eval();
-    const bool fired = dut->in_valid_i && dut->in_ready_o;
-    if (dut->in_valid_i && !dut->in_ready_o) ++stalls;
-    if (dut->out_valid_o && dut->out_ready_i) results.push_back(dut->out_o);
-    dut->clk_i = 1;
-    dut->eval();
-    return fired;
-  };
 
   dut->rst_ni = 0;
   dut->in_valid_i = 0;
   dut->out_ready_i = 0;
-  for (int i = 0; i < 2; ++i) cycle();
+  for (int i = 0; i < 2; ++i) cycle(*dut, results, stalls);
   dut->rst_ni = 1;
 
   uint64_t gaps = 0;
@@ -94,7 +99,7 @@ int main(int argc, char** argv) {
     }
     dut->in_valid_i = valid;
     dut->out_ready_i = rng() % 1000 < ready_permille;
-    if (cycle()) {
+    if (cycle(*dut, results, stalls)) {
       ++next;
       idle = 0;
     }
