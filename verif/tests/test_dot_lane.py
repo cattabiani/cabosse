@@ -17,17 +17,14 @@ from dataclasses import dataclass
 import cocotb
 import numpy as np
 import pytest
-import torch
 from cocotb.clock import Clock
 from cocotb.triggers import FallingEdge, ReadOnly
-from fp_inputs import BF16_SPECIAL_BITS
-from golden import arith, dot
+from fp_inputs import BF16_SPECIAL_BITS, bf16_rounded
+from lane import FULL_RATE_LEN, E, golden_dot, random_gaps
 
 import rtl
 
 SEED = 20261008
-E = 4  # pairs per beat: dot_lane's default
-FULL_RATE_LEN = 60  # (A - 1) * E: shorter rows end before their tree's adds are issued
 BUBBLE_ROW_LEN = 64  # 16 beats: each slot of the rotation 4 times
 MAX_CYCLES = 1_000_000  # a hung handshake fails instead of running forever
 # dot_lane's product registers: the same bits and handshake either way.
@@ -52,11 +49,7 @@ class Row:
 
     def expected(self) -> int:
         """golden.dot.dot of the row, as FP32 bits."""
-        w, x = (
-            arith.bf16_from_bits(torch.from_numpy(v.astype(np.int64))) for v in (self.w, self.x)
-        )
-        y = dot.dot(w, x, valid=torch.from_numpy(self.valid))
-        return int(arith.bits_f32(y))
+        return int(golden_dot(self.w, self.x, self.valid))
 
     def beats(self) -> list[tuple[int, int, int, bool]]:
         """(w, x, mask, last) per beat, E elements each, element e of a beat
@@ -82,15 +75,10 @@ class Run:
     cycles: int
 
 
-def bf16_bits(values: np.ndarray) -> np.ndarray:
-    t = torch.from_numpy(values.astype(np.float32)).to(torch.bfloat16)
-    return arith.bits_bf16(t).numpy().astype(np.uint16)
-
-
 def normal_row(rng: np.random.Generator, n: int, masked: float = 0.0) -> Row:
     """Values like a model's: normal, a spread of scales, both signs."""
-    w = bf16_bits(rng.normal(0, 1, n) * 2.0 ** rng.integers(-8, 8, n))
-    x = bf16_bits(rng.normal(0, 1, n) * 2.0 ** rng.integers(-8, 8, n))
+    w = bf16_rounded(rng.normal(0, 1, n) * 2.0 ** rng.integers(-8, 8, n))
+    x = bf16_rounded(rng.normal(0, 1, n) * 2.0 ** rng.integers(-8, 8, n))
     return Row(w, x, rng.random(n) >= masked)
 
 
@@ -242,7 +230,7 @@ async def random_bubbles(dut) -> None:
     for p_gap in (0.05, 0.3, 0.7):
         rows = [normal_row(rng, int(n)) for n in rng.integers(FULL_RATE_LEN, 301, 30)]
         n_beats = sum(len(r.beats()) for r in rows)
-        gaps = list(rng.geometric(1 - p_gap, n_beats) - 1)
+        gaps = list(random_gaps(rng, n_beats, p_gap))
         got = await run(dut, rows, gaps)
         check_bits(rows, got, f"gap probability {p_gap}")
         assert got.stalls == 0, f"gap probability {p_gap}: {got.stalls} stalls"
@@ -257,7 +245,7 @@ async def random_backpressure(dut) -> None:
     for p_ready in (0.9, 0.5, 0.05):
         rows = [normal_row(rng, int(n), masked=0.1) for n in rng.integers(1, 301, 60)]
         n_beats = sum(len(r.beats()) for r in rows)
-        gaps = list(rng.geometric(0.6, n_beats) - 1)
+        gaps = list(random_gaps(rng, n_beats, 0.4))
         ready = rng.random(MAX_CYCLES) < p_ready
         got = await run(dut, rows, gaps, out_ready=lambda c, r=ready: bool(r[c]))
         check_bits(rows, got, f"ready probability {p_ready}")
@@ -321,10 +309,10 @@ def special_rows(rng: np.random.Generator) -> list[Row]:
     sign = np.where(np.arange(64) % 32 < 16, 0, 0x8000).astype(np.uint16)
     rows.append(Row(big, big ^ sign, np.ones(64, bool)))
     rows.append(Row(big, big, np.ones(64, bool)))
-    w = bf16_bits(rng.integers(-8, 9, 64))  # exact products and sums: exactly zero
+    w = bf16_rounded(rng.integers(-8, 9, 64))  # exact products and sums: exactly zero
     rows.append(Row(np.concatenate([w, w]), np.concatenate([w, w ^ 0x8000]), np.ones(128, bool)))
-    tiny = bf16_bits(rng.normal(0, 1, 80) * 2.0**-70)
-    rows.append(Row(tiny, bf16_bits(rng.normal(0, 1, 80) * 2.0**-70), np.ones(80, bool)))
+    tiny = bf16_rounded(rng.normal(0, 1, 80) * 2.0**-70)
+    rows.append(Row(tiny, bf16_rounded(rng.normal(0, 1, 80) * 2.0**-70), np.ones(80, bool)))
     return rows
 
 

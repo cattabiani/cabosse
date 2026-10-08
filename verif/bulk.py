@@ -10,7 +10,9 @@ the block, and writes one uint32 result per record to stdout, in order,
 collected by valid_o. A record's fields are the order the driver documents.
 
 For blocks with clk_i, rst_ni, valid_i, valid_o, fields of at most 32 bits
-and no backpressure. Handshakes and wide or AXI ports belong in cocotb.
+and no backpressure. The lane (dot_lane.cpp) has a valid/ready handshake and
+its own loop and protocol, documented there; build() serves it too. Other
+handshakes and wide or AXI ports belong in cocotb.
 """
 
 import functools

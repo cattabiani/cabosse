@@ -12,10 +12,13 @@
 #include <concepts>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <print>
 #include <ranges>
 #include <span>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "verilated.h"
@@ -59,6 +62,24 @@ inline std::vector<uint32_t> read_words(std::FILE* file) {
     words.insert(words.end(), buf, buf + n);
   }
   return words;
+}
+
+/// @brief The value of plusarg +<name>=<n>, or `fallback` if it is absent.
+/// @param context the Verilator context holding the arguments.
+/// @param name the plusarg's name, without + and =.
+/// @param fallback returned when the plusarg is absent.
+/// @return the parsed number; a value that is not a number ends the
+///   program with a message.
+inline uint64_t plusarg(VerilatedContext& context, const std::string& name, uint64_t fallback) {
+  const std::string match = context.commandArgsPlusMatch((name + "=").c_str());
+  if (match.empty()) return fallback;
+  const std::string value = match.substr(name.size() + 2);  // skip "+name="
+  try {
+    return std::stoull(value);
+  } catch (const std::logic_error&) {
+    std::println(stderr, "+{}={} is not a number", name, value);
+    std::exit(2);
+  }
 }
 
 /// @brief Run the bulk protocol: read records from stdin, stream one per

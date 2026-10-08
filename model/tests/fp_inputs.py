@@ -4,6 +4,8 @@
 tests (verif/tests): special values as bit patterns, and random families
 that stress rounding."""
 
+from collections import Counter
+
 import numpy as np
 import torch
 from golden import arith
@@ -50,6 +52,33 @@ def all_bf16_widened() -> np.ndarray:
 def random_bits(rng: np.random.Generator, shape) -> np.ndarray:
     """Uniformly random 32-bit patterns."""
     return rng.integers(0, 2**32, shape, dtype=np.uint32)
+
+
+def with_exponents(rng: np.random.Generator, shape, lo: int, hi: int, width: int) -> np.ndarray:
+    """Random bits of a `width`-bit float (16: BF16, 32: FP32) of either
+    sign whose exponent field is in lo..hi, as uint32."""
+    frac_bits = 7 if width == 16 else 23
+    sign = rng.integers(0, 2, shape, dtype=np.uint32) << (width - 1)
+    exp = rng.integers(lo, hi + 1, shape, dtype=np.uint32) << frac_bits
+    return sign | exp | rng.integers(0, 2**frac_bits, shape, dtype=np.uint32)
+
+
+def bf16_rounded(values: np.ndarray) -> np.ndarray:
+    """Values rounded to BF16, as their 16-bit patterns (uint16)."""
+    t = torch.from_numpy(np.asarray(values, dtype=np.float32)).to(torch.bfloat16)
+    return arith.bits_bf16(t).numpy().astype(np.uint16)
+
+
+def f32_classes(bits: np.ndarray) -> Counter:
+    """How many FP32 bit patterns are +0, -0, subnormal, normal, inf or nan."""
+    exp, frac, sign = (bits >> 23) & 0xFF, bits & 0x7FFFFF, bits >> 31
+    names = np.select(
+        [(exp == 0) & (frac == 0) & (sign == 0), (exp == 0) & (frac == 0), exp == 0,
+         (exp == 0xFF) & (frac == 0), exp == 0xFF],
+        ["+0", "-0", "subnormal", "inf", "nan"],
+        "normal",
+    )  # fmt: skip
+    return Counter(names.tolist())
 
 
 def subnormal_f32(bits: np.ndarray) -> np.ndarray:
