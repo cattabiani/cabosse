@@ -774,7 +774,16 @@ Vivado run; bulk driver and slow tests; checkpoint report.
   old ones that still apply (13): 12 caught; shallowest-level-first is
   harmless (same pairs, still full rate). Yosys (UltraScale+ mapping):
   6,249 → 4,149 LUTs, 3,407 → 1,850 flip-flops per lane; depth proxy
-  unchanged at 19. Vivado run to confirm.
+  unchanged at 19. Vivado (2026-10-08, same flow, cabosse b9bf959, log
+  `reports/data/f2/2026-10-08-lane-belt.txt`): all three runs meet
+  250 MHz, `MulRegs` = 1 +0.344 ns, retimed +0.279 ns, `MulRegs` = 2
+  +0.424 ns. Per lane (`MulRegs` = 1): 5,191 → 3,762 LUTs (140 of them
+  LUT memory), 3,395 → 2,810 flip-flops, no DSPs; the units 2,835 LUTs,
+  the final sum's adder 408 and the lane's own logic 519 (was 1,325 and
+  1,077). ×128 lanes: 36.9% of the part's LUTs (was 51.0%), 13.8% of its
+  flip-flops (was 16.7%). The worst path is now the accumulate loop's
+  read: the beat's slot through the accumulator file's selector into
+  `fp_add`'s alignment (12 logic levels).
 
 ### M5 — Matrix-vector engine with simulated memory
 **What:** `L` lanes, weight DMA over AXI, tiling, and an AXI memory model
