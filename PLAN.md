@@ -603,7 +603,7 @@ resource cost comes with the first build.
   path is the product, outside the loop. About 625 LUTs, 247 registers and
   no DSPs per unit (CVFPU's FMA: about 1,100 LUTs and 2 DSPs). The
   accumulate-loop exit criterion is met with `A` = 16 unchanged.
-- In progress (D-039, branch `m3/own-fp`): our own FP units replace CVFPU.
+- Done (D-039, branch `m3/own-fp`): our own FP units replace CVFPU.
   `fp_add` (generic one-rounding adder, W-bit significands: 27 for the
   lanes, 51 for FP32 fma), `fp_product` (exact product, M-bit significands:
   8 for BF16, 24 for FP32; replaces `bf16_mul`), `fp32_fma` (add = fma(a,
