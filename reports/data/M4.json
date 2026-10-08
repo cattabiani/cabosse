@@ -1,18 +1,19 @@
 {
  "provenance": {
-  "commit": "f819ce030de4799da2c9204f68a4ad2417ae4c6a",
+  "commit": "7c47427ea372e62323925a1389e63d2c0b914ea0",
   "dirty": false,
   "date": "2026-10-08",
   "machine": "Linux x86_64"
  },
  "inputs": {
-  "bulk_pairs": 100000000,
+  "bulk_pairs": 100454698,
+  "bulk_chunks": 50,
   "smollm2_rows": 16768,
   "smollm2_pairs": 9584640,
   "full_rate_len": 60
  },
  "tests": {
-  "fast": "350 passed, 17 deselected in 108.01s (0:01:48)",
-  "slow": "16 passed, 351 deselected in 964.95s (0:16:04)"
+  "fast": "351 passed, 17 deselected in 75.73s (0:01:15)",
+  "slow": "16 passed, 352 deselected in 933.29s (0:15:33)"
  }
 }
