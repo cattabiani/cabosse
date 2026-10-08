@@ -19,7 +19,6 @@ import json
 import os
 import platform
 import statistics
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -35,6 +34,7 @@ import fixtures  # noqa: E402
 import paths  # noqa: E402
 from golden import decoder  # noqa: E402
 from reporting import blocks, m1  # noqa: E402
+from reporting.measure import git, pytest_summary  # noqa: E402
 
 POSITIONS = 256  # per comparison sequence
 DECODE_WARMUP = 4  # untimed decode steps first (caches, allocator)
@@ -43,12 +43,6 @@ QUIET_LOAD = 1.0  # 1-minute load average above which timing is suspect
 # pytest arguments. The report's own up-to-date test waits for this data.
 UP_TO_DATE = "model/tests/test_reporting.py::test_m1_report_is_up_to_date"
 SUITES = {"fast": ["--deselect", UP_TO_DATE], "slow": ["-m", "slow"]}
-
-
-def git(*args: str) -> str:
-    return subprocess.run(
-        ["git", *args], cwd=paths.REPO, capture_output=True, text=True, check=True
-    ).stdout
 
 
 def provenance() -> dict:
@@ -114,17 +108,6 @@ def divergences(tokenizer, reference, golden: decoder.Model) -> list[dict]:
                 entry[name] = [[tokenizer.decode([t]), float(row[t])] for t in choices]
         out.append(entry)
     return out
-
-
-def pytest_summary(extra: list[str]) -> str:
-    """The last line of a pytest run, e.g. '166 passed, 5 deselected in 38.8s'."""
-    run = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", *extra],
-        cwd=paths.REPO,
-        capture_output=True,
-        text=True,
-    )
-    return run.stdout.strip().splitlines()[-1].strip("= ")
 
 
 def measure(weights: Path) -> None:

@@ -37,7 +37,7 @@ FTZ = (("Ftz", 1),)
 FIELDS = E + 1  # words per beat record: E / 2 of w, E / 2 of x, then control
 N_FAST = 300_000  # pairs per fast test
 N_SLOW = 10**8
-PAIRS_PER_CHUNK = N_SLOW // (6 * bulk.WORKERS)  # slow run: 48 driver runs, 8 at a time
+PAIRS_PER_CHUNK = 2_000_000  # slow run: one driver run per chunk
 MAX_LATENCY_CYCLES = 64  # from a row's last beat to its result, more than the lane's
 N_FLUSHED = 50  # rows the ftz switch changes, at least
 # Output ready, permille of cycles, cycled through the chunks.
@@ -302,20 +302,28 @@ def test_ftz() -> None:
 # --- Slow tests ------------------------------------------------------------------
 
 
+def volume_seeds() -> list[int]:
+    """One seed per chunk of the volume run."""
+    return bulk.chunk_seeds(SEED, N_SLOW, PAIRS_PER_CHUNK)
+
+
+def volume_chunk(seed: int) -> list[Rows]:
+    """The rows of one chunk of the volume run: about PAIRS_PER_CHUNK pairs."""
+    return mixed(np.random.default_rng(seed), PAIRS_PER_CHUNK)
+
+
 @pytest.mark.slow
 @rtl.needs_verilator
 def test_volume() -> None:
     """N_SLOW pairs in chunks, each with its own seed, output ready and gaps."""
-    seeds = bulk.chunk_seeds(SEED, N_SLOW, PAIRS_PER_CHUNK)
 
     def one(seed: int) -> None:
-        rng = np.random.default_rng(seed)
         ready = READY_PERMILLE[seed % len(READY_PERMILLE)]
-        groups = mixed(rng, PAIRS_PER_CHUNK)
+        groups = volume_chunk(seed)
         p_gap = 0.2 if seed % 2 else 0.0
         check(groups, f"chunk seed {seed}, ready {ready}‰", ready=ready, p_gap=p_gap, seed=seed)
 
-    bulk.in_parallel(one, seeds)
+    bulk.in_parallel(one, volume_seeds())
 
 
 def smollm2_rows(model: decoder.Model) -> dict[str, list[Rows]]:

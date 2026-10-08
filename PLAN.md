@@ -796,7 +796,7 @@ Vivado run; bulk driver and slow tests; checkpoint report.
   Fast (CI, about 15 s): about 300,000 pairs at output ready 100%, 50% and
   5% with gaps; full rate with and without gaps (no stalls, and cycles =
   beats + gaps + under 64 of latency); the `Ftz` = 1 build against the
-  golden ftz switch. Slow: 10^8 pairs in 48 chunks (143 to 171 s on the
+  golden ftz switch. Slow: 10^8 pairs in 50 chunks (143 to 171 s on the
   dev machine over three runs), and one SmolLM2 decode step at position 63: every row of the
   first and last layers' seven matrices, their attention scores and p.V
   rows, and 4,096 classifier rows, 16,768 rows and 9.6 million pairs of

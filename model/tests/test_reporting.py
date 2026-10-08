@@ -43,6 +43,7 @@ def test_fill_needs_exactly_the_blocks_in_the_text(given: dict[str, str]) -> Non
         ("1 failed, 165 passed in 40.00s", False),
         ("165 passed, 1 error in 40.00s", False),
         ("no tests ran in 0.01s", False),
+        ("15 passed, 1 skipped, 351 deselected in 900.00s", False),
     ],
 )
 def test_tests_passed(summary: str, passed: bool) -> None:

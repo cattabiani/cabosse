@@ -93,21 +93,26 @@ def parse_log(log: int, text: str) -> tuple[str, list[Run]]:
     return commit, runs
 
 
-def logs() -> list[tuple[str, str, list[Run]]]:
-    """(file, commit, runs) of every Vivado log, in LOGS's order."""
+def logs(names: dict[str, str] = LOGS) -> list[tuple[str, str, list[Run]]]:
+    """(file, commit, runs) of every Vivado log in `names`, in its order."""
     out = []
-    for i, name in enumerate(LOGS, 1):
+    for i, name in enumerate(names, 1):
         commit, runs = parse_log(i, (F2 / name).read_text())
         out.append((name, commit, runs))
     return out
 
 
-def logs_table(parsed: list[tuple[str, str, list[Run]]]) -> str:
+def logs_table(
+    parsed: list[tuple[str, str, list[Run]]],
+    descriptions: dict[str, str] = LOGS,
+    what: str = "what was tried",
+) -> str:
+    """The logs, each with its description under the column `what`."""
     rows = [
-        [runs[0].log, f"[{name}](data/f2/{name})", LOGS[name], f"`{commit[:7]}`"]
+        [runs[0].log, f"[{name}](data/f2/{name})", descriptions[name], f"`{commit[:7]}`"]
         for name, commit, runs in parsed
     ]
-    return blocks.table(["log", "file", "what was tried", "commit"], rows)
+    return blocks.table(["log", "file", what, "commit"], rows)
 
 
 def runs_table(runs: list[Run]) -> str:
@@ -165,9 +170,7 @@ def generated() -> dict[str, str]:
     loop = final_run(parsed, "mac_loop", 4, False)
     lanes, vector = m3_subnormal.costs(cells)
 
-    def met(ok: bool) -> str:
-        return "yes" if ok else "**no**"
-
+    met = m1.met
     slow_ok, fast_ok = m1.tests_passed(tests["slow"]), m1.tests_passed(tests["fast"])
     exit_rows = [
         [
@@ -201,12 +204,8 @@ def generated() -> dict[str, str]:
             "yes",
         ],
     ]
-    unmet = [row[0] for row in exit_rows if row[2] != "yes"]
-    verdict = "**Not met:** " + "; ".join(unmet) + "." if unmet else "All M3 exit criteria are met."
-    provenance = data["provenance"]
-    dirty = " with uncommitted changes" if provenance["dirty"] else ""
     return {
-        "verdict": verdict,
+        "verdict": m1.verdict(exit_rows, "M3"),
         "exit-criteria": blocks.table(["criterion", "measured", "met"], exit_rows),
         "tools": tools_text((F2 / list(LOGS)[-1]).read_text()),
         "logs": logs_table(parsed),
@@ -216,8 +215,7 @@ def generated() -> dict[str, str]:
         "parts": m3_subnormal.parts_table(cells),
         "baseline": m3_subnormal.baseline_table(cells),
         "hits": m3_subnormal.hits_table(hits),
-        "tests-provenance": f"Run on {provenance['date']}, commit "
-        f"`{provenance['commit'][:7]}`{dirty}, {provenance['machine']}.",
+        "tests-provenance": m1.provenance_text(data["provenance"]),
         "tests": tests_table(tests),
     }
 

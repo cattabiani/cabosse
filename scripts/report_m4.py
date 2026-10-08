@@ -26,10 +26,12 @@ for sub in ("model", "model/tests", "verif", "verif/tests"):
 
 import lane  # noqa: E402
 import paths  # noqa: E402
-import report_m3  # noqa: E402
 import test_dot_lane_bulk  # noqa: E402
 from golden import decoder  # noqa: E402
 from reporting import blocks, m4  # noqa: E402
+from reporting.measure import commit_and_dirty, pytest_summary  # noqa: E402
+
+import rtl  # noqa: E402, F401  (puts .tools/ on PATH for the suites)
 
 UP_TO_DATE = "model/tests/test_reporting.py::test_m4_report_is_up_to_date"
 SUITES = {"fast": ["--deselect", UP_TO_DATE], "slow": ["-m", "slow"]}
@@ -42,9 +44,17 @@ def smollm2_counts() -> tuple[int, int]:
     return sum(g.w.shape[0] for g in groups), sum(g.w.size for g in groups)
 
 
+def volume_counts() -> tuple[int, int]:
+    """Chunks and pairs of the slow suite's volume test, counted on its rows."""
+    seeds = test_dot_lane_bulk.volume_seeds()
+    chunks = (test_dot_lane_bulk.volume_chunk(seed) for seed in seeds)
+    return len(seeds), sum(g.w.size for groups in chunks for g in groups)
+
+
 def measure_tests() -> None:
-    commit, dirty = report_m3.commit_and_dirty()
+    commit, dirty = commit_and_dirty()
     rows, pairs = smollm2_counts()
+    chunks, bulk_pairs = volume_counts()
     data = {
         "provenance": {
             "commit": commit,
@@ -54,7 +64,8 @@ def measure_tests() -> None:
         },
         # What the tests run, from their own constants and rows.
         "inputs": {
-            "bulk_pairs": test_dot_lane_bulk.N_SLOW,
+            "bulk_pairs": bulk_pairs,
+            "bulk_chunks": chunks,
             "smollm2_rows": rows,
             "smollm2_pairs": pairs,
             "full_rate_len": lane.FULL_RATE_LEN,
@@ -62,7 +73,7 @@ def measure_tests() -> None:
         "tests": {},
     }
     for name, extra in SUITES.items():
-        data["tests"][name] = report_m3.pytest_summary(extra)
+        data["tests"][name] = pytest_summary(extra)
         print(name, data["tests"][name], flush=True)
     m4.DATA.write_text(json.dumps(data, indent=1) + "\n")
     print(f"written: {m4.DATA}")

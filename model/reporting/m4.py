@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """The generated tables of the M4 checkpoint report (reports/M4.md), from
-the lane's Vivado logs in reports/data/f2/ (format: reporting/m3.py) and the
-test runs in reports/data/M4.json. Filled by scripts/report_m4.py; needs no
-weights and no RTL tools.
+the lane's Vivado logs in reports/data/f2/ (format: reporting/m3.py), the
+design file (model/designs/v0.json) and the test runs in
+reports/data/M4.json. Filled by scripts/report_m4.py; needs no weights and
+no RTL tools.
 
 Besides m3's per-run line, each lane run has Vivado's utilization by
 hierarchy, read here for the lane's own resources (the harness adds
@@ -15,6 +16,7 @@ import re
 from dataclasses import dataclass
 
 import paths
+import perf
 from golden import dot
 
 from reporting import blocks, m1, m3
@@ -26,10 +28,9 @@ LOGS = {
     "2026-10-08-lane.txt": "3 contexts and a scheduler",
     "2026-10-08-lane-belt.txt": "the conveyor belt",
 }
-LANES = 128  # D-027
-PAIRS_PER_CYCLE = 4  # E, D-027
+ENGINE_SETTING = ("MulRegs = 1", False)  # the run the engine estimate uses: setting, retimed
 
-BEGIN = re.compile(r"^CABOSSE-BEGIN (run\d+) \S+$", re.M)
+BEGIN = re.compile(r"^CABOSSE-BEGIN run\d+ \S+$", re.M)
 HIER_ROW = re.compile(
     r"^\|\s+(\S+(?: \S+)?)\s+\|\s+\S+\s+\|\s+(\d+)\s+\|(?:\s+\d+\s+\|){3}\s+(\d+)\s+\|", re.M
 )
@@ -40,14 +41,15 @@ AVAILABLE = re.compile(
 
 @dataclass
 class Lane:
-    """One Vivado run of the lane: m3's run, and the lane's own resources."""
+    """One Vivado run of the lane: m3's run, and the lane's own resources
+    from the utilization by hierarchy."""
 
     run: m3.Run
-    log_name: str
-    luts: int  # the lane's, from the hierarchy
+    luts: int
     registers: int
-    unit_luts: int  # the four multiply-add units
-    final_luts: int  # the final sum's adder and the lane's own logic
+    unit_luts: int  # the four multiply-add units: products and adders
+    tree_luts: int  # the final sum's adder
+    own_luts: int  # the rest: accumulator files, buffers, queues, control
 
 
 def sections(text: str) -> list[str]:
@@ -62,15 +64,13 @@ def hierarchy(section: str) -> dict[str, tuple[int, int]]:
     return {m[1].strip(): (int(m[2]), int(m[3])) for m in HIER_ROW.finditer(table)}
 
 
-def lanes() -> list[Lane]:
+def lanes(texts: dict[str, str], parsed: list[tuple[str, str, list[m3.Run]]]) -> list[Lane]:
     out = []
-    for i, name in enumerate(LOGS, 1):
-        text = (m3.F2 / name).read_text()
-        _, runs = m3.parse_log(i, text)
-        for run, section in zip(runs, sections(text), strict=True):
+    for name, _, runs in parsed:
+        for run, section in zip(runs, sections(texts[name]), strict=True):
             h = hierarchy(section)
             units = sum(v[0] for k, v in h.items() if k.startswith("gen_unit"))
-            out.append(Lane(run, name, *h["u_lane"], units, h["u_tree"][0] + h["(u_lane)"][0]))
+            out.append(Lane(run, *h["u_lane"], units, h["u_tree"][0], h["(u_lane)"][0]))
     return out
 
 
@@ -80,17 +80,19 @@ def available(text: str) -> dict[str, int]:
 
 
 def runs_table(runs: list[Lane]) -> str:
+    names = list(LOGS)
     rows = [
         [
             r.run.log,
-            LOGS[r.log_name],
+            LOGS[names[r.run.log - 1]],
             r.run.setting,
             "yes" if r.run.retime else "no",
             f"{r.run.slack_ns:+.3f}",
             f"{r.run.path_ns:.3f} ({r.run.levels})",
             f"{r.luts:,}",
             f"{r.unit_luts:,}",
-            f"{r.final_luts:,}",
+            f"{r.tree_luts:,}",
+            f"{r.own_luts:,}",
             f"{r.registers:,}",
             r.run.dsps,
         ]
@@ -104,89 +106,79 @@ def runs_table(runs: list[Lane]) -> str:
         "slack (ns)",
         "worst path (ns, logic levels)",
         "LUTs",
-        "of which units",
-        "of which final sum",
+        "units",
+        "final sum's adder",
+        "the lane's own",
         "flip-flops",
         "DSPs",
     ]
     return blocks.table(header, rows)
 
 
-def engine_table(runs: list[Lane], part: dict[str, int]) -> str:
-    """128 lanes of each design's MulRegs = 1 run, without retiming."""
+def engine_table(runs: list[Lane], n_lanes: int, part: dict[str, int]) -> str:
+    """n_lanes lanes of each log's ENGINE_SETTING run."""
+    names = list(LOGS)
     rows = []
     for r in runs:
-        if r.run.setting == "MulRegs = 1" and not r.run.retime:
-            luts, regs = LANES * r.luts, LANES * r.registers
+        if (r.run.setting, r.run.retime) == ENGINE_SETTING:
+            luts, regs = n_lanes * r.luts, n_lanes * r.registers
             rows.append(
                 [
-                    LOGS[r.log_name],
+                    LOGS[names[r.run.log - 1]],
                     f"{luts:,} ({luts / part['CLB LUTs']:.1%})",
                     f"{regs:,} ({regs / part['CLB Registers']:.1%})",
                 ]
             )
-    return blocks.table([f"{LANES} lanes", "LUTs (of the part)", "flip-flops (of the part)"], rows)
-
-
-def logs_table() -> str:
-    rows = []
-    for i, name in enumerate(LOGS, 1):
-        commit = re.search(r"^cabosse ([0-9a-f]{7})", (m3.F2 / name).read_text(), re.M)[1]
-        rows.append([i, f"[{name}](data/f2/{name})", LOGS[name], f"`{commit}`"])
-    return blocks.table(["log", "file", "final sum", "commit"], rows)
+    assert len(rows) == len(LOGS), f"a log has no {ENGINE_SETTING} run"
+    header = [f"{n_lanes} lanes", "LUTs (of the part)", "flip-flops (of the part)"]
+    return blocks.table(header, rows)
 
 
 def generated() -> dict[str, str]:
     data = json.loads(DATA.read_text())
     tests, inputs = data["tests"], data["inputs"]
-    runs = lanes()
-    last_text = (m3.F2 / list(LOGS)[-1]).read_text()
-    final = [r for r in runs if r.log_name == list(LOGS)[-1]]
-    worst = min(r.run.slack_ns for r in final)
-
-    def met(ok: bool) -> str:
-        return "yes" if ok else "**no**"
+    design = perf.load_design("v0").values()
+    n_lanes, per_cycle = int(design["lanes"]), int(design["macs_per_lane"])
+    texts = {name: (m3.F2 / name).read_text() for name in LOGS}
+    parsed = m3.logs(LOGS)
+    runs = lanes(texts, parsed)
+    worst = min(r.run.slack_ns for r in runs if r.run.log == len(LOGS))
 
     slow_ok, fast_ok = m1.tests_passed(tests["slow"]), m1.tests_passed(tests["fast"])
     exit_rows = [
         [
             "Bit-exact on random lengths, SmolLM2 row lengths and adversarial inputs",
-            f"{inputs['bulk_pairs']:,} pairs of random lengths, SmolLM2's lengths "
-            f"and adversarial families; one SmolLM2 decode step's rows, "
-            f"{inputs['smollm2_rows']:,} rows and {inputs['smollm2_pairs']:,} pairs of "
-            "real weights and activations (slow suite); the handshake's corner cases "
-            "(cocotb, fast suite)",
-            met(slow_ok and fast_ok),
+            f"{inputs['bulk_pairs']:,} pairs in {inputs['bulk_chunks']} chunks of random "
+            "lengths, SmolLM2's lengths and adversarial families; one SmolLM2 decode "
+            f"step's rows, {inputs['smollm2_rows']:,} rows and {inputs['smollm2_pairs']:,} "
+            "pairs of real weights and activations (slow suite); the handshake's corner "
+            "cases (cocotb, fast suite)",
+            m1.met(slow_ok and fast_ok),
         ],
         [
-            f"{PAIRS_PER_CYCLE} pairs per cycle sustained under randomized backpressure "
+            f"{per_cycle} pairs per cycle sustained under randomized backpressure "
             "(D-027; was 1 MAC/cycle)",
             f"rows of {inputs['full_rate_len']} elements or more: no stall with input "
             "gaps, cycles = beats + gaps + latency; random output ready loses nothing "
             "(fast suite)",
-            met(fast_ok),
-        ],
-        [
-            "The lane meets 250 MHz on F2's part (Q6, not an exit criterion)",
-            f"every run of the final RTL, worst {worst:+.3f} ns (log {len(LOGS)})",
-            met(worst >= 0),
+            m1.met(fast_ok),
         ],
     ]
-    unmet = [row[0] for row in exit_rows if row[2] != "yes"]
-    verdict = "**Not met:** " + "; ".join(unmet) + "." if unmet else "All M4 exit criteria are met."
-    provenance = data["provenance"]
-    dirty = " with uncommitted changes" if provenance["dirty"] else ""
+    timing_row = [
+        "The lane meets 250 MHz on F2's part (Q6; not an exit criterion)",
+        f"every run of the final RTL, worst {worst:+.3f} ns (log {len(LOGS)})",
+        m1.met(worst >= 0),
+    ]
     return {
-        "verdict": verdict,
-        "exit-criteria": blocks.table(["criterion", "measured", "met"], exit_rows),
-        "shape": f"`E` = {PAIRS_PER_CYCLE} pairs per cycle, `A` = {dot.ACCUMULATORS} "
-        f"partial sums, {LANES} lanes in M5 (D-027).",
-        "tools": m3.tools_text(last_text),
-        "logs": logs_table(),
+        "verdict": m1.verdict(exit_rows, "M4"),
+        "exit-criteria": blocks.table(["criterion", "measured", "met"], [*exit_rows, timing_row]),
+        "shape": f"`E` = {per_cycle} pairs per cycle, `A` = {dot.ACCUMULATORS} "
+        f"partial sums, {n_lanes} lanes in M5 (D-027).",
+        "tools": m3.tools_text(texts[list(LOGS)[-1]]),
+        "logs": m3.logs_table(parsed, LOGS, "final sum"),
         "runs": runs_table(runs),
-        "engine": engine_table(runs, available(last_text)),
-        "tests-provenance": f"Run on {provenance['date']}, commit "
-        f"`{provenance['commit'][:7]}`{dirty}, {provenance['machine']}.",
+        "engine": engine_table(runs, n_lanes, available(texts[list(LOGS)[-1]])),
+        "tests-provenance": m1.provenance_text(data["provenance"]),
         "tests": m3.tests_table(tests),
     }
 
