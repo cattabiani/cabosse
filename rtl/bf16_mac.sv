@@ -3,11 +3,15 @@
 //
 // The lanes' multiply-add (D-038), whole: y = mac(w, x, acc) = fma(up(w),
 // up(x), acc), one rounding (docs/numerics.md, section 2; golden model:
-// golden.arith.mac). bf16_mul, a register, then mac_add: a result
-// leaves 4 cycles after its operands enter; valid_o marks it. The lane uses
-// the two parts directly, with the accumulator fed back into mac_add.
+// golden.arith.mac). fp_mul_add with M = 8 and MulRegs registers in the
+// product (250 MHz on F2 needs one): a result leaves MulRegs + 4 cycles
+// after its operands enter; valid_o marks it. The lane uses the parts
+// directly, with the accumulator fed back into fp_add; the product's
+// registers are outside that loop.
 
-module bf16_mac (
+module bf16_mac #(
+  parameter int unsigned MulRegs = 1
+) (
   input  logic        clk_i,
   input  logic        rst_ni,
   input  logic        valid_i,
@@ -18,28 +22,16 @@ module bf16_mac (
   output logic [31:0] y_o
 );
 
-  bf16_mac_pkg::operand_t p_d, p_q;
-  logic [31:0]            acc_q;
-  logic                   valid_q;
-
-  bf16_mul u_mul (
-    .w_i,
-    .x_i,
-    .p_o(p_d)
-  );
-
-  always_ff @(posedge clk_i) begin
-    p_q     <= p_d;
-    acc_q   <= acc_i;
-    valid_q <= rst_ni && valid_i;
-  end
-
-  mac_add u_add (
+  fp_mul_add #(
+    .M      (8),
+    .MulRegs(MulRegs)
+  ) u_mac (
     .clk_i,
     .rst_ni,
-    .valid_i(valid_q),
-    .p_i    (p_q),
-    .acc_i  (acc_q),
+    .valid_i,
+    .a_i(w_i),
+    .b_i(x_i),
+    .c_i(acc_i),
     .valid_o,
     .y_o
   );

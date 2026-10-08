@@ -19,6 +19,9 @@ SEED = 20261007
 N_NEAR, N_SCALED, N_EDGE, N_RANDOM = 100_000, 100_000, 50_000, 100_000  # fast run, per family
 W_PER_CHUNK = 16  # exhaustive run: 16 values of w against all 2^16 x
 UP = all_bf16_widened()  # up(b) as FP32 bits, indexed by the BF16 bits
+# bf16_mac's product registers: the same bits either way. The default (1) is
+# built without parameters, the build the slow run uses.
+PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (), "mulregs2": (("MulRegs", 2),)}
 
 
 def bf16_bits(rng: np.random.Generator, n: int) -> np.ndarray:
@@ -90,22 +93,24 @@ def batch(rng: np.random.Generator) -> np.ndarray:
     return np.concatenate([near_cancelling(rng, N_NEAR), scaled(rng, N_SCALED), edges, rand])
 
 
-def check(wxa: np.ndarray, label: str) -> None:
+def check(wxa: np.ndarray, label: str, params: tuple = ()) -> None:
     w, x, acc = (
         torch.from_numpy(v.view(np.float32)) for v in (UP[wxa[:, 0]], UP[wxa[:, 1]], wxa[:, 2])
     )
     want = arith.bits_f32(arith.mac_f32(w, x, acc)).numpy().astype(np.uint32)
-    bulk.check("bf16_mac", wxa, want, label)
+    bulk.check("bf16_mac", wxa, want, label, params)
 
 
 @rtl.needs_verilator
-def test_specials() -> None:
-    check(specials(), "specials")
+@pytest.mark.parametrize("pipeline", PIPELINES)
+def test_specials(pipeline: str) -> None:
+    check(specials(), "specials", PIPELINES[pipeline])
 
 
 @rtl.needs_verilator
-def test_random() -> None:
-    check(batch(np.random.default_rng(SEED)), f"seed {SEED}")
+@pytest.mark.parametrize("pipeline", PIPELINES)
+def test_random(pipeline: str) -> None:
+    check(batch(np.random.default_rng(SEED)), f"seed {SEED}", PIPELINES[pipeline])
 
 
 @pytest.mark.slow

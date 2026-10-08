@@ -44,6 +44,7 @@ def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
 @functools.cache
 def _build(top: str, params: tuple[tuple[str, int], ...]) -> Path:
     build_dir = rtl.BUILD / ("_".join(["bulk", top, *(f"{k}{v}" for k, v in params)]))
+    build_dir.mkdir(parents=True, exist_ok=True)  # Verilator makes only the last level
     cxx = os.environ.get("CXX")
     argv = [
         "verilator", "--cc", "--exe", "--build", "-j", "0", "-O3",

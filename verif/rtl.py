@@ -23,10 +23,9 @@ from paths import REPO
 
 RTL = REPO / "rtl"
 SOURCES = RTL / "sources.f"  # every RTL file in compile order
-VENDOR_LINT = RTL / "vendor" / "lint.vlt"  # vendored code is not held to -Wall
 BUILD = REPO / "verif" / "sim_build"  # git-ignored
 TOOLS_BIN = REPO / ".tools" / "oss-cad-suite" / "bin"
-VERILATOR_FILES = [str(VENDOR_LINT), "-F", str(SOURCES)]
+VERILATOR_FILES = ["-F", str(SOURCES)]
 
 if TOOLS_BIN.is_dir():
     os.environ["PATH"] = os.pathsep.join([str(TOOLS_BIN), os.environ["PATH"]])
@@ -43,8 +42,8 @@ needs_verilator, needs_yosys = needs("verilator"), needs("yosys")
 
 
 def modules() -> list[str]:
-    """Our modules: one per file in rtl/ (not rtl/vendor/), named after it;
-    packages (*_pkg.sv) are not modules."""
+    """Our modules: one per file in rtl/, named after it; packages
+    (*_pkg.sv) are not modules."""
     return [p.stem for p in sorted(RTL.glob("*.sv")) if not p.stem.endswith("_pkg")]
 
 
@@ -69,10 +68,13 @@ def simulate(top: str, test_module: str | None = None) -> None:
     )
 
 
-def lint(top: str, extra: Sequence[Path] = ()) -> subprocess.CompletedProcess:
-    """Verilator -Wall lint of rtl/ plus `extra` files, with `top` as the top."""
+def lint(
+    top: str, extra: Sequence[Path] = (), params: Sequence[tuple[str, int]] = ()
+) -> subprocess.CompletedProcess:
+    """Verilator -Wall lint of rtl/ plus `extra` files, with `top` as the top
+    and its parameters set to `params` ((name, value) pairs)."""
     argv = ["verilator", "--lint-only", "-Wall", "--top-module", top, *VERILATOR_FILES]
-    argv += [str(p) for p in extra]
+    argv += [str(p) for p in extra] + [f"-G{name}={value}" for name, value in params]
     return subprocess.run(argv, capture_output=True, text=True)
 
 

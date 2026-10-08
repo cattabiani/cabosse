@@ -2,11 +2,11 @@
 # Copyright 2026 The Cabosse Authors
 #
 # Out-of-context synthesis, placement and routing of a timing harness in
-# this folder (acc_loop.sv, mac_loop.sv) on F2's part at clk_main_a0's
+# this folder (mac_loop.sv, fma_path.sv) on F2's part at clk_main_a0's
 # 250 MHz (docs/f2.md). Reports go to the current directory.
 # Usage: vivado -mode batch -source timing.tcl -tclargs REPO PART TOP PARAM VALUE LOOP RETIME
-# PARAM=VALUE is the harness's loop-length parameter, LOOP the loop's cycles
-# (for the report). RETIME 1 lets Vivado move registers across logic
+# PARAM=VALUE is the harness's length parameter, LOOP the loop's (or the
+# path's) cycles, for the report. RETIME 1 lets Vivado move registers across logic
 # (synthesis and physical optimization).
 
 lassign $argv repo part top param value loop retime
@@ -17,18 +17,14 @@ set f [open $repo/rtl/sources.f]
 foreach line [split [read $f] "\n"] {
   set line [string trim $line]
   if {$line eq "" || [string match "//*" $line]} continue
-  if {[string match "+incdir+*" $line]} {
-    lappend incdirs $repo/rtl/[string range $line 8 end]
-  } else {
-    read_verilog -sv $repo/rtl/$line
-  }
+  read_verilog -sv $repo/rtl/$line
 }
 close $f
 foreach harness [glob $repo/platforms/f2/timing/*.sv] {read_verilog -sv $harness}
 read_xdc -mode out_of_context $repo/platforms/f2/timing/timing.xdc
 
 synth_design -top $top -part $part -mode out_of_context \
-  -include_dirs $incdirs -generic $param=$value \
+  -generic $param=$value \
   -global_retiming [expr {$retime ? "on" : "off"}]
 opt_design
 place_design

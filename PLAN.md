@@ -529,17 +529,17 @@ golden model still passes M1.
 **What:** in this order:
 1. OSS CAD Suite (Verilator, Yosys with the slang SystemVerilog plugin,
    cocotb; owner installs) and a one-command test runner.
-2. CVFPU (D-033), vendored at a pinned version and configured for BF16 ×
-   BF16 → FP32 multiply-add and the FP32 operations of the vector unit,
-   tested for bit exactness against the golden model. This comes first
+2. The FP units: BF16 × BF16 → FP32 multiply-add and the FP32 operations
+   of the vector unit, tested for bit exactness against the golden model.
+   First CVFPU (D-033), then our own (D-038, D-039). This comes first
    because a mismatch can change the numerics, and every later milestone
    builds on them.
 3. The accumulate loop's timing at 250 MHz: a small, targeted Vivado run on
    AWS (D-032), with the owner's OK when it is needed.
 4. CI and lint for the RTL.
-**Why:** the FP units carry the numerics. Proving the toolchain and CVFPU's
-bit exactness on something small first.
-**Done when:** a bit-exactness step tests each CVFPU operation we use
+**Why:** the FP units carry the numerics. Proving the toolchain and the
+units' bit exactness on something small first.
+**Done when:** a bit-exactness step tests each FP operation we use
 against the golden model on ≥ 10⁸ random inputs plus every special-value
 class (the BF16 multiply exhaustively if that is fast enough); every
 mismatch is reported and settled by the owner (D-033). The multiply-add's
@@ -603,9 +603,67 @@ resource cost comes with the first build.
   path is the product, outside the loop. About 625 LUTs, 247 registers and
   no DSPs per unit (CVFPU's FMA: about 1,100 LUTs and 2 DSPs). The
   accumulate-loop exit criterion is met with `A` = 16 unchanged.
-- Next (D-039): our own FP32 add, multiply, fma and max behind the current
-  `fp32_fma` and `fp32_max` ports, so their tests stay unchanged as the
-  acceptance tests; then CVFPU and `rtl/vendor/` are removed.
+- In progress (D-039, branch `m3/own-fp`): our own FP units replace CVFPU.
+  `fp_add` (generic one-rounding adder, W-bit significands: 27 for the
+  lanes, 51 for FP32 fma), `fp_product` (exact product, M-bit significands:
+  8 for BF16, 24 for FP32; replaces `bf16_mul`), `fp32_fma` (add = fma(a,
+  1, b), mul = fma(a, b, -0)), `fp32_max`, `leading_zeros`, `sticky_shift`,
+  `fp_pkg`; `rtl/vendor/` and `scripts/vendor_rtl.sh` are gone, and the docs
+  no longer mention them. The old tests pass unchanged except for CVFPU's
+  pipeline parameter: fast and slow (10⁸ per op, all BF16 pairs). Mutation
+  check (19 hand mutations of the units, fast tests): 15 caught; the 4 left
+  give the same bits (two were redundant logic, now removed). Yosys
+  (generic `synth`, flattened): `bf16_mac` 2,513 cells, `fp32_fma` 7,798,
+  `fp_add` (W = 27) 1,509. On F2's part at 250 MHz (2026-10-07, fourth
+  log, `platforms/f2/timing/fma_path.sv`): `fp32_fma` with its product in
+  one cycle fails, -2.700 ns without retiming (about 149 MHz), -2.023 ns
+  with one more input register and retiming (166 MHz). The worst path was
+  op mux, the 24 x 24 multiply (2 DSPs), normalize and the shift below
+  exponent 1 (6.7 ns, 24 logic levels); retiming cannot split the DSP
+  multiply. So `fp_product` now splits multiply | normalize | shift below
+  exponent 1 with `Regs` registers, and `fp32_fma` has `MulRegs` (fifth log,
+  no retiming unless noted): 1 register +0.155 ns (+0.180 ns retimed), 2
+  registers +0.588 ns with 1,183 LUTs, 543 registers and 2 DSPs (1: 1,243
+  LUTs, 541 registers). `MulRegs` = 2 is the default: a 6-cycle fma, not
+  in a loop. The lanes' product (outside the loop) sat at the edge of
+  4 ns: the same function, written three ways in this branch, gave +0.146,
+  +0.016 and -0.053 ns, its worst path always the product (about 4.0 ns, 19
+  logic levels). Vivado repeats a result for the same RTL (the fma's
+  +0.588 ns twice), so the spread came from the rewrites. `bf16_mac` now
+  has one register inside the product too (`MulRegs` = 1, a 5-cycle unit;
+  `A` and the bits unchanged). With it (sixth log): the 4-cycle loop
+  +0.657 ns without retiming (596 LUTs, 275 registers, no DSPs), +0.770 ns
+  retimed; a 3-cycle loop +0.813 ns retimed. The worst path is now the
+  loop's own (accumulator to alignment, 3.3 ns). The fifth log's last run
+  was read from the live console, its replay being cut by the shutdown.
+  Review cleanup (PR #36): `fp_mul_add` (product, register, adder) is the
+  one body of `bf16_mac` and `fp32_fma`; `fp_add` takes its second operand
+  as FP32 bits; `fp_pkg` holds the canonical NaN, the NaN test and the
+  product's width; `fp_product` refuses `Regs` > 2 (it has places for two
+  registers only); the exponent order comes from the subtractions'
+  borrows; `fp32_max` uses one magnitude compare. Yosys: `bf16_mac` 2,565
+  → 2,569 cells, `fp32_fma` 7,976 → 7,919. Not done, no gain in Yosys
+  cells: the significand compare beside the alignment shifter instead of
+  in front of it (+142 cells; it shortens `fp_add`'s first stage, now the
+  lanes' worst path, so worth a Vivado run only if that path limits), and
+  the product's zero flag from the operands (same cells, one more flop per
+  register). Second review: `fp_product` and `fp_mul_add` take a and b in
+  an M + 8-bit format (BF16 for M = 8), so a BF16 product cannot drop
+  input bits; the timing harness's valid follows the product's registers;
+  register names follow `_q`; FP32's significand width is one constant
+  (`fp_pkg::F32SigW`); `bf16_mac` is tested with `MulRegs` = 2 too.
+  Fixed-latency arithmetic pipelines have `valid` only (AGENTS.md,
+  SystemVerilog conventions; approved by the owner). Yosys: `bf16_mac`
+  2,569 → 2,552 cells, `fp32_fma` 7,919 → 7,964 (no logic change for
+  M = 24; to verify whether this is only Yosys's optimization varying).
+  Seventh log (2026-10-08, the same four runs on this RTL, commit
+  4897dad): the 4-cycle loop +0.877 ns without retiming (633 LUTs, 275
+  registers, no DSPs), +0.953 ns retimed; the 3-cycle loop +0.841 ns
+  retimed; `fp32_fma` +0.514 ns (1,262 LUTs, 535 registers, 2 DSPs). All
+  four pass. The loop's worst path is now inside `fp_add`'s round stage
+  (3.1 ns), the fma's still the product's normalize stage (3.4 ns). Next:
+  the cost of subnormal support (D-016, exit criterion), against a
+  flush-to-zero variant.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op

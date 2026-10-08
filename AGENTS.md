@@ -44,11 +44,12 @@ one is wrong, say so and explain why, and let the owner decide.
 
 ## Hard rules
 
-1. **Commit freely; never push without the owner's explicit OK.** Local
-   commits are fine whenever they make sense: small, one logical change each,
-   with a clear message. Pushing to any remote (and creating or changing
-   remotes) needs explicit consent for that specific push. Do not rewrite
-   history that has already been pushed.
+1. **Commit freely; push only to branches, never to `main`.** Commits are
+   fine whenever they make sense: small, one logical change each, with a
+   clear message. Pushing a branch other than `main` needs no OK; `main`
+   changes only through pull requests the owner merges. Creating or changing
+   remotes needs explicit consent. Do not rewrite history that has already
+   been pushed.
 2. **Never run `sudo`.** If something needs it, print the exact command and
    ask the owner to run it.
 3. **No cloud resources** (AWS or other) unless the owner has authorized it
@@ -122,8 +123,8 @@ one is wrong, say so and explain why, and let the owner decide.
   `SPDX-License-Identifier: Apache-2.0`.
 - Copyright line: `Copyright <year> The Cabosse Authors`.
 - Never copy code from elsewhere without checking that its license is
-  compatible, and record where it came from (vendored RTL:
-  `rtl/vendor/README.md`; those files keep their own headers).
+  compatible, and record where it came from in a README next to the copied
+  files, which keep their own headers.
 
 ## Coding conventions
 
@@ -144,7 +145,10 @@ These are proposed in M0 and will be confirmed when the first code is written
 - `always_ff` for flops, `always_comb` for combinational logic. No latches.
   No `initial` blocks in synthesizable code.
 - Valid/ready handshakes on all streaming interfaces. Data must not change
-  while `valid && !ready`.
+  while `valid && !ready`. Exception: a fixed-latency arithmetic pipeline
+  (`fp_add`, `fp_mul_add`, ...) has `valid` only and never stalls. A stall
+  there would need an enable on every register, including the accumulator
+  loop; the block that uses it handles backpressure at its own boundary.
 - Parameters for widths and counts (`L` lanes, etc.). No magic numbers.
 - Synthesizable by Verilator, Yosys, and Vivado. No vendor primitives in
   `rtl/`. They belong in `platforms/`.

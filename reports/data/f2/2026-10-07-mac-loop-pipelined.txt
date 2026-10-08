@@ -1,0 +1,724 @@
+CABOSSE-BEGIN host
+2026-10-07T13:05:26Z
+$ cat /etc/os-release
+PRETTY_NAME="Ubuntu 24.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.1 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+$ nproc
+16
+$ free -b
+               total        used        free      shared  buff/cache   available
+Mem:     33086894080   744955904 32430391296     2891776   312528896 32341938176
+Swap:    10737414144           0 10737414144
+CABOSSE-END host
+CABOSSE-BEGIN setup
+cabosse 2eaf690a735aacdcb384e313a0381dd6ca18169e 2026-10-07T15:02:54+02:00
+aws-fpga b603a81f65666e0cf7a67ee5cf18b148eb6b08c3 2026-08-06T10:50:26-05:00
+$ which vivado
+/opt/Xilinx/2025.2/Vivado/bin/vivado
+$ vivado -version
+vivado v2025.2 (64-bit)
+Tool Version Limit: 2025.11
+SW Build 6299465 on Fri Nov 14 12:34:56 MST 2025
+IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
+SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+part xcvu47p-fsvh2892-2-e
+CABOSSE-END setup
+CABOSSE-BEGIN vivado
+2026-10-07T13:06:51Z
+run1 (mac_loop:AccRegs:1:4:0) exit 0 13:14:33
+run3 (mac_loop:AccRegs:0:3:1) exit 0 13:14:34
+run2 (mac_loop:AccRegs:1:4:1) exit 0 13:14:35
+run4 (fma_path:MulRegs:2:6:0) exit 0 13:14:37
+2026-10-07T13:14:37Z
+CABOSSE-END vivado
+CABOSSE-BEGIN run1 mac_loop:AccRegs:1:4:0
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=mac_loop loop_cycles=4 retime=0 wns_ns=0.657
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.657        0.000                      0                  305        0.047        0.000                      0                  305        1.725        0.000                       0                   275  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.657        0.000                      0                  305        0.047        0.000                      0                  305        1.725        0.000                       0                   275  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Oct  7 13:14:31 2026
+| Host              : ip-172-31-9-37 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : mac_loop
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (MET) :             0.657ns  (required time - arrival time)
+  Source:                 gen_acc[0].acc_q_reg[1][27]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_add/s1_q_reg[lo][0]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.324ns  (logic 1.394ns (41.935%)  route 1.930ns (58.065%))
+  Logic Levels:           11  (CARRY8=2 LUT2=1 LUT3=1 LUT4=2 LUT5=1 LUT6=4)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.028ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.028     0.028    
+    SLICE_X43Y520        FDRE                         0.000     0.028 r  gen_acc[0].acc_q_reg[1][27]/C
+    SLICE_X43Y520        FDRE (Prop_BFF_SLICEL_C_Q)
+                                                      0.079     0.107 r  gen_acc[0].acc_q_reg[1][27]/Q
+                         net (fo=7, routed)           0.166     0.273    u_add/u_align/Q[20]
+    SLICE_X43Y520                                                     r  u_add/u_align/p_8_in_carry__0_i_13/I1
+    SLICE_X43Y520        LUT4 (Prop_H5LUT_SLICEL_I1_O)
+                                                      0.133     0.406 r  u_add/u_align/p_8_in_carry__0_i_13/O
+                         net (fo=3, routed)           0.118     0.524    u_add/u_align/gen_acc[0].acc_q_reg[1][26]
+    SLICE_X44Y520                                                     r  u_add/u_align/s1_q[exp][0]_i_2/I1
+    SLICE_X44Y520        LUT5 (Prop_A5LUT_SLICEM_I1_O)
+                                                      0.100     0.624 r  u_add/u_align/s1_q[exp][0]_i_2/O
+                         net (fo=5, routed)           0.187     0.811    u_add/u_align/gen_acc[0].acc_q_reg[1][23]
+    SLICE_X45Y522                                                     r  u_add/u_align/a_exp_hi_carry_i_9/I2
+    SLICE_X45Y522        LUT4 (Prop_A6LUT_SLICEL_I2_O)
+                                                      0.124     0.935 r  u_add/u_align/a_exp_hi_carry_i_9/O
+                         net (fo=1, routed)           0.009     0.944    u_add/u_align_n_33
+    SLICE_X45Y522                                                     r  u_add/a_exp_hi_carry/S[0]
+    SLICE_X45Y522        CARRY8 (Prop_CARRY8_SLICEL_S[0]_CO[4])
+                                                      0.214     1.158 r  u_add/a_exp_hi_carry/CO[4]
+                         net (fo=10, routed)          0.294     1.452    u_add/u_align/CO[0]
+    SLICE_X44Y521                                                     r  u_add/u_align/out_o10_carry_i_7/I0
+    SLICE_X44Y521        LUT2 (Prop_B5LUT_SLICEM_I0_O)
+                                                      0.116     1.568 r  u_add/u_align/out_o10_carry_i_7/O
+                         net (fo=1, routed)           0.000     1.568    u_add/u_align/out_o10_carry_i_7_n_0
+    SLICE_X44Y521                                                     r  u_add/u_align/out_o10_carry/DI[1]
+    SLICE_X44Y521        CARRY8 (Prop_CARRY8_SLICEM_DI[1]_O[2])
+                                                      0.099     1.667 r  u_add/u_align/out_o10_carry/O[2]
+                         net (fo=44, routed)          0.454     2.121    u_add/u_align/diff[2]
+    SLICE_X46Y515                                                     r  u_add/u_align/s1_q[lo][26]_i_5/I0
+    SLICE_X46Y515        LUT3 (Prop_B5LUT_SLICEM_I0_O)
+                                                      0.143     2.264 f  u_add/u_align/s1_q[lo][26]_i_5/O
+                         net (fo=4, routed)           0.169     2.432    u_add/u_align/s1_q[lo][26]_i_5_n_0
+    SLICE_X48Y515                                                     f  u_add/u_align/s1_q[lo][0]_i_33/I3
+    SLICE_X48Y515        LUT6 (Prop_H6LUT_SLICEM_I3_O)
+                                                      0.090     2.522 r  u_add/u_align/s1_q[lo][0]_i_33/O
+                         net (fo=1, routed)           0.202     2.724    u_add/u_align/s1_q[lo][0]_i_33_n_0
+    SLICE_X46Y514                                                     r  u_add/u_align/s1_q[lo][0]_i_15/I4
+    SLICE_X46Y514        LUT6 (Prop_G6LUT_SLICEM_I4_O)
+                                                      0.123     2.847 r  u_add/u_align/s1_q[lo][0]_i_15/O
+                         net (fo=1, routed)           0.197     3.044    u_add/u_align/s1_q[lo][0]_i_15_n_0
+    SLICE_X49Y514                                                     r  u_add/u_align/s1_q[lo][0]_i_4/I2
+    SLICE_X49Y514        LUT6 (Prop_F6LUT_SLICEL_I2_O)
+                                                      0.123     3.167 r  u_add/u_align/s1_q[lo][0]_i_4/O
+                         net (fo=1, routed)           0.086     3.253    u_add/u_align/s1_q[lo][0]_i_4_n_0
+    SLICE_X49Y514                                                     r  u_add/u_align/s1_q[lo][0]_i_1/I3
+    SLICE_X49Y514        LUT6 (Prop_D6LUT_SLICEL_I3_O)
+                                                      0.050     3.303 r  u_add/u_align/s1_q[lo][0]_i_1/O
+                         net (fo=1, routed)           0.049     3.352    u_add/s1_d[lo][0]
+    SLICE_X49Y514        FDRE                                         r  u_add/s1_q_reg[lo][0]/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.020     4.020    
+                         clock pessimism              0.000     4.020    
+                         clock uncertainty           -0.035     3.985    
+    SLICE_X49Y514        FDRE (Setup_DFF_SLICEL_C_D)
+                                                      0.025     4.010    u_add/s1_q_reg[lo][0]
+  -------------------------------------------------------------------
+                         required time                          4.010    
+                         arrival time                          -3.352    
+  -------------------------------------------------------------------
+                         slack                                  0.657    
+Slack (MET) :             0.909ns  (required time - arrival time)
+  Source:                 gen_acc[0].acc_q_reg[1][27]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_add/s1_q_reg[lo][15]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.073ns  (logic 1.244ns (40.476%)  route 1.829ns (59.524%))
+  Logic Levels:           9  (CARRY8=2 LUT2=2 LUT4=2 LUT5=2 LUT6=1)
+  Clock Path Skew:        -0.007ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.028ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.028     0.028    
+    SLICE_X43Y520        FDRE                         0.000     0.028 r  gen_acc[0].acc_q_reg[1][27]/C
+    SLICE_X43Y520        FDRE (Prop_BFF_SLICEL_C_Q)
+                                                      0.079     0.107 r  gen_acc[0].acc_q_reg[1][27]/Q
+                         net (fo=7, routed)           0.166     0.273    u_add/u_align/Q[20]
+    SLICE_X43Y520                                                     r  u_add/u_align/p_8_in_carry__0_i_13/I1
+    SLICE_X43Y520        LUT4 (Prop_H5LUT_SLICEL_I1_O)
+                                                      0.133     0.406 r  u_add/u_align/p_8_in_carry__0_i_13/O
+                         net (fo=3, routed)           0.118     0.524    u_add/u_align/gen_acc[0].acc_q_reg[1][26]
+    SLICE_X44Y520                                                     r  u_add/u_align/s1_q[exp][0]_i_2/I1
+    SLICE_X44Y520        LUT5 (Prop_A5LUT_SLICEM_I1_O)
+                                                      0.100     0.624 r  u_add/u_align/s1_q[exp][0]_i_2/O
+                         net (fo=5, routed)           0.187     0.811    u_add/u_align/gen_acc[0].acc_q_reg[1][23]
+    SLICE_X45Y522                                                     r  u_add/u_align/a_exp_hi_carry_i_9/I2
+    SLICE_X45Y522        LUT4 (Prop_A6LUT_SLICEL_I2_O)
+                                                      0.124     0.935 r  u_add/u_align/a_exp_hi_carry_i_9/O
+                         net (fo=1, routed)           0.009     0.944    u_add/u_align_n_33
+    SLICE_X45Y522                                                     r  u_add/a_exp_hi_carry/S[0]
+    SLICE_X45Y522        CARRY8 (Prop_CARRY8_SLICEL_S[0]_CO[4])
+                                                      0.214     1.158 r  u_add/a_exp_hi_carry/CO[4]
+                         net (fo=10, routed)          0.294     1.452    u_add/u_align/CO[0]
+    SLICE_X44Y521                                                     r  u_add/u_align/out_o10_carry_i_7/I0
+| CLB LUTs                |  596 |     0 |          0 |   1303680 |  0.05 |
+| CLB Registers           |  275 |     0 |          0 |   2607360 |  0.01 |
+| CARRY8                  |   22 |     0 |          0 |    162960 |  0.01 |
+| CLB Registers                              |  275 |     0 |          0 |   2607360 |  0.01 |
+| DSPs      |    0 |     0 |          0 |      9024 |  0.00 |
+| CARRY8   |   22 |                 CLB |
+| CLB LUTs                   |    0 |    0 |  596 |   0.00 |   0.00 |   0.14 |
+| CLB Registers              |    0 |    0 |  275 |   0.00 |   0.00 |   0.03 |
+| CARRY8                     |    0 |    0 |   22 |   0.00 |   0.00 |   0.04 |
+| DSPs                       |    0 |    0 |    0 |   0.00 |   0.00 |   0.00 |
+CABOSSE-END run1 mac_loop:AccRegs:1:4:0
+CABOSSE-BEGIN run2 mac_loop:AccRegs:1:4:1
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=mac_loop loop_cycles=4 retime=1 wns_ns=0.770
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+| Design Timing Summary
+| ---------------------
+--------
+
+----------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.770        0.000                      0                  470        0.058        0.000                      0                  470        1.725        0.000                       0                   394  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.770        0.000                      0                  470        0.058        0.000                      0                  470        1.725        0.000                       0                   394  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Oct  7 13:14:34 2026
+| Host              : ip-172-31-9-37 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : mac_loop
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (MET) :             0.770ns  (required time - arrival time)
+  Source:                 gen_acc[0].acc_q_reg[1][27]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_add/s1_q_reg[lo][17]_bret__1/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.211ns  (logic 1.050ns (32.702%)  route 2.161ns (67.298%))
+  Logic Levels:           9  (CARRY8=2 LUT2=1 LUT4=2 LUT5=1 LUT6=3)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X141Y665       FDRE                         0.000     0.030 r  gen_acc[0].acc_q_reg[1][27]/C
+    SLICE_X141Y665       FDRE (Prop_HFF_SLICEM_C_Q)
+                                                      0.079     0.109 r  gen_acc[0].acc_q_reg[1][27]/Q
+                         net (fo=7, routed)           0.262     0.371    u_add/u_align/Q[19]
+    SLICE_X143Y664                                                    r  u_add/u_align/s1_q[hi][26]_i_9/I1
+    SLICE_X143Y664       LUT4 (Prop_C5LUT_SLICEL_I1_O)
+                                                      0.098     0.469 r  u_add/u_align/s1_q[hi][26]_i_9/O
+                         net (fo=2, routed)           0.162     0.631    u_add/u_align/gen_acc[0].acc_q_reg[1][26]
+    SLICE_X143Y664                                                    r  u_add/u_align/s1_q[exp][0]_i_2/I1
+    SLICE_X143Y664       LUT5 (Prop_B5LUT_SLICEL_I1_O)
+                                                      0.073     0.704 r  u_add/u_align/s1_q[exp][0]_i_2/O
+                         net (fo=5, routed)           0.167     0.871    u_add/u_align/gen_acc[0].acc_q_reg[1][23]
+    SLICE_X143Y667                                                    r  u_add/u_align/a_exp_hi_carry_i_5/I3
+    SLICE_X143Y667       LUT6 (Prop_H6LUT_SLICEL_I3_O)
+                                                      0.051     0.922 r  u_add/u_align/a_exp_hi_carry_i_5/O
+                         net (fo=1, routed)           0.133     1.055    u_add/u_align_n_10
+    SLICE_X143Y667                                                    r  u_add/a_exp_hi_carry/DI[0]
+    SLICE_X143Y667       CARRY8 (Prop_CARRY8_SLICEL_DI[0]_CO[4])
+                                                      0.183     1.238 r  u_add/a_exp_hi_carry/CO[4]
+                         net (fo=10, routed)          0.231     1.469    u_add/u_align/CO[0]
+    SLICE_X143Y665                                                    r  u_add/u_align/out_o10_carry_i_8/I3
+    SLICE_X143Y665       LUT4 (Prop_A5LUT_SLICEL_I3_O)
+                                                      0.112     1.581 r  u_add/u_align/out_o10_carry_i_8/O
+                         net (fo=1, routed)           0.000     1.581    u_add/u_align/out_o10_carry_i_8_n_0
+    SLICE_X143Y665                                                    r  u_add/u_align/out_o10_carry/DI[0]
+    SLICE_X143Y665       CARRY8 (Prop_CARRY8_SLICEL_DI[0]_O[4])
+                                                      0.183     1.764 f  u_add/u_align/out_o10_carry/O[4]
+                         net (fo=42, routed)          0.533     2.298    u_add/u_align/O[3]
+    SLICE_X146Y658                                                    f  u_add/u_align/s1_q[lo][21]_bret_bret_bret__0_i_1/I1
+    SLICE_X146Y658       LUT2 (Prop_B5LUT_SLICEM_I1_O)
+                                                      0.143     2.441 r  u_add/u_align/s1_q[lo][21]_bret_bret_bret__0_i_1/O
+                         net (fo=12, routed)          0.318     2.759    u_add/u_align/out_o10_carry_2
+    SLICE_X143Y659                                                    r  u_add/u_align/s1_q[lo][20]_bret_i_2/I4
+    SLICE_X143Y659       LUT6 (Prop_G6LUT_SLICEL_I4_O)
+                                                      0.089     2.848 r  u_add/u_align/s1_q[lo][20]_bret_i_2/O
+                         net (fo=2, routed)           0.097     2.945    u_add/u_align/s1_q[lo][20]_bret_i_2_n_0
+    SLICE_X142Y659                                                    r  u_add/u_align/s1_q[lo][18]_bret__2_i_1/I0
+    SLICE_X142Y659       LUT6 (Prop_H6LUT_SLICEM_I0_O)
+                                                      0.039     2.984 r  u_add/u_align/s1_q[lo][18]_bret__2_i_1/O
+                         net (fo=2, routed)           0.257     3.241    u_add/u_align_n_55
+    SLICE_X142Y659       FDRE                                         r  u_add/s1_q_reg[lo][17]_bret__1/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.021     4.021    
+                         clock pessimism              0.000     4.021    
+                         clock uncertainty           -0.035     3.986    
+    SLICE_X142Y659       FDRE (Setup_EFF_SLICEM_C_D)
+                                                      0.025     4.011    u_add/s1_q_reg[lo][17]_bret__1
+  -------------------------------------------------------------------
+                         required time                          4.011    
+                         arrival time                          -3.241    
+  -------------------------------------------------------------------
+                         slack                                  0.770    
+Slack (MET) :             0.795ns  (required time - arrival time)
+  Source:                 gen_acc[0].acc_q_reg[1][27]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_add/s1_q_reg[lo][4]_bret__0/R
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.086ns  (logic 0.879ns (28.481%)  route 2.207ns (71.519%))
+  Logic Levels:           8  (CARRY8=2 LUT2=1 LUT4=2 LUT5=1 LUT6=2)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X141Y665       FDRE                         0.000     0.030 r  gen_acc[0].acc_q_reg[1][27]/C
+    SLICE_X141Y665       FDRE (Prop_HFF_SLICEM_C_Q)
+                                                      0.079     0.109 r  gen_acc[0].acc_q_reg[1][27]/Q
+                         net (fo=7, routed)           0.262     0.371    u_add/u_align/Q[19]
+    SLICE_X143Y664                                                    r  u_add/u_align/s1_q[hi][26]_i_9/I1
+    SLICE_X143Y664       LUT4 (Prop_C5LUT_SLICEL_I1_O)
+                                                      0.098     0.469 r  u_add/u_align/s1_q[hi][26]_i_9/O
+                         net (fo=2, routed)           0.162     0.631    u_add/u_align/gen_acc[0].acc_q_reg[1][26]
+    SLICE_X143Y664                                                    r  u_add/u_align/s1_q[exp][0]_i_2/I1
+    SLICE_X143Y664       LUT5 (Prop_B5LUT_SLICEL_I1_O)
+                                                      0.073     0.704 r  u_add/u_align/s1_q[exp][0]_i_2/O
+                         net (fo=5, routed)           0.167     0.871    u_add/u_align/gen_acc[0].acc_q_reg[1][23]
+    SLICE_X143Y667                                                    r  u_add/u_align/a_exp_hi_carry_i_5/I3
+    SLICE_X143Y667       LUT6 (Prop_H6LUT_SLICEL_I3_O)
+                                                      0.051     0.922 r  u_add/u_align/a_exp_hi_carry_i_5/O
+                         net (fo=1, routed)           0.133     1.055    u_add/u_align_n_10
+    SLICE_X143Y667                                                    r  u_add/a_exp_hi_carry/DI[0]
+    SLICE_X143Y667       CARRY8 (Prop_CARRY8_SLICEL_DI[0]_CO[4])
+                                                      0.183     1.238 r  u_add/a_exp_hi_carry/CO[4]
+                         net (fo=10, routed)          0.231     1.469    u_add/u_align/CO[0]
+    SLICE_X143Y665                                                    r  u_add/u_align/out_o10_carry_i_8/I3
+    SLICE_X143Y665       LUT4 (Prop_A5LUT_SLICEL_I3_O)
+                                                      0.112     1.581 r  u_add/u_align/out_o10_carry_i_8/O
+                         net (fo=1, routed)           0.000     1.581    u_add/u_align/out_o10_carry_i_8_n_0
+    SLICE_X143Y665                                                    r  u_add/u_align/out_o10_carry/DI[0]
+    SLICE_X143Y665       CARRY8 (Prop_CARRY8_SLICEL_DI[0]_O[4])
+                                                      0.183     1.764 r  u_add/u_align/out_o10_carry/O[4]
+                         net (fo=42, routed)          0.489     2.253    u_add/u_align/O[3]
+    SLICE_X145Y658                                                    r  u_add/u_align/s1_q[lo][0]_bret_bret__10_i_2/I1
+| CLB LUTs                |  587 |     0 |          0 |   1303680 |  0.05 |
+| CLB Registers           |  394 |     0 |          0 |   2607360 |  0.02 |
+| CARRY8                  |   22 |     0 |          0 |    162960 |  0.01 |
+| CLB Registers                              |  394 |     0 |          0 |   2607360 |  0.02 |
+| DSPs      |    0 |     0 |          0 |      9024 |  0.00 |
+| CARRY8   |   22 |                 CLB |
+| CLB LUTs                   |    0 |    0 |  587 |   0.00 |   0.00 |   0.14 |
+| CLB Registers              |    0 |    0 |  394 |   0.00 |   0.00 |   0.05 |
+| CARRY8                     |    0 |    0 |   22 |   0.00 |   0.00 |   0.04 |
+| DSPs                       |    0 |    0 |    0 |   0.00 |   0.00 |   0.00 |
+CABOSSE-END run2 mac_loop:AccRegs:1:4:1
+CABOSSE-BEGIN run3 mac_loop:AccRegs:0:3:1
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=mac_loop loop_cycles=3 retime=1 wns_ns=0.813
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.813        0.000                      0                  283        0.056        0.000                      0                  283        1.725        0.000                       0                   253  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.813        0.000                      0                  283        0.056        0.000                      0                  283        1.725        0.000                       0                   253  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Oct  7 13:14:33 2026
+| Host              : ip-172-31-9-37 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design    
+
+        : mac_loop
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (MET) :             0.813ns  (required time - arrival time)
+  Source:                 u_add/y_o_reg[27]/C
+                            (rising edge-triggered cell FDSE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_add/s1_q_reg[lo][15]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.168ns  (logic 1.348ns (42.553%)  route 1.820ns (57.447%))
+  Logic Levels:           9  (CARRY8=2 LUT2=2 LUT4=2 LUT5=2 LUT6=1)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X44Y506        FDSE                         0.000     0.030 r  u_add/y_o_reg[27]/C
+    SLICE_X44Y506        FDSE (Prop_HFF2_SLICEM_C_Q)
+                                                      0.078     0.108 r  u_add/y_o_reg[27]/Q
+                         net (fo=7, routed)           0.223     0.331    u_add/u_align/Q[20]
+    SLICE_X46Y507                                                     r  u_add/u_align/p_8_in_carry__0_i_13/I1
+    SLICE_X46Y507        LUT4 (Prop_B5LUT_SLICEM_I1_O)
+                                                      0.116     0.447 r  u_add/u_align/p_8_in_carry__0_i_13/O
+                         net (fo=3, routed)           0.189     0.636    u_add/u_align/y_o_reg[26]
+    SLICE_X46Y507                                                     r  u_add/u_align/s1_q[exp][0]_i_2/I1
+    SLICE_X46Y507        LUT5 (Prop_A5LUT_SLICEM_I1_O)
+                                                      0.070     0.706 r  u_add/u_align/s1_q[exp][0]_i_2/O
+                         net (fo=5, routed)           0.137     0.843    u_add/u_align/y_o_reg[23]
+    SLICE_X46Y508                                                     r  u_add/u_align/a_exp_hi_carry_i_9/I2
+    SLICE_X46Y508        LUT4 (Prop_A6LUT_SLICEM_I2_O)
+                                                      0.125     0.968 r  u_add/u_align/a_exp_hi_carry_i_9/O
+                         net (fo=1, routed)           0.013     0.981    u_add/u_align_n_38
+    SLICE_X46Y508                                                     r  u_add/a_exp_hi_carry/S[0]
+    SLICE_X46Y508        CARRY8 (Prop_CARRY8_SLICEM_S[0]_CO[4])
+                                                      0.216     1.197 r  u_add/a_exp_hi_carry/CO[4]
+                         net (fo=10, routed)          0.173     1.371    u_add/u_align/CO[0]
+    SLICE_X45Y508                                                     r  u_add/u_align/out_o10_carry_i_7/I0
+    SLICE_X45Y508        LUT2 (Prop_B5LUT_SLICEL_I0_O)
+                                                      0.165     1.536 r  u_add/u_align/out_o10_carry_i_7/O
+                         net (fo=1, routed)           0.000     1.536    u_add/u_align/out_o10_carry_i_7_n_0
+    SLICE_X45Y508                                                     r  u_add/u_align/out_o10_carry/DI[1]
+    SLICE_X45Y508        CARRY8 (Prop_CARRY8_SLICEL_DI[1]_O[4])
+                                                      0.160     1.696 f  u_add/u_align/out_o10_carry/O[4]
+                         net (fo=42, routed)          0.406     2.101    u_add/u_align/diff[4]
+    SLICE_X47Y501                                                     f  u_add/u_align/s1_q[lo][21]_i_3/I1
+    SLICE_X47Y501        LUT2 (Prop_D5LUT_SLICEL_I1_O)
+                                                      0.133     2.234 r  u_add/u_align/s1_q[lo][21]_i_3/O
+                         net (fo=12, routed)          0.202     2.437    u_add/u_align/s1_q[lo][21]_i_3_n_0
+    SLICE_X48Y503                                                     r  u_add/u_align/s1_q[lo][16]_i_3/I1
+    SLICE_X48Y503        LUT6 (Prop_E6LUT_SLICEM_I1_O)
+                                                      0.148     2.585 r  u_add/u_align/s1_q[lo][16]_i_3/O
+                         net (fo=2, routed)           0.152     2.737    u_add/u_align/s1_q[lo][16]_i_3_n_0
+    SLICE_X48Y504                                                     r  u_add/u_align/s1_q[lo][15]_i_1/I3
+    SLICE_X48Y504        LUT5 (Prop_G5LUT_SLICEM_I3_O)
+                                                      0.137     2.874 r  u_add/u_align/s1_q[lo][15]_i_1/O
+                         net (fo=1, routed)           0.324     3.198    u_add/u_align_n_27
+    SLICE_X48Y504        FDRE                                         r  u_add/s1_q_reg[lo][15]/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.021     4.021    
+                         clock pessimism              0.000     4.021    
+                         clock uncertainty           -0.035     3.986    
+    SLICE_X48Y504        FDRE (Setup_AFF_SLICEM_C_D)
+                                                      0.025     4.011    u_add/s1_q_reg[lo][15]
+  -------------------------------------------------------------------
+                         required time                          4.011    
+                         arrival time                          -3.198    
+  -------------------------------------------------------------------
+                         slack                                  0.813    
+Slack (MET) :             0.916ns  (required time - arrival time)
+  Source:                 u_add/y_o_reg[27]/C
+                            (rising edge-triggered cell FDSE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_add/s1_q_reg[lo][0]_bret_bret/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.064ns  (logic 1.292ns (42.162%)  route 1.772ns (57.838%))
+  Logic Levels:           10  (CARRY8=2 LUT2=1 LUT3=1 LUT4=2 LUT5=2 LUT6=2)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X44Y506        FDSE                         0.000     0.030 r  u_add/y_o_reg[27]/C
+    SLICE_X44Y506        FDSE (Prop_HFF2_SLICEM_C_Q)
+                                                      0.078     0.108 r  u_add/y_o_reg[27]/Q
+                         net (fo=7, routed)           0.223     0.331    u_add/u_align/Q[20]
+    SLICE_X46Y507                                                     r  u_add/u_align/p_8_in_carry__0_i_13/I1
+    SLICE_X46Y507        LUT4 (Prop_B5LUT_SLICEM_I1_O)
+                                                      0.116     0.447 r  u_add/u_align/p_8_in_carry__0_i_13/O
+                         net (fo=3, routed)           0.189     0.636    u_add/u_align/y_o_reg[26]
+    SLICE_X46Y507                                                     r  u_add/u_align/s1_q[exp][0]_i_2/I1
+    SLICE_X46Y507        LUT5 (Prop_A5LUT_SLICEM_I1_O)
+                                                      0.070     0.706 r  u_add/u_align/s1_q[exp][0]_i_2/O
+                         net (fo=5, routed)           0.137     0.843    u_add/u_align/y_o_reg[23]
+    SLICE_X46Y508                                                     r  u_add/u_align/a_exp_hi_carry_i_9/I2
+    SLICE_X46Y508        LUT4 (Prop_A6LUT_SLICEM_I2_O)
+                                                      0.125     0.968 r  u_add/u_align/a_exp_hi_carry_i_9/O
+                         net (fo=1, routed)           0.013     0.981    u_add/u_align_n_38
+    SLICE_X46Y508                                                     r  u_add/a_exp_hi_carry/S[0]
+    SLICE_X46Y508        CARRY8 (Prop_CARRY8_SLICEM_S[0]_CO[4])
+                                                      0.216     1.197 r  u_add/a_exp_hi_carry/CO[4]
+                         net (fo=10, routed)          0.173     1.371    u_add/u_align/CO[0]
+    SLICE_X45Y508                                                     r  u_add/u_align/out_o10_carry_i_7/I0
+    SLICE_X45Y508        LUT2 (Prop_B5LUT_SLICEL_I0_O)
+                                                      0.165     1.536 r  u_add/u_align/out_o10_carry_i_7/O
+                         net (fo=1, routed)           0.000     1.536    u_add/u_align/out_o10_carry_i_7_n_0
+    SLICE_X45Y508                                                     r  u_add/u_align/out_o10_carry/DI[1]
+    SLICE_X45Y508        CARRY8 (Prop_CARRY8_SLICEL_DI[1]_O[2])
+                                                      0.096     1.632 f  u_add/u_align/out_o10_carry/O[2]
+                         net (fo=44, routed)          0.332     1.964    u_add/u_align/diff[2]
+    SLICE_X48Y505                                                     f  u_add/u_align/s1_q[lo][26]_i_5/I0
+| CLB LUTs                |  597 |     0 |          0 |   1303680 |  0.05 |
+| CLB Registers           |  253 |     0 |          0 |   2607360 | <0.01 |
+| CARRY8                  |   22 |     0 |          0 |    162960 |  0.01 |
+| CLB Registers                              |  253 |     0 |          0 |   2607360 | <0.01 |
+| DSPs      |    0 |     0 |          0 |      9024 |  0.00 |
+| CARRY8   |   22 |                 CLB |
+| CLB LUTs                   |    0 |    0 |  597 |   0.00 |   0.00 |   0.14 |
+| CLB Registers              |    0 |    0 |  253 |   0.00 |   0.00 |   0.03 |
+| CARRY8                     |    0 |    0 |   22 |   0.00 |   0.00 |   0.04 |
+| DSPs                       |    0 |    0 |    0 |   0.00 |   0.00 |   0.00 |
+CABOSSE-END run3 mac_loop:AccRegs:0:3:1
+CABOSSE-BEGIN run4 fma_path:MulRegs:2:6:0
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=fma_path loop_cycles=6 retime=0 wns_ns=0.588
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.588        0.000                      0                  642        0.050        0.000                      0                  642        1.468        0.000                       0                   579  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.588        0.000                      0                  642        0.050        0.000                      0                  642        1.468        0.000                       0                   579  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Oct  7 13:14:36 2026
+| Host              : ip-172-31-9-37 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : fma_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (MET) :             0.588ns  (required time - arrival time)
+  Source:                 u_fma/u_add/s2_q_reg[exp][1]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/u_add/y_o_reg[30]/D
+                            (rising edge-triggered cell FDSE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.393ns  (logic 1.392ns (41.028%)  route 2.001ns (58.972%))
+  Logic Levels:           14  (CARRY8=4 LUT3=2 LUT4=3 LUT5=2 LUT6=3)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X74Y6          FDRE                         0.000     0.030 r  u_fma/u_add/s2_q_reg[exp][1]/C
+    SLICE_X74Y6          FDRE (Prop_AFF2_SLICEM_C_Q)
+                                                      0.080     0.110 r  u_fma/u_add/s2_q_reg[exp][1]/Q
+                         net (fo=34, routed)          0.185     0.295    u_fma/u_add/s2_q_reg[exp][1]
+    SLICE_X74Y6                                                       r  u_fma/u_add/y_o[30]_i_32/I1
+    SLICE_X74Y6          LUT4 (Prop_A6LUT_SLICEM_I1_O)
+                               
+
+                       0.150     0.445 r  u_fma/u_add/y_o[30]_i_32/O
+                         net (fo=1, routed)           0.013     0.458    u_fma/u_add/y_o[30]_i_32_n_0
+    SLICE_X74Y6                                                       r  u_fma/u_add/y_o_reg[30]_i_20/S[0]
+    SLICE_X74Y6          CARRY8 (Prop_CARRY8_SLICEM_S[0]_CO[4])
+                                                      0.216     0.674 r  u_fma/u_add/y_o_reg[30]_i_20/CO[4]
+                         net (fo=41, routed)          0.140     0.814    u_fma/u_add/norm_exp3
+    SLICE_X74Y5                                                       r  u_fma/u_add/y_o[30]_i_22/I3
+    SLICE_X74Y5          LUT4 (Prop_G6LUT_SLICEM_I3_O)
+                                                      0.052     0.866 r  u_fma/u_add/y_o[30]_i_22/O
+                         net (fo=72, routed)          0.260     1.126    u_fma/u_add/y_o[30]_i_22_n_0
+    SLICE_X73Y2                                                       r  u_fma/u_add/y_o[7]_i_77/I1
+    SLICE_X73Y2          LUT4 (Prop_D5LUT_SLICEL_I1_O)
+                                                      0.066     1.192 f  u_fma/u_add/y_o[7]_i_77/O
+                         net (fo=1, routed)           0.180     1.372    u_fma/u_add/y_o[7]_i_77_n_0
+    SLICE_X73Y2                                                       f  u_fma/u_add/y_o[7]_i_49/I4
+    SLICE_X73Y2          LUT6 (Prop_H6LUT_SLICEL_I4_O)
+                                                      0.036     1.408 r  u_fma/u_add/y_o[7]_i_49/O
+                         net (fo=2, routed)           0.149     1.557    u_fma/u_add/y_o[7]_i_49_n_0
+    SLICE_X72Y2                                                       r  u_fma/u_add/y_o[7]_i_26/I1
+    SLICE_X72Y2          LUT3 (Prop_C5LUT_SLICEM_I1_O)
+                                                      0.099     1.656 f  u_fma/u_add/y_o[7]_i_26/O
+                         net (fo=2, routed)           0.196     1.853    u_fma/u_add/y_o[7]_i_26_n_0
+    SLICE_X70Y2                                                       f  u_fma/u_add/y_o[7]_i_13/I0
+    SLICE_X70Y2          LUT6 (Prop_G6LUT_SLICEL_I0_O)
+                                                      0.050     1.903 f  u_fma/u_add/y_o[7]_i_13/O
+                         net (fo=2, routed)           0.143     2.046    u_fma/u_add/y_o[7]_i_13_n_0
+    SLICE_X69Y2                                                       f  u_fma/u_add/y_o[7]_i_20/I0
+    SLICE_X69Y2          LUT5 (Prop_G6LUT_SLICEL_I0_O)
+                                                      0.050     2.096 r  u_fma/u_add/y_o[7]_i_20/O
+                         net (fo=1, routed)           0.094     2.190    u_fma/u_add/y_o[7]_i_20_n_0
+    SLICE_X69Y3                                                       r  u_fma/u_add/y_o[7]_i_11/I0
+    SLICE_X69Y3          LUT6 (Prop_A6LUT_SLICEL_I0_O)
+                                                      0.124     2.314 r  u_fma/u_add/y_o[7]_i_11/O
+                         net (fo=1, routed)           0.009     2.323    u_fma/u_add/y_o[7]_i_11_n_0
+    SLICE_X69Y3                                                       r  u_fma/u_add/y_o_reg[7]_i_2/S[0]
+    SLICE_X69Y3          CARRY8 (Prop_CARRY8_SLICEL_S[0]_CO[7])
+                                                      0.190     2.513 r  u_fma/u_add/y_o_reg[7]_i_2/CO[7]
+                         net (fo=1, routed)           0.026     2.539    u_fma/u_add/y_o_reg[7]_i_2_n_0
+    SLICE_X69Y4                                                       r  u_fma/u_add/y_o_reg[15]_i_2/CI
+    SLICE_X69Y4          CARRY8 (Prop_CARRY8_SLICEL_CI_CO[7])
+                                                      0.015     2.554 r  u_fma/u_add/y_o_reg[15]_i_2/CO[7]
+                         net (fo=1, routed)           0.026     2.580    u_fma/u_add/y_o_reg[15]_i_2_n_0
+    SLICE_X69Y5                                                       r  u_fma/u_add/y_o_reg[29]_i_2/CI
+    SLICE_X69Y5          CARRY8 (Prop_CARRY8_SLICEL_CI_O[7])
+                                                      0.116     2.696 r  u_fma/u_add/y_o_reg[29]_i_2/O[7]
+                         net (fo=8, routed)           0.331     3.027    u_fma/u_add/y_o_reg[29]_i_2_n_8
+    SLICE_X72Y6                                                       r  u_fma/u_add/y_o[30]_i_6/I1
+    SLICE_X72Y6          LUT3 (Prop_C5LUT_SLICEM_I1_O)
+                                                      0.111     3.138 f  u_fma/u_add/y_o[30]_i_6/O
+                         net (fo=2, routed)           0.189     3.327    u_fma/u_add/y_o[30]_i_6_n_0
+    SLICE_X74Y5                                                       f  u_fma/u_add/y_o[30]_i_2/I4
+    SLICE_X74Y5          LUT5 (Prop_B6LUT_SLICEM_I4_O)
+                                                      0.037     3.364 r  u_fma/u_add/y_o[30]_i_2/O
+                         net (fo=1, routed)           0.059     3.423    u_fma/u_add/y_o[30]_i_2_n_0
+    SLICE_X74Y5          FDSE                                         r  u_fma/u_add/y_o_reg[30]/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.021     4.021    
+                         clock pessimism              0.000     4.021    
+                         clock uncertainty           -0.035     3.986    
+    SLICE_X74Y5          FDSE (Setup_BFF_SLICEM_C_D)
+                                                      0.025     4.011    u_fma/u_add/y_o_reg[30]
+  -------------------------------------------------------------------
+                         required time                          4.011    
+                         arrival time                          -3.423    
+  -------------------------------------------------------------------
+                         slack                                  0.588    
+Slack (MET) :             0.634ns  (required time - arrival time)
+  Source:                 u_fma/u_mul/gen_mul_q.mul_reg[prod]/DSP_OUTPUT_INST/CLK
+                            (rising edge-triggered cell DSP_OUTPUT clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_fma/u_mul/gen_norm_q.norm_reg[exp][10]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.316ns  (logic 1.516ns (45.715%)  route 1.800ns (54.284%))
+  Logic Levels:           11  (CARRY8=2 LUT2=1 LUT3=1 LUT4=1 LUT5=1 LUT6=5)
+  Clock Path Skew:        -0.039ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.060ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.060     0.060    
+    DSP48E2_X11Y3        DSP_OUTPUT                   0.000     0.060 r  u_fma/u_mul/gen_mul_q.mul_reg[prod]/DSP_OUTPUT_INST/CLK
+    DSP48E2_X11Y3        DSP_OUTPUT (Prop_DSP_OUTPUT_DSP48E2_CLK_P[11])
+                                                      0.197     0.257 f  u_fma/u_mul/gen_mul_q.mul_reg[prod]/DSP_OUTPUT_INST/P[11]
+                         net (fo=5, routed)           0.339     0.596    u_fma/u_mul/gen_mul_q.mul_reg[prod]__0[28]
+    SLICE_X83Y20                                                      f  u_fma/u_mul/gen_norm_q.norm[exp][7]_i_39/I1
+    SLICE_X83Y20         LUT4 (Prop_E6LUT_SLICEL_I1_O)
+                                                      0.123     0.719 f  u_fma/u_mul/gen_norm_q.norm[exp][7]_i_39/O
+                         net (fo=2, routed)           0.102     0.821    u_fma/u_mul/gen_norm_q.norm[exp][7]_i_39_n_0
+    SLICE_X84Y20                                                      f  u_fma/u_mul/gen_norm_q.norm[exp][7]_i_24/I4
+| CLB LUTs                   | 1183 |     0 |          0 |   1303680 |  0.09 |
+| CLB Registers              |  543 |     0 |          0 |   2607360 |  0.02 |
+| CARRY8                     |   23 |     0 |          0 |    162960 |  0.01 |
+| CLB Registers                              |  543 |     0 |          0 |   2607360 |  0.02 |
+| DSPs           |    2 |     0 |          0 |      9024 |  0.02 |
+| CARRY8   |   23 |                 CLB |
+| CLB LUTs                   | 1183 |    0 |    0 |   0.27 |   0.00 |   0.00 |
+| CLB Registers              |  543 |    0 |    0 |   0.06 |   0.00 |   0.00 |
+| CARRY8                     |   23 |    0 |    0 |   0.04 |   0.00 |   0.00 |
+| DSPs                       |    2 |    0 |    0 |   0.07 |   0.00 |   0.00 |
+CABOSSE-END run4 fma_path:MulRegs:2:6:0
+

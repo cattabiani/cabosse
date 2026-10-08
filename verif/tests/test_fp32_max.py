@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""rtl/fp32_max.sv (CVFPU's MINMAX as MAX, D-033) against golden.arith.maximum
+"""rtl/fp32_max.sv (our own, D-039) against golden.arith.maximum
 (maximumNumber, D-037), bit for bit, through the bulk harness
 (verif/bulk.py): every pair of the special values, near pairs (ties, signed
 zeros, neighbours, NaN payloads) and random bit patterns. The fast run checks
@@ -21,7 +21,6 @@ N_NEAR, N_RANDOM = 100_000, 100_000  # near pairs, random bits: fast run
 N_NEAR_SLOW, N_RANDOM_SLOW = 500_000, 500_000  # per chunk of the slow run
 N_SLOW = 10**8
 SIGN = np.uint32(0x8000_0000)
-PIPELINES = {"comb": (), "pipe2": (("NumPipeRegs", 2),)}  # the same bits either way
 
 
 def near_pairs(rng: np.random.Generator, n: int) -> np.ndarray:
@@ -39,22 +38,20 @@ def batch(rng: np.random.Generator, n_near: int, n_random: int) -> np.ndarray:
     return np.concatenate([near_pairs(rng, n_near), random_bits(rng, (n_random, 2))])
 
 
-def check(ab: np.ndarray, seed: int | str, params: tuple = ()) -> None:
+def check(ab: np.ndarray, seed: int | str) -> None:
     a, b = torch.from_numpy(ab.view(np.float32)).unbind(1)
     want = arith.bits_f32(arith.maximum(a, b)).numpy().astype(np.uint32)
-    bulk.check("fp32_max", ab, want, f"seed {seed}", params)
+    bulk.check("fp32_max", ab, want, f"seed {seed}")
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("pipeline", PIPELINES)
-def test_specials(pipeline: str) -> None:
-    check(special_tuples(2), "specials", PIPELINES[pipeline])
+def test_specials() -> None:
+    check(special_tuples(2), "specials")
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("pipeline", PIPELINES)
-def test_random(pipeline: str) -> None:
-    check(batch(np.random.default_rng(SEED), N_NEAR, N_RANDOM), SEED, PIPELINES[pipeline])
+def test_random() -> None:
+    check(batch(np.random.default_rng(SEED), N_NEAR, N_RANDOM), SEED)
 
 
 @pytest.mark.slow

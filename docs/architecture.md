@@ -80,7 +80,8 @@ in 4 cycles at 250 MHz. If it needs more, `A` grows with it (8 cycles would
 mean `A` = 32, with the losses of the 64 × 8 row above at long positions).
 Met (M3, measured on F2's part): the lanes use our own BF16 multiply-add
 (D-038), the exact product outside the loop and one rounded add inside it,
-which closes 4 cycles at 250 MHz; CVFPU's FMA needs 5.
+which closes 4 cycles at 250 MHz; CVFPU's FMA, since removed (D-039),
+needed 5.
 
 **Settled by this choice:**
 - Q-22: keep `A` partial sums per row. Rotating rows through a lane works

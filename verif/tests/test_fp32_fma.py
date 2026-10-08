@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""rtl/fp32_fma.sv (CVFPU's FMA, D-033) against golden.arith.fma, add and mul,
+"""rtl/fp32_fma.sv (our own FMA, D-039) against golden.arith.fma, add and mul,
 bit for bit, through the bulk harness (verif/bulk.py): every triple of the
 special values, the rounding families of the golden-model tests, and random
 bit patterns. The fast run checks a few hundred thousand inputs per
@@ -26,7 +26,9 @@ N_FAMILY, N_RANDOM = 20_000, 100_000  # per rounding family, random bits: fast r
 N_FAMILY_SLOW, N_RANDOM_SLOW = 100_000, 200_000  # per chunk of the slow run
 N_SLOW = 10**8  # per operation, slow run
 W_PER_CHUNK = 16  # exhaustive BF16 run: 16 values of w against all 2^16 x
-PIPELINES = {"comb": (), "pipe3": (("NumPipeRegs", 3),)}  # the same bits either way
+# fp32_fma's product registers: the same bits either way. The default (2) is
+# built without parameters, the build the slow run uses.
+PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (("MulRegs", 1),), "mulregs2": ()}
 
 
 def batch(rng: np.random.Generator, n_family: int, n_random: int) -> np.ndarray:
@@ -59,18 +61,18 @@ def test_specials(op: str, pipeline: str) -> None:
 
 
 @rtl.needs_verilator
+@pytest.mark.parametrize("pipeline", PIPELINES)
 @pytest.mark.parametrize("op", OPS)
-def test_random(op: str) -> None:
-    check(op, batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM), SEED)
+def test_random(op: str, pipeline: str) -> None:
+    check(op, batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM), SEED, PIPELINES[pipeline])
 
 
 @pytest.mark.slow
 @rtl.needs_verilator
 @pytest.mark.parametrize("op", ["mul", "fma"])
 def test_bf16_products_exhaustive(op: str) -> None:
-    """Every pair of BF16 inputs, 2^32, widened as the lane widens them
-    (rtl/bf16_to_fp32.sv equals golden.arith.up on every input): up(w) * up(x)
-    (mul), and up(w) * up(x) + acc (fma) with a random FP32 acc per pair,
+    """Every pair of BF16 inputs, 2^32, widened to FP32 (golden.arith.up):
+    up(w) * up(x) (mul), and up(w) * up(x) + acc (fma) with a random FP32 acc per pair,
     checked against golden.arith.mac_f32, the lane's own function. A BF16
     product is exact in FP32 unless it underflows or overflows, so those
     products are where this can fail."""
