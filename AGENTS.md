@@ -81,6 +81,9 @@ one is wrong, say so and explain why, and let the owner decide.
 
 - Work proceeds in milestones (see PLAN.md). Each has deliverables, exit
   criteria, and a checkpoint where the owner reviews.
+- At the start of a milestone, before any code, present its open questions
+  to the owner: those in PLAN.md and any found on reading the milestone,
+  each with a recommendation. Wait for the owner's answers.
 - Prefer small, reviewable changes. One logical change per commit.
 - Each step of a milestone goes on its own branch and ends in a pull request
   that the owner reviews and merges. Merging does not wait for CI: check the
