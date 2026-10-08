@@ -5,7 +5,6 @@ from the measurement data in reports/data/M1.json (made by
 scripts/report_m1.py measure)."""
 
 import json
-import re
 import statistics
 
 import compare
@@ -20,11 +19,6 @@ MAX_SECONDS_PER_TOKEN = 10  # exit criterion (PLAN.md, M1)
 MIN_SEQUENCES, MIN_POSITIONS = 10, 256  # exit criterion (PLAN.md, M1)
 
 
-def tests_passed(summary: str) -> bool:
-    """A pytest summary line such as '166 passed, 5 deselected in 38.8s'."""
-    return " passed" in summary and not re.search(r"\b(failed|error|errors)\b", summary)
-
-
 def generated(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
     comparison, tests = data["comparison"], data["tests"]
     golden, bf16 = comparison["golden"], comparison["transformers_bf16"]
@@ -32,11 +26,9 @@ def generated(data: dict, fixtures: dict[str, dict]) -> dict[str, str]:
     n_positions = {s["golden"]["positions"] for s in comparison["per_sequence"]}
     seconds = data["decode"]["seconds_per_token"]
     p90 = statistics.quantiles(seconds, n=10)[-1]
-    all_passed = all(tests_passed(s) for s in tests.values())
+    all_passed = all(blocks.tests_passed(s) for s in tests.values())
 
-    def met(ok: bool) -> str:
-        return "yes" if ok else "**no**"
-
+    met = blocks.met
     no_worse = golden["top1"] >= bf16["top1"] and golden["logit_err_mean"] <= bf16["logit_err_mean"]
     enough = n_sequences >= MIN_SEQUENCES and min(n_positions) >= MIN_POSITIONS
     fixture_runs = {

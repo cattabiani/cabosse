@@ -71,9 +71,7 @@ def generated() -> dict[str, str]:
     platform, design = perf.load_platform(perf_doc.PLATFORM), perf.load_design(perf_doc.DESIGN)
     pred = perf.predict(config, platform.values(), design.values(), 0)
 
-    def met(ok: bool) -> str:
-        return "yes" if ok else "**no**"
-
+    met = blocks.met
     still_passes = (
         golden["top1"] >= bf16["top1"] and golden["logit_err_mean"] <= bf16["logit_err_mean"]
     )

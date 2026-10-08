@@ -18,7 +18,6 @@ first: the data records the commit it was measured on.
 import argparse
 import datetime
 import json
-import platform
 import subprocess
 import sys
 import tempfile
@@ -32,27 +31,19 @@ import paths  # noqa: E402
 import test_bf16_mac  # noqa: E402
 import test_fp32_fma  # noqa: E402
 import test_fp32_max  # noqa: E402
-from reporting import blocks, m3  # noqa: E402
+from reporting import (  # noqa: E402
+    blocks,
+    m3,
+    measure,  # noqa: E402
+)
 from reporting import m3_subnormal as cells_log  # noqa: E402
+from reporting.measure import commit_and_dirty, pytest_summary  # noqa: E402
 
 import rtl  # noqa: E402  (puts .tools/ on PATH)
 
 # pytest arguments. The report's own up-to-date test waits for this data.
 UP_TO_DATE = "model/tests/test_reporting.py::test_m3_report_is_up_to_date"
 SUITES = {"fast": ["--deselect", UP_TO_DATE], "slow": ["-m", "slow"]}
-
-
-def git(*args: str) -> str:
-    return subprocess.run(
-        ["git", *args], cwd=paths.REPO, capture_output=True, text=True, check=True
-    ).stdout
-
-
-def commit_and_dirty() -> tuple[str, bool]:
-    commit, dirty = git("rev-parse", "HEAD").strip(), bool(git("status", "--porcelain").strip())
-    if dirty:
-        print("warning: uncommitted changes; the report will say so")
-    return commit, dirty
 
 
 # --- measure-cells: the cost of subnormal support (D-016) ------------------------
@@ -123,26 +114,9 @@ def measure_cells() -> None:
 # --- measure-tests: the suites and what the slow one covers ------------------------
 
 
-def pytest_summary(extra: list[str]) -> str:
-    """The last line of a pytest run, e.g. '166 passed, 5 deselected in 38.8s'."""
-    run = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", *extra],
-        cwd=paths.REPO,
-        capture_output=True,
-        text=True,
-    )
-    return run.stdout.strip().splitlines()[-1].strip("= ")
-
-
 def measure_tests() -> None:
-    commit, dirty = commit_and_dirty()
     data = {
-        "provenance": {
-            "commit": commit,
-            "dirty": dirty,
-            "date": datetime.date.today().isoformat(),
-            "machine": f"{platform.system()} {platform.machine()}",
-        },
+        "provenance": measure.provenance(),
         # What the slow suite's bit-exactness tests run, from their own constants.
         "inputs": {
             "fma_add_mul": test_fp32_fma.N_SLOW,
