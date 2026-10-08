@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import torch
 from fp_inputs import BF16_SPECIAL_BITS, F32_SPECIAL_BITS, all_bf16_widened, random_bits
-from golden import arith
+from golden import arith, settings
 
 import rtl
 
@@ -22,6 +22,8 @@ UP = all_bf16_widened()  # up(b) as FP32 bits, indexed by the BF16 bits
 # bf16_mac's product registers: the same bits either way. The default (1) is
 # built without parameters, the build the slow run uses.
 PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (), "mulregs2": (("MulRegs", 2),)}
+FTZ = (("Ftz", 1),)  # the flush-to-zero variant (D-016's cost), default pipeline
+N_FLUSHED = 500  # results the flushes change, at least (34,077)
 
 
 def bf16_bits(rng: np.random.Generator, n: int) -> np.ndarray:
@@ -93,12 +95,16 @@ def batch(rng: np.random.Generator) -> np.ndarray:
     return np.concatenate([near_cancelling(rng, N_NEAR), scaled(rng, N_SCALED), edges, rand])
 
 
-def check(wxa: np.ndarray, label: str, params: tuple = ()) -> None:
+def expected(wxa: np.ndarray) -> np.ndarray:
+    """golden.arith.mac_f32 on (w, x, acc) rows, as FP32 bits."""
     w, x, acc = (
         torch.from_numpy(v.view(np.float32)) for v in (UP[wxa[:, 0]], UP[wxa[:, 1]], wxa[:, 2])
     )
-    want = arith.bits_f32(arith.mac_f32(w, x, acc)).numpy().astype(np.uint32)
-    bulk.check("bf16_mac", wxa, want, label, params)
+    return arith.bits_f32(arith.mac_f32(w, x, acc)).numpy().astype(np.uint32)
+
+
+def check(wxa: np.ndarray, label: str, params: tuple = ()) -> None:
+    bulk.check("bf16_mac", wxa, expected(wxa), label, params)
 
 
 @rtl.needs_verilator
@@ -111,6 +117,19 @@ def test_specials(pipeline: str) -> None:
 @pytest.mark.parametrize("pipeline", PIPELINES)
 def test_random(pipeline: str) -> None:
     check(batch(np.random.default_rng(SEED)), f"seed {SEED}", PIPELINES[pipeline])
+
+
+@rtl.needs_verilator
+def test_flush_to_zero() -> None:
+    """The variant with Ftz = 1 against the golden model's ftz switch, on the
+    specials and the random batch. The inputs reach the flushes: at least
+    N_FLUSHED results differ from the default mode's."""
+    wxa = np.concatenate([specials(), batch(np.random.default_rng(SEED))])
+    with settings.override(ftz=True):
+        flushed = expected(wxa)
+        check(wxa, f"ftz, seed {SEED}", FTZ)
+    n_changed = int((flushed != expected(wxa)).sum())
+    assert n_changed >= N_FLUSHED, n_changed
 
 
 @pytest.mark.slow

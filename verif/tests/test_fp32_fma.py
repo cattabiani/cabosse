@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import torch
 from fp_inputs import all_bf16_widened, families, random_bits, special_tuples
-from golden import arith
+from golden import arith, settings
 
 import rtl
 
@@ -29,6 +29,8 @@ W_PER_CHUNK = 16  # exhaustive BF16 run: 16 values of w against all 2^16 x
 # fp32_fma's product registers: the same bits either way. The default (2) is
 # built without parameters, the build the slow run uses.
 PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (("MulRegs", 1),), "mulregs2": ()}
+FTZ = (("Ftz", 1),)  # the flush-to-zero variant (D-016's cost), default pipeline
+N_FLUSHED = 500  # results the flushes change, at least, per operation (add: 881)
 
 
 def batch(rng: np.random.Generator, n_family: int, n_random: int) -> np.ndarray:
@@ -65,6 +67,24 @@ def test_specials(op: str, pipeline: str) -> None:
 @pytest.mark.parametrize("op", OPS)
 def test_random(op: str, pipeline: str) -> None:
     check(op, batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM), SEED, PIPELINES[pipeline])
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize("op", OPS)
+def test_flush_to_zero(op: str) -> None:
+    """The variant with Ftz = 1 against the golden model's ftz switch, on the
+    specials and the random batch. The inputs reach the flushes: at least
+    N_FLUSHED results differ from the default mode's."""
+    abc = np.concatenate(
+        [special_tuples(3), batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM)]
+    )
+    x, y, z = torch.from_numpy(abc.view(np.float32)).unbind(1)
+    golden = OPS[op][1]
+    with settings.override(ftz=True):
+        flushed = arith.bits_f32(golden(x, y, z))
+        check(op, abc, f"ftz, {SEED}", FTZ)
+    n_changed = int((flushed != arith.bits_f32(golden(x, y, z))).sum())
+    assert n_changed >= N_FLUSHED, n_changed
 
 
 @pytest.mark.slow

@@ -12,7 +12,8 @@
 // operands enter; valid_o marks it.
 
 module fp32_fma #(
-  parameter int unsigned MulRegs = 2
+  parameter int unsigned MulRegs = 2,
+  parameter bit          Ftz     = 1'b0  // flush-to-zero variant (fp_mul_add)
 ) (
   input  logic        clk_i,
   input  logic        rst_ni,
@@ -42,7 +43,8 @@ module fp32_fma #(
 
   fp_mul_add #(
     .M      (24),
-    .MulRegs(MulRegs)
+    .MulRegs(MulRegs),
+    .Ftz    (Ftz)
   ) u_fma (
     .clk_i,
     .rst_ni,

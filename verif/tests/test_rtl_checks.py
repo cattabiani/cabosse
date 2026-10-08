@@ -11,6 +11,7 @@ import rtl
 MODULES = rtl.modules()
 # (top, extra files): our modules, then the harnesses in platforms/.
 TOPS = [(m, ()) for m in MODULES] + [(p.stem, (p,)) for p in rtl.harnesses()]
+FTZ_TOPS = ["bf16_mac", "fp32_fma"]  # their flush-to-zero variant, Ftz = 1 (D-016's cost)
 
 
 def test_there_is_rtl() -> None:
@@ -35,6 +36,20 @@ def test_lint_is_clean(top: str, extra: tuple) -> None:
 @pytest.mark.parametrize(("top", "extra"), TOPS, ids=[t for t, _ in TOPS])
 def test_synthesizes(top: str, extra: tuple) -> None:
     result = rtl.synthesize(top, extra)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize("top", FTZ_TOPS)
+def test_ftz_lint_is_clean(top: str) -> None:
+    result = rtl.lint(top, params=[("Ftz", 1)])
+    assert result.returncode == 0 and not result.stderr.strip(), result.stderr
+
+
+@rtl.needs_yosys
+@pytest.mark.parametrize("top", FTZ_TOPS)
+def test_ftz_synthesizes(top: str) -> None:
+    result = rtl.synthesize(top, params=[("Ftz", 1)])
     assert result.returncode == 0, result.stdout + result.stderr
 
 

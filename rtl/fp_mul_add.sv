@@ -6,12 +6,14 @@
 // FP32 value c: fp_product with MulRegs registers inside (0 to 2), a
 // register, then fp_add. A result leaves MulRegs + 4 cycles after its operands enter;
 // valid_o marks it. bf16_mac (M = 8) and fp32_fma (M = 24) are this unit.
+// Ftz = 1 is the flush-to-zero variant (fp_product, fp_add).
 
 module fp_mul_add
   import fp_pkg::*;
 #(
   parameter  int unsigned M       = 24,
   parameter  int unsigned MulRegs = 2,
+  parameter  bit          Ftz     = 1'b0,
   localparam int unsigned W       = prod_sig_w(M)
 ) (
   input  logic         clk_i,
@@ -27,7 +29,8 @@ module fp_mul_add
   logic [W+11:0] p_d, p_q;
   fp_product #(
     .M   (M),
-    .Regs(MulRegs)
+    .Regs(MulRegs),
+    .Ftz (Ftz)
   ) u_mul (
     .clk_i,
     .a_i,
@@ -51,7 +54,8 @@ module fp_mul_add
   end
 
   fp_add #(
-    .W(W)
+    .W  (W),
+    .Ftz(Ftz)
   ) u_add (
     .clk_i,
     .rst_ni,

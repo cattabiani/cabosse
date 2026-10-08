@@ -35,7 +35,8 @@ round to nearest, ties to even.
 
 Special values (D-012, D-016):
 - **Subnormals** are supported on input and output (IEEE 754, as in
-  PyTorch). The golden model has a flush-to-zero switch for experiments only.
+  PyTorch). The golden model has a flush-to-zero switch for experiments only;
+  the RTL units' `Ftz` parameter (default 0) matches it bit for bit.
 - **Infinities** propagate per IEEE 754.
 - **NaN:** any NaN result is the canonical NaN: BF16 `0x7FC0`, FP32
   `0x7FC00000`. When comparing against torch, NaNs match by class, not by

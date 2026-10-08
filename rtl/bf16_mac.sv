@@ -10,7 +10,8 @@
 // registers are outside that loop.
 
 module bf16_mac #(
-  parameter int unsigned MulRegs = 1
+  parameter int unsigned MulRegs = 1,
+  parameter bit          Ftz     = 1'b0  // flush-to-zero variant (fp_mul_add)
 ) (
   input  logic        clk_i,
   input  logic        rst_ni,
@@ -24,7 +25,8 @@ module bf16_mac #(
 
   fp_mul_add #(
     .M      (8),
-    .MulRegs(MulRegs)
+    .MulRegs(MulRegs),
+    .Ftz    (Ftz)
   ) u_mac (
     .clk_i,
     .rst_ni,
