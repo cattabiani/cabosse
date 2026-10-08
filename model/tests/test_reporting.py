@@ -7,7 +7,7 @@ import re
 
 import paths
 import pytest
-from reporting import blocks, m1, m2, m3_subnormal
+from reporting import blocks, m1, m2, m3
 
 TEXT = """# Title
 
@@ -61,15 +61,17 @@ def test_m2_report_is_up_to_date() -> None:
     assert m2.render() == m2.PATH.read_text()
 
 
-def test_m3_subnormal_report_is_up_to_date() -> None:
-    """reports/M3-interim-subnormal.md shows what its Yosys log says; after a
-    new measurement, run: python scripts/report_m3_subnormal.py render"""
-    assert m3_subnormal.render() == m3_subnormal.PATH.read_text()
+def test_m3_report_is_up_to_date() -> None:
+    """reports/M3.md shows what the Vivado logs, the Yosys log and
+    reports/data/M3.json say; after a new measurement, run:
+    python scripts/report_m3.py render"""
+    assert m3.render() == m3.PATH.read_text()
 
 
-def test_measure_deselects_a_test_that_exists() -> None:
-    """scripts/report_m1.py measure leaves out the up-to-date test by its pytest
+@pytest.mark.parametrize("script", ["report_m1.py", "report_m3.py"])
+def test_measure_deselects_a_test_that_exists(script: str) -> None:
+    """The report scripts' measure leaves out the up-to-date test by its pytest
     id; pytest ignores an id that matches nothing, so check it here."""
-    script = (paths.REPO / "scripts" / "report_m1.py").read_text()
+    script = (paths.REPO / "scripts" / script).read_text()
     path, name = re.search(r'UP_TO_DATE = "(.+)::(\w+)"', script).groups()
     assert f"def {name}(" in (paths.REPO / path).read_text()
