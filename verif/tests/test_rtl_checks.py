@@ -9,8 +9,15 @@ import pytest
 import rtl
 
 MODULES = rtl.modules()
-# (top, extra files): our modules, then the harnesses in platforms/.
-TOPS = [(m, ()) for m in MODULES] + [(p.stem, (p,)) for p in rtl.harnesses()]
+FTZ = (("Ftz", 1),)  # the flush-to-zero variant (D-016's cost)
+# (top, extra files, parameters): our modules, the harnesses in platforms/,
+# then the units' flush-to-zero variants.
+TOPS = (
+    [(m, (), ()) for m in MODULES]
+    + [(p.stem, (p,), ()) for p in rtl.harnesses()]
+    + [(t, (), FTZ) for t in ("bf16_mac", "fp32_fma")]
+)
+IDS = [top + ("-ftz" if params else "") for top, _, params in TOPS]
 
 
 def test_there_is_rtl() -> None:
@@ -25,16 +32,16 @@ def test_sources_lists_every_rtl_file() -> None:
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize(("top", "extra"), TOPS, ids=[t for t, _ in TOPS])
-def test_lint_is_clean(top: str, extra: tuple) -> None:
-    result = rtl.lint(top, extra)
+@pytest.mark.parametrize(("top", "extra", "params"), TOPS, ids=IDS)
+def test_lint_is_clean(top: str, extra: tuple, params: tuple) -> None:
+    result = rtl.lint(top, extra, params)
     assert result.returncode == 0 and not result.stderr.strip(), result.stderr
 
 
 @rtl.needs_yosys
-@pytest.mark.parametrize(("top", "extra"), TOPS, ids=[t for t, _ in TOPS])
-def test_synthesizes(top: str, extra: tuple) -> None:
-    result = rtl.synthesize(top, extra)
+@pytest.mark.parametrize(("top", "extra", "params"), TOPS, ids=IDS)
+def test_synthesizes(top: str, extra: tuple, params: tuple) -> None:
+    result = rtl.synthesize(top, extra, params)
     assert result.returncode == 0, result.stdout + result.stderr
 
 

@@ -5,6 +5,9 @@
 // a in fp_pkg's layout with a W-bit significand (fp_product's) and an FP32
 // value b (D-038, D-039). Subnormals are kept, Inf - Inf and any NaN give the
 // canonical NaN, an exact zero sum is -0 only if both operands are -0.
+// Ftz = 1 flushes a subnormal b and a subnormal result to zero
+// (fp_pkg::flush_f32). fp_product flushes its own inputs, but a product
+// below exponent 1 still reaches a exactly, so the fma rounds once.
 // W = 27 (fp_pkg::SigW) adds an exact BF16 product; fp32_fma uses W = 51 for
 // its exact FP32 products. The bits below the rounding point are guard (bit
 // W-25) and sticky (the rest, ORed); the operands' own sticky bits stay below
@@ -17,6 +20,7 @@ module fp_add
   import fp_pkg::*;
 #(
   parameter  int unsigned W   = SigW,
+  parameter  bit          Ftz = 1'b0,
   localparam int unsigned OpW = W + 12,  // fp_pkg::operand_t's layout
   localparam int unsigned LzW = $clog2(W)
 ) (
@@ -43,7 +47,7 @@ module fp_add
   op_t      a, b;
   operand_t b_f32;
   assign a     = a_i;
-  assign b_f32 = decode_f32(b_i);
+  assign b_f32 = decode_f32(flush_f32(b_i, Ftz));
   assign b     = {b_f32.sign, b_f32.exp, W'(b_f32.sig) << (W - SigW), b_f32.is_inf, b_f32.is_nan};
 
   // The shift needs only the exponents (equal exponents shift by 0); the
@@ -172,6 +176,7 @@ module fp_add
     if (s2_q.nan) y_d = CanonicalNaN;
     else if (s2_q.inf || overflow) y_d = {s2_q.sign, 8'hFF, 23'h0};
     else y_d = {s2_q.sign, sig[F32SigW-1] ? exp : 8'h00, sig[F32SigW-2:0]};  // a zero: sig = 0
+    y_d = flush_f32(y_d, Ftz);  // after rounding, as the golden model
   end
 
   // --- Registers --------------------------------------------------------------

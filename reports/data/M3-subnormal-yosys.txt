@@ -1,0 +1,572 @@
+CABOSSE-PROVENANCE commit=2e9260274f605e7e31292078bd2bf13be59868d5 dirty=False date=2026-10-08 yosys=0.69+190
+CABOSSE-FLUSH-HITS unit=bf16_mac op=mac product_input=2618 addend=28523 result=31110
+CABOSSE-FLUSH-HITS unit=fp32_fma op=fma product_input=1361 addend=20661 result=19570
+CABOSSE-FLUSH-HITS unit=fp32_fma op=add product_input=552 addend=544 result=545
+CABOSSE-FLUSH-HITS unit=fp32_fma op=mul product_input=2233 result=22174
+CABOSSE-YOSYS label=HEAD/bf16_mac/Ftz=0 rev=HEAD top=bf16_mac params=Ftz=0
+Printing statistics.
+
+=== bf16_mac ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     1951 wires
+     4122 wire bits
+       75 public wires
+     1807 public wire bits
+        8 ports
+      100 port bits
+     2568 cells
+      104   $_ANDNOT_
+      506   $_AND_
+      195   $_DFF_P_
+      380   $_MUX_
+      588   $_NAND_
+      109   $_NOR_
+       91   $_NOT_
+       68   $_ORNOT_
+      128   $_OR_
+       15   $_SDFF_PN0_
+        1   $_SDFF_PN1_
+       60   $_SDFF_PP0_
+        9   $_SDFF_PP1_
+       92   $_XNOR_
+      222   $_XOR_
+
+End of script. Logfile hash: b58917dc8c, time: 0.43s, user: 0.26s, system: 0.02s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 67% 1x abc (0 sec), 7% 28x opt_clean (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/bf16_mac/Ftz=1 rev=HEAD top=bf16_mac params=Ftz=1
+Printing statistics.
+
+=== bf16_mac ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     1905 wires
+     3996 wire bits
+       76 public wires
+     1748 public wire bits
+        8 ports
+      100 port bits
+     2492 cells
+      100   $_ANDNOT_
+      479   $_AND_
+      195   $_DFF_P_
+      344   $_MUX_
+      605   $_NAND_
+      101   $_NOR_
+       83   $_NOT_
+       71   $_ORNOT_
+      119   $_OR_
+       15   $_SDFF_PN0_
+        1   $_SDFF_PN1_
+       69   $_SDFF_PP0_
+      108   $_XNOR_
+      202   $_XOR_
+
+End of script. Logfile hash: ccb4d2a0de, time: 0.40s, user: 0.26s, system: 0.02s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 64% 1x abc (0 sec), 7% 46x opt_expr (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/fp32_fma/Ftz=0 rev=HEAD top=fp32_fma params=Ftz=0
+Printing statistics.
+
+=== fp32_fma ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     6798 wires
+    10660 wire bits
+       79 public wires
+     3328 public wire bits
+        9 ports
+      134 port bits
+     7953 cells
+      248   $_ANDNOT_
+     1529   $_AND_
+      347   $_DFF_P_
+      966   $_MUX_
+     2419   $_NAND_
+      224   $_NOR_
+      154   $_NOT_
+      149   $_ORNOT_
+      316   $_OR_
+       71   $_SDFF_PN0_
+        1   $_SDFF_PN1_
+       76   $_SDFF_PP0_
+        9   $_SDFF_PP1_
+      172   $_XNOR_
+     1272   $_XOR_
+
+End of script. Logfile hash: 32206bc096, time: 1.30s, user: 0.53s, system: 0.05s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 71% 1x abc (1 sec), 7% 47x opt_expr (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/fp32_fma/Ftz=1 rev=HEAD top=fp32_fma params=Ftz=1
+Printing statistics.
+
+=== fp32_fma ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     6416 wires
+     9846 wire bits
+       77 public wires
+     2860 public wire bits
+        9 ports
+      134 port bits
+     7554 cells
+      212   $_ANDNOT_
+     1465   $_AND_
+      378   $_DFF_P_
+      779   $_MUX_
+     2453   $_NAND_
+      202   $_NOR_
+      151   $_NOT_
+      105   $_ORNOT_
+      263   $_OR_
+       40   $_SDFF_PN0_
+        1   $_SDFF_PN1_
+       85   $_SDFF_PP0_
+      183   $_XNOR_
+     1237   $_XOR_
+
+End of script. Logfile hash: afc65ced9a, time: 1.20s, user: 0.48s, system: 0.05s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 70% 1x abc (1 sec), 7% 47x opt_expr (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/fp_product/M=8/Ftz=0 rev=HEAD top=fp_product params=M=8,Ftz=0
+Printing statistics.
+
+=== fp_product ===
+
+        +----------Local Count, excluding submodules.
+        | 
+      847 wires
+     1256 wire bits
+       16 public wires
+      425 public wire bits
+        4 ports
+       72 port bits
+      870 cells
+       24   $_ANDNOT_
+      216   $_AND_
+       85   $_MUX_
+      311   $_NAND_
+       25   $_NOR_
+        8   $_NOT_
+       25   $_ORNOT_
+       29   $_OR_
+       28   $_XNOR_
+      119   $_XOR_
+
+End of script. Logfile hash: 8cdac2b495, time: 0.24s, user: 0.09s, system: 0.02s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 61% 1x abc (0 sec), 8% 1x techmap (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/fp_product/M=8/Ftz=1 rev=HEAD top=fp_product params=M=8,Ftz=1
+Printing statistics.
+
+=== fp_product ===
+
+        +----------Local Count, excluding submodules.
+        | 
+      728 wires
+     1061 wire bits
+       17 public wires
+      350 public wire bits
+        4 ports
+       72 port bits
+      750 cells
+       21   $_ANDNOT_
+      187   $_AND_
+       79   $_MUX_
+      262   $_NAND_
+       23   $_NOR_
+        4   $_NOT_
+       17   $_ORNOT_
+       16   $_OR_
+       25   $_XNOR_
+      116   $_XOR_
+
+End of script. Logfile hash: d974a36a92, time: 0.22s, user: 0.09s, system: 0.02s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 57% 1x abc (0 sec), 9% 1x techmap (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/fp_product/M=24/Ftz=0 rev=HEAD top=fp_product params=M=24,Ftz=0
+Printing statistics.
+
+=== fp_product ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     4892 wires
+     5893 wire bits
+       16 public wires
+     1017 public wire bits
+        4 ports
+      128 port bits
+     4939 cells
+       57   $_ANDNOT_
+     1068   $_AND_
+      336   $_MUX_
+     1990   $_NAND_
+       47   $_NOR_
+       61   $_NOT_
+       94   $_ORNOT_
+       91   $_OR_
+       96   $_XNOR_
+     1099   $_XOR_
+
+End of script. Logfile hash: a4ba4876b2, time: 1.29s, user: 0.23s, system: 0.03s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 82% 1x abc (1 sec), 4% 33x opt_expr (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/fp_product/M=24/Ftz=1 rev=HEAD top=fp_product params=M=24,Ftz=1
+Printing statistics.
+
+=== fp_product ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     4360 wires
+     4919 wire bits
+       17 public wires
+      576 public wire bits
+        4 ports
+      128 port bits
+     4406 cells
+       66   $_ANDNOT_
+      848   $_AND_
+      245   $_MUX_
+     1883   $_NAND_
+       48   $_NOR_
+       30   $_NOT_
+       63   $_ORNOT_
+       42   $_OR_
+       80   $_XNOR_
+     1101   $_XOR_
+
+End of script. Logfile hash: da04f119e4, time: 0.93s, user: 0.20s, system: 0.03s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 79% 1x abc (0 sec), 5% 32x opt_expr (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/fp_add/W=27/Ftz=0 rev=HEAD top=fp_add params=W=27,Ftz=0
+Printing statistics.
+
+=== fp_add ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     1183 wires
+     2363 wire bits
+       34 public wires
+      951 public wire bits
+        7 ports
+      107 port bits
+     1531 cells
+       66   $_ANDNOT_
+      317   $_AND_
+       82   $_DFF_P_
+      276   $_MUX_
+      286   $_NAND_
+       66   $_NOR_
+       61   $_NOT_
+      106   $_ORNOT_
+       73   $_OR_
+        7   $_SDFF_PN0_
+       49   $_SDFF_PP0_
+        9   $_SDFF_PP1_
+       52   $_XNOR_
+       81   $_XOR_
+
+End of script. Logfile hash: 016dd9809e, time: 0.28s, user: 0.15s, system: 0.03s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 64% 1x abc (0 sec), 8% 1x techmap (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/fp_add/W=27/Ftz=1 rev=HEAD top=fp_add params=W=27,Ftz=1
+Printing statistics.
+
+=== fp_add ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     1209 wires
+     2405 wire bits
+       34 public wires
+      974 public wire bits
+        7 ports
+      107 port bits
+     1556 cells
+       57   $_ANDNOT_
+      329   $_AND_
+       82   $_DFF_P_
+      280   $_MUX_
+      293   $_NAND_
+       67   $_NOR_
+       61   $_NOT_
+      107   $_ORNOT_
+       80   $_OR_
+        7   $_SDFF_PN0_
+       58   $_SDFF_PP0_
+       61   $_XNOR_
+       74   $_XOR_
+
+End of script. Logfile hash: 607ded5ea0, time: 0.28s, user: 0.17s, system: 0.02s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 64% 1x abc (0 sec), 8% 1x techmap (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/fp_add/W=51/Ftz=0 rev=HEAD top=fp_add params=W=51,Ftz=0
+Printing statistics.
+
+=== fp_add ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     1969 wires
+     3961 wire bits
+       34 public wires
+     1619 public wire bits
+        7 ports
+      131 port bits
+     2564 cells
+      142   $_ANDNOT_
+      526   $_AND_
+      107   $_DFF_P_
+      540   $_MUX_
+      453   $_NAND_
+      119   $_NOR_
+       95   $_NOT_
+      124   $_ORNOT_
+      138   $_OR_
+       31   $_SDFF_PN0_
+       73   $_SDFF_PP0_
+        9   $_SDFF_PP1_
+       83   $_XNOR_
+      124   $_XOR_
+
+End of script. Logfile hash: d35519cf1f, time: 0.39s, user: 0.23s, system: 0.02s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 62% 1x abc (0 sec), 8% 1x techmap (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/fp_add/W=51/Ftz=1 rev=HEAD top=fp_add params=W=51,Ftz=1
+Printing statistics.
+
+=== fp_add ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     1976 wires
+     3984 wire bits
+       34 public wires
+     1642 public wire bits
+        7 ports
+      131 port bits
+     2570 cells
+      138   $_ANDNOT_
+      528   $_AND_
+      107   $_DFF_P_
+      546   $_MUX_
+      465   $_NAND_
+      105   $_NOR_
+       91   $_NOT_
+      115   $_ORNOT_
+      148   $_OR_
+       31   $_SDFF_PN0_
+       82   $_SDFF_PP0_
+       95   $_XNOR_
+      119   $_XOR_
+
+End of script. Logfile hash: 0d9dfdbd9f, time: 0.43s, user: 0.23s, system: 0.03s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 64% 1x abc (0 sec), 7% 39x opt_expr (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/sticky_shift/Width=27 rev=HEAD top=sticky_shift params=Width=27
+Printing statistics.
+
+=== sticky_shift ===
+
+        +----------Local Count, excluding submodules.
+        | 
+      307 wires
+      367 wire bits
+        3 public wires
+       63 public wire bits
+        3 ports
+       63 port bits
+      331 cells
+       18   $_ANDNOT_
+       97   $_AND_
+       68   $_MUX_
+       94   $_NAND_
+       20   $_NOR_
+        2   $_NOT_
+        8   $_ORNOT_
+       24   $_OR_
+
+End of script. Logfile hash: a7cbd7fe54, time: 0.09s, user: 0.03s, system: 0.01s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 57% 1x abc (0 sec), 7% 1x techmap (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/sticky_shift/Width=51 rev=HEAD top=sticky_shift params=Width=51
+Printing statistics.
+
+=== sticky_shift ===
+
+        +----------Local Count, excluding submodules.
+        | 
+      618 wires
+      726 wire bits
+        3 public wires
+      111 public wire bits
+        3 ports
+      111 port bits
+      666 cells
+       35   $_ANDNOT_
+      190   $_AND_
+      172   $_MUX_
+      177   $_NAND_
+       34   $_NOR_
+        5   $_NOT_
+       16   $_ORNOT_
+       37   $_OR_
+
+End of script. Logfile hash: 7a09c870d8, time: 0.11s, user: 0.04s, system: 0.02s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 57% 1x abc (0 sec), 7% 1x techmap (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/leading_zeros/Width=16 rev=HEAD top=leading_zeros params=Width=16
+Printing statistics.
+
+=== leading_zeros ===
+
+        +----------Local Count, excluding submodules.
+        | 
+       40 wires
+      137 wire bits
+        4 public wires
+      101 public wire bits
+        3 ports
+       21 port bits
+       41 cells
+       21   $_AND_
+        5   $_NAND_
+       12   $_NOR_
+        3   $_OR_
+
+End of script. Logfile hash: 97b27d3efa, time: 0.05s, user: 0.01s, system: 0.01s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 67% 1x abc (0 sec), 10% 2x read_slang (0 sec), ...
+
+
+CABOSSE-YOSYS label=HEAD/leading_zeros/Width=48 rev=HEAD top=leading_zeros params=Width=48
+Printing statistics.
+
+=== leading_zeros ===
+
+        +----------Local Count, excluding submodules.
+        | 
+      169 wires
+      668 wire bits
+        4 public wires
+      503 public wire bits
+        3 ports
+       55 port bits
+      172 cells
+       81   $_AND_
+       35   $_NAND_
+       40   $_NOR_
+        1   $_ORNOT_
+       15   $_OR_
+
+End of script. Logfile hash: 15973de1e3, time: 0.09s, user: 0.02s, system: 0.01s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 72% 1x abc (0 sec), 6% 2x read_slang (0 sec), ...
+
+
+CABOSSE-YOSYS label=94a894f/bf16_mac rev=94a894f top=bf16_mac params=
+Printing statistics.
+
+=== bf16_mac ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     1941 wires
+     4111 wire bits
+       77 public wires
+     1809 public wire bits
+        8 ports
+      100 port bits
+     2552 cells
+      100   $_ANDNOT_
+      508   $_AND_
+      195   $_DFF_P_
+      380   $_MUX_
+      590   $_NAND_
+      107   $_NOR_
+       85   $_NOT_
+       68   $_ORNOT_
+      119   $_OR_
+       15   $_SDFF_PN0_
+        1   $_SDFF_PN1_
+       60   $_SDFF_PP0_
+        9   $_SDFF_PP1_
+       91   $_XNOR_
+      224   $_XOR_
+
+End of script. Logfile hash: a169bdfcc2, time: 0.39s, user: 0.25s, system: 0.03s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 63% 1x abc (0 sec), 8% 28x opt_clean (0 sec), ...
+
+
+CABOSSE-YOSYS label=94a894f/fp32_fma rev=94a894f top=fp32_fma params=
+Printing statistics.
+
+=== fp32_fma ===
+
+        +----------Local Count, excluding submodules.
+        | 
+     6809 wires
+    10671 wire bits
+       79 public wires
+     3328 public wire bits
+        9 ports
+      134 port bits
+     7964 cells
+      254   $_ANDNOT_
+     1521   $_AND_
+      347   $_DFF_P_
+      962   $_MUX_
+     2454   $_NAND_
+      214   $_NOR_
+      153   $_NOT_
+      143   $_ORNOT_
+      315   $_OR_
+       71   $_SDFF_PN0_
+        1   $_SDFF_PN1_
+       76   $_SDFF_PP0_
+        9   $_SDFF_PP1_
+      174   $_XNOR_
+     1270   $_XOR_
+
+End of script. Logfile hash: 4d90874367, time: 1.15s, user: 0.51s, system: 0.05s, MEM: 301.58 MB peak
+Yosys 0.69+190 (git sha1 0e8336b4e, Release, Clang /usr/bin/clang++ 21.1.8)
+Time spent: 68% 1x abc (1 sec), 7% 47x opt_expr (0 sec), ...
+
+

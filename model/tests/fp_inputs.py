@@ -52,6 +52,11 @@ def random_bits(rng: np.random.Generator, shape) -> np.ndarray:
     return rng.integers(0, 2**32, shape, dtype=np.uint32)
 
 
+def subnormal_f32(bits: np.ndarray) -> np.ndarray:
+    """Which FP32 bit patterns are subnormal (exponent field 0, fraction not 0)."""
+    return ((bits & 0x7F80_0000) == 0) & ((bits & 0x007F_FFFF) != 0)
+
+
 def moderate(rng: np.random.Generator, n: int) -> np.ndarray:
     """Values around 1 with random signs: the common case."""
     sign = rng.choice([-1.0, 1.0], n)

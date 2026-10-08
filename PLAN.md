@@ -655,15 +655,24 @@ resource cost comes with the first build.
   Fixed-latency arithmetic pipelines have `valid` only (AGENTS.md,
   SystemVerilog conventions; approved by the owner). Yosys: `bf16_mac`
   2,569 → 2,552 cells, `fp32_fma` 7,919 → 7,964 (no logic change for
-  M = 24; to verify whether this is only Yosys's optimization varying).
+  M = 24: Yosys gives the same count on every run, but rewrites with the
+  same logic move it; see reports/M3-interim-subnormal.md).
   Seventh log (2026-10-08, the same four runs on this RTL, commit
   4897dad): the 4-cycle loop +0.877 ns without retiming (633 LUTs, 275
   registers, no DSPs), +0.953 ns retimed; the 3-cycle loop +0.841 ns
   retimed; `fp32_fma` +0.514 ns (1,262 LUTs, 535 registers, 2 DSPs). All
   four pass. The loop's worst path is now inside `fp_add`'s round stage
-  (3.1 ns), the fma's still the product's normalize stage (3.4 ns). Next:
-  the cost of subnormal support (D-016, exit criterion), against a
-  flush-to-zero variant.
+  (3.1 ns), the fma's still the product's normalize stage (3.4 ns).
+- [x] Cost of subnormal support (D-016). `Ftz` = 1 (default 0) builds
+  `bf16_mac`'s and `fp32_fma`'s flush-to-zero variant, bit-exact against
+  the golden model's ftz switch at every pipeline depth; the cost is the
+  Yosys cells between the two builds: a few percent of each unit, more for
+  the fma. Numbers, method and how far to trust them:
+  [reports/M3-interim-subnormal.md](reports/M3-interim-subnormal.md),
+  generated from Yosys's log by `scripts/report_m3_subnormal.py`. D-016
+  stands unless the owner decides otherwise; the F2 resource cost comes
+  with the first build. `Ftz` stays in the RTL (owner, 2026-10-08), to
+  measure that cost and to re-measure later.
 - Later: synthesizing every module as its own top re-synthesizes the FMA
   under each parent; once lanes and the vector unit instantiate it, check
   leaves and the real top only, or mark full tops `slow`. The FMA's op

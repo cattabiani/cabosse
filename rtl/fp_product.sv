@@ -9,7 +9,8 @@
 // than FP32's. A product below FP32's smallest exponent is shifted to
 // exponent 1 with a sticky bit, which lets fp_add order its operands by
 // exponent and still round once, exactly as an fma. Subnormal inputs are
-// kept; Inf * 0 is NaN.
+// kept; Inf * 0 is NaN. Ftz = 1 flushes subnormal inputs to zero instead
+// (fp_pkg::flush_f32); the product is still exact.
 //
 // Three steps: multiply | normalize | shift below exponent 1. Regs registers
 // split them (0: combinational; 1: after the multiply, which lets Vivado use
@@ -21,6 +22,7 @@ module fp_product
 #(
   parameter  int unsigned M    = 24,
   parameter  int unsigned Regs = 0,
+  parameter  bit          Ftz  = 1'b0,
   localparam int unsigned PW   = 2 * M,  // the product's bits
   localparam int unsigned W    = prod_sig_w(M),
   localparam int unsigned LzW  = $clog2(PW)
@@ -34,8 +36,10 @@ module fp_product
   // --- Multiply ---------------------------------------------------------------
 
   operand_t a, b;
-  assign a = decode_f32(32'(a_i) << (F32SigW - M));  // widened to FP32, exactly
-  assign b = decode_f32(32'(b_i) << (F32SigW - M));
+  // Widened to FP32, exactly. With Ftz, the flush makes every input normal
+  // or zero, which gen_lz_ftz below relies on.
+  assign a = decode_f32(flush_f32(32'(a_i) << (F32SigW - M), Ftz));
+  assign b = decode_f32(flush_f32(32'(b_i) << (F32SigW - M), Ftz));
 
   typedef struct packed {
     logic          sign;
@@ -61,13 +65,20 @@ module fp_product
 
   logic [LzW-1:0] lz;
   logic           prod_zero;
-  leading_zeros #(
-    .Width(PW)
-  ) u_lz (
-    .in_i   (mul_q.prod),
-    .cnt_o  (lz),
-    .empty_o(prod_zero)
-  );
+  if (Ftz) begin : gen_lz_ftz
+    // Both significands are normal or zero, so the product is zero or in
+    // [1, 4): its leading one is in the top two bits.
+    assign lz        = LzW'(!mul_q.prod[PW-1]);
+    assign prod_zero = !mul_q.prod[PW-1] && !mul_q.prod[PW-2];
+  end else begin : gen_lz
+    leading_zeros #(
+      .Width(PW)
+    ) u_lz (
+      .in_i   (mul_q.prod),
+      .cnt_o  (lz),
+      .empty_o(prod_zero)
+    );
+  end
 
   // a = ma * 2^(a.exp - 126 - M), so the product is
   // prod * 2^(a.exp + b.exp - 252 - 2M) = sig * 2^(exp - 126 - W) with

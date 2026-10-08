@@ -78,12 +78,17 @@ def lint(
     return subprocess.run(argv, capture_output=True, text=True)
 
 
-def synthesize(top: str, extra: Sequence[Path] = ()) -> subprocess.CompletedProcess:
+def synthesize(
+    top: str, extra: Sequence[Path] = (), params: Sequence[tuple[str, int]] = ()
+) -> subprocess.CompletedProcess:
     """Generic Yosys synthesis of rtl/ plus `extra` files with `top` as the
-    top module; `check -assert` fails on problems such as latches or undriven
-    signals."""
+    top module and its parameters set to `params` ((name, value) pairs);
+    `check -assert` fails on problems such as latches or undriven signals."""
     files = " ".join(str(p) for p in extra)
-    script = f"read_slang -F {SOURCES} {files} --top {top}; synth -top {top}; check -assert"
+    overrides = " ".join(f"-G {name}={value}" for name, value in params)
+    script = (
+        f"read_slang -F {SOURCES} {files} --top {top} {overrides}; synth -top {top}; check -assert"
+    )
     return subprocess.run(
         ["yosys", "-q", "-m", "slang", "-p", script], capture_output=True, text=True
     )
