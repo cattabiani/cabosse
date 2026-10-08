@@ -12,3 +12,4 @@ bf16_mac.sv
 bf16_to_fp32.sv
 fp32_fma.sv
 fp32_max.sv
+dot_lane.sv

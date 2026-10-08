@@ -17,7 +17,12 @@ module leading_zeros #(
   localparam int unsigned Padded = 2 ** CntWidth;  // Width rounded up to a power of 2
 
   // The input left-justified; ones below it stop the count at the input's end.
+  // The array looks to Verilator like one signal feeding itself (UNOPTFLAT) when
+  // a parent inlines several counters (dot_lane); each step reads only the
+  // step before, so there is no loop.
+  /* verilator lint_off UNOPTFLAT */
   logic [Padded-1:0] v[CntWidth+1];
+  /* verilator lint_on UNOPTFLAT */
   if (Padded > Width) begin : gen_pad
     assign v[0] = {in_i, {(Padded - Width) {1'b1}}};
   end else begin : gen_no_pad

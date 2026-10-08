@@ -726,6 +726,28 @@ backpressure, for rows of 64 or more elements.
 **Steps (one branch and PR each):** lane RTL with cocotb tests; the
 Vivado run; bulk driver and slow tests; checkpoint report.
 
+**Progress:**
+- [x] Lane RTL, `rtl/dot_lane.sv`, with cocotb tests
+  (`verif/tests/test_dot_lane.py`, `MulRegs` 0, 1 and 2): every length 1
+  to 20, random lengths to 300, single bubbles at each beat of a row, runs
+  of 1 to 5 and 40, random gaps, random output ready, masks anywhere,
+  signed zeros, special values; bit-exact against `golden.dot.dot`. With
+  the output ready, rows of 64 or more never see ready drop. Mutation check
+  (11 hand mutations): 10 caught; the one left (the root waiting for the
+  oldest context) gives the same order anyway, kept as a guarantee.
+  Changed from the answers above: 3 final-sum contexts, not 2. A final
+  sum holds its context about 30 cycles from the row's last beat
+  (measured in simulation: with 2, 64-long rows stalled about once a
+  row); bypasses could save about 4 cycles and keep 2, with little margin.
+  A missing element also reads +0 where its slot has no sum yet in the
+  row (written flags), not only in the row's first round. Yosys depth
+  proxy (`test_lane_logic_depth`): 19 cells, `mac_loop` 17. Yosys's
+  UltraScale+ mapping, an estimate until the Vivado run: about 6,250
+  LUTs, 3,400 flip-flops and 4 DSPs per lane; ×128 it would be well above
+  the 25-30% guessed for Q6, so the Vivado run checks area as much as
+  timing. `leading_zeros` gets an `UNOPTFLAT` waiver: Verilator saw its
+  step array as a loop once the lane inlines four of them.
+
 ### M5 — Matrix-vector engine with simulated memory
 **What:** `L` lanes, weight DMA over AXI, tiling, and an AXI memory model
 with configurable bandwidth.
