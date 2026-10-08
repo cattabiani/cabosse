@@ -1,0 +1,17 @@
+{
+ "provenance": {
+  "commit": "799e53c7359a8e0fa6501a5cf4edf22958b6dc99",
+  "dirty": false,
+  "date": "2026-10-08",
+  "machine": "Linux x86_64"
+ },
+ "inputs": {
+  "fma_add_mul": 100000000,
+  "max": 100000000,
+  "bf16_pairs": 4294967296
+ },
+ "tests": {
+  "fast": "327 passed, 15 deselected in 51.20s",
+  "slow": "14 passed, 328 deselected in 746.46s (0:12:26)"
+ }
+}

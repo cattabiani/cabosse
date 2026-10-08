@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""The generated tables of the M3 interim report on the cost of subnormal
-support (reports/M3-interim-subnormal.md, D-016), parsed from the log that
-scripts/report_m3_subnormal.py measure writes to reports/data/.
+"""The cost of subnormal support (D-016) for the M3 report (reporting/m3.py),
+parsed from the log that scripts/report_m3.py measure-cells writes to
+reports/data/.
 
 The log is Yosys's own output. Each run starts with a line
     CABOSSE-YOSYS label=<label> rev=<rev> top=<top> params=<k=v,...>
@@ -17,7 +17,6 @@ import paths
 
 from reporting import blocks
 
-PATH = paths.REPORTS / "M3-interim-subnormal.md"
 LOG = paths.REPORTS / "data" / "M3-subnormal-yosys.txt"
 # label -> (top, parameters); each is synthesized with Ftz = 0 and Ftz = 1.
 UNITS = {
@@ -78,13 +77,24 @@ def _line(text: str, tag: str) -> str:
     return re.search(rf"^{tag} (.*)$", text, re.M)[1]
 
 
+def cost(cells: dict[str, int], top: str, params: tuple = ()) -> tuple[int, float]:
+    """(cells, percent of the unit with subnormals) that subnormals cost."""
+    keep = cells[run_label(top, (*params, ("Ftz", 0)))]
+    n = keep - cells[run_label(top, (*params, ("Ftz", 1)))]
+    return n, 100 * n / keep
+
+
+def costs(cells: dict[str, int]) -> tuple[tuple[int, float], tuple[int, float]]:
+    """cost() of the lanes' bf16_mac and the vector unit's fp32_fma."""
+    return cost(cells, "bf16_mac"), cost(cells, "fp32_fma")
+
+
 def cost_table(cells: dict[str, int]) -> str:
     rows = []
     for label, (top, params) in UNITS.items():
         keep = cells[run_label(top, (*params, ("Ftz", 0)))]
-        ftz = cells[run_label(top, (*params, ("Ftz", 1)))]
-        cost = keep - ftz
-        rows.append([label, f"{keep:,}", f"{ftz:,}", f"{cost:+,}", f"{100 * cost / keep:+.1f} %"])
+        n, percent = cost(cells, top, params)
+        rows.append([label, f"{keep:,}", f"{keep - n:,}", f"{n:+,}", f"{percent:+.1f} %"])
     header = ["unit", "with subnormals", "flush to zero", "cost (cells)", "share of the unit"]
     return blocks.table(header, rows)
 
@@ -118,18 +128,4 @@ def provenance_text(p: dict[str, str]) -> str:
     return (
         f"Measured on {p['date']}, commit `{p['commit'][:7]}`{dirty}, "
         f"Yosys {p['yosys']} with yosys-slang, generic `synth -flatten`."
-    )
-
-
-def render() -> str:
-    cells, provenance, hits = parse(LOG.read_text())
-    return blocks.fill(
-        PATH.read_text(),
-        {
-            "provenance": provenance_text(provenance),
-            "cost": cost_table(cells),
-            "parts": parts_table(cells),
-            "baseline": baseline_table(cells),
-            "hits": hits_table(hits),
-        },
     )
