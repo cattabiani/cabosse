@@ -784,6 +784,23 @@ Vivado run; bulk driver and slow tests; checkpoint report.
   flip-flops (was 16.7%). The worst path is now the accumulate loop's
   read: the beat's slot through the accumulator file's selector into
   `fp_add`'s alignment (12 logic levels).
+- [x] Bulk driver and slow tests (`verif/bulk/dot_lane.cpp`, its own loop
+  with the handshake: beats carry their idle cycles, the output ready is
+  drawn from a seed; `verif/tests/test_dot_lane_bulk.py`). Families:
+  model-like rows at SmolLM2's lengths (64, 576, 1536) and a p.V row of
+  8192, random bits (short rows), products near both ends of FP32's range,
+  cancelling rows (exactly for small integers), missing elements and -0
+  rows; each checked to reach its result classes (subnormal, ±0, Inf, NaN).
+  Fast (CI, about 15 s): about 300,000 pairs at output ready 100%, 50% and
+  5% with gaps; full rate with and without gaps (no stalls, and cycles =
+  beats + gaps + under 64 of latency); the `Ftz` = 1 build against the
+  golden ftz switch. Slow: 10^8 pairs in 50 chunks (143 s on the dev
+  machine), and one SmolLM2 decode step at position 63: every row of the
+  first and last layers' seven matrices, their attention scores and p.V
+  rows, and 4,096 classifier rows, 16,768 rows and 9.6 million pairs of
+  real weights and activations (10 s). All bit-exact. Mutations against
+  the bulk tests alone: 5 of 5 caught. The driver runs about 0.6 million
+  beats (2.3 million pairs) per second (one fast-test run).
 
 ### M5 — Matrix-vector engine with simulated memory
 **What:** `L` lanes, weight DMA over AXI, tiling, and an AXI memory model
