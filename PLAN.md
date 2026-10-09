@@ -928,8 +928,11 @@ checkpoint report.
   channel; full rate (cycles ≤ beats + latency + 8) up to a 40-cycle
   latency with a 64-beat FIFO, and a 16-beat FIFO measurably slower there;
   an error response kept; addresses across 4 GiB (34 bits). The FIFO alone
-  (`test_stream_fifo.py`, cocotb): against a Python queue cycle by cycle,
-  full, empty, push and pop together, depths 1, 4 and 5 (3 mutations
+  (`test_stream_fifo.py`, cocotb): against a Python queue cycle by cycle;
+  fill to full and drain to empty, random traffic with push and pop
+  together both when full and when empty, push and pop every cycle (one
+  item per cycle from depth 2, every other cycle at depth 1), reset with
+  items inside; depths 1 to 5 and 64, widths 1, 16 and 256 (9 mutations
   caught). The model alone (`axi_mem_test.cpp`, hand-made
   requests): each check fires on the rule it guards and not otherwise, and
   the first beat comes after exactly the latency. Mutations (9 hand
