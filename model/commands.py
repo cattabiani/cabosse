@@ -555,7 +555,8 @@ def run(
     command's EngineCall."""
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
     formats = buffers(layout.config, layout.cap)
-    names = {addr: name for name, (addr, _, _) in layout.tensors.items()}  # tied: lm_head
+    names = {addr: name for name, (addr, _, _) in layout.tensors.items()} if record else {}
+    names[layout.addr("lm_head")] = "lm_head"  # tied to the embedding: the classifier reads it
     buf: dict[Buf, torch.Tensor] = {}
     output = None
     t = position + 1  # positions attention reads: 0 ... position
@@ -641,7 +642,7 @@ def run(
                 raise AssertionError(f"unknown command {cmd.op!r}")
         if record is not None and cmd.op in ENGINE_OPS:
             read = mem if cmd.op == Op.MATVEC else mem[:, :t].clone()  # later tokens write it
-            record(EngineCall(i, names[cmd.addr], cmd, a, read, buf[cmd.dst]))
+            record(EngineCall(i, names[cmd.addr], cmd, a.clone(), read, buf[cmd.dst].clone()))
     raise AssertionError("command list without END")
 
 

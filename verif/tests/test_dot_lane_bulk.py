@@ -13,6 +13,7 @@ model's ftz switch.
 The handshake's corner cases are in test_dot_lane (cocotb); here it is
 volume."""
 
+import dataclasses
 import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterator
@@ -358,10 +359,27 @@ def smollm2_rows(model: decoder.Model) -> dict[str, list[Rows]]:
     last = len(model.layers) - 1
     keep = ("layers.0.", f"layers.{last}.")
     _, calls = commands.record_step(model, list(range(1000, 1063)), 1063)
-    found = {c.name: [lane_rows(c)] for c in calls if c.name.startswith(keep)}
-    classifier = lane_rows(next(c for c in calls if c.name == "lm_head"))
-    found["lm_head"] = [Rows(classifier.w[:4096], classifier.x[:4096])]
+    found = {}
+    for c in calls:
+        if c.name == "lm_head":
+            c = dataclasses.replace(c, mem=c.mem[:4096], out=c.out[:4096])
+        elif not c.name.startswith(keep):
+            continue
+        rows = lane_rows(c)
+        assert reproduces(c, rows), c.name
+        found[c.name] = [rows]
     return found
+
+
+def reproduces(call: commands.EngineCall, rows: Rows) -> bool:
+    """The rows' dot products give the command's output: as they are
+    (MATVEC), times the scale (SCORES), rounded to BF16 (VALUES into ATT)."""
+    y = torch.from_numpy(golden_dot(rows.w, rows.x, rows.valid).view(np.float32))
+    if call.cmd.op == commands.Op.SCORES:
+        y = arith.mul(y, commands.f32_value(call.cmd.scalar))
+    if call.out.dtype == torch.bfloat16:
+        return torch.equal(arith.bits_bf16(arith.bf16(y)), arith.bits_bf16(call.out))
+    return torch.equal(arith.bits_f32(y), arith.bits_f32(call.out))
 
 
 @pytest.mark.slow
