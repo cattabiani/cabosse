@@ -24,7 +24,7 @@ constexpr ArChannel kGood{true, 0, 0, 5, 1};  ///< one 32-byte beat at 0
 /// @param body drives the port; an AxiError it throws is printed.
 void run_case(const char* name, const AxiMemSettings& settings,
               const std::function<void(AxiReadPort&)>& body) {
-  static const std::vector<uint8_t> mem(64 * 1024);
+  static const std::vector<std::byte> mem(64 * 1024);
   AxiReadPort port(mem, settings, 1);
   try {
     body(port);

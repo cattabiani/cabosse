@@ -15,7 +15,7 @@
 /// most bursts in flight, cycles the memory waited on RREADY, and err_o.
 /// The DMA must then stay quiet for kDrainCycles cycles with the memory idle.
 
-#include <cstring>
+#include <algorithm>
 
 #include "Vport_dma.h"
 #include "axi_mem.h"
@@ -26,6 +26,51 @@ namespace {
 constexpr size_t kBeatWords = 8;  ///< 256 bits
 static_assert(sizeof(Vport_dma::r_data_i) == 4 * kBeatWords, "the driver is for DataWidth = 256");
 constexpr uint64_t kMaxIdleCycles = 100'000;  ///< cycles with no beat out before calling it a hang
+
+/// @brief The DMA, its memory and the test's side of its ports.
+struct Bench {
+  Vport_dma& dut;
+  AxiReadPort& port;
+  std::span<const Record> commands;  ///< offered back to back
+  uint64_t ready_permille;           ///< share of cycles with out_ready_i high
+  std::mt19937_64 rng;               ///< draws out_ready_i
+  size_t next_cmd = 0;               ///< the first command not yet taken
+  std::vector<uint32_t> out;         ///< the data words of the beats out, in order
+
+  /// @brief One clock cycle: put the memory's outputs and our inputs on the
+  /// DMA, settle, collect a command taken and a beat out, let the memory see
+  /// the DMA's outputs, then the rising edge.
+  /// @param run false during reset: no command offered, out_ready_i low.
+  /// @throws AxiError if the DMA breaks an AXI rule.
+  void cycle(bool run) {
+    dut.ar_ready_i = port.ar_ready();
+    dut.r_valid_i = port.r_valid();
+    dut.r_resp_i = port.r_resp();
+    if (const auto data = port.r_data(); !data.empty()) {
+      std::ranges::copy(data, std::as_writable_bytes(std::span(dut.r_data_i.data(), kBeatWords)).begin());
+    }
+    const bool offer = run && next_cmd < commands.size();
+    dut.cmd_valid_i = offer;
+    if (offer) {
+      dut.cmd_addr_i = commands[next_cmd][0] | uint64_t{commands[next_cmd][1]} << 32;
+      dut.cmd_beats_i = commands[next_cmd][2];
+    }
+    dut.out_ready_i = run && rng() % 1000 < ready_permille;
+    dut.clk_i = 0;
+    dut.eval();
+    if (offer && dut.cmd_ready_o) ++next_cmd;
+    if (dut.out_valid_o && dut.out_ready_i) {
+      out.insert(out.end(), dut.out_data_o.data(), dut.out_data_o.data() + kBeatWords);
+    }
+    if (dut.rst_ni) {
+      port.tick({static_cast<bool>(dut.ar_valid_o), dut.ar_addr_o, dut.ar_len_o, dut.ar_size_o,
+                 dut.ar_burst_o},
+                dut.r_ready_o);
+    }
+    dut.clk_i = 1;
+    dut.eval();
+  }
+};
 
 }  // namespace
 
@@ -46,7 +91,9 @@ int main(int argc, char** argv) {
     std::println(stderr, "{} words after the memory do not match {} commands", rest.size(), rest[0]);
     return 2;
   }
-  const auto commands = std::views::chunk(rest.subspan(1), 3) | std::ranges::to<std::vector>();
+  const auto commands = std::views::chunk(rest.subspan(1), 3) |
+                        std::views::transform([](auto c) { return Record(c); }) |
+                        std::ranges::to<std::vector>();
   uint64_t total_beats = 0;
   for (Record c : commands) total_beats += c[2];
 
@@ -63,63 +110,30 @@ int main(int argc, char** argv) {
   settings.beat_bytes = 4 * kBeatWords;
   const uint64_t ready_permille = plusarg(context, "ready", 1000);
   const uint64_t seed = plusarg(context, "seed", 1);
-  std::mt19937_64 rng(seed);
 
-  const auto mem = std::as_bytes(mem_words);
-  AxiReadPort port({reinterpret_cast<const uint8_t*>(mem.data()), mem.size()}, settings, seed + 1);
+  AxiReadPort port(std::as_bytes(mem_words), settings, seed + 1);
   auto dut = std::make_unique<Vport_dma>(&context);
-
-  std::vector<uint32_t> out;
-  out.reserve(total_beats * kBeatWords + 5);
-  size_t next_cmd = 0;
-  // Settle with the memory's outputs and our inputs applied, collect what
-  // left the DMA, and let the memory see the edge.
-  auto cycle = [&](bool run) {
-    dut->ar_ready_i = port.ar_ready();
-    dut->r_valid_i = port.r_valid();
-    dut->r_resp_i = port.r_resp();
-    if (const auto data = port.r_data(); !data.empty()) {
-      std::memcpy(dut->r_data_i.data(), data.data(), data.size());
-    }
-    const bool offer = run && next_cmd < commands.size();
-    dut->cmd_valid_i = offer;
-    if (offer) {
-      dut->cmd_addr_i = commands[next_cmd][0] | uint64_t{commands[next_cmd][1]} << 32;
-      dut->cmd_beats_i = commands[next_cmd][2];
-    }
-    dut->out_ready_i = run && rng() % 1000 < ready_permille;
-    dut->clk_i = 0;
-    dut->eval();
-    if (offer && dut->cmd_ready_o) ++next_cmd;
-    if (dut->out_valid_o && dut->out_ready_i) {
-      out.insert(out.end(), dut->out_data_o.data(), dut->out_data_o.data() + kBeatWords);
-    }
-    if (dut->rst_ni) {
-      port.tick({static_cast<bool>(dut->ar_valid_o), dut->ar_addr_o, dut->ar_len_o, dut->ar_size_o,
-                 dut->ar_burst_o},
-                dut->r_ready_o);
-    }
-    dut->clk_i = 1;
-    dut->eval();
-  };
+  Bench bench{*dut, port, commands, ready_permille, std::mt19937_64(seed)};
+  bench.out.reserve(total_beats * kBeatWords + 5);
+  std::vector<uint32_t>& out = bench.out;
 
   try {
     dut->rst_ni = 0;
-    for (int i = 0; i < kResetCycles; ++i) cycle(false);
+    for (int i = 0; i < kResetCycles; ++i) bench.cycle(false);
     dut->rst_ni = 1;
     uint64_t cycles = 0, idle = 0;
-    while (out.size() < total_beats * kBeatWords || next_cmd < commands.size()) {
+    while (out.size() < total_beats * kBeatWords || bench.next_cmd < commands.size()) {
       const size_t before = out.size();
-      cycle(true);
+      bench.cycle(true);
       ++cycles;
       idle = out.size() == before ? idle + 1 : 0;
       if (idle > kMaxIdleCycles) {
         std::println(stderr, "hung: {} of {} beats, {} of {} commands after {} cycles",
-                     out.size() / kBeatWords, total_beats, next_cmd, commands.size(), cycles);
+                     out.size() / kBeatWords, total_beats, bench.next_cmd, commands.size(), cycles);
         return 3;
       }
     }
-    for (int i = 0; i < kDrainCycles; ++i) cycle(true);
+    for (int i = 0; i < kDrainCycles; ++i) bench.cycle(true);
     if (out.size() != total_beats * kBeatWords || !port.idle()) {
       std::println(stderr, "{} extra beats; memory {}", out.size() / kBeatWords - total_beats,
                    port.idle() ? "idle" : "still busy");

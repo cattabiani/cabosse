@@ -12,6 +12,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <format>
@@ -57,7 +58,7 @@ class AxiReadPort {
   /// @param mem the memory's bytes; must outlive the port.
   /// @param settings latency, limits, bandwidth and pauses.
   /// @param seed for the bandwidth and pause draws.
-  AxiReadPort(std::span<const uint8_t> mem, const AxiMemSettings& settings, uint64_t seed)
+  AxiReadPort(std::span<const std::byte> mem, const AxiMemSettings& settings, uint64_t seed)
       : mem_(mem), s_(settings), rng_(seed) {
     if (s_.latency < 1) throw std::invalid_argument("latency must be at least 1");
     if (s_.outstanding < 1) throw std::invalid_argument("outstanding must be at least 1");
@@ -70,7 +71,7 @@ class AxiReadPort {
   /// @return RRESP for this cycle: SLVERR (2) on settings.bad_beat, else OKAY.
   unsigned r_resp() const { return r_valid_ && n_beats_ == s_.bad_beat ? 2 : 0; }
   /// @return RDATA for this cycle (meaningful while r_valid()).
-  std::span<const uint8_t> r_data() const {
+  std::span<const std::byte> r_data() const {
     if (!r_valid_) return {};
     const Burst& b = bursts_.front();
     return mem_.subspan(b.addr - s_.base + b.sent * s_.beat_bytes, s_.beat_bytes);
@@ -158,7 +159,7 @@ class AxiReadPort {
   /// @return whether it happens this time.
   bool draw(uint64_t permille) { return permille >= 1000 || (permille > 0 && rng_() % 1000 < permille); }
 
-  std::span<const uint8_t> mem_;
+  std::span<const std::byte> mem_;
   AxiMemSettings s_;
   std::mt19937_64 rng_;
   std::deque<Burst> bursts_;
