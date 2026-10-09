@@ -328,7 +328,7 @@ class Layout:
             tensors[name] = (addr, shape, dtype)
             addr += -(-n_bytes(shape, dtype) // ALIGN) * ALIGN
         if c.tie_word_embeddings:
-            tensors["lm_head"] = tensors["embed"]
+            tensors["lm_head"] = tensors["embed"]  # last: run() names the address lm_head
         return Layout(config, cap, tensors)
 
     def addr(self, name: str) -> int:
@@ -556,7 +556,6 @@ def run(
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
     formats = buffers(layout.config, layout.cap)
     names = {addr: name for name, (addr, _, _) in layout.tensors.items()} if record else {}
-    names[layout.addr("lm_head")] = "lm_head"  # tied to the embedding: the classifier reads it
     buf: dict[Buf, torch.Tensor] = {}
     output = None
     t = position + 1  # positions attention reads: 0 ... position

@@ -338,13 +338,10 @@ def lane_rows(call: commands.EngineCall) -> Rows:
     cmd, a, mem = call.cmd, call.a, call.mem
     if cmd.op == commands.Op.MATVEC:
         w, x = mem, a[None, :]
-    else:
-        kv_heads, t = mem.shape[0], mem.shape[1]
-        group = cmd.n // kv_heads  # query head h reads KV head h // group
-        if cmd.op == commands.Op.SCORES:
-            w, x = mem[:, None], a.reshape(kv_heads, group, 1, cmd.m)
-        else:
-            w, x = mem.transpose(1, 2)[:, None], a.reshape(kv_heads, group, 1, t)
+    else:  # query head h reads KV head h // group
+        kv_heads = mem.shape[0]
+        x = a.reshape(kv_heads, cmd.n // kv_heads, 1, -1)
+        w = (mem if cmd.op == commands.Op.SCORES else mem.transpose(1, 2))[:, None]
     w, x = torch.broadcast_tensors(w, x)
     k = w.shape[-1]
     return Rows(bits(w).reshape(-1, k), bits(x).reshape(-1, k))
@@ -374,7 +371,9 @@ def smollm2_rows(model: decoder.Model) -> dict[str, list[Rows]]:
 def reproduces(call: commands.EngineCall, rows: Rows) -> bool:
     """The rows' dot products give the command's output: as they are
     (MATVEC), times the scale (SCORES), rounded to BF16 (VALUES into ATT)."""
-    y = torch.from_numpy(golden_dot(rows.w, rows.x, rows.valid).view(np.float32))
+    y = arith.f32_from_bits(
+        torch.from_numpy(golden_dot(rows.w, rows.x, rows.valid).astype(np.int64))
+    )
     if call.cmd.op == commands.Op.SCORES:
         y = arith.mul(y, commands.f32_value(call.cmd.scalar))
     if call.out.dtype == torch.bfloat16:

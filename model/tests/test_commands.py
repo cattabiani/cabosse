@@ -269,7 +269,9 @@ def lane_order_restated(w: torch.Tensor, lanes: int) -> list[list[list[int]]]:
     return out
 
 
-LANE_ORDER_SHAPES = [(1, 1), (3, 5), (4, 4), (7, 9), (21, 17), (64, 8), (192, 12)]
+# Includes SmolLM2's row counts: 192 (k, v) leaves half of 128 lanes' ports
+# idle in its second pass, 576 the last of 20 lanes' ports in its last.
+LANE_ORDER_SHAPES = [(1, 1), (3, 5), (4, 4), (7, 9), (21, 17), (64, 8), (192, 12), (576, 6)]
 
 
 @pytest.mark.parametrize("lanes", [4, 8, 20, 128])
@@ -283,16 +285,3 @@ def test_lane_order(lanes: int, shape: tuple[int, int]) -> None:
     got = commands.lane_order(w, lanes)
     assert all(b.shape[1] * b.dtype.itemsize == commands.BEAT_BYTES for b in got)
     assert [arith.bits_bf16(b).tolist() for b in got] == lane_order_restated(w, lanes)
-
-
-@pytest.mark.parametrize(("lanes", "rows", "empty_ports"), [(128, 192, 16), (20, 576, 1)])
-def test_lane_order_leaves_ports_idle_in_a_partial_pass(
-    lanes: int, rows: int, empty_ports: int
-) -> None:
-    """SmolLM2's 192-row k and v at 128 lanes: half the ports idle in the
-    second pass; 576 rows at 20 lanes: the last port idle in the last."""
-    beats = commands.lane_order(torch.zeros(rows, 8, dtype=torch.bfloat16), lanes)
-    n_passes = -(-rows // lanes)
-    counts = [len(b) // 2 for b in beats]  # 8 columns: 2 beats per pass
-    assert counts.count(n_passes - 1) == empty_ports
-    assert counts.count(n_passes) == len(beats) - empty_ports
