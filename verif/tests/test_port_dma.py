@@ -23,7 +23,7 @@ BEAT_WORDS = BEAT_BYTES // 4
 PAGE_BYTES = 4096
 MAX_BURST = 16
 MEM_BYTES = 64 * 1024
-OUTSTANDING = 8  # the memory model's default bursts in flight
+OUTSTANDING = 8  # bursts in flight, where a test does not vary it
 FAST_SLACK_CYCLES = 8  # full rate: cycles at most beats + latency + this
 
 
@@ -62,10 +62,11 @@ def fetch(
     return Result(beats, *map(int, tail[:4]), tail[4] == 1)
 
 
-def expected(mem: np.ndarray, commands: list[tuple[int, int]]) -> np.ndarray:
-    """The beats the commands name, in order."""
+def expected(mem: np.ndarray, commands: list[tuple[int, int]], base: int = 0) -> np.ndarray:
+    """The beats the commands name, in order, for a memory at `base`."""
     rows = mem.reshape(-1, BEAT_WORDS)
-    return np.concatenate([rows[a // BEAT_BYTES : a // BEAT_BYTES + n] for a, n in commands])
+    first = [(a - base) // BEAT_BYTES for a, _ in commands]
+    return np.concatenate([rows[f : f + n] for f, (_, n) in zip(first, commands, strict=True)])
 
 
 def n_bursts(commands: list[tuple[int, int]], max_burst: int = MAX_BURST) -> int:
@@ -108,9 +109,9 @@ TIMINGS = {
     "ideal": dict(latency=1, outstanding=16),
     "latency": dict(latency=40, outstanding=8),
     "one-burst": dict(latency=5, outstanding=1),
-    "bandwidth": dict(latency=3, rate=300),
-    "pauses": dict(latency=10, pause=30, pause_max=60),
-    "consumer": dict(latency=10, ready=200),
+    "bandwidth": dict(latency=3, outstanding=8, rate=300),
+    "pauses": dict(latency=10, outstanding=8, pause=30, pause_max=60),
+    "consumer": dict(latency=10, outstanding=8, ready=200),
     "all": dict(latency=25, outstanding=3, rate=600, pause=10, pause_max=40, ready=500),
 }
 # DMA shapes: default; FIFO of one burst; one-beat bursts.
@@ -136,8 +137,7 @@ def test_every_beat_in_order(timing: str, shape: str) -> None:
     assert not len(bad), f"seed {seed}: {len(bad)} beats differ, first at {bad[0]}"
     assert got.bursts == n_bursts(commands, dict(params).get("MaxBurst", MAX_BURST)), f"seed {seed}"
     assert got.r_stalls == 0, f"seed {seed}: the memory waited on RREADY"
-    outstanding = TIMINGS[timing].get("outstanding", OUTSTANDING)
-    assert 1 <= got.max_in_flight <= outstanding, f"seed {seed}"
+    assert 1 <= got.max_in_flight <= TIMINGS[timing]["outstanding"], f"seed {seed}"
     assert not got.err
 
 
@@ -148,9 +148,9 @@ def test_full_rate(latency: int) -> None:
     first arrives, when the FIFO (64 beats) covers the latency plus a burst."""
     rng = np.random.default_rng(SEED)
     n = 2048
-    got = fetch(memory(rng), [(0, n)], latency=latency, outstanding=OUTSTANDING)
-    assert got.cycles <= n + latency + FAST_SLACK_CYCLES, got.cycles
-    assert got.max_in_flight >= -(-latency // MAX_BURST), got.max_in_flight  # covers the latency
+    got = fetch(memory(rng), [(0, n)], latency=latency, outstanding=OUTSTANDING, seed=SEED)
+    assert got.cycles <= n + latency + FAST_SLACK_CYCLES, (SEED, got.cycles)
+    assert got.max_in_flight >= -(-latency // MAX_BURST), (SEED, got.max_in_flight)
 
 
 @rtl.needs_verilator
@@ -160,15 +160,29 @@ def test_a_small_fifo_limits_the_rate() -> None:
     from the test."""
     rng = np.random.default_rng(SEED)
     n = 1024
-    got = fetch(memory(rng), [(0, n)], (("Depth", 16),), latency=40, outstanding=OUTSTANDING)
-    assert got.cycles > 2 * n, got.cycles
+    got = fetch(
+        memory(rng), [(0, n)], (("Depth", 16),), latency=40, outstanding=OUTSTANDING, seed=SEED
+    )
+    assert got.cycles > 2 * n, (SEED, got.cycles)
 
 
 @rtl.needs_verilator
 def test_an_error_response_is_kept() -> None:
     rng = np.random.default_rng(SEED)
-    got = fetch(memory(rng), [(0, 40)], bad=17)
-    assert got.err and len(got.beats) == 40
+    got = fetch(memory(rng), [(0, 40)], bad=17, seed=SEED)
+    assert got.err and len(got.beats) == 40, SEED
+
+
+@rtl.needs_verilator
+def test_addresses_past_4_gib() -> None:
+    """F2's HBM needs 34 address bits: commands just below, across and above
+    4 GiB, with the memory placed there."""
+    rng = np.random.default_rng(SEED)
+    mem, base = memory(rng), 2**32 - MEM_BYTES // 2
+    commands = [(base, 1), (2**32 - 3 * BEAT_BYTES, 40), (2**32, 17), (2**32 + 5 * BEAT_BYTES, 300)]
+    got = fetch(mem, commands, base=base, seed=SEED)
+    assert np.array_equal(got.beats, expected(mem, commands, base)), SEED
+    assert got.bursts == n_bursts(commands), SEED
 
 
 BROKEN = {
@@ -183,8 +197,8 @@ def test_the_memory_stops_a_broken_request(case: str) -> None:
     """A DMA request outside the AXI subset or the memory ends the run
     (exit 5), naming the rule."""
     rng = np.random.default_rng(SEED)
-    result = run(memory(rng), BROKEN[case])
-    assert result.returncode == 5, result.stderr.decode()
+    result = run(memory(rng), BROKEN[case], seed=SEED)
+    assert result.returncode == 5, (SEED, result.stderr.decode())
     assert case in result.stderr.decode()
 
 
@@ -204,6 +218,7 @@ MODEL_CASES = {
 }
 
 
+@rtl.needs_verilator  # where the drivers build, the model's test builds (C++23 with <print>)
 def test_memory_model_checks() -> None:
     """Each of the model's checks fires on a hand-made request that breaks
     it, and only then; the first beat comes after exactly the latency and

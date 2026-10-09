@@ -8,9 +8,9 @@
 /// Input (little-endian uint32 on stdin): the memory's size in words, its
 /// words, the number of commands, then per command its address (low word,
 /// high word) and its beats. Commands are offered back to back.
-/// Plusargs: +latency, +outstanding, +rate, +pause, +pause_max, +bad (the
-/// AxiMemSettings fields, permille for rates), +ready (permille of cycles
-/// with out_ready_i high), +seed.
+/// Plusargs: +latency, +outstanding, +rate, +pause, +pause_max, +bad, +base
+/// (the AxiMemSettings fields, permille for rates), +ready (permille of
+/// cycles with out_ready_i high), +seed.
 /// Output: the 8 data words of each beat out, in order; then cycles, bursts,
 /// most bursts in flight, cycles the memory waited on RREADY, and err_o.
 /// The DMA must then stay quiet for kDrainCycles cycles with the memory idle.
@@ -59,6 +59,7 @@ int main(int argc, char** argv) {
   settings.pause_permille = plusarg(context, "pause", settings.pause_permille);
   settings.pause_max = plusarg(context, "pause_max", settings.pause_max);
   settings.bad_beat = plusarg(context, "bad", settings.bad_beat);
+  settings.base = plusarg(context, "base", settings.base);
   settings.beat_bytes = 4 * kBeatWords;
   const uint64_t ready_permille = plusarg(context, "ready", 1000);
   const uint64_t seed = plusarg(context, "seed", 1);

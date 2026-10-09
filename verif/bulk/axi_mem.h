@@ -11,12 +11,14 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <deque>
 #include <format>
 #include <random>
 #include <span>
 #include <stdexcept>
+#include <string>
 
 constexpr uint64_t kAxiMaxBurst = 16;  ///< beats per burst, at most (AXI3)
 constexpr uint64_t kAxiPageBytes = 4096;  ///< no burst crosses a boundary of these
@@ -30,6 +32,7 @@ struct AxiMemSettings {
   uint64_t pause_max = 0;        ///< a pause lasts 1 to pause_max cycles, uniformly
   uint64_t bad_beat = UINT64_MAX; ///< the index of a beat answered with SLVERR (none by default)
   uint64_t beat_bytes = 32;      ///< bytes per beat: the data width
+  uint64_t base = 0;             ///< the address of the memory's first byte
 };
 
 /// @brief The read address channel as the master drives it in one cycle.
@@ -70,7 +73,7 @@ class AxiReadPort {
   std::span<const uint8_t> r_data() const {
     if (!r_valid_) return {};
     const Burst& b = bursts_.front();
-    return mem_.subspan(b.addr + b.sent * s_.beat_bytes, s_.beat_bytes);
+    return mem_.subspan(b.addr - s_.base + b.sent * s_.beat_bytes, s_.beat_bytes);
   }
   /// @brief The clock edge: take this cycle's handshakes and pick the next
   /// cycle's outputs.
@@ -138,7 +141,9 @@ class AxiReadPort {
     if (ar.addr / kAxiPageBytes != (ar.addr + bytes - 1) / kAxiPageBytes) {
       fail(std::format("burst at 0x{:x} of {} bytes crosses 4 KB", ar.addr, bytes));
     }
-    if (ar.addr + bytes > mem_.size()) fail(std::format("burst at 0x{:x} past the memory", ar.addr));
+    if (ar.addr < s_.base || ar.addr - s_.base + bytes > mem_.size()) {
+      fail(std::format("burst at 0x{:x} past the memory", ar.addr));
+    }
   }
 
   /// @brief Stop the run on a broken rule.

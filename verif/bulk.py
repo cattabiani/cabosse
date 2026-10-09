@@ -64,7 +64,8 @@ def _build(top: str, params: tuple[tuple[str, int], ...]) -> Path:
 
 def build_program(name: str) -> Path:
     """Compile verif/bulk/<name>.cpp alone, with no RTL (a test of a model
-    the drivers share), once per test session, with the drivers' compiler."""
+    the drivers share), once per test session, with CXX (else g++); needs
+    C++23 with <print>, as the drivers."""
     with _BUILD_LOCK:
         return _build_program(name)
 
