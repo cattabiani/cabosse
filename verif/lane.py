@@ -3,11 +3,12 @@
 """What the lane's tests share (test_dot_lane, test_dot_lane_bulk): its
 default shape, the golden result and input gaps."""
 
+import commands
 import numpy as np
 import torch
 from golden import arith, dot
 
-E = 4  # pairs per beat: dot_lane's default
+E = commands.E  # pairs per beat: dot_lane's default (D-027)
 FULL_RATE_LEN = 60  # (A - 1) * E: shorter rows end before their tree's adds are issued
 
 
