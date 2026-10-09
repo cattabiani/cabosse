@@ -29,6 +29,7 @@ namespace {
 constexpr int kResetCycles = 2;
 constexpr int kDrainCycles = 64;
 constexpr size_t kBeatWords = 8;  ///< 256 bits
+static_assert(sizeof(Vport_dma::r_data_i) == 4 * kBeatWords, "the driver is for DataWidth = 256");
 
 }  // namespace
 
@@ -38,7 +39,7 @@ constexpr size_t kBeatWords = 8;  ///< 256 bits
 ///   (each with a message on stderr).
 int main(int argc, char** argv) {
   const std::vector<uint32_t> words = read_words(stdin);
-  if (words.empty() || words[0] + 2 > words.size()) {
+  if (words.empty() || size_t{words[0]} + 2 > words.size()) {
     std::println(stderr, "input too short for its memory");
     return 2;
   }
@@ -56,6 +57,7 @@ int main(int argc, char** argv) {
   VerilatedContext context;
   context.commandArgs(argc, argv);
   AxiMemSettings settings;
+  settings.beat_bytes = 4 * kBeatWords;
   settings.latency = plusarg(context, "latency", settings.latency);
   settings.outstanding = plusarg(context, "outstanding", settings.outstanding);
   settings.rate_permille = plusarg(context, "rate", settings.rate_permille);

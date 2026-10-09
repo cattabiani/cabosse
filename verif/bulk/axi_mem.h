@@ -67,9 +67,6 @@ class AxiReadPort {
     const Burst& b = bursts_.front();
     return mem_.subspan(b.addr + b.sent * s_.beat_bytes, s_.beat_bytes);
   }
-  /// @return RLAST for this cycle.
-  bool r_last() const { return r_valid_ && bursts_.front().sent + 1 == bursts_.front().beats; }
-
   /// @brief The clock edge: take this cycle's handshakes and pick the next
   /// cycle's outputs.
   /// @param ar the master's read address channel this cycle.
@@ -114,6 +111,7 @@ class AxiReadPort {
   uint64_t max_in_flight() const { return max_in_flight_; }  ///< most bursts in flight at once
 
  private:
+  /// @brief An accepted burst, answered beat by beat.
   struct Burst {
     uint64_t addr;
     uint64_t beats;
@@ -121,9 +119,11 @@ class AxiReadPort {
     uint64_t sent;  ///< beats already taken
   };
 
-  /// @brief A request's fields against the AXI subset: incrementing, full
+  /// @brief Check a request's fields against the AXI subset: incrementing, full
   /// width, at most max_burst beats, aligned, inside one 4 KB page and the
   /// memory.
+  /// @param ar the request.
+  /// @throws AxiError on the first field that breaks the subset.
   void check(const ArChannel& ar) const {
     const uint64_t bytes = (ar.len + 1ull) * s_.beat_bytes;
     if (ar.burst != 1) fail(std::format("burst type {}, not INCR", ar.burst));
@@ -136,10 +136,16 @@ class AxiReadPort {
     if (ar.addr + bytes > mem_.size()) fail(std::format("burst at 0x{:x} past the memory", ar.addr));
   }
 
+  /// @brief Stop the run on a broken rule.
+  /// @param what the rule and what the master did.
+  /// @throws AxiError always, with the cycle.
   [[noreturn]] void fail(const std::string& what) const {
     throw AxiError(std::format("cycle {}: {}", cycle_, what));
   }
 
+  /// @brief A random event.
+  /// @param permille its chance, in thousandths.
+  /// @return whether it happens this time.
   bool draw(uint64_t permille) { return rng_() % 1000 < permille; }
 
   std::span<const uint8_t> mem_;

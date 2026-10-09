@@ -8,6 +8,7 @@ its FIFO covers the memory's latency. The memory's own checks (alignment,
 4 KB, range, burst length, a request held until taken) end the run on a
 broken rule; a test shows they fire."""
 
+import os
 import subprocess
 from dataclasses import dataclass
 
@@ -51,7 +52,12 @@ def run(
     return subprocess.run(argv, input=memoryview(words), capture_output=True)
 
 
-def fetch(mem: np.ndarray, commands: list[tuple[int, int]], params=(), **plusargs: int) -> Result:
+def fetch(
+    mem: np.ndarray,
+    commands: list[tuple[int, int]],
+    params: tuple[tuple[str, int], ...] = (),
+    **plusargs: int,
+) -> Result:
     result = run(mem, commands, params, **plusargs)
     assert result.returncode == 0, f"{plusargs}: {result.stderr.decode()}"
     words = np.frombuffer(result.stdout, dtype="<u4")
@@ -142,6 +148,7 @@ def test_every_beat_in_order(timing: str, shape: str) -> None:
     assert np.array_equal(got.last, last), f"seed {seed}: last flags"
     assert got.bursts == n_bursts(commands, max_burst), f"seed {seed}"
     assert got.r_stalls == 0, f"seed {seed}: the memory waited on RREADY"
+    assert 1 <= got.max_in_flight <= TIMINGS[timing].get("outstanding", 8), f"seed {seed}"
     assert not got.err
 
 
@@ -154,6 +161,7 @@ def test_full_rate(latency: int) -> None:
     n = 2048
     got = fetch(memory(rng), [(0, n)], latency=latency, outstanding=8)
     assert got.cycles <= n + latency + FAST_SLACK_CYCLES, got.cycles
+    assert got.max_in_flight >= -(-latency // MAX_BURST), got.max_in_flight  # covers the latency
 
 
 @rtl.needs_verilator
@@ -189,3 +197,38 @@ def test_the_memory_rejects_a_broken_request(case: str) -> None:
     result = run(memory(rng), BROKEN[case])
     assert result.returncode == 5, result.stderr.decode()
     assert case in result.stderr.decode()
+
+
+# What axi_mem_test prints per case: a rule's message, or ok.
+MODEL_CASES = {
+    "crosses 4 KB": "crosses 4 KB",
+    "too long": "more than 16",
+    "wrong size": "not the data width",
+    "not INCR": "not INCR",
+    "not beat-aligned": "not beat-aligned",
+    "past the memory": "past the memory",
+    "to the 4 KB boundary": "ok",
+    "changed while waiting": "AR changed or dropped",
+    "dropped while waiting": "AR changed or dropped",
+    "held while waiting": "ok",
+    "latency": "ok",
+}
+
+
+def test_memory_model_checks() -> None:
+    """Each of the model's checks fires on a hand-made request that breaks
+    it, and only then; the first beat comes after exactly the latency and
+    waits for RREADY."""
+    binary = rtl.BUILD / "axi_mem_test"
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    cxx = os.environ.get("CXX", "g++")
+    source = bulk.DRIVERS / "axi_mem_test.cpp"
+    build = subprocess.run(
+        [cxx, "-std=c++23", "-O1", "-o", str(binary), str(source)], capture_output=True, text=True
+    )
+    assert build.returncode == 0, build.stderr
+    lines = subprocess.run([str(binary)], capture_output=True, text=True, check=True).stdout
+    got = dict(line.split(": ", 1) for line in lines.splitlines())
+    assert set(got) == set(MODEL_CASES)
+    for case, want in MODEL_CASES.items():
+        assert want in got[case] and (want == "ok") == (got[case] == "ok"), (case, got[case])

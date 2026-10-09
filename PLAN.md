@@ -923,8 +923,12 @@ checkpoint report.
   memory behaviours × 4 DMA shapes: every beat and `last` exact, bursts as
   long as allowed, no wait on the data channel; full rate (cycles ≤ beats +
   latency + 8) up to a 40-cycle latency with a 64-beat FIFO, and a 16-beat
-  FIFO measurably slower there; an error response kept; the model's checks
-  fire. Mutations (9 hand mutations of the DMA): all caught. Left for step
+  FIFO measurably slower there; an error response kept. The model alone
+  (`axi_mem_test.cpp`, hand-made requests): each check fires on the rule it
+  guards and not otherwise, and the first beat comes after exactly the
+  latency. Mutations (9 hand mutations of the DMA): all caught. A command
+  costs at least 2 cycles of requests, so 1-beat commands run at half rate;
+  the engine's are hundreds of beats per port. Left for step
   3: the FIFO depth against pauses on many ports in lockstep (an engine
   question), and a loop shared by the handshake drivers (`stream.h`): the
   lane's and the DMA's loops share little, the engine's will show what is
