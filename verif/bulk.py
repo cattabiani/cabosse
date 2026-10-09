@@ -10,9 +10,10 @@ the block, and writes one uint32 result per record to stdout, in order,
 collected by valid_o. A record's fields are the order the driver documents.
 
 For blocks with clk_i, rst_ni, valid_i, valid_o, fields of at most 32 bits
-and no backpressure. The lane (dot_lane.cpp) has a valid/ready handshake and
-its own loop and protocol, documented there; build() serves it too. Other
-handshakes and wide or AXI ports belong in cocotb.
+and no backpressure. Blocks with handshakes have their own loop and protocol,
+documented in their driver; build() serves them too: the lane (dot_lane.cpp)
+and the DMA (port_dma.cpp), whose AXI port talks to the memory model in
+bulk/axi_mem.h.
 """
 
 import functools
@@ -59,6 +60,35 @@ def _build(top: str, params: tuple[tuple[str, int], ...]) -> Path:
     result = subprocess.run(argv, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-4000:]
     return build_dir / "bulk"
+
+
+def build_program(name: str) -> Path:
+    """Compile verif/bulk/<name>.cpp alone, with no RTL (a test of a model
+    the drivers share), once per test session, with CXX (else g++); needs
+    C++23 with <print>, as the drivers."""
+    with _BUILD_LOCK:
+        return _build_program(name)
+
+
+@functools.cache
+def _build_program(name: str) -> Path:
+    binary = rtl.BUILD / name
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    cxx = os.environ.get("CXX", "g++")
+    argv = [cxx, "-std=c++23", "-O1", "-o", str(binary), str(DRIVERS / f"{name}.cpp")]
+    result = subprocess.run(argv, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr[-4000:]
+    return binary
+
+
+def run_driver(
+    top: str, words: np.ndarray, params: tuple[tuple[str, int], ...] = (), **plusargs: int
+) -> subprocess.CompletedProcess:
+    """A driver with its own protocol (a handshake block's): `words` (uint32)
+    on stdin, plusargs +name=value; the finished process, output as bytes."""
+    argv = [str(build(top, params)), *(f"+{k}={v}" for k, v in plusargs.items())]
+    words = np.ascontiguousarray(words, dtype="<u4")
+    return subprocess.run(argv, input=memoryview(words), capture_output=True)
 
 
 def run(top: str, records: np.ndarray, params: tuple[tuple[str, int], ...] = ()) -> np.ndarray:
