@@ -13,19 +13,19 @@ model's ftz switch.
 The handshake's corner cases are in test_dot_lane (cocotb); here it is
 volume."""
 
-import itertools
 import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
 import bulk
+import commands
 import numpy as np
 import paths
 import pytest
 import torch
 from fp_inputs import bf16_rounded, f32_classes, with_exponents
-from golden import arith, decoder, dot, settings
+from golden import arith, decoder, settings
 from lane import FULL_RATE_LEN, E, golden_dot, random_gaps
 
 import rtl
@@ -326,60 +326,42 @@ def test_volume() -> None:
     bulk.in_parallel(one, volume_seeds())
 
 
-def smollm2_rows(model: decoder.Model) -> dict[str, list[Rows]]:
-    """The dot products of one SmolLM2 decode step, as the lanes see them:
-    every matrix of the first and last layers against its real input, the
-    attention scores and p.V rows of those layers, and the first 4096 rows
-    of the classifier. The step runs at position 63 after a 63-token prompt."""
-    seen: dict[str, list[Rows]] = {}
-    n_layers = len(model.layers)
-    layers = {0, n_layers - 1}
-    matrices = ("q", "k", "v", "o", "gate", "up", "down")  # a layer's matvec calls, in order
-    n_matvec, n_scores, n_values = itertools.count(), itertools.count(), itertools.count()
+def lane_rows(call: commands.EngineCall) -> Rows:
+    """An engine command's dot products as lane rows: a MATVEC's rows against
+    its input; per query head, each cached position's K against q (SCORES)
+    and each dimension of V across positions against p (VALUES)."""
 
     def bits(t: torch.Tensor) -> np.ndarray:
         return arith.bits_bf16(t.contiguous()).numpy().astype(np.uint16)
 
-    def add(name: str, w: torch.Tensor, x: torch.Tensor, valid: torch.Tensor | None) -> None:
-        w, x = torch.broadcast_tensors(w, x)
-        k = w.shape[-1]
-        v = np.ones(w.shape, bool) if valid is None else torch.broadcast_to(valid, w.shape).numpy()
-        seen.setdefault(name, []).append(
-            Rows(bits(w).reshape(-1, k), bits(x).reshape(-1, k), v.reshape(-1, k))
-        )
+    cmd, a, mem = call.cmd, call.a, call.mem
+    if cmd.op == commands.Op.MATVEC:
+        w, x = mem, a[None, :]
+    else:
+        kv_heads, t = mem.shape[0], mem.shape[1]
+        group = cmd.n // kv_heads  # query head h reads KV head h // group
+        if cmd.op == commands.Op.SCORES:
+            w, x = mem[:, None], a.reshape(kv_heads, group, 1, cmd.m)
+        else:
+            w, x = mem.transpose(1, 2)[:, None], a.reshape(kv_heads, group, 1, t)
+    w, x = torch.broadcast_tensors(w, x)
+    k = w.shape[-1]
+    return Rows(bits(w).reshape(-1, k), bits(x).reshape(-1, k))
 
-    matvec, scores, values = dot.matvec, decoder.attention_scores, decoder.attention_values
 
-    def rec_matvec(w: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-        layer, j = divmod(next(n_matvec), len(matrices))
-        if layer == n_layers:
-            add("classifier", w[:4096], x[-1][None, :], None)
-        elif layer in layers:
-            add(f"layer {layer} {matrices[j]}", w, x[-1][None, :], None)
-        return matvec(w, x)
-
-    def rec_scores(q: torch.Tensor, k: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-        if (i := next(n_scores)) in layers:
-            add(f"layer {i} scores", k, q[..., None, :], None)
-        return scores(q, k, scale)
-
-    def rec_values(
-        p: torch.Tensor, v: torch.Tensor, valid: torch.Tensor | None = None
-    ) -> torch.Tensor:
-        if (i := next(n_values)) in layers:
-            mask = None if valid is None else valid[..., None, :]
-            add(f"layer {i} p.V", v.transpose(-1, -2), p[..., None, :], mask)
-        return values(p, v, valid)
-
-    prompt = list(range(1000, 1063))
-    cache = decoder.KVCache.empty(model, 64)
-    decoder.step(model, cache, prompt)
-    with pytest.MonkeyPatch.context() as mp:  # only the decode step is recorded
-        mp.setattr(dot, "matvec", rec_matvec)
-        mp.setattr(decoder, "attention_scores", rec_scores)
-        mp.setattr(decoder, "attention_values", rec_values)
-        decoder.decode_step(model, cache, 1063)
-    return seen
+def smollm2_rows(model: decoder.Model) -> dict[str, list[Rows]]:
+    """The dot products of one SmolLM2 decode step, as the lanes see them:
+    every engine command of the first and last layers (their seven matrices
+    against their real inputs, the attention scores and the p.V rows), and
+    the first 4096 rows of the classifier. The step runs at position 63
+    after a 63-token prompt."""
+    last = len(model.layers) - 1
+    keep = ("layers.0.", f"layers.{last}.")
+    _, calls = commands.record_step(model, list(range(1000, 1063)), 1063)
+    found = {c.name: [lane_rows(c)] for c in calls if c.name.startswith(keep)}
+    classifier = lane_rows(next(c for c in calls if c.name == "lm_head"))
+    found["lm_head"] = [Rows(classifier.w[:4096], classifier.x[:4096])]
+    return found
 
 
 @pytest.mark.slow

@@ -889,6 +889,22 @@ with `L` = 128), a single row. Idle lanes must not write results.
 and weight layout; memory model and DMA; engine `MATVEC`; engine attention;
 checkpoint report.
 
+**Progress:**
+- [x] Answers above (PR #50).
+- [x] Command-list recording and weight layout (`model/commands.py`):
+  `run()` hands each `MATVEC`, `SCORES` and `VALUES` to a recorder as an
+  `EngineCall` (the command, the name of what it reads, its input buffer,
+  the matrix or the cache's first t positions, its output as written).
+  `record_step()` runs a prompt with `decoder.step`, copies its KV cache into
+  HBM (`load(..., cache)`) and records one decode step; a test checks it
+  against running every prompt token through `run()`, bit for bit, at
+  positions 0, 1 and 4. `lane_order()` gives a matrix in the ports' read
+  order for any `L` (zeros past the matrix, nothing for a port with no rows
+  in a pass), tested against an element-by-element restatement at 4, 8, 20
+  and 128 lanes. M4's real-data lane test now takes its rows from the
+  recording: the same 19 groups, 16,768 rows and 9.58 million pairs,
+  bit-exact.
+
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
 KV cache writes.

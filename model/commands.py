@@ -19,13 +19,15 @@ BF16 buffer or to the KV cache: the D-011 rounding points are where the
 destination is BF16, not a step of their own.
 
 Addresses are HBM byte addresses from a Layout. HBM is modelled as a map from
-address to tensor, in the tensors' logical shape: the engine's read order
-(docs/architecture.md, "Weight layout") is a reordering the model leaves out.
+address to tensor, in the tensors' logical shape. lane_order() gives a matrix
+in the engine's read order (docs/architecture.md, "Weight layout"), the
+reordering the host does at load time.
 """
 
 import enum
 import math
 import struct
+from collections.abc import Callable
 from dataclasses import dataclass, fields
 
 import torch
@@ -35,6 +37,9 @@ from transformers import LlamaConfig
 ALIGN = 4096  # HBM bytes; every tensor starts on a boundary
 COMMAND_BUFFER_BYTES = 64 * 2**10  # on chip, next to the controller
 BF16, F32 = torch.bfloat16, torch.float32
+BEAT_BYTES = 32  # one beat of an HBM port (256 bits)
+E = 4  # weights a lane takes per cycle (D-027)
+LANES_PER_PORT = BEAT_BYTES // (E * BF16.itemsize)  # a beat holds E weights for each
 
 
 class Op(enum.IntEnum):
@@ -55,6 +60,9 @@ class Op(enum.IntEnum):
     SUMSQ = 14
     MAX = 15
     ROTATE_HALF = 16
+
+
+ENGINE_OPS = frozenset({Op.MATVEC, Op.SCORES, Op.VALUES})  # the rest is the vector unit's
 
 
 class Flag(enum.IntFlag):
@@ -334,9 +342,13 @@ class Layout:
         return max(a + n_bytes(s, t) for a, s, t in self.tensors.values())
 
 
-def load(model: decoder.Model, layout: Layout) -> dict[int, torch.Tensor]:
+def load(
+    model: decoder.Model, layout: Layout, cache: decoder.KVCache | None = None
+) -> dict[int, torch.Tensor]:
     """HBM as the host fills it: weights and RoPE tables (shared with the
-    model, never written), and an empty KV cache."""
+    model, never written), and an empty KV cache, or a copy of `cache`'s
+    filled positions (a prompt run by decoder.step, which writes the same
+    bits as one decode step per position)."""
     names = {
         "embed": model.embed,
         "rope_cos": model.cos[: layout.cap],
@@ -352,7 +364,33 @@ def load(model: decoder.Model, layout: Layout) -> dict[int, torch.Tensor]:
         t = names[name] if name in names else torch.zeros(shape, dtype=dtype)
         assert t.shape == shape and t.dtype == dtype, (name, t.shape, shape, t.dtype)
         hbm[addr] = t
+    if cache is not None:
+        n = cache.length
+        assert n <= layout.cap, (n, layout.cap)
+        for i in range(layout.config.num_hidden_layers):
+            for name, golden in (("k_cache", cache.k[i]), ("v_cache", cache.v[i])):
+                hbm[layout.addr(f"layers.{i}.{name}")][:, :n] = golden[:, :n]
     return hbm
+
+
+def lane_order(w: torch.Tensor, lanes: int) -> list[torch.Tensor]:
+    """A matrix in the order the engine's ports read it (docs/architecture.md,
+    "Weight layout"): rows go in passes of `lanes`; in each pass port p
+    streams the beats of its LANES_PER_PORT rows, E columns of each row per
+    beat, row by row within the beat. Columns past a row's end, and rows past
+    the matrix's end in a port's last group, are zeros (the lanes mask or
+    ignore them); a port with no rows in a pass streams nothing for it.
+    Returns each port's beats, BF16 [n_beats, LANES_PER_PORT * E]."""
+    assert w.dim() == 2 and w.dtype == BF16, (w.shape, w.dtype)
+    assert lanes > 0 and lanes % LANES_PER_PORT == 0, lanes
+    n, m = w.shape
+    ports, n_groups, n_cols = lanes // LANES_PER_PORT, -(-n // LANES_PER_PORT), -(-m // E)
+    padded = torch.zeros(n_groups * LANES_PER_PORT, n_cols * E, dtype=BF16)
+    padded[:n, :m] = w
+    # Group g (rows 4g ... 4g + 3) is port g % ports's in pass g // ports.
+    beats = padded.reshape(n_groups, LANES_PER_PORT, n_cols, E).transpose(1, 2)
+    beats = beats.reshape(n_groups, n_cols, LANES_PER_PORT * E)
+    return [beats[p::ports].reshape(-1, LANES_PER_PORT * E) for p in range(ports)]
 
 
 def load_vector(dst: Buf, layout: Layout, name: str, flags: Flag = Flag.NONE) -> Command:
@@ -489,15 +527,35 @@ def flags_ok(cmd: Command) -> bool:
     return not cmd.flags & ~accepted and all((cmd.flags & pair) != pair for pair in EXCLUSIVE)
 
 
+@dataclass(frozen=True)
+class EngineCall:
+    """One engine command as run() executed it: what the engine reads and
+    what it writes, bit for bit (the RTL tests' real data)."""
+
+    index: int  # in the command list
+    name: str  # the Layout name of what it reads in HBM
+    cmd: Command
+    a: torch.Tensor  # the input buffer, BF16
+    mem: torch.Tensor  # the matrix, or a copy of the cache's first t positions per head
+    out: torch.Tensor  # dst as written: FP32, or rounded where the buffer is BF16
+
+
 def run(
-    commands: list[Command], layout: Layout, hbm: dict[int, torch.Tensor], token: int, position: int
+    commands: list[Command],
+    layout: Layout,
+    hbm: dict[int, torch.Tensor],
+    token: int,
+    position: int,
+    record: Callable[[EngineCall], None] | None = None,
 ) -> torch.Tensor | None:
     """Execute a command list for one token, as the controller does: buffers
     start empty, HBM (the KV cache) is updated in place. Returns what OUTPUT
     wrote to the host, or None for a list without OUTPUT (a prompt token
-    whose logits the host does not need)."""
+    whose logits the host does not need). `record` gets every engine
+    command's EngineCall."""
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
     formats = buffers(layout.config, layout.cap)
+    names = {addr: name for name, (addr, _, _) in layout.tensors.items()}  # tied: lm_head
     buf: dict[Buf, torch.Tensor] = {}
     output = None
     t = position + 1  # positions attention reads: 0 ... position
@@ -581,4 +639,23 @@ def run(
                 return output
             case _:  # the controller stops with STATUS error and the index in ERROR
                 raise AssertionError(f"unknown command {cmd.op!r}")
+        if record is not None and cmd.op in ENGINE_OPS:
+            read = mem if cmd.op == Op.MATVEC else mem[:, :t].clone()  # later tokens write it
+            record(EngineCall(i, names[cmd.addr], cmd, a, read, buf[cmd.dst]))
     raise AssertionError("command list without END")
+
+
+def record_step(
+    model: decoder.Model, prompt: list[int], token: int
+) -> tuple[torch.Tensor, list[EngineCall]]:
+    """One decode step of `token` at position len(prompt), after `prompt`
+    (run by decoder.step, its KV cache copied into HBM): the logits and the
+    step's engine commands as run() executed them."""
+    layout = Layout.of(model.config, cap=len(prompt) + 1)
+    cache = decoder.KVCache.empty(model, layout.cap)
+    if prompt:
+        decoder.step(model, cache, prompt)
+    hbm, calls = load(model, layout, cache), []
+    logits = run(build(layout), layout, hbm, token, len(prompt), calls.append)
+    assert logits is not None
+    return logits, calls

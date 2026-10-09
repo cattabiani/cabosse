@@ -11,10 +11,11 @@ import paths
 import perf
 import pytest
 import torch
-from golden import arith, decoder, tiny
+from golden import arith, decoder, dot, tiny
 from reporting import arch_doc
 
 TOKENS = [3, 17, 200, 5, 99]  # one decode step each, at positions 0, 1, ...
+LAYER_READS = ("q", "k", "v", "k_cache", "v_cache", "o", "gate", "up", "down")  # engine order
 
 
 @pytest.mark.parametrize(("n_kv_heads", "tied"), [(1, False), (2, True), (4, True)])
@@ -198,3 +199,100 @@ def test_architecture_doc_is_up_to_date() -> None:
     """docs/architecture.md shows what model/commands.py defines; after a
     change, run: python scripts/report_arch.py"""
     assert arch_doc.render() == arch_doc.PATH.read_text()
+
+
+def same_bits(x: torch.Tensor, y: torch.Tensor) -> bool:
+    bits = arith.bits_bf16 if x.dtype == torch.bfloat16 else arith.bits_f32
+    return x.dtype == y.dtype and x.shape == y.shape and torch.equal(bits(x), bits(y))
+
+
+@pytest.mark.parametrize("n_kv_heads", [1, 2])
+@pytest.mark.parametrize("n_prompt", [0, 1, 4])
+def test_record_step_matches_running_token_by_token(n_kv_heads: int, n_prompt: int) -> None:
+    """A prompt run by decoder.step and copied into HBM gives the same step
+    as running every prompt token through run(): logits and every engine
+    command's inputs and output."""
+    c = tiny.tiny_config(n_kv_heads=n_kv_heads)
+    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=2))
+    prompt, token = TOKENS[:n_prompt], TOKENS[n_prompt]
+    layout = commands.Layout.of(c, cap=n_prompt + 1)
+    hbm, cmds = commands.load(model, layout), commands.build(layout)
+    for position, t in enumerate(prompt):
+        commands.run(cmds, layout, hbm, t, position)
+    expected: list[commands.EngineCall] = []
+    logits = commands.run(cmds, layout, hbm, token, n_prompt, expected.append)
+    got_logits, got = commands.record_step(model, prompt, token)
+    assert same_bits(got_logits, logits)
+    assert len(got) == len(expected)
+    for g, e in zip(got, expected, strict=True):
+        assert (g.index, g.name, g.cmd) == (e.index, e.name, e.cmd)
+        assert all(same_bits(getattr(g, f), getattr(e, f)) for f in ("a", "mem", "out")), g.name
+
+
+@pytest.mark.parametrize("tied", [True, False])
+def test_recorded_calls_are_the_engine_commands(tied: bool) -> None:
+    """Every MATVEC, SCORES and VALUES, in order, named after what it reads;
+    attention reads the cache's first t positions; a MATVEC's output is its
+    matrix times its input."""
+    c = tiny.tiny_config(tied=tied)
+    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=3))
+    prompt = TOKENS[:3]
+    _, calls = commands.record_step(model, prompt, TOKENS[3])
+    layers = [f"layers.{i}.{r}" for i in range(c.num_hidden_layers) for r in LAYER_READS]
+    assert [x.name for x in calls] == [*layers, "lm_head"]
+    t = len(prompt) + 1
+    for x in calls:
+        assert x.cmd.op in commands.ENGINE_OPS and x.a.dtype == torch.bfloat16, x.name
+        if x.cmd.op == commands.Op.MATVEC:
+            assert x.mem.shape == (x.cmd.n, x.cmd.m), x.name
+            assert same_bits(x.out, dot.matvec(x.mem, x.a[None])[0]), x.name
+        else:
+            assert x.mem.shape == (c.num_key_value_heads, t, c.head_dim), x.name
+
+
+def lane_order_restated(w: torch.Tensor, lanes: int) -> list[list[list[int]]]:
+    """docs/architecture.md's weight layout, element by element: each port's
+    beats as BF16 bit patterns, zeros where no weight is."""
+    bits = arith.bits_bf16(w).tolist()
+    n, m = w.shape
+    ports = lanes // 4
+    out: list[list[list[int]]] = [[] for _ in range(ports)]
+    for first in range(0, n, lanes):  # a pass
+        for p in range(ports):
+            rows = range(first + 4 * p, min(first + 4 * p + 4, n))
+            for k in range(0, m, 4) if rows else ():
+                beat = [0] * 16
+                for i, r in enumerate(rows):
+                    for e in range(min(4, m - k)):
+                        beat[4 * i + e] = bits[r][k + e]
+                out[p].append(beat)
+    return out
+
+
+LANE_ORDER_SHAPES = [(1, 1), (3, 5), (4, 4), (7, 9), (21, 17), (64, 8), (192, 12)]
+
+
+@pytest.mark.parametrize("lanes", [4, 8, 20, 128])
+@pytest.mark.parametrize("shape", LANE_ORDER_SHAPES)
+def test_lane_order(lanes: int, shape: tuple[int, int]) -> None:
+    """Each port's beats hold its rows' weights, 4 columns per row, in pass
+    order; 32 bytes per beat; zeros past the matrix; nothing for a port
+    with no rows in a pass."""
+    rng = torch.Generator().manual_seed(lanes * 1000 + shape[0])
+    w = arith.bf16_from_bits(torch.randint(0, 2**16, shape, generator=rng))
+    got = commands.lane_order(w, lanes)
+    assert all(b.shape[1] * b.dtype.itemsize == commands.BEAT_BYTES for b in got)
+    assert [arith.bits_bf16(b).tolist() for b in got] == lane_order_restated(w, lanes)
+
+
+@pytest.mark.parametrize(("lanes", "rows", "empty_ports"), [(128, 192, 16), (20, 576, 1)])
+def test_lane_order_leaves_ports_idle_in_a_partial_pass(
+    lanes: int, rows: int, empty_ports: int
+) -> None:
+    """SmolLM2's 192-row k and v at 128 lanes: half the ports idle in the
+    second pass; 576 rows at 20 lanes: the last port idle in the last."""
+    beats = commands.lane_order(torch.zeros(rows, 8, dtype=torch.bfloat16), lanes)
+    n_passes = -(-rows // lanes)
+    counts = [len(b) // 2 for b in beats]  # 8 columns: 2 beats per pass
+    assert counts.count(n_passes - 1) == empty_ports
+    assert counts.count(n_passes) == len(beats) - empty_ports
