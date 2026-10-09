@@ -929,14 +929,15 @@ checkpoint report.
   latency with a 64-beat FIFO, and a 16-beat FIFO measurably slower there;
   an error response kept; addresses across 4 GiB (34 bits). The FIFO alone
   (`test_stream_fifo.py`, cocotb): against a Python queue cycle by cycle;
-  fill to full and drain to empty, random traffic with push and pop
-  together both when full and when empty, push and pop every cycle (one
-  item per cycle from depth 2, every other cycle at depth 1), reset with
-  items inside; depths 1 to 5 and 64, widths 1, 16 and 256 (9 mutations
-  caught). The model alone (`axi_mem_test.cpp`, hand-made
+  fill to full with refused pushes held, then drain; random traffic with
+  push and pop together both when full and when empty; push and pop every
+  cycle from empty and from full, counted by the FIFO's own handshakes (one
+  item per cycle from depth 2, every other cycle at depth 1); outputs
+  checked during reset, and reset with items inside; depths 1 to 5 and 64,
+  widths 1, 16 and 256. 9 hand mutations (listed in PR #52), all caught. The model alone (`axi_mem_test.cpp`, hand-made
   requests): each check fires on the rule it guards and not otherwise, and
   the first beat comes after exactly the latency. Mutations (9 hand
-  mutations of the DMA): all caught. Reviewed with `/code-review` and
+  mutations of the DMA, listed in PR #52): all caught. Reviewed with `/code-review` and
   `/simplify`; the drivers share their reset and drain constants
   (`stream.h`), and `bulk.py` runs any driver with plusargs
   (`run_driver`) and builds the model's test (`build_program`).
