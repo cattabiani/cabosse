@@ -81,12 +81,12 @@ def test_dot_lane_rejects_a_short_loop() -> None:
         ((("MaxBurst", 17),), "MaxBurst"),
         ((("Depth", 8),), "Depth"),
         ((("DataWidth", 96),), "DataWidth"),
-        ((("CountWidth", 6),), "CountWidth"),
+        ((("CountWidth", 4),), "CountWidth"),
     ],
 )
 def test_port_dma_rejects_a_bad_shape(params: tuple, message: str) -> None:
     """Longer bursts than AXI3 allows, a FIFO smaller than a burst, a data
-    width that is not a power of two, a count too narrow for a page's
-    beats: elaboration stops with a message."""
+    width that is not a power of two, a count narrower than a burst:
+    elaboration stops with a message."""
     result = rtl.lint("port_dma", params=list(params))
     assert result.returncode != 0 and message in result.stderr, result.stderr

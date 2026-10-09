@@ -14,7 +14,6 @@ The handshake's corner cases are in test_dot_lane (cocotb); here it is
 volume."""
 
 import dataclasses
-import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -107,8 +106,7 @@ def check(
     rec = records(groups)
     gaps = random_gaps(np.random.default_rng(seed), len(rec), p_gap)
     rec[:, -1] |= gaps.astype(np.uint32) << 8
-    argv = [str(bulk.build("dot_lane", params)), f"+ready={ready}", f"+seed={seed}"]
-    result = subprocess.run(argv, input=memoryview(rec), capture_output=True)
+    result = bulk.run_driver("dot_lane", rec, params, ready=ready, seed=seed)
     assert result.returncode == 0, f"{label}: {result.stderr.decode()}"
     words = np.frombuffer(result.stdout, dtype="<u4")
     got = Run(words[:-2], int(words[-2]), int(words[-1]), len(rec), int(gaps.sum()))

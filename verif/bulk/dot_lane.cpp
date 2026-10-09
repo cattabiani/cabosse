@@ -23,8 +23,6 @@ namespace {
 
 constexpr size_t kFields = 5;              ///< words per beat record
 constexpr uint64_t kMaxCyclesPerBeat = 64;  ///< a hung handshake fails instead of running forever
-constexpr int kDrainCycles = 64;            ///< quiet cycles checked after the last result
-constexpr int kResetCycles = 2;              ///< cycles in reset before the first beat
 constexpr uint64_t kSlackBeats = 16;  ///< the hang limit's allowance beyond the beats
 
 /// @brief One clock cycle with the inputs already set: settle with the clock

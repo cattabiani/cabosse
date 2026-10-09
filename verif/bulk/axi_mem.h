@@ -18,6 +18,9 @@
 #include <span>
 #include <stdexcept>
 
+constexpr uint64_t kAxiMaxBurst = 16;  ///< beats per burst, at most (AXI3)
+constexpr uint64_t kAxiPageBytes = 4096;  ///< no burst crosses a boundary of these
+
 /// @brief How the memory behaves; every value can be set per test.
 struct AxiMemSettings {
   uint64_t latency = 1;          ///< cycles from a burst's request to its first beat, at least 1
@@ -25,7 +28,7 @@ struct AxiMemSettings {
   uint64_t rate_permille = 1000; ///< chance per cycle that the next beat may start
   uint64_t pause_permille = 0;   ///< chance per cycle that a pause starts
   uint64_t pause_max = 0;        ///< a pause lasts 1 to pause_max cycles, uniformly
-  uint64_t max_burst = 16;       ///< beats per burst, at most (AXI3)
+  uint64_t bad_beat = UINT64_MAX; ///< the index of a beat answered with SLVERR (none by default)
   uint64_t beat_bytes = 32;      ///< bytes per beat: the data width
 };
 
@@ -61,6 +64,8 @@ class AxiReadPort {
   bool ar_ready() const { return bursts_.size() < s_.outstanding; }
   /// @return RVALID for this cycle.
   bool r_valid() const { return r_valid_; }
+  /// @return RRESP for this cycle: SLVERR (2) on settings.bad_beat, else OKAY.
+  unsigned r_resp() const { return r_valid_ && n_beats_ == s_.bad_beat ? 2 : 0; }
   /// @return RDATA for this cycle (meaningful while r_valid()).
   std::span<const uint8_t> r_data() const {
     if (!r_valid_) return {};
@@ -73,7 +78,7 @@ class AxiReadPort {
   /// @param r_ready the master's RREADY this cycle.
   /// @throws AxiError if the master breaks a rule (the message says which).
   void tick(const ArChannel& ar, bool r_ready) {
-    if (held_.valid && !(ar == held_)) {
+    if (held_.valid && ar != held_) {
       fail("AR changed or dropped while waiting for ARREADY");
     }
     if (ar.valid && ar_ready()) {
@@ -128,9 +133,9 @@ class AxiReadPort {
     const uint64_t bytes = (ar.len + 1ull) * s_.beat_bytes;
     if (ar.burst != 1) fail(std::format("burst type {}, not INCR", ar.burst));
     if ((1ull << ar.size) != s_.beat_bytes) fail(std::format("size {} is not the data width", ar.size));
-    if (ar.len + 1ull > s_.max_burst) fail(std::format("{} beats, more than {}", ar.len + 1, s_.max_burst));
+    if (ar.len + 1ull > kAxiMaxBurst) fail(std::format("{} beats, more than {}", ar.len + 1, kAxiMaxBurst));
     if (ar.addr % s_.beat_bytes != 0) fail(std::format("address 0x{:x} not beat-aligned", ar.addr));
-    if (ar.addr / 4096 != (ar.addr + bytes - 1) / 4096) {
+    if (ar.addr / kAxiPageBytes != (ar.addr + bytes - 1) / kAxiPageBytes) {
       fail(std::format("burst at 0x{:x} of {} bytes crosses 4 KB", ar.addr, bytes));
     }
     if (ar.addr + bytes > mem_.size()) fail(std::format("burst at 0x{:x} past the memory", ar.addr));
@@ -146,7 +151,7 @@ class AxiReadPort {
   /// @brief A random event.
   /// @param permille its chance, in thousandths.
   /// @return whether it happens this time.
-  bool draw(uint64_t permille) { return rng_() % 1000 < permille; }
+  bool draw(uint64_t permille) { return permille >= 1000 || (permille > 0 && rng_() % 1000 < permille); }
 
   std::span<const uint8_t> mem_;
   AxiMemSettings s_;

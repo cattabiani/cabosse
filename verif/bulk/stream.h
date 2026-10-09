@@ -23,6 +23,9 @@
 
 #include "verilated.h"
 
+constexpr int kResetCycles = 2;   ///< cycles in reset before the first input
+constexpr int kDrainCycles = 64;  ///< after the last result: more than any pipeline depth we use
+
 /// @brief One record: the words of one input, in the driver's field order.
 using Record = std::span<const uint32_t>;
 
@@ -95,9 +98,6 @@ inline uint64_t plusarg(VerilatedContext& context, const std::string& name, uint
 template <Block Top, typename SetInputs, typename Output>
   requires std::invocable<SetInputs, Top&, Record> && std::invocable<Output, Top&>
 int stream(int argc, char** argv, size_t fields, SetInputs set_inputs, Output output) {
-  constexpr int kResetCycles = 2;
-  constexpr int kDrainCycles = 64;  // more than any pipeline depth we use
-
   const std::vector<uint32_t> words = read_words(stdin);
   if (words.size() % fields != 0) {
     std::println(stderr, "{} words is not a whole number of {}-word records", words.size(), fields);

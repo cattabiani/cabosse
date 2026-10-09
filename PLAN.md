@@ -910,29 +910,37 @@ checkpoint report.
   the classifier for the last position only.
 - [x] Memory model and DMA. `rtl/port_dma.sv`: one port's reader; a
   command (beat-aligned address, beats) becomes AXI read bursts of at most
-  16 beats, none crossing 4 KB, its beats leave in order with `last` on the
-  command's final one. A burst is requested only when the FIFO has room for
-  it (credits), so the memory never waits on the data channel; the next
-  command is taken once the current one's bursts are requested.
+  16 beats, none crossing 4 KB, and its beats leave in order. Command
+  boundaries are not marked: the engine counts the beats it asked for. A
+  burst is requested only when the FIFO has room for it (credits), so the
+  memory never waits on the data channel; the next command is taken the
+  cycle after the current one's last burst request, so 1-beat commands run
+  at half rate. The burst length is computed on 5 bits (32 copies at 250
+  MHz); registering it a cycle ahead waits for M8's Vivado run.
   `rtl/stream_fifo.sv`: a valid/ready FIFO. `verif/bulk/axi_mem.h`: the
   memory model of the answers above (latency, bursts in flight, bandwidth,
-  pauses, per seed) with its own checks (burst type, size and length,
-  alignment, 4 KB, range, a request held until taken); `port_dma.cpp`
-  drives the DMA with it. Tests (`verif/tests/test_port_dma.py`): commands
-  around bursts and 4 KB boundaries, zero-beat and random ones, under 7
-  memory behaviours × 4 DMA shapes: every beat and `last` exact, bursts as
-  long as allowed, no wait on the data channel; full rate (cycles ≤ beats +
-  latency + 8) up to a 40-cycle latency with a 64-beat FIFO, and a 16-beat
-  FIFO measurably slower there; an error response kept. The model alone
-  (`axi_mem_test.cpp`, hand-made requests): each check fires on the rule it
-  guards and not otherwise, and the first beat comes after exactly the
-  latency. Mutations (9 hand mutations of the DMA): all caught. A command
-  costs at least 2 cycles of requests, so 1-beat commands run at half rate;
-  the engine's are hundreds of beats per port. Left for step
-  3: the FIFO depth against pauses on many ports in lockstep (an engine
-  question), and a loop shared by the handshake drivers (`stream.h`): the
-  lane's and the DMA's loops share little, the engine's will show what is
-  common.
+  pauses, an error response, per seed) with its own checks (burst type,
+  size and length, alignment, 4 KB, range, a request held until taken);
+  `port_dma.cpp` drives the DMA with it. Tests
+  (`verif/tests/test_port_dma.py`): commands around bursts and 4 KB
+  boundaries, zero-beat and random ones, under 7 memory behaviours × 3 DMA
+  shapes: every beat exact, bursts as long as allowed, no wait on the data
+  channel; full rate (cycles ≤ beats + latency + 8) up to a 40-cycle
+  latency with a 64-beat FIFO, and a 16-beat FIFO measurably slower there;
+  an error response kept. The model alone (`axi_mem_test.cpp`, hand-made
+  requests): each check fires on the rule it guards and not otherwise, and
+  the first beat comes after exactly the latency. Mutations (9 hand
+  mutations of the DMA): all caught. Reviewed with `/code-review` and
+  `/simplify`; the drivers share their reset and drain constants
+  (`stream.h`), and `bulk.py` runs any driver with plusargs
+  (`run_driver`) and builds the model's test (`build_program`).
+  For step 3: the FIFO depth against pauses on many ports in lockstep, and
+  a loop shared by the handshake drivers once the engine's shows what is
+  common. For step 4: a KV row is 4 beats; if positions are spread over the
+  ports one by one, a tile load is many 4-beat commands per port, far below
+  full rate. A layout where each channel's positions of a head are
+  contiguous (position `p` on channel `p mod 32`) makes a 128-position tile
+  one 16-beat command per port; settle it before the tile buffer.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,

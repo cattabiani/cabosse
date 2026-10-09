@@ -2,13 +2,12 @@
 # Copyright 2026 The Cabosse Authors
 """rtl/port_dma.sv (PLAN.md, M5) against the memory model of
 verif/bulk/axi_mem.h, through the driver verif/bulk/port_dma.cpp: every beat
-and every command's last beat, the bursts it asks for (as long as AXI and the
-4 KB rule allow), no wait on the data channel (credits), and full rate when
-its FIFO covers the memory's latency. The memory's own checks (alignment,
-4 KB, range, burst length, a request held until taken) end the run on a
-broken rule; a test shows they fire."""
+in order, the bursts it asks for (as long as AXI and the 4 KB rule allow),
+no wait on the data channel (credits), and full rate when its FIFO covers
+the memory's latency. The memory's own checks (alignment, 4 KB, range, burst
+type, size and length, a request held until taken) end a run on a broken
+rule; verif/bulk/axi_mem_test.cpp shows each fires."""
 
-import os
 import subprocess
 from dataclasses import dataclass
 
@@ -24,13 +23,13 @@ BEAT_WORDS = BEAT_BYTES // 4
 PAGE_BYTES = 4096
 MAX_BURST = 16
 MEM_BYTES = 64 * 1024
+OUTSTANDING = 8  # the memory model's default bursts in flight
 FAST_SLACK_CYCLES = 8  # full rate: cycles at most beats + latency + this
 
 
 @dataclass
 class Result:
     beats: np.ndarray  # uint32 [n, 8]
-    last: np.ndarray  # bool [n]
     cycles: int
     bursts: int
     max_in_flight: int
@@ -45,11 +44,9 @@ def run(
     **plusargs: int,
 ) -> subprocess.CompletedProcess:
     """The driver on `mem` (uint32 words) and (address, beats) commands."""
-    binary = bulk.build("port_dma", params)
     cmds = [w for addr, beats in commands for w in (addr & 0xFFFFFFFF, addr >> 32, beats)]
-    words = np.concatenate([[len(mem)], mem, [len(commands)], cmds]).astype("<u4")
-    argv = [str(binary), *(f"+{k}={v}" for k, v in plusargs.items())]
-    return subprocess.run(argv, input=memoryview(words), capture_output=True)
+    words = np.concatenate([[len(mem)], mem, [len(commands)], cmds])
+    return bulk.run_driver("port_dma", words, params, **plusargs)
 
 
 def fetch(
@@ -61,20 +58,14 @@ def fetch(
     result = run(mem, commands, params, **plusargs)
     assert result.returncode == 0, f"{plusargs}: {result.stderr.decode()}"
     words = np.frombuffer(result.stdout, dtype="<u4")
-    beats, tail = words[:-5].reshape(-1, BEAT_WORDS + 1), words[-5:]
-    return Result(
-        beats[:, :BEAT_WORDS], beats[:, BEAT_WORDS] == 1, *map(int, tail[:4]), tail[4] == 1
-    )
+    beats, tail = words[:-5].reshape(-1, BEAT_WORDS), words[-5:]
+    return Result(beats, *map(int, tail[:4]), tail[4] == 1)
 
 
-def expected(mem: np.ndarray, commands: list[tuple[int, int]]) -> tuple[np.ndarray, np.ndarray]:
-    """The beats the commands name, in order, and which ends a command."""
-    beats, last = [], []
-    for addr, n in commands:
-        first = addr // BEAT_BYTES
-        beats += [mem[(first + k) * BEAT_WORDS : (first + k + 1) * BEAT_WORDS] for k in range(n)]
-        last += [k == n - 1 for k in range(n)]
-    return np.array(beats, dtype=np.uint32).reshape(-1, BEAT_WORDS), np.array(last, bool)
+def expected(mem: np.ndarray, commands: list[tuple[int, int]]) -> np.ndarray:
+    """The beats the commands name, in order."""
+    rows = mem.reshape(-1, BEAT_WORDS)
+    return np.concatenate([rows[a // BEAT_BYTES : a // BEAT_BYTES + n] for a, n in commands])
 
 
 def n_bursts(commands: list[tuple[int, int]], max_burst: int = MAX_BURST) -> int:
@@ -107,8 +98,8 @@ def edge_commands(rng: np.random.Generator) -> list[tuple[int, int]]:
     return fixed + rand
 
 
-def memory(rng: np.random.Generator, n_bytes: int = MEM_BYTES) -> np.ndarray:
-    return rng.integers(0, 2**32, n_bytes // 4, dtype=np.uint32)
+def memory(rng: np.random.Generator) -> np.ndarray:
+    return rng.integers(0, 2**32, MEM_BYTES // 4, dtype=np.uint32)
 
 
 # Memory behaviours: ideal, slow to answer, few bursts in flight, low
@@ -122,12 +113,11 @@ TIMINGS = {
     "consumer": dict(latency=10, ready=200),
     "all": dict(latency=25, outstanding=3, rate=600, pause=10, pause_max=40, ready=500),
 }
-# DMA shapes: default; FIFO of one burst; one-beat bursts; one command at a time.
+# DMA shapes: default; FIFO of one burst; one-beat bursts.
 SHAPES = {
     "default": (),
     "fifo-16": (("Depth", 16),),
     "burst-1": (("MaxBurst", 1), ("Depth", 4)),
-    "commands-1": (("Commands", 1),),
 }
 
 
@@ -139,16 +129,15 @@ def test_every_beat_in_order(timing: str, shape: str) -> None:
     rng = np.random.default_rng(seed)
     mem, commands = memory(rng), edge_commands(rng)
     params = SHAPES[shape]
-    max_burst = dict(params).get("MaxBurst", MAX_BURST)
     got = fetch(mem, commands, params, seed=seed, **TIMINGS[timing])
-    beats, last = expected(mem, commands)
+    beats = expected(mem, commands)
     assert got.beats.shape == beats.shape, f"seed {seed}: {len(got.beats)} beats, want {len(beats)}"
     bad = np.flatnonzero((got.beats != beats).any(axis=1))
     assert not len(bad), f"seed {seed}: {len(bad)} beats differ, first at {bad[0]}"
-    assert np.array_equal(got.last, last), f"seed {seed}: last flags"
-    assert got.bursts == n_bursts(commands, max_burst), f"seed {seed}"
+    assert got.bursts == n_bursts(commands, dict(params).get("MaxBurst", MAX_BURST)), f"seed {seed}"
     assert got.r_stalls == 0, f"seed {seed}: the memory waited on RREADY"
-    assert 1 <= got.max_in_flight <= TIMINGS[timing].get("outstanding", 8), f"seed {seed}"
+    outstanding = TIMINGS[timing].get("outstanding", OUTSTANDING)
+    assert 1 <= got.max_in_flight <= outstanding, f"seed {seed}"
     assert not got.err
 
 
@@ -159,7 +148,7 @@ def test_full_rate(latency: int) -> None:
     first arrives, when the FIFO (64 beats) covers the latency plus a burst."""
     rng = np.random.default_rng(SEED)
     n = 2048
-    got = fetch(memory(rng), [(0, n)], latency=latency, outstanding=8)
+    got = fetch(memory(rng), [(0, n)], latency=latency, outstanding=OUTSTANDING)
     assert got.cycles <= n + latency + FAST_SLACK_CYCLES, got.cycles
     assert got.max_in_flight >= -(-latency // MAX_BURST), got.max_in_flight  # covers the latency
 
@@ -171,7 +160,7 @@ def test_a_small_fifo_limits_the_rate() -> None:
     from the test."""
     rng = np.random.default_rng(SEED)
     n = 1024
-    got = fetch(memory(rng), [(0, n)], (("Depth", 16),), latency=40, outstanding=8)
+    got = fetch(memory(rng), [(0, n)], (("Depth", 16),), latency=40, outstanding=OUTSTANDING)
     assert got.cycles > 2 * n, got.cycles
 
 
@@ -190,9 +179,9 @@ BROKEN = {
 
 @rtl.needs_verilator
 @pytest.mark.parametrize("case", BROKEN)
-def test_the_memory_rejects_a_broken_request(case: str) -> None:
-    """The model ends the run on a request outside the AXI subset or the
-    memory (exit 5), naming the rule."""
+def test_the_memory_stops_a_broken_request(case: str) -> None:
+    """A DMA request outside the AXI subset or the memory ends the run
+    (exit 5), naming the rule."""
     rng = np.random.default_rng(SEED)
     result = run(memory(rng), BROKEN[case])
     assert result.returncode == 5, result.stderr.decode()
@@ -219,16 +208,10 @@ def test_memory_model_checks() -> None:
     """Each of the model's checks fires on a hand-made request that breaks
     it, and only then; the first beat comes after exactly the latency and
     waits for RREADY."""
-    binary = rtl.BUILD / "axi_mem_test"
-    binary.parent.mkdir(parents=True, exist_ok=True)
-    cxx = os.environ.get("CXX", "g++")
-    source = bulk.DRIVERS / "axi_mem_test.cpp"
-    build = subprocess.run(
-        [cxx, "-std=c++23", "-O1", "-o", str(binary), str(source)], capture_output=True, text=True
-    )
-    assert build.returncode == 0, build.stderr
-    lines = subprocess.run([str(binary)], capture_output=True, text=True, check=True).stdout
+    lines = subprocess.run(
+        [str(bulk.build_program("axi_mem_test"))], capture_output=True, text=True, check=True
+    ).stdout
     got = dict(line.split(": ", 1) for line in lines.splitlines())
     assert set(got) == set(MODEL_CASES)
     for case, want in MODEL_CASES.items():
-        assert want in got[case] and (want == "ok") == (got[case] == "ok"), (case, got[case])
+        assert got[case] == "ok" if want == "ok" else want in got[case], (case, got[case])

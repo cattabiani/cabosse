@@ -8,16 +8,13 @@
 /// Input (little-endian uint32 on stdin): the memory's size in words, its
 /// words, the number of commands, then per command its address (low word,
 /// high word) and its beats. Commands are offered back to back.
-/// Plusargs: +latency, +outstanding, +rate, +pause, +pause_max (the
+/// Plusargs: +latency, +outstanding, +rate, +pause, +pause_max, +bad (the
 /// AxiMemSettings fields, permille for rates), +ready (permille of cycles
-/// with out_ready_i high), +seed, +bad (the index of a beat the memory
-/// answers with SLVERR; none by default).
-/// Output: per beat out, its 8 data words and a flags word (bit 0: last);
-/// then cycles, bursts, most bursts in flight, cycles the memory waited on
-/// RREADY, and err_o. The DMA must then stay quiet for kDrainCycles cycles
-/// with the memory idle.
+/// with out_ready_i high), +seed.
+/// Output: the 8 data words of each beat out, in order; then cycles, bursts,
+/// most bursts in flight, cycles the memory waited on RREADY, and err_o.
+/// The DMA must then stay quiet for kDrainCycles cycles with the memory idle.
 
-#include <algorithm>
 #include <cstring>
 
 #include "Vport_dma.h"
@@ -26,10 +23,9 @@
 
 namespace {
 
-constexpr int kResetCycles = 2;
-constexpr int kDrainCycles = 64;
 constexpr size_t kBeatWords = 8;  ///< 256 bits
 static_assert(sizeof(Vport_dma::r_data_i) == 4 * kBeatWords, "the driver is for DataWidth = 256");
+constexpr uint64_t kMaxIdleCycles = 100'000;  ///< cycles with no beat out before calling it a hang
 
 }  // namespace
 
@@ -57,15 +53,15 @@ int main(int argc, char** argv) {
   VerilatedContext context;
   context.commandArgs(argc, argv);
   AxiMemSettings settings;
-  settings.beat_bytes = 4 * kBeatWords;
   settings.latency = plusarg(context, "latency", settings.latency);
   settings.outstanding = plusarg(context, "outstanding", settings.outstanding);
   settings.rate_permille = plusarg(context, "rate", settings.rate_permille);
   settings.pause_permille = plusarg(context, "pause", settings.pause_permille);
   settings.pause_max = plusarg(context, "pause_max", settings.pause_max);
+  settings.bad_beat = plusarg(context, "bad", settings.bad_beat);
+  settings.beat_bytes = 4 * kBeatWords;
   const uint64_t ready_permille = plusarg(context, "ready", 1000);
   const uint64_t seed = plusarg(context, "seed", 1);
-  const uint64_t bad_beat = plusarg(context, "bad", UINT64_MAX);
   std::mt19937_64 rng(seed);
 
   const auto mem = std::as_bytes(mem_words);
@@ -73,21 +69,17 @@ int main(int argc, char** argv) {
   auto dut = std::make_unique<Vport_dma>(&context);
 
   std::vector<uint32_t> out;
-  out.reserve(total_beats * (kBeatWords + 1) + 5);
+  out.reserve(total_beats * kBeatWords + 5);
   size_t next_cmd = 0;
-  uint64_t n_out = 0;
   // Settle with the memory's outputs and our inputs applied, collect what
   // left the DMA, and let the memory see the edge.
   auto cycle = [&](bool run) {
     dut->ar_ready_i = port.ar_ready();
     dut->r_valid_i = port.r_valid();
-    const auto data = port.r_data();
-    for (size_t k = 0; k < kBeatWords; ++k) {
-      uint32_t w = 0;
-      if (!data.empty()) std::memcpy(&w, data.data() + 4 * k, 4);
-      dut->r_data_i[k] = w;
+    dut->r_resp_i = port.r_resp();
+    if (const auto data = port.r_data(); !data.empty()) {
+      std::memcpy(dut->r_data_i.data(), data.data(), data.size());
     }
-    dut->r_resp_i = port.r_valid() && port.n_beats() == bad_beat ? 2 : 0;  // SLVERR
     const bool offer = run && next_cmd < commands.size();
     dut->cmd_valid_i = offer;
     if (offer) {
@@ -99,9 +91,7 @@ int main(int argc, char** argv) {
     dut->eval();
     if (offer && dut->cmd_ready_o) ++next_cmd;
     if (dut->out_valid_o && dut->out_ready_i) {
-      for (size_t k = 0; k < kBeatWords; ++k) out.push_back(dut->out_data_o[k]);
-      out.push_back(dut->out_last_o);
-      ++n_out;
+      out.insert(out.end(), dut->out_data_o.data(), dut->out_data_o.data() + kBeatWords);
     }
     if (dut->rst_ni) {
       port.tick({static_cast<bool>(dut->ar_valid_o), dut->ar_addr_o, dut->ar_len_o, dut->ar_size_o,
@@ -116,21 +106,21 @@ int main(int argc, char** argv) {
     dut->rst_ni = 0;
     for (int i = 0; i < kResetCycles; ++i) cycle(false);
     dut->rst_ni = 1;
-    const uint64_t per_beat = 64 + settings.latency + settings.pause_max;
-    const uint64_t max_cycles = (total_beats + commands.size() + 16) * per_beat * 1000 /
-                                std::max<uint64_t>(1, std::min(settings.rate_permille, ready_permille));
-    uint64_t cycles = 0;
-    while (n_out < total_beats || next_cmd < commands.size()) {
+    uint64_t cycles = 0, idle = 0;
+    while (out.size() < total_beats * kBeatWords || next_cmd < commands.size()) {
+      const size_t before = out.size();
       cycle(true);
-      if (++cycles > max_cycles) {
-        std::println(stderr, "hung: {} of {} beats, {} of {} commands after {} cycles", n_out,
-                     total_beats, next_cmd, commands.size(), cycles);
+      ++cycles;
+      idle = out.size() == before ? idle + 1 : 0;
+      if (idle > kMaxIdleCycles) {
+        std::println(stderr, "hung: {} of {} beats, {} of {} commands after {} cycles",
+                     out.size() / kBeatWords, total_beats, next_cmd, commands.size(), cycles);
         return 3;
       }
     }
     for (int i = 0; i < kDrainCycles; ++i) cycle(true);
-    if (n_out != total_beats || !port.idle()) {
-      std::println(stderr, "{} extra beats; memory {}", n_out - total_beats,
+    if (out.size() != total_beats * kBeatWords || !port.idle()) {
+      std::println(stderr, "{} extra beats; memory {}", out.size() / kBeatWords - total_beats,
                    port.idle() ? "idle" : "still busy");
       return 4;
     }
