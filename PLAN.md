@@ -815,20 +815,79 @@ Vivado run; bulk driver and slow tests; checkpoint report.
   tests, open issues.
 
 ### M5 — Matrix-vector engine with simulated memory
-**What:** `L` lanes, weight DMA over AXI, tiling, and an AXI memory model
-with configurable bandwidth.
+**What:** `L` lanes, weight DMA over AXI, tiling, the KV tile buffer for
+attention, and an AXI memory model with configurable bandwidth.
 **Why:** this is where bandwidth is won or lost.
-**Done when:** bit-exact on one full SmolLM2 layer and the classifier with
-real data. Achieved bytes/cycle is ≥ 90% of `min(BW, 2·L)` on large
-matrices. Verilator speed is measured, to plan M7. Row edge cases tested:
-rows fewer than `L`, rows not a multiple of `L` (masked last pass, e.g.
-SmolLM2's 192-row k/v with `L` = 128), a single row. Idle lanes must not
-write results.
-**Notes from M4:** the lane's real-data test takes SmolLM2's rows by
-patching `dot.matvec` and the attention functions and counting calls
-(`verif/tests/test_dot_lane_bulk.py`). M5 needs the same rows; a trace
-hook in `golden.decoder` that names each call site would be sturdier than
-counting.
+**Done when:** bit-exact on one full SmolLM2 layer (`MATVEC`, `SCORES`,
+`VALUES`) and the classifier with real data. Achieved bytes/cycle is ≥ 90%
+of `min(BW, 2·E·L)` on large matrices (1024 B/cycle at full bandwidth; the
+criterion predated D-027 and read `2·L`). On `SCORES` and `VALUES` at long
+positions, engine use is ≥ 90% of the perf model's prediction. Verilator
+speed is measured, to plan M7. Row edge cases tested: rows fewer than `L`,
+rows not a multiple of `L` (masked last pass, e.g. SmolLM2's 192-row k/v
+with `L` = 128), a single row. Idle lanes must not write results.
+
+**Answers to the start-of-milestone questions (owner, 2026-10-09):**
+- Scope: `MATVEC`, `SCORES` and `VALUES`, with the KV tile buffer (its
+  banking serves both read directions, and the next tile loads while the
+  engine reads the current one). Attention is the engine's limit at long
+  positions (perf.md), so it is not left for later. The testbench stands in
+  for the controller (one command at a time) and the vector unit (softmax
+  from the golden model; the KV cache preloaded in the memory model).
+  `KV_STORE` stays with M6/M7.
+- Speed: besides the two criteria above, every engine command of the layer
+  test reports its measured cycles next to the perf model's; a difference
+  above 10% means fixing the hardware or the model, and the report says
+  which. All speed figures are counted in simulated cycles.
+- Ports: the lanes run in lockstep on one control (as planned in M4). A
+  FIFO between each port and its 4 lanes absorbs pauses; the engine steps
+  when every FIFO has a beat. The FIFO depth is a parameter, sized in M5
+  against random per-port pauses; provisional until M8 measures F2's HBM.
+- Buffers: M5 builds the engine's side: a read port for `x` (4 values per
+  cycle, broadcast; 2 × 4 for `VALUES`, whose lanes serve two heads), and a
+  write port sized for `SCORES` (128 results every 16 cycles) with the
+  FP32 → BF16 rounder for BF16 destinations. Behind them, plain memories
+  the testbench fills and reads. The full buffer arrangement comes with the
+  vector unit (M6, M7).
+- Memory: 32 read-only AXI ports of 256 bits, in the subset common to AXI3
+  and AXI4 (bursts of at most 16 beats, none crossing 4 KB), so the F2
+  wrapper connects them to the HBM ports directly. The model, in C++ in the
+  Verilator driver, sets latency, requests in flight, bandwidth per port and
+  random pauses per port (independent seeds), and checks itself (every
+  request answered once, in order, with the right beats). It also brings the
+  valid/ready loop shared by the bulk drivers (`stream.h`). All engine tests
+  use it; cocotb stays for small blocks without memory. `cocotbext-axi`
+  (MIT) may be added temporarily to debug, said in the PR and removed after.
+- Lanes in tests: `L` = 4 × ports, since a port's 32-byte beat holds 4
+  weights for each of 4 lanes (a free ratio needs a crossbar the chip does
+  not have). Lanes per port is a named parameter derived from the beat
+  width and `E` (it becomes 8 in M9). Configurations: 1 port / 4 lanes
+  (degenerate), 2 / 8 (plain), 5 / 20 (prime ports, `L` divides no SmolLM2
+  size) in CI; 32 / 128 for real data and speed (`slow`). The attention
+  mapping works for any `L`, including `L` below the head dimension. Small
+  configurations check bits and completion, not speed. Stress: row counts
+  around `L`, columns around beats, bursts and 4 KB boundaries, per-port
+  pauses and latency, one slow port, positions around `L`. CI builds the
+  128-lane model and runs one short `MATVEC` if the build time allows,
+  otherwise lints it.
+- Real data from the command list: a recording hook in `commands.run()`
+  gives each engine command's fields, input buffer and output bit for bit
+  (replacing the M4 test's call counting, which moves onto it). New: the
+  reordering of weights into the lanes' layout (architecture.md, "Weight
+  layout"), part of the host's model loading, which the model left out.
+  Data: the first and last layers' engine commands and the classifier, at
+  positions 63, 1023 and 8191 if affordable (closes M4's open issue 4), at
+  `L` = 128. A long position is reached by filling the KV cache with
+  `decoder.step` and copying it into `run()`'s memory image (to verify).
+- Verilator speed: build time and simulated cycles per second of the
+  128-lane model, three runs on a quiet machine, reported as a range; with
+  the perf model's cycles per token, an estimated wall time per simulated
+  token in M7, at a short and a long position.
+- No AWS: the engine's Vivado run moves to M8.
+
+**Steps (one branch and PR each):** these answers; command-list recording
+and weight layout; memory model and DMA; engine `MATVEC`; engine attention;
+checkpoint report.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
@@ -862,6 +921,8 @@ owner before anything is created.**
 Every Vivado run (timing harnesses, full builds) checks that the worst
 slack at 250 MHz (4 ns) is ≥ 0, and its script fails otherwise; the slack
 goes into the report next to the perf numbers (owner, 2026-10-08).
+**From M5:** the engine's out-of-context Vivado run (128 lanes with DMA and
+buffers: area and timing at 250 MHz) moved here (owner, 2026-10-09).
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
@@ -869,6 +930,9 @@ goes into the report next to the perf numbers (owner, 2026-10-08).
 (provisional floor: ≥ 50% of it). Clock and resource use are reported.
 Compared with the Gemmini baseline (a different model) using normalized
 figures: weight bytes/s and MACs/s.
+**From M5:** with HBM at 450 MHz a port delivers about 1.8 beats per core
+cycle, so lanes per port becomes 8 (256 lanes on 32 ports), with a clock
+crossing on the memory side.
 
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
