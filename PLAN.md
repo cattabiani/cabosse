@@ -908,6 +908,27 @@ checkpoint report.
   position, which `record_step` throws away; at position 8191 that is
   about 2.3·10¹¹ multiply-adds in the golden model, so a long position needs
   the classifier for the last position only.
+- [x] Memory model and DMA. `rtl/port_dma.sv`: one port's reader; a
+  command (beat-aligned address, beats) becomes AXI read bursts of at most
+  16 beats, none crossing 4 KB, its beats leave in order with `last` on the
+  command's final one. A burst is requested only when the FIFO has room for
+  it (credits), so the memory never waits on the data channel; the next
+  command is taken once the current one's bursts are requested.
+  `rtl/stream_fifo.sv`: a valid/ready FIFO. `verif/bulk/axi_mem.h`: the
+  memory model of the answers above (latency, bursts in flight, bandwidth,
+  pauses, per seed) with its own checks (burst type, size and length,
+  alignment, 4 KB, range, a request held until taken); `port_dma.cpp`
+  drives the DMA with it. Tests (`verif/tests/test_port_dma.py`): commands
+  around bursts and 4 KB boundaries, zero-beat and random ones, under 7
+  memory behaviours × 4 DMA shapes: every beat and `last` exact, bursts as
+  long as allowed, no wait on the data channel; full rate (cycles ≤ beats +
+  latency + 8) up to a 40-cycle latency with a 64-beat FIFO, and a 16-beat
+  FIFO measurably slower there; an error response kept; the model's checks
+  fire. Mutations (9 hand mutations of the DMA): all caught. Left for step
+  3: the FIFO depth against pauses on many ports in lockstep (an engine
+  question), and a loop shared by the handshake drivers (`stream.h`): the
+  lane's and the DMA's loops share little, the engine's will show what is
+  common.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,

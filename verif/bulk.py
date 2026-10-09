@@ -10,9 +10,10 @@ the block, and writes one uint32 result per record to stdout, in order,
 collected by valid_o. A record's fields are the order the driver documents.
 
 For blocks with clk_i, rst_ni, valid_i, valid_o, fields of at most 32 bits
-and no backpressure. The lane (dot_lane.cpp) has a valid/ready handshake and
-its own loop and protocol, documented there; build() serves it too. Other
-handshakes and wide or AXI ports belong in cocotb.
+and no backpressure. Blocks with handshakes have their own loop and protocol,
+documented in their driver; build() serves them too: the lane (dot_lane.cpp)
+and the DMA (port_dma.cpp), whose AXI port talks to the memory model in
+bulk/axi_mem.h.
 """
 
 import functools
