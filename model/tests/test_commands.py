@@ -250,6 +250,24 @@ def test_recorded_calls_are_the_engine_commands(tied: bool) -> None:
             assert x.mem.shape == (c.num_key_value_heads, t, c.head_dim), x.name
 
 
+# Engine commands whose input the vector unit (or the engine command before)
+# has just written: after a norm (q, gate, the classifier), RoPE (scores),
+# softmax (values), attention (o) and SwiGLU (down).
+WAITING_READS = ("q", "k_cache", "v_cache", "o", "gate", "down")
+
+
+def test_engine_waits() -> None:
+    """The engine commands that wait for a go (D-042) are the ones after a
+    vector-unit result, not those sharing the input of the one before."""
+    c = tiny.tiny_config()
+    layout = commands.Layout.of(c, cap=8)
+    cmds = commands.build(layout)
+    names = {addr: name for name, (addr, _, _) in layout.tensors.items()}
+    waiting = [names[x.addr] for x, w in zip(cmds, commands.engine_waits(cmds), strict=True) if w]
+    layers = [f"layers.{i}.{r}" for i in range(c.num_hidden_layers) for r in WAITING_READS]
+    assert waiting == [*layers, "lm_head"]
+
+
 def lane_order_restated(w: torch.Tensor, lanes: int) -> list[list[list[int]]]:
     """docs/architecture.md's weight layout, element by element: each port's
     beats as BF16 bit patterns, zeros where no weight is."""

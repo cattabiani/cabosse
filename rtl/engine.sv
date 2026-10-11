@@ -21,7 +21,12 @@
 //   (a partial last group) are popped and not written; lanes of ports with no
 //   rows in a pass have no result. done_o marks a command's last write.
 // The engine does not order a command after an earlier one whose output it
-// reads: the controller waits for done_o (M7).
+// reads; the controller does (D-041, D-042): it gives such a command `wait`
+// and pulses go_i once its x is ready, so issue reads the command's weights
+// ahead while step holds it until its go. Each go_i pulse is a credit for the
+// oldest waiting command not yet given one, sent only after that command was
+// taken (so at most CmdDepth + 1 are pending). Weights only: memory that a
+// command writes is never read ahead.
 //
 // Commands need rows >= 1 and cols >= 1.
 //
@@ -37,7 +42,7 @@ module engine
   parameter  int unsigned Ports        = 32,
   parameter  int unsigned AddrWidth    = 34,   // F2's HBM: 16 GiB
   parameter  int unsigned DataWidth    = 256,  // an HBM port's beat
-  parameter  int unsigned Depth        = 64,   // each port's FIFO, beats
+  parameter  int unsigned Depth        = 128,  // each port's FIFO, beats: covers F2's latency (PLAN.md, M5)
   parameter  int unsigned RowWidth     = 20,   // rows: Qwen2.5's classifier needs 18 bits
   parameter  int unsigned ColWidth     = 16,   // columns
   parameter  int unsigned BufWidth     = 8,    // buffer ids (docs/architecture.md, "Encoding")
@@ -60,6 +65,8 @@ module engine
   input  logic [BufWidth-1:0]               cmd_a_i,     // x
   input  logic [BufWidth-1:0]               cmd_dst_i,
   input  logic                              cmd_bf16_i,  // round the results to BF16
+  input  logic                              cmd_wait_i,  // step only after a go_i
+  input  logic                              go_i,        // a waiting command's x is ready
   output logic                              done_o,      // a command's last write
   // x read port
   output logic [BufWidth-1:0]               x_buf_o,
@@ -89,6 +96,7 @@ module engine
   localparam int unsigned BeatBytes = DataWidth / 8;
   localparam int unsigned PW        = $clog2(Ports + 1);  // a count of ports
   localparam int unsigned GW        = Groups > 1 ? $clog2(Groups) : 1;
+  localparam int unsigned CW        = $clog2(CmdDepth + 2);  // go credits: 0 .. CmdDepth + 1
 
   if (DataWidth % (16 * E) != 0 || LanesPerPort == 0) begin : gen_bad_width
     $error("engine: a beat must hold E BF16 weights for a whole number of lanes");
@@ -104,6 +112,7 @@ module engine
     logic [BufWidth-1:0]  a;
     logic [BufWidth-1:0]  dst;
     logic                 bf16;
+    logic                 wait_go;
   } cmd_t;
 
   // Groups of LanesPerPort rows; beats per row.
@@ -131,7 +140,7 @@ module engine
 
   cmd_t cmd;
   assign cmd = '{rows: cmd_rows_i, cols: cmd_cols_i, addr: cmd_addr_i, a: cmd_a_i,
-                 dst: cmd_dst_i, bf16: cmd_bf16_i};
+                 dst: cmd_dst_i, bf16: cmd_bf16_i, wait_go: cmd_wait_i};
 
   logic [2:0] q_in_ready, q_valid, q_pop;  // issue, step, drain
   cmd_t       q_head[3];
@@ -235,14 +244,16 @@ module engine
   logic [BufWidth-1:0] step_buf_q;
   logic [Ports-1:0]    step_active_q;  // the ports with rows in this pass
   logic [L-1:0]        lane_in_ready;
-  logic                step_last, fire, step_end, step_load;
+  logic                step_last, fire, step_end, step_load, step_go;
+  logic [CW-1:0]       credits_q;      // go_i pulses not yet spent
   logic [ColWidth-1:0] next_col;
 
   assign dma_out_ready = {Ports{fire}} & step_active_q;
   assign step_last     = step_col_q == step_beats_q - 1'b1;
   assign fire          = step_busy_q && &(dma_out_valid | ~step_active_q) && &lane_in_ready;
   assign step_end      = fire && step_last && last_pass(step_groups_q);
-  assign step_load = q_valid[1] && (!step_busy_q || step_end);
+  assign step_go   = !q_head[1].wait_go || credits_q != '0;
+  assign step_load = q_valid[1] && (!step_busy_q || step_end) && step_go;
   assign q_pop[1]  = step_load;
   assign next_col  = step_load || (fire && step_last) ? '0
                    : fire ? step_col_q + 1'b1 : step_col_q;
@@ -254,8 +265,10 @@ module engine
     if (!rst_ni) begin
       step_busy_q <= 1'b0;
       step_col_q  <= '0;
+      credits_q   <= '0;
     end else begin
       step_col_q <= next_col;
+      credits_q  <= credits_q + CW'(go_i) - CW'(step_load && q_head[1].wait_go);
       if (step_load) begin
         step_busy_q   <= 1'b1;
         step_groups_q <= n_groups(q_head[1].rows);

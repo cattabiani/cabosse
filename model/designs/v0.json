@@ -7,6 +7,7 @@
  "accumulators": {"value": 16, "unit": "partial sums", "status": "choice", "source": "docs/architecture.md, engine: 4 multiply-adds x a 4-cycle loop (D-027)"},
  "vector_elems_per_cycle": {"value": 16, "unit": "elements/cycle", "status": "choice", "source": "docs/architecture.md, vector unit (D-030)"},
  "command_cycles": {"value": 64, "unit": "cycles/command", "status": "guess", "source": "none yet (the controller is designed in M2/M7)"},
+ "engine_startup_cycles": {"value": 55, "unit": "cycles/command", "status": "measured by us", "source": "per engine command that waits for an earlier result (D-042), weights read ahead: the most a SmolLM2 MATVEC took over its engine cycles, 128-lane RTL in simulation (reports/data/M5-engine.json, real)"},
  "scenarios": {
   "as planned": {},
   "64 lanes x 8, A = 32": {"lanes": 64, "macs_per_lane": 8, "accumulators": 32},

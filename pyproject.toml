@@ -3,7 +3,10 @@
 [tool.pytest.ini_options]
 testpaths = ["model/tests", "verif/tests"]
 pythonpath = ["model", "model/tests", "verif"]
-markers = ["slow: exhaustive tests that take minutes (run with: pytest -m slow)"]
+markers = [
+    "slow: exhaustive tests that take minutes (run with: pytest -m slow)",
+    "wide: the 128-lane engine (a build of minutes; CI runs these in their own job)",
+]
 addopts = "-m 'not slow'"
 
 [tool.ruff]

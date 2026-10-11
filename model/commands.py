@@ -527,6 +527,25 @@ def flags_ok(cmd: Command) -> bool:
     return not cmd.flags & ~accepted and all((cmd.flags & pair) != pair for pair in EXCLUSIVE)
 
 
+def engine_waits(commands: list[Command]) -> list[bool]:
+    """Per command, whether it is an engine command that steps only after
+    its go (D-042): its input was written at or after the previous engine
+    command (by that command or by the vector unit since), so the controller
+    gives the go once the writer is done. One that shares its input with the
+    engine command before it (k and v after q, up after gate) does not wait."""
+    last_write: dict[Buf, int] = {}
+    previous_engine = -1
+    waits = []
+    for i, cmd in enumerate(commands):
+        engine = cmd.op in ENGINE_OPS
+        waits.append(engine and last_write.get(cmd.a, -1) >= previous_engine)
+        if engine:
+            previous_engine = i
+        if cmd.dst != Buf.NONE:
+            last_write[cmd.dst] = i
+    return waits
+
+
 @dataclass(frozen=True)
 class EngineCall:
     """One engine command as run() executed it: what the engine reads and

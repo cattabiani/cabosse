@@ -4,30 +4,40 @@
 bit, through verif/bulk/engine.cpp: one memory model per port, the x
 buffers as a RAM, every write checked as it comes (the oldest command's dst,
 rows below its row count only, each row once). Configurations of 1, 2 and 5
-ports (4, 8 and 20 lanes); the 128-lane engine is the next step's.
+ports (4, 8 and 20 lanes) and the 128-lane engine (32 ports, marked wide).
 
 Shapes: rows around the lanes (fewer than a port's group, a partial group
 and pass, a single row) and columns around a beat and the lane's full-rate
 row (a masked last beat), all as back-to-back commands with FP32 and BF16
 destinations, two x buffers and matrices across 4 KB boundaries. Then the
 same under the memory's latency, limits, bandwidth and pauses, one slow
-port and sparse commands; consecutive commands leave no gap; the ports'
-FIFO depth against pauses; an error response reported on its port."""
+port and sparse commands; consecutive commands leave no gap; commands that
+wait for their go (D-042) read their weights ahead and never step early;
+the ports' FIFO depth against pauses; an error response reported on its
+port. Slow, at 128 lanes: SmolLM2's MATVECs with real data, cycles against
+the perf model, and the bandwidth reached on large matrices."""
+
+import dataclasses
 
 import commands
 import engine as eng
 import numpy as np
+import paths
 import perf
 import pytest
 import torch
 from engine import LANES_PER_PORT, Matvec
+from golden import decoder
 from lane import FULL_RATE_LEN
 
 import rtl
 
 SEED = 20261011
 PORTS = (1, 2, 5)  # PLAN.md, M5: degenerate, plain, prime
+WIDE = 32  # 128 lanes, SmolLM2's engine
+ALL_PORTS = (*PORTS, pytest.param(WIDE, marks=pytest.mark.wide))
 DESIGN = perf.load_design("v0").values()  # its lanes are set per test
+STARTUP = int(DESIGN["engine_startup_cycles"])  # a waiting command's, 128 lanes (measured)
 STARTUP_CYCLES = 60  # a command's first result after its start: latency 1 (measured, with margin)
 # Around a beat and the lane's shortest full-rate row.
 COLS = (1, 3, 4, 5, FULL_RATE_LEN - 1, FULL_RATE_LEN, FULL_RATE_LEN + 1, 64, 130)
@@ -72,11 +82,13 @@ def check_bits(
 
 
 def model_cycles(m: Matvec, ports: int) -> int:
-    return perf.engine_cycles((tuple(m.w.shape),), DESIGN | {"lanes": ports * LANES_PER_PORT})
+    """The perf model's cycles, with the start-up of a waiting command."""
+    design = DESIGN | {"lanes": ports * LANES_PER_PORT}
+    return perf.engine_cycles((tuple(m.w.shape),), design) + m.wait * STARTUP
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("ports", PORTS)
+@pytest.mark.parametrize("ports", ALL_PORTS)
 def test_shapes(ports: int) -> None:
     mats, xs, addrs = shape_batch(ports, SEED + ports)
     check_bits(mats, xs, eng.fetch(mats, xs, ports, addrs, latency=20), f"seed {SEED + ports}")
@@ -94,7 +106,7 @@ MEMORIES = {
 
 @rtl.needs_verilator
 @pytest.mark.parametrize("memory", MEMORIES)
-@pytest.mark.parametrize("ports", PORTS)
+@pytest.mark.parametrize("ports", ALL_PORTS)
 def test_memories(ports: int, memory: str) -> None:
     seed = SEED + 10 * ports + list(MEMORIES).index(memory)
     mats, xs, addrs = shape_batch(ports, seed)
@@ -107,7 +119,7 @@ STALE = (float("inf"), float("-inf"), float("nan"), -0.0)  # what an x buffer ma
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("ports", PORTS)
+@pytest.mark.parametrize("ports", ALL_PORTS)
 def test_stale_x(ports: int) -> None:
     """The x buffer holds infinities and NaN past the matrix's columns: the
     last beat's missing elements are masked, not multiplied by the zero
@@ -129,7 +141,7 @@ BACK_TO_BACK = ((1, 64), (3, 128), (2, FULL_RATE_LEN)) * 4 + ((3, 128),)
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("ports", PORTS)
+@pytest.mark.parametrize("ports", ALL_PORTS)
 def test_back_to_back(ports: int) -> None:
     """With the memory at full rate, the commands after the first take
     exactly their perf-model cycles over the whole run: no gap between
@@ -145,6 +157,46 @@ def test_back_to_back(ports: int) -> None:
     assert result.done[0] <= model[0] + 40 + STARTUP_CYCLES, (label, result.done[0], model[0])
     extra = int(result.done[-1] - result.done[0]) - sum(model[1:])
     assert extra == 0, (label, extra, np.diff(result.done).tolist(), model)
+
+
+# (wait, passes, cols): runs of waiting and independent commands, long and
+# short, more than the engine's queues hold.
+GO_COMMANDS = (
+    (True, 2, 64), (False, 1, 130), (True, 3, 64), (True, 1, 5),
+    (False, 2, 64), (False, 1, 3), (True, 2, 130), (True, 1, 64),
+)  # fmt: skip
+GO_LATENCY = 120  # longer than a waiting command's start-up (55 cycles at 128 lanes)
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize("go_delay", (0, 300))
+@pytest.mark.parametrize("ports", ALL_PORTS)
+def test_go(ports: int, go_delay: int) -> None:
+    """A waiting command (D-042) gets its go once every earlier command is
+    done, up to go_delay cycles late, and its x reads as NaN until then, so
+    a step before the go writes wrong bits. Its weights are read ahead: with
+    the go on time, it takes fewer cycles over its engine cycles than the
+    memory's latency (a read after the go would add the latency and the
+    pipeline). With late gos the FIFOs fill and wait, and the memory never
+    waits on them."""
+    seed = SEED + 100 * ports + go_delay
+    gen = torch.Generator().manual_seed(seed)
+    lanes = ports * LANES_PER_PORT
+    mats = [
+        Matvec(random_bf16(gen, p * lanes - i % 2, c), a=i, dst=2 + i % 3, bf16=i % 3 == 1, wait=w)
+        for i, (w, p, c) in enumerate(GO_COMMANDS)
+    ]
+    xs = {i: random_bf16(gen, c) for i, (_, _, c) in enumerate(GO_COMMANDS)}
+    result = eng.fetch(mats, xs, ports, latency=GO_LATENCY, go_delay=go_delay, seed=seed)
+    label = f"go_delay {go_delay}, seed {seed}"
+    check_bits(mats, xs, result, label)
+    if go_delay == 0:
+        extra = [
+            c - model_cycles(dataclasses.replace(m, wait=False), ports)
+            for m, c in zip(mats, eng.command_cycles(result), strict=True)
+        ]
+        late = [(i, e) for i, e in enumerate(extra) if i > 0 and mats[i].wait and e >= GO_LATENCY]
+        assert not late, (label, late, extra)
 
 
 DEPTHS = (16, 64, 128, 1024)  # 1024: deep enough that the pauses alone limit the rate
@@ -184,3 +236,58 @@ def test_error_response(bad_port: int) -> None:
     xs = {0: random_bf16(gen, 64)}
     result = eng.fetch(mats, xs, 2, bad_port=bad_port, bad=3)
     assert result.err == 1 << bad_port, (SEED, result.err)
+
+
+@pytest.mark.slow
+@pytest.mark.wide
+@rtl.needs_verilator
+@pytest.mark.skipif(not paths.SMOLLM2.exists(), reason=f"needs the checkpoint in {paths.SMOLLM2}")
+def test_smollm2() -> None:
+    """The first and last layers' MATVECs and the classifier, real weights
+    and activations (position 63), waiting where the controller would, at
+    F2's latency: bit for bit, and each command within 10% of the perf
+    model's cycles (PLAN.md, M5), the first one included."""
+    found = eng.smollm2_matvecs(decoder.load(paths.SMOLLM2))
+    mats = [f.matvec for f in found]
+    xs = {i: f.x for i, f in enumerate(found)}
+    result = eng.fetch(mats, xs, WIDE, latency=eng.F2_LATENCY_CYCLES)
+    for f, got in zip(found, result.out, strict=True):
+        bad = np.flatnonzero(got != f.want)
+        assert not len(bad), f"{f.name}: {len(bad)} rows differ, first {bad[0]}"
+    assert result.err == 0 and result.r_stalls == 0, (result.err, result.r_stalls)
+    off = {
+        f.name: c / model_cycles(f.matvec, WIDE) - 1
+        for f, c in zip(found, eng.command_cycles(result), strict=True)
+    }
+    print(f"cycles against the perf model: {off}")
+    assert all(abs(v) <= 0.10 for v in off.values()), off
+
+
+# SmolLM2's gate and up, a slice of its classifier: whole passes. down (576
+# rows, 4.5 passes) leaves half the ports idle in its last pass: the perf
+# model's engine use (90%) bounds it, not the memory.
+LARGE = ((1536, 576), (8192, 576), (576, 1536))
+RATES = (1000, 500)  # permille of cycles each port may send a beat
+
+
+@pytest.mark.slow
+@pytest.mark.wide
+@rtl.needs_verilator
+@pytest.mark.parametrize("rate", RATES)
+def test_bandwidth(rate: int) -> None:
+    """Each large matrix alone, from its start to its done (start-up and F2's
+    latency included), reads at least 90% of min(the memory's bytes per
+    cycle, 2·E·L) (PLAN.md, M5: 1024 B/cycle at full rate), times the perf
+    model's engine use (1 for whole passes)."""
+    gen = torch.Generator().manual_seed(SEED)
+    peak = min(WIDE * eng.BEAT_BYTES * rate / 1000, 2 * commands.E * WIDE * LANES_PER_PORT)
+    share = {}
+    for rows, cols in LARGE:
+        bound = peak * perf.engine_use(((rows, cols),), DESIGN | {"lanes": WIDE * LANES_PER_PORT})
+        m = Matvec(random_bf16(gen, rows, cols))
+        xs = {0: random_bf16(gen, cols)}
+        result = eng.fetch([m], xs, WIDE, latency=eng.F2_LATENCY_CYCLES, rate=rate, seed=SEED)
+        check_bits([m], xs, result, f"{rows} x {cols}, rate {rate}, seed {SEED}")
+        share[rows, cols] = 2 * rows * cols / int(result.done[0] - result.taken[0]) / bound
+    print(f"share of {peak:.0f} B/cycle times the engine use: {share}")
+    assert all(v >= 0.9 for v in share.values()), (SEED, share)

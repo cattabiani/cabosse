@@ -11,23 +11,30 @@ import bulk
 import commands
 import numpy as np
 import torch
-from golden import arith, dot
+from golden import arith, decoder, dot
 
 BEAT_BYTES = commands.BEAT_BYTES
 BEAT_WORDS = BEAT_BYTES // 4
 E = commands.E
 LANES_PER_PORT = commands.LANES_PER_PORT
-STATS = 3  # words after the commands: cycles, stalls, err
+STATS = 4  # words after the commands: cycles, stalls, err, wall time
+# F2's HBM read latency, 280 ns (measured by AWS, docs/f2.md), at the 250 MHz
+# core clock; our path's latency (switch, clock crossing) waits for M8.
+F2_LATENCY_CYCLES = 70
+SMOLLM2_PROMPT = list(range(1000, 1063))  # the step runs at position 63, as M4's lane test
 
 
 @dataclass
 class Matvec:
-    """One MATVEC: dst = w · x[a], rounded to BF16 if bf16."""
+    """One MATVEC: dst = w · x[a], rounded to BF16 if bf16; with wait, its
+    weights are read ahead and it steps only after its go, which comes once
+    every earlier command is done (x[a] reads as NaN until then)."""
 
     w: torch.Tensor  # BF16 [rows, cols]
     a: int = 0
     dst: int = 1
     bf16: bool = False
+    wait: bool = False
 
 
 @dataclass
@@ -38,6 +45,7 @@ class Result:
     cycles: int
     r_stalls: int  # cycles any memory waited on RREADY
     err: int  # ports with err_o, a bit each
+    wall_us: int  # the driver's simulation loop, wall-clock microseconds
 
 
 def n_beats(m: Matvec, ports: int) -> int:
@@ -89,7 +97,7 @@ def fetch(
         packed = np.concatenate([bits, np.zeros(len(bits) % 2, np.uint16)]).view(np.uint32)
         words += [np.array([buf, len(bits)]), packed]
     fields = [
-        (m.w.shape[0], m.w.shape[1], a & 0xFFFFFFFF, a >> 32, m.a, m.dst, int(m.bf16))
+        (m.w.shape[0], m.w.shape[1], a & 0xFFFFFFFF, a >> 32, m.a, m.dst, int(m.bf16), int(m.wait))
         for m, a in zip(mats, addrs, strict=True)
     ]
     words += [np.array([len(mats)]), np.array(fields, dtype=np.int64).ravel()]
@@ -105,8 +113,8 @@ def fetch(
         done.append(words[at + rows + 1])
         at += rows + 2
     assert len(words) == at + STATS, (len(words), at)
-    cycles, stalls, err = map(int, words[at:])
-    return Result(out, np.array(taken), np.array(done), cycles, stalls, err)
+    cycles, stalls, err, wall_us = map(int, words[at:])
+    return Result(out, np.array(taken), np.array(done), cycles, stalls, err, wall_us)
 
 
 def expected(m: Matvec, x: torch.Tensor) -> np.ndarray:
@@ -115,3 +123,40 @@ def expected(m: Matvec, x: torch.Tensor) -> np.ndarray:
     y = dot.dot(m.w, x[: m.w.shape[1]])
     bits = arith.bits_bf16(arith.bf16(y)) if m.bf16 else arith.bits_f32(y)
     return bits.numpy().astype(np.uint32) & (0xFFFF if m.bf16 else 0xFFFFFFFF)
+
+
+@dataclass
+class RealMatvec:
+    """A MATVEC recorded from the golden model's command list."""
+
+    name: str  # the Layout name of its matrix
+    matvec: Matvec
+    x: torch.Tensor  # its input buffer, BF16
+    want: np.ndarray  # its output as run() wrote it, uint32 FP32 bits
+
+
+def smollm2_matvecs(model: decoder.Model) -> list[RealMatvec]:
+    """The MATVECs of one decode step (commands.record_step at position 63):
+    the first and last layers' and the classifier, in command-list order,
+    each reading its own x buffer, waiting where the controller would
+    (commands.engine_waits)."""
+    last = f"layers.{len(model.layers) - 1}."
+    _, calls = commands.record_step(model, SMOLLM2_PROMPT, SMOLLM2_PROMPT[-1] + 1)
+    layout = commands.Layout.of(model.config, cap=len(SMOLLM2_PROMPT) + 1)
+    waits = commands.engine_waits(commands.build(layout))
+    found = []
+    for c in calls:
+        if c.cmd.op != commands.Op.MATVEC or not c.name.startswith(("layers.0.", last, "lm_head")):
+            continue
+        assert c.out.dtype == torch.float32, (c.name, c.out.dtype)
+        i = len(found)
+        m = Matvec(c.mem, a=i, dst=i, wait=waits[c.index])
+        found.append(RealMatvec(c.name, m, c.a, arith.bits_f32(c.out).numpy().astype(np.uint32)))
+    return found
+
+
+def command_cycles(result: Result) -> list[int]:
+    """Each command's cycles, from the previous command's done_o (the first
+    command's from its start) to its own: for a waiting command, from the
+    cycle before its go, so its start-up counts."""
+    return np.diff(np.r_[result.taken[0], result.done]).tolist()

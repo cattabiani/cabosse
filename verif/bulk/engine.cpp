@@ -10,15 +10,21 @@
 /// port's channel image; the number of x buffers, then per buffer its id,
 /// its BF16 elements and the elements two per word (low half first); the
 /// number of commands, then per command rows, cols, address (low word, high
-/// word), a, dst and bf16. Commands are offered in order, each held until
-/// taken.
+/// word), a, dst, bf16 and wait. Commands are offered in order, each held
+/// until taken. A command with wait gets its go_i as the controller gives
+/// it (D-042): once it is taken and every earlier command is done, after a
+/// random delay; until then its x buffer reads as NaN, so a step before the
+/// go writes wrong bits (a buffer read by several waiting commands is clear
+/// from the first one's go).
 /// Plusargs: the memories' (axi_bench.h: +latency, +outstanding, +rate,
 /// +pause, +pause_max, +bad with +bad_port, +slow_rate with +slow_port),
-/// +offer (permille of cycles a new command is offered),
-/// +seed (port p draws with seed + 1 + p).
+/// +offer (permille of cycles a new command is offered), +go_delay (a go
+/// comes 0 to go_delay cycles late, uniformly), +seed (port p's memory draws
+/// with (seed << 16) + p, so no two runs or ports share a stream).
 /// Output: per command its rows' results in order (FP32, or BF16 in the low
 /// half), the cycle it was taken and the cycle of its done_o; then the
-/// cycles, the cycles any memory waited on RREADY, and the ports with err_o.
+/// cycles, the cycles any memory waited on RREADY, the ports with err_o, and
+/// the run's wall time in microseconds (reset to the last drain cycle).
 /// Checks, each ending the run with a message: writes go to the oldest
 /// command not done, to its dst, inside its rows, each row once, with its
 /// bf16; done_o comes after all of its rows; nothing is written and every
@@ -26,6 +32,8 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <optional>
 
 #include "Vengine.h"
 #include "Vengine___024root.h"
@@ -39,7 +47,8 @@ constexpr size_t kAddrBits = Params::engine__DOT__AddrWidth;
 constexpr size_t kXValues = Params::engine__DOT__E;     ///< BF16 values per read
 constexpr size_t kWrites = Params::engine__DOT__Writes;  ///< the write port's slots
 constexpr size_t kBufs = size_t{1} << Params::engine__DOT__BufWidth;
-constexpr size_t kCmdWords = 7;  ///< rows, cols, addr lo, addr hi, a, dst, bf16
+constexpr size_t kCmdWords = 8;  ///< rows, cols, addr lo, addr hi, a, dst, bf16, wait
+constexpr uint16_t kNan = 0x7FC0;  ///< what a waiting command's x holds before its go
 constexpr int kExitBadInput = 2, kExitHang = 3, kExitBadWrite = 4, kExitAxi = 5;
 
 /// @brief One engine command and what it wrote.
@@ -48,6 +57,7 @@ struct Command {
   uint64_t addr;
   uint32_t a, dst;
   bool bf16;
+  bool wait;                      ///< steps only after its go
   std::vector<uint32_t> out;      ///< results by row
   std::vector<bool> written;      ///< rows written
   uint64_t taken = 0, done = 0;   ///< cycles
@@ -65,8 +75,12 @@ struct Bench {
   std::vector<std::vector<uint16_t>>& x_bufs;  ///< by buffer id
   std::vector<Command>& commands;
   uint64_t offer_permille;
-  std::mt19937_64 rng;            ///< draws the command offers
+  uint64_t go_delay;               ///< a go comes up to this many cycles late
+  std::mt19937_64 rng;            ///< draws the command offers and go delays
+  std::vector<bool> poisoned;     ///< by buffer id: a waiting reader has no go yet
   size_t next_cmd = 0;            ///< the first command not yet taken
+  size_t next_go = 0;             ///< the first waiting command without its go
+  std::optional<uint64_t> go_left;  ///< cycles until next_go's go, once due
   size_t oldest = 0;              ///< the first command not yet done
   bool offering = false;          ///< a command is on the port, waiting to be taken
   std::array<uint16_t, kXValues> x_q{};  ///< the RAM's output register
@@ -78,9 +92,21 @@ struct Bench {
     const std::vector<uint16_t>& x = x_bufs[buf];  // empty while no command reads it
     for (size_t e = 0; e < kXValues; ++e) {
       const size_t k = group * kXValues + e;
-      if (k < x.size()) v[e] = x[k];
+      if (k < x.size()) v[e] = poisoned[buf] ? kNan : x[k];
     }
     return v;
+  }
+
+  /// @brief go_i for this cycle: next_go's go once it is taken, every
+  /// earlier command is done and its random delay has passed.
+  bool go() {
+    while (next_go < commands.size() && !commands[next_go].wait) ++next_go;
+    if (next_go >= next_cmd || oldest < next_go) return false;
+    if (!go_left) go_left = std::uniform_int_distribution<uint64_t>(0, go_delay)(rng);
+    if ((*go_left)-- > 0) return false;
+    poisoned[commands[next_go++].a] = false;
+    go_left.reset();
+    return true;
   }
 
   /// @brief Check and keep one write of the write port.
@@ -128,6 +154,7 @@ struct Bench {
     }
     for (size_t e = 0; e < kXValues; ++e) set_bits(dut.x_data_i, 16 * e, 16, x_q[e]);
     if (run && !offering && next_cmd < commands.size()) offering = rng() % 1000 < offer_permille;
+    dut.go_i = run && go();
     dut.cmd_valid_i = offering;
     if (offering) {
       const Command& c = commands[next_cmd];
@@ -137,6 +164,7 @@ struct Bench {
       dut.cmd_a_i = c.a;
       dut.cmd_dst_i = c.dst;
       dut.cmd_bf16_i = c.bf16;
+      dut.cmd_wait_i = c.wait;
     }
     dut.clk_i = 0;
     dut.eval();
@@ -208,7 +236,7 @@ int main(int argc, char** argv) {
     for (uint32_t i = 0, n = in.next(); i < n; ++i) {
       const auto f = in.take(kCmdWords);
       commands.push_back({.rows = f[0], .cols = f[1], .addr = f[2] | uint64_t{f[3]} << 32, .a = f[4],
-                          .dst = f[5], .bf16 = f[6] != 0, .out = std::vector<uint32_t>(f[0]),
+                          .dst = f[5], .bf16 = f[6] != 0, .wait = f[7] != 0, .out = std::vector<uint32_t>(f[0]),
                           .written = std::vector<bool>(f[0])});
     }
     if (in.at != words.size()) throw std::out_of_range("words left after the commands");
@@ -220,7 +248,7 @@ int main(int argc, char** argv) {
   const uint64_t seed = plusarg(context, "seed", 1);
   std::vector<AxiReadPort> ports;
   for (size_t p = 0; p < n_ports; ++p) {
-    ports.emplace_back(std::as_bytes(images[p]), axi_settings(context, 4 * kBeatWords, p), seed + 1 + p);
+    ports.emplace_back(std::as_bytes(images[p]), axi_settings(context, 4 * kBeatWords, p), (seed << 16) + p);
   }
 
   Bench bench{.dut = *dut,
@@ -228,8 +256,12 @@ int main(int argc, char** argv) {
               .x_bufs = x_bufs,
               .commands = commands,
               .offer_permille = plusarg(context, "offer", 1000),
-              .rng = std::mt19937_64(seed)};
+              .go_delay = plusarg(context, "go_delay", 0),
+              .rng = std::mt19937_64(seed),
+              .poisoned = std::vector<bool>(kBufs)};
+  for (const Command& c : commands) bench.poisoned[c.a] = bench.poisoned[c.a] || c.wait;
   try {
+    const auto start = std::chrono::steady_clock::now();
     reset(bench);
     const auto cycles = run(
         bench, [&] { return bench.oldest == commands.size(); },
@@ -241,6 +273,7 @@ int main(int argc, char** argv) {
     }
     for (int i = 0; i < kDrainCycles; ++i) bench.cycle();
     if (!std::ranges::all_of(ports, &AxiReadPort::idle)) throw WriteError("a memory still busy after the last done");
+    const auto wall = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - start);
     std::vector<uint32_t> out;
     for (const Command& c : commands) {
       out.insert(out.end(), c.out.begin(), c.out.end());
@@ -252,6 +285,7 @@ int main(int argc, char** argv) {
     out.push_back(static_cast<uint32_t>(*cycles));
     out.push_back(static_cast<uint32_t>(stalls));
     out.push_back(static_cast<uint32_t>(get_bits(dut->err_o, 0, std::min<size_t>(n_ports, 32))));
+    out.push_back(static_cast<uint32_t>(wall.count()));
     std::fwrite(out.data(), sizeof(uint32_t), out.size(), stdout);
   } catch (const AxiError& e) {
     std::println(stderr, "AXI: {}", e.what());
