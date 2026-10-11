@@ -4,7 +4,6 @@
 channel (the same offset in each, docs/architecture.md, "Weight layout"),
 the driver verif/bulk/engine.cpp run on them, and the golden results."""
 
-import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -71,15 +70,17 @@ def channel_images(mats: Sequence[Matvec], addrs: Sequence[int], ports: int) -> 
     return images
 
 
-def run(
+def fetch(
     mats: Sequence[Matvec],
     xs: dict[int, torch.Tensor],
     ports: int,
     addrs: Sequence[int] | None = None,
     params: tuple[tuple[str, int], ...] = (),
     **plusargs: int,
-) -> subprocess.CompletedProcess:
-    """The driver on these commands, with the x buffers xs (id -> BF16)."""
+) -> Result:
+    """The driver on these commands, with the x buffers xs (id -> BF16) and
+    the matrices at addrs (default: place()); checked to finish, its output
+    split per command."""
     addrs = place(mats, ports) if addrs is None else addrs
     images = channel_images(mats, addrs, ports)
     words: list[np.ndarray] = [np.array([images.shape[1]]), images.ravel(), np.array([len(xs)])]
@@ -93,19 +94,7 @@ def run(
     ]
     words += [np.array([len(mats)]), np.array(fields, dtype=np.int64).ravel()]
     stdin = np.concatenate(words).astype(np.uint32)
-    return bulk.run_driver("engine", stdin, (("Ports", ports), *params), **plusargs)
-
-
-def fetch(
-    mats: Sequence[Matvec],
-    xs: dict[int, torch.Tensor],
-    ports: int,
-    addrs: Sequence[int] | None = None,
-    params: tuple[tuple[str, int], ...] = (),
-    **plusargs: int,
-) -> Result:
-    """run(), checked to finish, its output split per command."""
-    result = run(mats, xs, ports, addrs, params, **plusargs)
+    result = bulk.run_driver("engine", stdin, (("Ports", ports), *params), **plusargs)
     assert result.returncode == 0, f"{plusargs}: {result.stderr.decode()}"
     words = np.frombuffer(result.stdout, dtype="<u4")
     out, taken, done, at = [], [], [], 0

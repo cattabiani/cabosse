@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
 
   VerilatedContext context;
   context.commandArgs(argc, argv);
-  const AxiMemSettings settings = axi_settings(context, 4 * kBeatWords);
+  const AxiMemSettings settings = axi_settings(context, 4 * kBeatWords, 0);
   const uint64_t ready_permille = plusarg(context, "ready", 1000);
   const uint64_t seed = plusarg(context, "seed", 1);
 

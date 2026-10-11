@@ -113,9 +113,18 @@ module engine
   function automatic logic [ColWidth-1:0] n_beats(logic [ColWidth-1:0] cols);
     return cols / ColWidth'(E) + ColWidth'(cols % ColWidth'(E) != '0);
   endfunction
-  // Groups of this pass: the ports with rows in it.
+  // With `groups` groups left, this pass's: the ports with rows in it, as a
+  // count and as a mask; and whether it is the last pass.
   function automatic logic [PW-1:0] pass_ports(logic [RowWidth-1:0] groups);
     return groups > RowWidth'(Ports) ? PW'(Ports) : PW'(groups);
+  endfunction
+  function automatic logic [Ports-1:0] pass_mask(logic [RowWidth-1:0] groups);
+    logic [Ports-1:0] mask;
+    for (int unsigned p = 0; p < Ports; p++) mask[p] = RowWidth'(p) < groups;
+    return mask;
+  endfunction
+  function automatic logic last_pass(logic [RowWidth-1:0] groups);
+    return groups <= RowWidth'(Ports);
   endfunction
 
   // --- Command queues --------------------------------------------------------
@@ -187,16 +196,13 @@ module engine
   logic                iss_busy_q;
   logic [RowWidth-1:0] iss_groups_q;  // groups not yet issued, this pass's included
   logic [Ports-1:0]    iss_taken_q;   // this pass's commands already taken
-  logic [Ports-1:0]    iss_active, iss_taken;
-  logic                iss_pass_done, iss_last_pass;
+  logic [Ports-1:0]    iss_active_q;  // the ports with rows in this pass
+  logic [Ports-1:0]    iss_taken;
+  logic                iss_pass_done;
 
-  for (genvar p = 0; p < Ports; p++) begin : gen_issue
-    assign iss_active[p]    = RowWidth'(p) < iss_groups_q;
-    assign dma_cmd_valid[p] = iss_busy_q && iss_active[p] && !iss_taken_q[p];
-    assign iss_taken[p]     = iss_taken_q[p] || dma_cmd_ready[p];
-  end
-  assign iss_pass_done = iss_busy_q && &(iss_taken | ~iss_active);
-  assign iss_last_pass = iss_groups_q <= RowWidth'(Ports);
+  assign dma_cmd_valid = {Ports{iss_busy_q}} & iss_active_q & ~iss_taken_q;
+  assign iss_taken     = iss_taken_q | dma_cmd_ready;
+  assign iss_pass_done = iss_busy_q && &(iss_taken | ~iss_active_q);
   assign q_pop[0]      = !iss_busy_q && q_valid[0];
 
   always_ff @(posedge clk_i) begin
@@ -207,12 +213,14 @@ module engine
       iss_busy_q   <= 1'b1;
       iss_addr_q   <= q_head[0].addr;
       iss_groups_q <= n_groups(q_head[0].rows);
+      iss_active_q <= pass_mask(n_groups(q_head[0].rows));
       iss_beats_q  <= n_beats(q_head[0].cols);
     end else if (iss_pass_done) begin
       iss_taken_q  <= '0;
       iss_addr_q   <= iss_addr_q + AddrWidth'(iss_beats_q) * AddrWidth'(BeatBytes);
       iss_groups_q <= iss_groups_q - RowWidth'(Ports);
-      if (iss_last_pass) iss_busy_q <= 1'b0;
+      iss_active_q <= pass_mask(iss_groups_q - RowWidth'(Ports));
+      if (last_pass(iss_groups_q)) iss_busy_q <= 1'b0;
     end else if (iss_busy_q) begin
       iss_taken_q <= iss_taken;
     end
@@ -225,18 +233,15 @@ module engine
   logic [ColWidth-1:0] step_beats_q, step_col_q;
   logic [E-1:0]        step_mask_q;    // the last beat's elements
   logic [BufWidth-1:0] step_buf_q;
-  logic [Ports-1:0]    step_active;
+  logic [Ports-1:0]    step_active_q;  // the ports with rows in this pass
   logic [L-1:0]        lane_in_ready;
   logic                step_last, fire, step_end, step_load;
   logic [ColWidth-1:0] next_col;
 
-  for (genvar p = 0; p < Ports; p++) begin : gen_step
-    assign step_active[p]   = RowWidth'(p) < step_groups_q;
-    assign dma_out_ready[p] = fire && step_active[p];
-  end
-  assign step_last = step_col_q == step_beats_q - 1'b1;
-  assign fire      = step_busy_q && &(dma_out_valid | ~step_active) && &lane_in_ready;
-  assign step_end  = fire && step_last && step_groups_q <= RowWidth'(Ports);
+  assign dma_out_ready = {Ports{fire}} & step_active_q;
+  assign step_last     = step_col_q == step_beats_q - 1'b1;
+  assign fire          = step_busy_q && &(dma_out_valid | ~step_active_q) && &lane_in_ready;
+  assign step_end      = fire && step_last && last_pass(step_groups_q);
   assign step_load = q_valid[1] && (!step_busy_q || step_end);
   assign q_pop[1]  = step_load;
   assign next_col  = step_load || (fire && step_last) ? '0
@@ -254,6 +259,7 @@ module engine
       if (step_load) begin
         step_busy_q   <= 1'b1;
         step_groups_q <= n_groups(q_head[1].rows);
+        step_active_q <= pass_mask(n_groups(q_head[1].rows));
         step_beats_q  <= n_beats(q_head[1].cols);
         step_buf_q    <= q_head[1].a;
         for (int unsigned e = 0; e < E; e++) begin
@@ -264,6 +270,7 @@ module engine
         step_busy_q <= 1'b0;
       end else if (fire && step_last) begin
         step_groups_q <= step_groups_q - RowWidth'(Ports);
+        step_active_q <= pass_mask(step_groups_q - RowWidth'(Ports));
       end
     end
   end
@@ -288,7 +295,7 @@ module engine
       ) u_lane (
         .clk_i,
         .rst_ni,
-        .in_valid_i (fire && step_active[P]),
+        .in_valid_i (fire && step_active_q[P]),
         .in_ready_o (lane_in_ready[l]),
         .w_i        (w),
         .x_i        (x_data_i),
@@ -311,30 +318,29 @@ module engine
   logic [BufWidth-1:0]      drain_buf_q;
   logic [GW-1:0]            drain_grp_q;  // the write group
   logic [RowWidth-1:0]      lanes_with_result;
-  logic [Writes-1:0]        has, row_in;
+  logic [Writes-1:0]        has, row_in, slot_valid, w_mask;
   logic [Writes-1:0][31:0]  slot_out;
   logic                     go, pass_end, drain_end, drain_load;
 
   assign lanes_with_result = RowWidth'(pass_ports(drain_groups_q)) * RowWidth'(LanesPerPort);
   for (genvar s = 0; s < Writes; s++) begin : gen_slot
     logic [RowWidth-1:0] lane;
-    assign lane        = RowWidth'(drain_grp_q) * RowWidth'(Writes) + RowWidth'(s);
-    assign has[s]      = lane < lanes_with_result;
-    assign row_in[s]   = drain_base_q + lane < drain_rows_q;
-    assign slot_out[s] = lane_out[drain_grp_q*Writes+s];
+    assign lane          = RowWidth'(drain_grp_q) * RowWidth'(Writes) + RowWidth'(s);
+    assign has[s]        = lane < lanes_with_result;
+    assign row_in[s]     = drain_base_q + lane < drain_rows_q;
+    assign slot_out[s]   = lane_out[drain_grp_q*Writes+s];
+    assign slot_valid[s] = lane_out_valid[drain_grp_q*Writes+s];
   end
+  assign go     = drain_busy_q && &(slot_valid | ~has);
+  assign w_mask = has & row_in;
   always_comb begin
-    go = drain_busy_q;
-    for (int unsigned s = 0; s < Writes; s++) begin
-      if (has[s] && !lane_out_valid[drain_grp_q*Writes+s]) go = 1'b0;
-    end
     lane_out_ready = '0;
     for (int unsigned s = 0; s < Writes; s++) begin
       lane_out_ready[drain_grp_q*Writes+s] = go && has[s];
     end
   end
   assign pass_end   = go && RowWidth'(drain_grp_q + 1'b1) * RowWidth'(Writes) >= lanes_with_result;
-  assign drain_end  = pass_end && drain_groups_q <= RowWidth'(Ports);
+  assign drain_end  = pass_end && last_pass(drain_groups_q);
   assign drain_load = q_valid[2] && (!drain_busy_q || drain_end);
   assign q_pop[2]   = drain_load;
 
@@ -375,12 +381,12 @@ module engine
       w_valid_o <= 1'b0;
       done_o    <= 1'b0;
     end else begin
-      w_valid_o <= go && |(has & row_in);
+      w_valid_o <= go && |w_mask;
       done_o    <= drain_end;
     end
     w_buf_o  <= drain_buf_q;
     w_row_o  <= drain_base_q + RowWidth'(drain_grp_q) * RowWidth'(Writes);
-    w_mask_o <= has & row_in;
+    w_mask_o <= w_mask;
     w_bf16_o <= drain_bf16_q;
     for (int unsigned s = 0; s < Writes; s++) begin
       w_data_o[s] <= drain_bf16_q ? {16'h0, rounded[s]} : slot_out[s];

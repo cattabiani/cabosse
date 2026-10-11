@@ -12,10 +12,9 @@
 /// number of commands, then per command rows, cols, address (low word, high
 /// word), a, dst and bf16. Commands are offered in order, each held until
 /// taken.
-/// Plusargs: +latency, +outstanding, +rate, +pause, +pause_max (every port's
-/// AxiMemSettings, permille for rates), +slow_port and +slow_rate (one port
-/// with its own rate), +bad_port and +bad (that port answers its beat number
-/// bad with an error), +offer (permille of cycles a new command is offered),
+/// Plusargs: the memories' (axi_bench.h: +latency, +outstanding, +rate,
+/// +pause, +pause_max, +bad with +bad_port, +slow_rate with +slow_port),
+/// +offer (permille of cycles a new command is offered),
 /// +seed (port p draws with seed + 1 + p).
 /// Output: per command its rows' results in order (FP32, or BF16 in the low
 /// half), the cycle it was taken and the cycle of its done_o; then the
@@ -27,18 +26,20 @@
 
 #include <algorithm>
 #include <array>
-#include <map>
-#include <utility>
 
 #include "Vengine.h"
+#include "Vengine___024root.h"
 #include "axi_bench.h"
 
 namespace {
 
-constexpr size_t kBeatWords = 8;      ///< 256 bits
-constexpr size_t kCmdWords = 7;       ///< rows, cols, addr lo, addr hi, a, dst, bf16
-constexpr size_t kXValues = 4;        ///< E: BF16 values per read
-constexpr size_t kWrites = 8;         ///< the write port's slots
+using Params = Vengine___024root;  // the build's parameters (verif/bulk.py: --public-params)
+constexpr size_t kBeatWords = Params::engine__DOT__DataWidth / 32;
+constexpr size_t kAddrBits = Params::engine__DOT__AddrWidth;
+constexpr size_t kXValues = Params::engine__DOT__E;     ///< BF16 values per read
+constexpr size_t kWrites = Params::engine__DOT__Writes;  ///< the write port's slots
+constexpr size_t kBufs = size_t{1} << Params::engine__DOT__BufWidth;
+constexpr size_t kCmdWords = 7;  ///< rows, cols, addr lo, addr hi, a, dst, bf16
 constexpr int kExitBadInput = 2, kExitHang = 3, kExitBadWrite = 4, kExitAxi = 5;
 
 /// @brief One engine command and what it wrote.
@@ -61,7 +62,7 @@ struct WriteError : std::runtime_error {
 struct Bench {
   Vengine& dut;
   std::vector<AxiReadPort>& ports;
-  std::map<uint32_t, std::vector<uint16_t>>& x_bufs;
+  std::vector<std::vector<uint16_t>>& x_bufs;  ///< by buffer id
   std::vector<Command>& commands;
   uint64_t offer_permille;
   std::mt19937_64 rng;            ///< draws the command offers
@@ -74,11 +75,10 @@ struct Bench {
   /// @brief The x RAM's read: E values of a group, zeros past the buffer.
   std::array<uint16_t, kXValues> read_x(uint32_t buf, uint64_t group) const {
     std::array<uint16_t, kXValues> v{};
-    const auto it = x_bufs.find(buf);
-    if (it == x_bufs.end()) return v;  // unused while no command reads it
+    const std::vector<uint16_t>& x = x_bufs[buf];  // empty while no command reads it
     for (size_t e = 0; e < kXValues; ++e) {
       const size_t k = group * kXValues + e;
-      if (k < it->second.size()) v[e] = it->second[k];
+      if (k < x.size()) v[e] = x[k];
     }
     return v;
   }
@@ -144,11 +144,11 @@ struct Bench {
       commands[next_cmd++].taken = cycles;
       offering = false;
     }
-    if (run && dut.w_valid_o) write();
-    if (run && dut.done_o) done();
     if (run) {
+      if (dut.w_valid_o) write();
+      if (dut.done_o) done();
       for (size_t p = 0; p < ports.size(); ++p) {
-        ports[p].tick({static_cast<bool>(get_bits(dut.ar_valid_o, p, 1)), get_bits(dut.ar_addr_o, 34 * p, 34),
+        ports[p].tick({static_cast<bool>(get_bits(dut.ar_valid_o, p, 1)), get_bits(dut.ar_addr_o, kAddrBits * p, kAddrBits),
                        static_cast<unsigned>(get_bits(dut.ar_len_o, 8 * p, 8)),
                        static_cast<unsigned>(get_bits(dut.ar_size_o, 3 * p, 3)),
                        static_cast<unsigned>(get_bits(dut.ar_burst_o, 2 * p, 2))},
@@ -188,19 +188,19 @@ int main(int argc, char** argv) {
   VerilatedContext context;
   context.commandArgs(argc, argv);
   auto dut = std::make_unique<Vengine>(&context);
-  const size_t n_ports = sizeof(dut->r_data_i) / (4 * kBeatWords);
-  static_assert(sizeof(Vengine::x_data_i) * 8 >= 16 * kXValues, "the driver is for E = 4");
+  constexpr size_t n_ports = Params::engine__DOT__Ports;
 
   const std::vector<uint32_t> words = read_words(stdin);
   Reader in{words};
   std::vector<std::span<const uint32_t>> images;
-  std::map<uint32_t, std::vector<uint16_t>> x_bufs;
+  std::vector<std::vector<uint16_t>> x_bufs(kBufs);
   std::vector<Command> commands;
   try {
     const size_t n_mem = in.next();
     for (size_t p = 0; p < n_ports; ++p) images.push_back(in.take(n_mem));
     for (uint32_t b = 0, n = in.next(); b < n; ++b) {
       const uint32_t id = in.next(), n_elems = in.next();
+      if (id >= kBufs) throw std::out_of_range("x buffer id past BufWidth");
       const auto packed = in.take((n_elems + 1) / 2);
       std::vector<uint16_t>& buf = x_bufs[id];
       for (uint32_t k = 0; k < n_elems; ++k) buf.push_back(static_cast<uint16_t>(packed[k / 2] >> 16 * (k % 2)));
@@ -217,18 +217,10 @@ int main(int argc, char** argv) {
     return kExitBadInput;
   }
 
-  AxiMemSettings settings = axi_settings(context, 4 * kBeatWords);
-  const uint64_t bad_beat = std::exchange(settings.bad_beat, UINT64_MAX);  // one port's only
-  const uint64_t bad_port = plusarg(context, "bad_port", UINT64_MAX);
-  const uint64_t slow_port = plusarg(context, "slow_port", UINT64_MAX);
-  const uint64_t slow_rate = plusarg(context, "slow_rate", settings.rate_permille);
   const uint64_t seed = plusarg(context, "seed", 1);
   std::vector<AxiReadPort> ports;
   for (size_t p = 0; p < n_ports; ++p) {
-    AxiMemSettings s = settings;
-    if (p == slow_port) s.rate_permille = slow_rate;
-    if (p == bad_port) s.bad_beat = bad_beat;
-    ports.emplace_back(std::as_bytes(images[p]), s, seed + 1 + p);
+    ports.emplace_back(std::as_bytes(images[p]), axi_settings(context, 4 * kBeatWords, p), seed + 1 + p);
   }
 
   Bench bench{.dut = *dut,

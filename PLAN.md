@@ -992,14 +992,15 @@ at 128 lanes); engine attention; checkpoint report.
   the same under 6 memory behaviours (latency 1; latency 80 with 2 bursts in
   flight; 30% rate; pauses; one port at 15%; sparse commands); stale
   infinities and NaN in x past the columns (masked); an error response on
-  its port. No gap between commands: 12 back-to-back commands take their
-  perf-model cycles to within 3 over the run (a command's last result
-  comes 3 cycles later after 64-column rows than after 128-column ones,
-  when the tree's adder is busier; measured). The rounder
+  its port. No gap between commands: 13 back-to-back commands take exactly
+  their perf-model cycles over the run (a command's last result comes 3
+  cycles later when the tree's adder is busy, after 64- or 60-column rows,
+  than when it is idle; measured; the run starts and ends idle). The rounder
   (`test_fp32_to_bf16.py`): every high half × 6 low halves and the
-  specials. 12 hand mutations (listed in the PR), all caught; the unmasked
+  specials. 13 hand mutations (listed in the PR), all caught; the unmasked
   last beat only after the stale-x test was added. Lint at 32 ports;
-  synthesis at 5 (Yosys takes 3 minutes at 32).
+  synthesis at 5 (at 32, Yosys needed more than 8 GB and was killed at
+  that cap after 3 minutes; Vivado's run is M8's).
   FIFO depth against pauses (5 ports, latency 20, 4 matrices of 160 × 512,
   memory seeds 1 to 5, rate as a share of a 1024-beat FIFO's):
 

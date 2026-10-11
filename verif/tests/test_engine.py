@@ -21,25 +21,21 @@ import perf
 import pytest
 import torch
 from engine import LANES_PER_PORT, Matvec
+from lane import FULL_RATE_LEN
 
 import rtl
 
 SEED = 20261011
 PORTS = (1, 2, 5)  # PLAN.md, M5: degenerate, plain, prime
-DESIGN = {"lanes": 0, "macs_per_lane": commands.E, "accumulators": 16}  # lanes set per test
+DESIGN = perf.load_design("v0").values()  # its lanes are set per test
 STARTUP_CYCLES = 60  # a command's first result after its start: latency 1 (measured, with margin)
-# A command's last result follows its last beat by a few cycles more when
-# the tree's adder is busy (rows near 60 columns) than when it is not
-# (measured: 3 more for 64 columns than for 128), so done_o's spacing moves
-# by that much; over a run the moves cancel but for the first and last.
-TAIL_CYCLES = 3
-COLS = (1, 3, 4, 5, 59, 60, 61, 64, 130)  # around a beat (4) and a full-rate row (60)
+# Around a beat and the lane's shortest full-rate row.
+COLS = (1, 3, 4, 5, FULL_RATE_LEN - 1, FULL_RATE_LEN, FULL_RATE_LEN + 1, 64, 130)
 
 
 def rows_around(lanes: int) -> list[int]:
     lpp = LANES_PER_PORT
-    return sorted({1, lpp - 1, lpp, lpp + 1, lanes - 1, lanes, lanes + 1, 2 * lanes + 3} - {0})
-
+    return sorted({1, lpp - 1, lpp, lpp + 1, lanes - 1, lanes, lanes + 1, 2 * lanes + 3})
 
 
 def random_bf16(gen: torch.Generator, *shape: int) -> torch.Tensor:
@@ -125,16 +121,19 @@ def test_stale_x(ports: int) -> None:
     check_bits(mats, xs, eng.fetch(mats, xs, ports, latency=5), f"stale x, seed {SEED}")
 
 
-BACK_TO_BACK = ((1, 64), (3, 128), (2, 60)) * 4  # (passes, cols): rows of full-rate length
+# (passes, cols): rows of full-rate length. A command's last result follows
+# its last beat by 3 cycles more when the tree's adder is busy (64 or 60
+# columns, after another command) than when it is idle (128 columns, or
+# the first command; measured): the run ends as it starts, idle.
+BACK_TO_BACK = ((1, 64), (3, 128), (2, FULL_RATE_LEN)) * 4 + ((3, 128),)
 
 
 @rtl.needs_verilator
 @pytest.mark.parametrize("ports", PORTS)
 def test_back_to_back(ports: int) -> None:
     """With the memory at full rate, the commands after the first take
-    their perf-model cycles, to within TAIL_CYCLES over the whole run: no
-    gap between commands (one cycle each would be 11), the next matrix's
-    reads hidden behind the current one."""
+    exactly their perf-model cycles over the whole run: no gap between
+    commands, the next matrix's reads hidden behind the current one."""
     gen = torch.Generator().manual_seed(SEED)
     lanes = ports * LANES_PER_PORT
     mats = [Matvec(random_bf16(gen, p * lanes, c)) for p, c in BACK_TO_BACK]
@@ -145,7 +144,7 @@ def test_back_to_back(ports: int) -> None:
     model = [model_cycles(m, ports) for m in mats]
     assert result.done[0] <= model[0] + 40 + STARTUP_CYCLES, (label, result.done[0], model[0])
     extra = int(result.done[-1] - result.done[0]) - sum(model[1:])
-    assert abs(extra) <= TAIL_CYCLES, (label, extra, np.diff(result.done).tolist(), model)
+    assert extra == 0, (label, extra, np.diff(result.done).tolist(), model)
 
 
 DEPTHS = (16, 64, 128, 1024)  # 1024: deep enough that the pauses alone limit the rate
