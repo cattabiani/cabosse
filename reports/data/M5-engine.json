@@ -372,5 +372,74 @@
     "commands": 85312.0
    }
   }
+ },
+ "bandwidth": {
+  "provenance": {
+   "commit": "2eb32f7dd664fdd807d7547a19ba5aafb1e2eb7c",
+   "dirty": false,
+   "date": "2026-10-11",
+   "machine": "Linux x86_64"
+  },
+  "ports": 32,
+  "memory": {
+   "latency": 70,
+   "outstanding": 8
+  },
+  "matrices": [
+   {
+    "shape": [
+     1536,
+     576
+    ],
+    "rate": 1000,
+    "share": 0.9320388349514563,
+    "engine_use": 1.0
+   },
+   {
+    "shape": [
+     8192,
+     576
+    ],
+    "rate": 1000,
+    "share": 0.9865125240847784,
+    "engine_use": 1.0
+   },
+   {
+    "shape": [
+     576,
+     1536
+    ],
+    "rate": 1000,
+    "share": 0.8478900883218842,
+    "engine_use": 0.9
+   },
+   {
+    "shape": [
+     1536,
+     576
+    ],
+    "rate": 500,
+    "share": 0.9360780065005417,
+    "engine_use": 1.0
+   },
+   {
+    "shape": [
+     8192,
+     576
+    ],
+    "rate": 500,
+    "share": 0.9769956535566627,
+    "engine_use": 1.0
+   },
+   {
+    "shape": [
+     576,
+     1536
+    ],
+    "rate": 500,
+    "share": 0.8537549407114624,
+    "engine_use": 0.9
+   }
+  ]
  }
 }
