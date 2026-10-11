@@ -5,6 +5,7 @@ reports/data/M5-engine.json, each part replacing its own key:
 
     python scripts/measure_m5_engine.py depth   # the ports' FIFO depth against pauses
     python scripts/measure_m5_engine.py real    # SmolLM2's MATVECs: cycles against the perf model
+    python scripts/measure_m5_engine.py bandwidth  # bytes per cycle on large matrices
     python scripts/measure_m5_engine.py speed   # Verilator: build time and cycles per second
     python scripts/measure_m5_engine.py show    # print the tables from the saved data
 
@@ -51,6 +52,8 @@ SEEDS = range(1, 6)
 DEPTH_SHAPE = (8 * PORTS * LANES_PER_PORT, 512)  # 8 passes of 128 beats
 DEPTH_MATRICES = 4
 SPEED_RUNS = 3
+BANDWIDTH_SHAPES = ((1536, 576), (8192, 576), (576, 1536))  # as verif's test_bandwidth
+RATES = (1000, 500)  # permille of cycles each port may send a beat
 POSITIONS = (63, 8191)  # a short and the longest position, for the per-token estimate
 
 
@@ -115,6 +118,31 @@ def real() -> dict:
     }
 
 
+def bandwidth() -> dict:
+    """Each large matrix alone, from its start to its done: bytes per cycle,
+    as a share of min(the memory's bytes per cycle, 2·E·L), and the perf
+    model's engine use (the most a partial last pass allows)."""
+    gen = torch.Generator().manual_seed(1)
+    design = perf.load_design("v0").values()
+    found = []
+    for rate in RATES:
+        peak = min(PORTS * eng.BEAT_BYTES * rate / 1000, 2 * eng.E * PORTS * LANES_PER_PORT)
+        for rows, cols in BANDWIDTH_SHAPES:
+            m = Matvec(torch.randn(rows, cols, generator=gen).to(torch.bfloat16))
+            xs = {0: torch.randn(cols, generator=gen).to(torch.bfloat16)}
+            r = eng.fetch([m], xs, PORTS, **MEMORY, rate=rate, seed=1)
+            assert np.array_equal(r.out[0], eng.expected(m, xs[0])), (rows, cols, rate)
+            found.append(
+                {
+                    "shape": [rows, cols],
+                    "rate": rate,
+                    "share": 2 * rows * cols / int(r.done[0] - r.taken[0]) / peak,
+                    "engine_use": perf.engine_use(((rows, cols),), design),
+                }
+            )
+    return {"ports": PORTS, "memory": MEMORY, "matrices": found}
+
+
 def speed() -> dict:
     """Build times from scratch, and simulated cycles per second of the
     driver's loop on SmolLM2's MATVECs; with the perf model's cycles per
@@ -177,6 +205,14 @@ def show(data: dict) -> None:
                 f"{'yes' if c['wait'] else ''} | {c['cycles']} | {c['model']} | {diff:+.1%} |"
             )
         print("The first command has nothing before it to hide its weights' reads behind.")
+    if "bandwidth" in data:
+        print("\n| rows × cols | memory rate | share of min(memory, 2·E·L) | engine use |")
+        print("|---|---|---|---|")
+        for m in data["bandwidth"]["matrices"]:
+            print(
+                f"| {m['shape'][0]} × {m['shape'][1]} | {m['rate'] / 1000:.0%} | "
+                f"{m['share']:.3f} | {m['engine_use']:.3f} |"
+            )
     if "speed" in data:
         s = data["speed"]
         rates = [c / t for c, t in zip(s["run_cycles"], s["run_s"], strict=True)]
@@ -192,7 +228,7 @@ def show(data: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("part", choices=("depth", "real", "speed", "show"))
+    parser.add_argument("part", choices=("depth", "real", "bandwidth", "speed", "show"))
     part = parser.parse_args().part
     data = json.loads(DATA.read_text()) if DATA.exists() else {}
     if part != "show":
