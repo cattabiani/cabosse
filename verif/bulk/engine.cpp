@@ -15,8 +15,9 @@
 /// it (D-042), in order, once it is taken: after every earlier command is
 /// done (its dependency is the one before), or at once (an earlier one, done
 /// already), then after a random delay. Until then its x buffer reads as NaN,
-/// so a step before the go writes wrong bits; no other command may read that
-/// buffer.
+/// so a step before the go writes wrong bits: a waiting command must be its
+/// buffer's first reader, and the only waiting one (later commands may share
+/// it, as k and v share q's).
 /// Plusargs: the memories' (axi_bench.h: +latency, +outstanding, +rate,
 /// +pause, +pause_max, +bad with +bad_port, +slow_rate with +slow_port),
 /// +offer (permille of cycles a new command is offered), +go_early (permille
@@ -83,8 +84,12 @@ struct Bench {
   std::vector<bool> poisoned;     ///< by buffer id: a waiting reader has no go yet
   size_t next_cmd = 0;            ///< the first command not yet taken
   size_t next_go = 0;             ///< the first waiting command without its go
-  std::optional<uint64_t> go_left;  ///< cycles until next_go's go, drawn once it is taken
-  bool go_now = false;            ///< next_go's go does not wait for the earlier dones
+  /// @brief next_go's go, drawn once the command is taken.
+  struct GoDraw {
+    bool early;     ///< does not wait for the earlier commands' done
+    uint64_t left;  ///< cycles still to wait once due
+  };
+  std::optional<GoDraw> go_draw;
   size_t oldest = 0;              ///< the first command not yet done
   bool offering = false;          ///< a command is on the port, waiting to be taken
   std::array<uint16_t, kXValues> x_q{};  ///< the RAM's output register
@@ -94,9 +99,10 @@ struct Bench {
   std::array<uint16_t, kXValues> read_x(uint32_t buf, uint64_t group) const {
     std::array<uint16_t, kXValues> v{};
     const std::vector<uint16_t>& x = x_bufs[buf];  // empty while no command reads it
+    const bool poison = poisoned[buf];
     for (size_t e = 0; e < kXValues; ++e) {
       const size_t k = group * kXValues + e;
-      if (k < x.size()) v[e] = poisoned[buf] ? kNan : x[k];
+      if (k < x.size()) v[e] = poison ? kNan : x[k];
     }
     return v;
   }
@@ -107,14 +113,11 @@ struct Bench {
   bool go() {
     while (next_go < commands.size() && !commands[next_go].wait) ++next_go;
     if (next_go >= next_cmd) return false;
-    if (!go_left) {
-      go_now = rng() % 1000 < go_early;
-      go_left = std::uniform_int_distribution<uint64_t>(0, go_delay)(rng);
-    }
-    if (!go_now && oldest < next_go) return false;
-    if ((*go_left)-- > 0) return false;
+    if (!go_draw) go_draw = GoDraw{rng() % 1000 < go_early, std::uniform_int_distribution<uint64_t>(0, go_delay)(rng)};
+    if (!go_draw->early && oldest < next_go) return false;
+    if (go_draw->left-- > 0) return false;
     poisoned[commands[next_go++].a] = false;
-    go_left.reset();
+    go_draw.reset();
     return true;
   }
 
@@ -249,10 +252,10 @@ int main(int argc, char** argv) {
                           .written = std::vector<bool>(f[0])});
       if (f[4] >= kBufs) throw std::out_of_range("a past BufWidth");
     }
+    std::vector<bool> read(kBufs);
     for (const Command& c : commands) {
-      if (c.wait && std::ranges::count(commands, c.a, &Command::a) > 1) {
-        throw std::out_of_range(std::format("a waiting command's x buffer {} is read by another", c.a));
-      }
+      if (c.wait && read[c.a]) throw std::out_of_range(std::format("x buffer {} read before its waiting command", c.a));
+      read[c.a] = true;
     }
     if (in.at != words.size()) throw std::out_of_range("words left after the commands");
   } catch (const std::out_of_range& e) {
@@ -275,7 +278,7 @@ int main(int argc, char** argv) {
               .go_delay = plusarg(context, "go_delay", 0),
               .rng = std::mt19937_64(seed),
               .poisoned = std::vector<bool>(kBufs)};
-  for (const Command& c : commands) bench.poisoned[c.a] = c.wait;
+  for (const Command& c : commands) bench.poisoned[c.a] = bench.poisoned[c.a] || c.wait;
   try {
     const auto start = std::chrono::steady_clock::now();
     reset(bench);

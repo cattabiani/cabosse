@@ -17,13 +17,11 @@ the ports' FIFO depth against pauses; an error response reported on its
 port. Slow, at 128 lanes: SmolLM2's MATVECs with real data, cycles against
 the perf model, and the bandwidth reached on large matrices."""
 
-import dataclasses
-
+import bulk
 import commands
 import engine as eng
 import numpy as np
 import paths
-import perf
 import pytest
 import torch
 from engine import LANES_PER_PORT, Matvec
@@ -69,12 +67,8 @@ def check_bits(
     mats: list[Matvec], xs: dict[int, torch.Tensor], result: eng.Result, label: str
 ) -> None:
     for i, (m, got) in enumerate(zip(mats, result.out, strict=True)):
-        want = eng.expected(m, xs[m.a])
-        bad = np.flatnonzero(got != want)
-        assert not len(bad), (
-            f"{label}: command {i} ({tuple(m.w.shape)}, bf16={m.bf16}): {len(bad)} rows differ, "
-            f"first row {bad[0]}: got 0x{got[bad[0]]:08X}, want 0x{want[bad[0]]:08X}"
-        )
+        command = f"{label}: command {i} ({tuple(m.w.shape)}, bf16={m.bf16})"
+        eng.assert_bits(got, eng.expected(m, xs[m.a]), command)
     assert result.err == 0, f"{label}: err_o {result.err:#x}"
     assert result.r_stalls == 0, f"{label}: a memory waited {result.r_stalls} cycles on RREADY"
 
@@ -157,7 +151,7 @@ GO_COMMANDS = (
     (True, 2, 64), (False, 1, 130), (True, 3, 64), (True, 1, 5),
     (False, 2, 64), (False, 1, 3), (True, 2, 130), (True, 1, 64),
 )  # fmt: skip
-GO_LATENCY = 120  # longer than a waiting command's start-up (55 cycles at 128 lanes)
+GO_LATENCY = 120  # longer than a waiting command's start-up (design v0's engine_startup_cycles)
 # (permille of gos that come as soon as their command is taken, the most
 # cycles a go comes late): on time; late, so the FIFOs fill and wait; early,
 # so credits wait while earlier commands step; both.
@@ -189,7 +183,7 @@ def test_go(ports: int, go_early: int, go_delay: int) -> None:
     check_bits(mats, xs, result, label)
     if (go_early, go_delay) == (0, 0):
         extra = [
-            c - eng.model_cycles(dataclasses.replace(m, wait=False), ports)
+            c - eng.model_cycles(m, ports, startup=False)
             for m, c in zip(mats, eng.command_cycles(result), strict=True)
         ]
         late = [(i, e) for i, e in enumerate(extra) if i > 0 and mats[i].wait and e >= GO_LATENCY]
@@ -244,13 +238,9 @@ def test_smollm2() -> None:
     and activations (position 63), waiting where the controller would, at
     F2's latency: bit for bit, and each command within 10% of the perf
     model's cycles (PLAN.md, M5), the first one included."""
-    found = eng.smollm2_matvecs(decoder.load(paths.SMOLLM2))
-    mats = [f.matvec for f in found]
-    xs = {i: f.x for i, f in enumerate(found)}
-    result = eng.fetch(mats, xs, WIDE, latency=eng.F2_LATENCY_CYCLES)
-    for f, got in zip(found, result.out, strict=True):
-        bad = np.flatnonzero(got != f.want)
-        assert not len(bad), f"{f.name}: {len(bad)} rows differ, first {bad[0]}"
+    found, result = eng.run_smollm2(
+        decoder.load(paths.SMOLLM2), WIDE, latency=eng.F2_LATENCY_CYCLES
+    )
     assert result.err == 0 and result.r_stalls == 0, (result.err, result.r_stalls)
     off = {
         f.name: c / eng.model_cycles(f.matvec, WIDE) - 1
@@ -269,14 +259,12 @@ def test_bandwidth(rate: int) -> None:
     latency included), reads at least 90% of min(the memory's bytes per
     cycle, 2·E·L) (PLAN.md, M5: 1024 B/cycle at full rate), times the perf
     model's engine use (1 for whole passes)."""
-    gen = torch.Generator().manual_seed(SEED)
     share = {}
-    for rows, cols in eng.LARGE:
-        m = Matvec(random_bf16(gen, rows, cols))
-        xs = {0: random_bf16(gen, cols)}
-        result = eng.fetch([m], xs, WIDE, latency=eng.F2_LATENCY_CYCLES, rate=rate, seed=SEED)
-        check_bits([m], xs, result, f"{rows} x {cols}, rate {rate}, seed {SEED}")
-        use = perf.engine_use(((rows, cols),), eng.design(WIDE))
-        share[rows, cols] = eng.read_share(m, result, WIDE, rate) / use
+
+    def one(shape: tuple[int, int]) -> None:
+        read, use = eng.bandwidth(*shape, WIDE, rate, SEED)
+        share[shape] = read / use
+
+    bulk.in_parallel(one, eng.LARGE)
     print(f"read share over the engine use: {share}")
     assert all(v >= 0.9 for v in share.values()), (SEED, share)

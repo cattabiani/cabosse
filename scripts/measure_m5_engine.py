@@ -17,7 +17,6 @@ everything under the memory cap; commit first, the data records the commit.
 
 import argparse
 import json
-import shutil
 import sys
 import time
 from pathlib import Path
@@ -34,15 +33,13 @@ import perf  # noqa: E402
 import torch  # noqa: E402
 from engine import LANES_PER_PORT, Matvec  # noqa: E402
 from golden import decoder  # noqa: E402
-from reporting import measure  # noqa: E402
-
-import rtl  # noqa: E402
+from reporting import blocks, measure  # noqa: E402
 
 DATA = REPO / "reports" / "data" / "M5-engine.json"
 PORTS = 32
 MEMORY = dict(latency=eng.F2_LATENCY_CYCLES, outstanding=8)
 DEPTHS = (64, 96, 128, 192, 256, 1024)  # 1024: deep enough that only the pauses limit
-REFERENCE_DEPTH = 1024
+REFERENCE_DEPTH = DEPTHS[-1]
 PAUSES = {  # per port, independently
     "none": {},
     "5 per mille, up to 20 cycles": dict(pause=5, pause_max=20),
@@ -71,7 +68,7 @@ def depth() -> dict:
         params = (("Depth", d),)
         r = eng.fetch(mats, xs, PORTS, params=params, seed=seed, **MEMORY, **PAUSES[pauses])
         for m, got in zip(mats, r.out, strict=True):
-            assert np.array_equal(got, eng.expected(m, xs[0])), job
+            eng.assert_bits(got, eng.expected(m, xs[0]), str(job))
         rate[job] = beats / int(r.done[-1] - r.taken[0])
 
     bulk.in_parallel(one, [(p, d, s) for p in PAUSES for d in DEPTHS for s in SEEDS])
@@ -92,11 +89,7 @@ def real() -> dict:
     waiting command, design v0's engine_startup_cycles, which comes from the
     first run of this measurement: the most a waiting command after the
     first took over its engine cycles)."""
-    found = eng.smollm2_matvecs(decoder.load(paths.SMOLLM2))
-    mats = [f.matvec for f in found]
-    result = eng.fetch(mats, {i: f.x for i, f in enumerate(found)}, PORTS, **MEMORY)
-    for f, got in zip(found, result.out, strict=True):
-        assert np.array_equal(got, f.want), f.name
+    found, result = eng.run_smollm2(decoder.load(paths.SMOLLM2), PORTS, **MEMORY)
     return {
         "ports": PORTS,
         "memory": MEMORY,
@@ -118,41 +111,36 @@ def bandwidth() -> dict:
     """Each large matrix alone, from its start to its done: bytes per cycle,
     as a share of min(the memory's bytes per cycle, 2·E·L), and the perf
     model's engine use (the most a partial last pass allows)."""
-    gen = torch.Generator().manual_seed(1)
-    found = []
-    for rate in eng.RATES:
-        for rows, cols in eng.LARGE:
-            m = Matvec(torch.randn(rows, cols, generator=gen).to(torch.bfloat16))
-            xs = {0: torch.randn(cols, generator=gen).to(torch.bfloat16)}
-            r = eng.fetch([m], xs, PORTS, **MEMORY, rate=rate, seed=1)
-            assert np.array_equal(r.out[0], eng.expected(m, xs[0])), (rows, cols, rate)
-            found.append(
-                {
-                    "shape": [rows, cols],
-                    "rate": rate,
-                    "share": eng.read_share(m, r, PORTS, rate),
-                    "engine_use": perf.engine_use(((rows, cols),), eng.design(PORTS)),
-                }
-            )
-    return {"ports": PORTS, "memory": MEMORY, "matrices": found}
+    jobs = [(rate, shape) for rate in eng.RATES for shape in eng.LARGE]
+    found = {}
+
+    def one(job: tuple[int, tuple[int, int]]) -> None:
+        rate, shape = job
+        found[job] = eng.bandwidth(*shape, PORTS, rate, seed=1)
+
+    bulk.in_parallel(one, jobs)
+    matrices = [
+        {"shape": list(shape), "rate": rate, "share": found[rate, shape][0]}
+        | {"engine_use": found[rate, shape][1]}
+        for rate, shape in jobs
+    ]
+    return {"ports": PORTS, "memory": MEMORY, "matrices": matrices}
 
 
 def speed() -> dict:
     """Build times from scratch, and simulated cycles per second of the
     driver's loop on SmolLM2's MATVECs; with the perf model's cycles per
     token, an estimate of M7's wall time per simulated token."""
-    build_dir = rtl.BUILD / f"bulk_engine_Ports{PORTS}"
+    params = (("Ports", PORTS),)
     build_s = []
     for _ in range(SPEED_RUNS):
-        shutil.rmtree(build_dir, ignore_errors=True)
-        bulk._build.cache_clear()
+        bulk.forget_build("engine", params)
         start = time.monotonic()
-        bulk.build("engine", (("Ports", PORTS),))
+        bulk.build("engine", params)
         build_s.append(time.monotonic() - start)
-    found = eng.smollm2_matvecs(decoder.load(paths.SMOLLM2))
-    xs = {i: f.x for i, f in enumerate(found)}
+    found, xs = eng.smollm2_matvecs(decoder.load(paths.SMOLLM2))
     runs = [eng.fetch([f.matvec for f in found], xs, PORTS, **MEMORY) for _ in range(SPEED_RUNS)]
-    config, design = perf.load_config("SmolLM2-135M-Instruct"), perf.load_design("v0").values()
+    config, design = perf.load_config("SmolLM2-135M-Instruct"), eng.DESIGN
     platform = perf.load_platform("f2").values()
     token_cycles = {
         str(pos): {
@@ -171,42 +159,43 @@ def speed() -> dict:
 
 
 def show(data: dict) -> None:
+    def span(values: list[float]) -> str:
+        return f"{min(values):.3f}-{max(values):.3f}"
+
+    for name, part in data.items():
+        print(f"{name}: {blocks.provenance_text(part['provenance'])}")
     if "depth" in data:
         d = data["depth"]
-        print(
-            f"Rate as a share of a {REFERENCE_DEPTH}-beat FIFO's, {d['ports']} ports, {d['memory']}"
-        )
-        print("| depth | " + " | ".join(d["pauses"]) + " |")
-        print("|---|" + "---|" * len(d["pauses"]))
-        for depth_ in DEPTHS[:-1]:
-            cells = []
-            for p in d["pauses"]:
-                share = np.array(d["rates"][p][str(depth_)]) / d["rates"][p][str(REFERENCE_DEPTH)]
-                cells.append(f"{share.min():.3f}-{share.max():.3f}")
-            print(f"| {depth_} | " + " | ".join(cells) + " |")
+        rates = d["rates"]
+        ref = {p: rates[p][str(REFERENCE_DEPTH)] for p in d["pauses"]}
+        print(f"\nRate as a share of a {REFERENCE_DEPTH}-beat FIFO's, {d['ports']} ports, ", end="")
+        print(d["memory"])
+        rows = [
+            [depth_] + [span(list(np.array(rates[p][str(depth_)]) / ref[p])) for p in d["pauses"]]
+            for depth_ in DEPTHS[:-1]
+        ]
+        print(blocks.table(["depth", *d["pauses"]], rows))
         for p in d["pauses"]:
-            ref = d["rates"][p][str(REFERENCE_DEPTH)]
-            print(f"{p}: {REFERENCE_DEPTH}-beat FIFO, {min(ref):.3f}-{max(ref):.3f} beats/cycle")
+            print(f"{p}: {REFERENCE_DEPTH}-beat FIFO, {span(ref[p])} beats/cycle")
     if "real" in data:
         r = data["real"]
         print(f"\nSmolLM2 MATVECs, position {r['position']}, {r['memory']}")
-        print("| command | rows × cols | waits | cycles | perf model | difference |")
-        print("|---|---|---|---|---|---|")
-        for c in r["commands"]:
-            diff = (c["cycles"] - c["model"]) / c["model"]
-            print(
-                f"| {c['name']} | {c['shape'][0]} × {c['shape'][1]} | "
-                f"{'yes' if c['wait'] else ''} | {c['cycles']} | {c['model']} | {diff:+.1%} |"
-            )
+        rows = [
+            [c["name"], f"{c['shape'][0]} × {c['shape'][1]}", "yes" if c["wait"] else ""]
+            + [c["cycles"], c["model"], f"{(c['cycles'] - c['model']) / c['model']:+.1%}"]
+            for c in r["commands"]
+        ]
+        header = ["command", "rows × cols", "waits", "cycles", "perf model", "difference"]
+        print(blocks.table(header, rows))
         print("The first command has nothing before it to hide its weights' reads behind.")
     if "bandwidth" in data:
-        print("\n| rows × cols | memory rate | share of min(memory, 2·E·L) | engine use |")
-        print("|---|---|---|---|")
-        for m in data["bandwidth"]["matrices"]:
-            print(
-                f"| {m['shape'][0]} × {m['shape'][1]} | {m['rate'] / 1000:.0%} | "
-                f"{m['share']:.3f} | {m['engine_use']:.3f} |"
-            )
+        rows = [
+            [f"{m['shape'][0]} × {m['shape'][1]}", f"{m['rate'] / 1000:.0%}"]
+            + [f"{m['share']:.3f}", f"{m['engine_use']:.3f}"]
+            for m in data["bandwidth"]["matrices"]
+        ]
+        header = ["rows × cols", "memory rate", "share of min(memory, 2·E·L)", "engine use"]
+        print("\n" + blocks.table(header, rows))
     if "speed" in data:
         s = data["speed"]
         rates = [c / t for c, t in zip(s["run_cycles"], s["run_s"], strict=True)]

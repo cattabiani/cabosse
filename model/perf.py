@@ -286,7 +286,7 @@ class Work:
     vector_elems: int
     commands: int
     engine_shapes: tuple[tuple[int, int], ...]  # (rows, cols) per engine op
-    engine_waits: int = 0  # engine ops that wait for an earlier result
+    engine_waits: int  # engine ops that wait for an earlier result
 
     @property
     def memory_bytes(self) -> int:
@@ -310,7 +310,7 @@ class Work:
             vector_elems=total("vector_elems"),
             commands=len(op_list),
             engine_shapes=tuple(o.engine_shape for o in op_list if o.engine_shape is not None),
-            engine_waits=sum(o.waits for o in op_list),
+            engine_waits=total("waits"),
         )
 
 
@@ -322,14 +322,18 @@ def hbm_bytes_per_s(platform: dict[str, float], design: dict[str, float]) -> flo
     return min(measured, platform["hbm_ports"] * platform["hbm_port_bytes"] * clock)
 
 
-def engine_cycles(shapes: tuple[tuple[int, int], ...], design: dict[str, float]) -> int:
-    """Cycles of the engine for these (rows, cols): rows in passes of `lanes`
-    (a partial pass leaves lanes idle); a row takes cols / `macs_per_lane`
-    cycles, but at least the `accumulators` - 1 adds of its final sum, which
-    run during the next row."""
+def engine_cycles(
+    shapes: tuple[tuple[int, int], ...], design: dict[str, float], waits: int = 0
+) -> int:
+    """Cycles of the engine for these (rows, cols), of which `waits` commands
+    wait for an earlier result: rows in passes of `lanes` (a partial pass
+    leaves lanes idle); a row takes cols / `macs_per_lane` cycles, but at
+    least the `accumulators` - 1 adds of its final sum, which run during the
+    next row; each waiting command adds `engine_startup_cycles` (D-042)."""
     lanes, per_lane = int(design["lanes"]), int(design["macs_per_lane"])
     tree = int(design["accumulators"]) - 1
-    return sum(
+    startup = waits * int(design["engine_startup_cycles"]) if waits else 0
+    return startup + sum(
         math.ceil(rows / lanes) * max(math.ceil(cols / per_lane), tree) for rows, cols in shapes
     )
 
@@ -345,11 +349,7 @@ def seconds(work: Work, platform: dict[str, float], design: dict[str, float]) ->
     clock = design["clock_hz"]
     return {
         "memory": work.memory_bytes / hbm_bytes_per_s(platform, design),
-        "engine": (
-            engine_cycles(work.engine_shapes, design)
-            + work.engine_waits * design["engine_startup_cycles"]
-        )
-        / clock,
+        "engine": engine_cycles(work.engine_shapes, design, work.engine_waits) / clock,
         "vector": work.vector_elems / (design["vector_elems_per_cycle"] * clock),
         "commands": work.commands * design["command_cycles"] / clock,
     }

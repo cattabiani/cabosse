@@ -18,6 +18,7 @@ bulk/axi_mem.h.
 
 import functools
 import os
+import shutil
 import subprocess
 import threading
 from collections.abc import Callable, Iterable
@@ -45,23 +46,36 @@ def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
         return _build(top, params)
 
 
+def build_dir(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
+    """Where build() puts `top` with these parameter overrides."""
+    return rtl.BUILD / "_".join(["bulk", top, *(f"{k}{v}" for k, v in params)])
+
+
 @functools.cache
 def _build(top: str, params: tuple[tuple[str, int], ...]) -> Path:
-    build_dir = rtl.BUILD / ("_".join(["bulk", top, *(f"{k}{v}" for k, v in params)]))
-    build_dir.mkdir(parents=True, exist_ok=True)  # Verilator makes only the last level
+    directory = build_dir(top, params)
+    directory.mkdir(parents=True, exist_ok=True)  # Verilator makes only the last level
     cxx = os.environ.get("CXX")
     argv = [
         "verilator", "--cc", "--exe", "--build", "-j", "0", "-O3",
         "--x-assign", "fast", "--x-initial", "fast", "--public-params",
         "-CFLAGS", f"-std=c++23 -O3 -I{DRIVERS}",
-        "--top-module", top, "-Mdir", str(build_dir), "-o", "bulk",
+        "--top-module", top, "-Mdir", str(directory), "-o", "bulk",
         *(f"-G{k}={v}" for k, v in params),
         *(["-MAKEFLAGS", f"CXX={cxx}", "-MAKEFLAGS", f"LINK={cxx}"] if cxx else []),
         *rtl.VERILATOR_FILES, str(DRIVERS / f"{top}.cpp"),
     ]  # fmt: skip
     result = subprocess.run(argv, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-4000:]
-    return build_dir / "bulk"
+    return directory / "bulk"
+
+
+def forget_build(top: str, params: tuple[tuple[str, int], ...] = ()) -> None:
+    """Delete a build of `top`, so the next build() starts from scratch (to
+    time it)."""
+    with _BUILD_LOCK:
+        shutil.rmtree(build_dir(top, params), ignore_errors=True)
+        _build.cache_clear()
 
 
 def build_program(name: str) -> Path:

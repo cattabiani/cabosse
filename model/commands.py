@@ -559,6 +559,7 @@ class EngineCall:
     a: torch.Tensor  # the input buffer, BF16
     mem: torch.Tensor  # the matrix, or a copy of the cache's first t positions per head
     out: torch.Tensor  # dst as written: FP32, or rounded where the buffer is BF16
+    wait: bool  # steps only after its go (engine_waits)
 
 
 def run(
@@ -577,6 +578,7 @@ def run(
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
     formats = buffers(layout.config, layout.cap)
     names = {addr: name for name, (addr, _, _) in layout.tensors.items()} if record else {}
+    waits = engine_waits(commands) if record else []
     buf: dict[Buf, torch.Tensor] = {}
     output = None
     t = position + 1  # positions attention reads: 0 ... position
@@ -662,7 +664,8 @@ def run(
                 raise AssertionError(f"unknown command {cmd.op!r}")
         if record is not None and cmd.op in ENGINE_OPS:
             read = mem if cmd.op == Op.MATVEC else mem[:, :t].clone()  # later tokens write it
-            record(EngineCall(i, names[cmd.addr], cmd, a.clone(), read, buf[cmd.dst].clone()))
+            out = buf[cmd.dst].clone()
+            record(EngineCall(i, names[cmd.addr], cmd, a.clone(), read, out, waits[i]))
     raise AssertionError("command list without END")
 
 

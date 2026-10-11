@@ -140,7 +140,7 @@ def test_engine_use() -> None:
 def test_memory_time_scales_with_the_memory_clock() -> None:
     """Below the port's maximum clock the read rate scales with the clock;
     above it, it does not."""
-    work = perf.Work(100, 0, 0, 0, 0, 0, 0, ())
+    work = perf.Work(100, 0, 0, 0, 0, 0, 0, (), 0)
     platform = PLATFORM | {"hbm_ports": 100}  # no cap from the raw width
     time = {
         clock: perf.seconds(work, platform, DESIGN | {"memory_clock_hz": clock})["memory"]
