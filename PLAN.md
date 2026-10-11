@@ -365,6 +365,25 @@ matrices at 128 lanes, above the 10% the M5 answers allow against the perf
 model. Back-to-back engine commands that share an input (q, k and v; gate
 and up) do not depend on each other.
 
+**D-042 (2026-10-11) — A dependent engine command reads its weights ahead
+of its go** (refines D-041; owner, 2026-10-11). The controller gives the
+engine a command whose input is not ready yet with `wait` set, and pulses
+`go` once the command it depends on is done. The engine's issue stage
+reads the command's weights as soon as it takes it; only the step stage
+waits for the go. Rules: a go is a credit for the oldest waiting command
+without one, sent only after the engine took that command; the controller
+never makes a go depend on the engine taking a later command (that would
+deadlock with the queues full). Read-ahead covers memory no command writes
+(weights); attention's KV tiles, which KV_STORE writes just before, are
+settled with the tile buffer (M5, attention). The perf model counts
+`engine_startup_cycles` per waiting command (`commands.engine_waits`: the
+engine commands whose input was written at or after the previous engine
+command). *Why:* reading after the go adds the memory's latency to every
+dependent command: 118 cycles at F2's latency, 16% of SmolLM2's q and o
+(measured in an exploratory run, not saved), above the 10% the M5 answers allow; read ahead, 47-55 cycles
+remain (the lanes' pipeline, the final sum and the last pass's drain;
+reports/data/M5-engine.json).
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -973,7 +992,7 @@ at 128 lanes); engine attention; checkpoint report.
   full rate. A layout where each channel's positions of a head are
   contiguous (position `p` on channel `p mod 32`) makes a 128-position tile
   one 16-beat command per port; settle it before the tile buffer.
-- [ ] Engine `MATVEC`, first PR: the engine with small configurations.
+- [x] Engine `MATVEC`, first PR (#53): the engine with small configurations.
   `rtl/engine.sv`: `Ports` × 4 lanes in lockstep, a `port_dma` per port,
   three stages with their own command queues (D-041): issue (per pass, one
   DMA command of `ceil(m / 4)` beats to each port with rows in it, at
@@ -1013,7 +1032,61 @@ at 128 lanes); engine attention; checkpoint report.
 
   At 16 the memory's latency limits more than the pauses (a burst is asked
   for only with room for it). 64 stays the default until the 32-port run
-  of the second PR.
+  of the second PR. (These seeds overlapped: port p drew with seed + 1 + p,
+  so seeds 1 to 5 shared most ports' streams; fixed in the second PR.)
+- [ ] Engine `MATVEC`, second PR: real data and speed at 128 lanes.
+  Weights read ahead of a go (D-042, owner): `cmd_wait_i` and `go_i`
+  credits; issue reads a waiting command's weights at once, step holds it
+  until its go. `commands.engine_waits` marks the waiting commands (q,
+  SCORES, VALUES, o, gate, down per layer, and the classifier: 181 per
+  SmolLM2 token), and the perf model adds `engine_startup_cycles` (55,
+  measured) for each; docs/perf.md and reports/M2.md re-rendered:
+  1-3% fewer tokens/s, and position 0 now limited by the engine (1.159 ms)
+  rather than memory (1.136 ms). The driver gives gos as the controller
+  would (after every earlier done, optionally late) and reads a waiting
+  command's x as NaN until its go; port memories draw with
+  `(seed << 16) + p`. The memory has F2's read latency, 70 cycles (AWS's
+  280 ns at 250 MHz; our path waits for M8). Measurements
+  (`scripts/measure_m5_engine.py`, `reports/data/M5-engine.json`):
+  - FIFO depth at 32 ports (latency 70, 4 matrices of 1024 × 512, memory
+    seeds 1 to 5, rate as a share of a 1024-beat FIFO's):
+
+    | depth | no pauses | pauses 5‰, up to 20 cycles | pauses 20‰, up to 40 cycles |
+    |---|---|---|---|
+    | 64 | 0.744 | 0.661-0.674 | 0.622-0.639 |
+    | 96 | 1.000 | 0.915-0.930 | 0.801-0.829 |
+    | 128 | 1.000 | 0.978-0.992 | 0.882-0.921 |
+    | 192 | 1.000 | 0.998-1.000 | 0.968-0.985 |
+    | 256 | 1.000 | 1.000 | 0.986-1.000 |
+
+    A 64-beat FIFO cannot cover the latency (a burst is asked for only with
+    room for it). The default is now 128, provisional until M8 measures
+    F2's HBM; 192 if its pauses turn out like the harsher column.
+  - SmolLM2 (first and last layers' MATVECs and the classifier, position
+    63, real data, waiting as the controller would): bit-exact; every
+    command within 1% of the perf model with the start-up, except the
+    first q, +8.1% (nothing runs before it to read its weights behind).
+    With read-ahead a waiting command takes 47-55 cycles over its engine
+    cycles; before it, 118 (an exploratory run, not saved).
+  - Bandwidth, each matrix alone with its start-up and F2's latency, as a
+    share of min(memory, 2·E·L) (1024 B/cycle at full rate, 512 at half):
+
+    | rows × cols | full rate | half rate | perf model's engine use |
+    |---|---|---|---|
+    | 1536 × 576 | 0.932 | 0.936 | 1.000 |
+    | 8192 × 576 | 0.987 | 0.977 | 1.000 |
+    | 576 × 1536 | 0.848 | 0.854 | 0.900 |
+
+    `down` (576 × 1536) misses the criterion's 90% as written: its 4.5
+    passes leave half the ports idle in the last one, so no read rate can
+    take it above 0.90. `test_bandwidth` holds each matrix to 90% of
+    min(memory, 2·E·L) times its engine use.
+  - Verilator (16 cores): build 155-165 s; 6,970-7,199 simulated cycles/s
+    on the 128-lane engine. With the perf model's serial cycles per token
+    (695,602 at position 63, 2,157,972 at 8191), M7 would need about 100 s
+    and 310 s of wall time per simulated token (estimate; the full design
+    will simulate slower). CI builds and runs the 128-lane tests (marked
+    `wide`) in a job of its own, beside the RTL job.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
@@ -1037,7 +1110,10 @@ SmolLM2 is bit-exact for ≥ 8 tokens. The cycle breakdown per token is
 compared with the perf model and with the baseline profile.
 **Notes (from M5):** the engine needs `rows` ≥ 1 and `cols` ≥ 1; a `cols` = 0
 command hangs it, so the controller rejects one (or the list builder never
-makes one). The model's `Layout` moves to channel offsets (D-040).
+makes one). The model's `Layout` moves to channel offsets (D-040). The
+controller sets `wait` on the commands `commands.engine_waits` marks and
+pulses `go` once the command each depends on is done; a go never waits for
+the engine to take a later command (D-042).
 
 ### M8 — F2 bring-up (no model)
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and

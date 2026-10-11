@@ -96,6 +96,12 @@ destination). The next matrix's reads start during the current one, and
 back-to-back commands leave no gap. The controller orders a command after
 one whose output it reads.
 
+**Weights read ahead (D-042).** A command whose input is not ready yet
+comes with `wait`; the engine reads its weights at once and steps it only
+after the controller's `go`, sent when the command it depends on is done.
+Only the lanes' pipeline remains between the go and the results (about 50
+cycles at 128 lanes), not the memory's latency.
+
 **Left for later:** concatenating matrices that share an input (q, k and v;
 gate and up) into one, to fill the last pass; a small gain for SmolLM2.
 
