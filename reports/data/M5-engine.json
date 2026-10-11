@@ -375,7 +375,7 @@
  },
  "bandwidth": {
   "provenance": {
-   "commit": "2eb32f7dd664fdd807d7547a19ba5aafb1e2eb7c",
+   "commit": "992ff25680790425ff47df7c6d6efaa92de483a6",
    "dirty": false,
    "date": "2026-10-11",
    "machine": "Linux x86_64"
