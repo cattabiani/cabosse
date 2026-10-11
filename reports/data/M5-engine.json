@@ -171,7 +171,7 @@
  },
  "real": {
   "provenance": {
-   "commit": "239ae018381c24047b7330a48029d61acf7ae22c",
+   "commit": "aab4e7a9bdde9748f8e7e4a714c2273c8c7a8a30",
    "dirty": false,
    "date": "2026-10-11",
    "machine": "Linux x86_64"
@@ -191,7 +191,7 @@
     ],
     "wait": true,
     "cycles": 838,
-    "model": 775.0
+    "model": 775
    },
    {
     "name": "layers.0.k",
@@ -201,7 +201,7 @@
     ],
     "wait": false,
     "cycles": 288,
-    "model": 288.0
+    "model": 288
    },
    {
     "name": "layers.0.v",
@@ -211,7 +211,7 @@
     ],
     "wait": false,
     "cycles": 288,
-    "model": 288.0
+    "model": 288
    },
    {
     "name": "layers.0.o",
@@ -221,7 +221,7 @@
     ],
     "wait": true,
     "cycles": 767,
-    "model": 775.0
+    "model": 775
    },
    {
     "name": "layers.0.gate",
@@ -231,7 +231,7 @@
     ],
     "wait": true,
     "cycles": 1783,
-    "model": 1783.0
+    "model": 1783
    },
    {
     "name": "layers.0.up",
@@ -241,7 +241,7 @@
     ],
     "wait": false,
     "cycles": 1728,
-    "model": 1728.0
+    "model": 1728
    },
    {
     "name": "layers.0.down",
@@ -251,7 +251,7 @@
     ],
     "wait": true,
     "cycles": 1967,
-    "model": 1975.0
+    "model": 1975
    },
    {
     "name": "layers.29.q",
@@ -261,7 +261,7 @@
     ],
     "wait": true,
     "cycles": 767,
-    "model": 775.0
+    "model": 775
    },
    {
     "name": "layers.29.k",
@@ -271,7 +271,7 @@
     ],
     "wait": false,
     "cycles": 288,
-    "model": 288.0
+    "model": 288
    },
    {
     "name": "layers.29.v",
@@ -281,7 +281,7 @@
     ],
     "wait": false,
     "cycles": 288,
-    "model": 288.0
+    "model": 288
    },
    {
     "name": "layers.29.o",
@@ -291,7 +291,7 @@
     ],
     "wait": true,
     "cycles": 767,
-    "model": 775.0
+    "model": 775
    },
    {
     "name": "layers.29.gate",
@@ -301,7 +301,7 @@
     ],
     "wait": true,
     "cycles": 1783,
-    "model": 1783.0
+    "model": 1783
    },
    {
     "name": "layers.29.up",
@@ -311,7 +311,7 @@
     ],
     "wait": false,
     "cycles": 1728,
-    "model": 1728.0
+    "model": 1728
    },
    {
     "name": "layers.29.down",
@@ -321,7 +321,7 @@
     ],
     "wait": true,
     "cycles": 1967,
-    "model": 1975.0
+    "model": 1975
    },
    {
     "name": "lm_head",
@@ -331,7 +331,7 @@
     ],
     "wait": true,
     "cycles": 55351,
-    "model": 55351.0
+    "model": 55351
    }
   ]
  },
