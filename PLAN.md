@@ -1043,9 +1043,11 @@ at 128 lanes); engine attention; checkpoint report.
   measured) for each; docs/perf.md and reports/M2.md re-rendered:
   1-3% fewer tokens/s, and position 0 now limited by the engine (1.159 ms)
   rather than memory (1.136 ms). The driver gives gos as the controller
-  would (after every earlier done, optionally late) and reads a waiting
-  command's x as NaN until its go; port memories draw with
-  `(seed << 16) + p`. The memory has F2's read latency, 70 cycles (AWS's
+  may (after every earlier done or at once, optionally late) and reads a
+  waiting command's x as NaN until its go; port memories draw with
+  `(seed << 16) + p`. 5 hand mutations of the go logic (go ignored, credit
+  never spent, spent by every command, a 1-bit credit, issue waiting for
+  the go), all caught. Reviewed with `/code-review` and `/simplify`. The memory has F2's read latency, 70 cycles (AWS's
   280 ns at 250 MHz; our path waits for M8). Measurements
   (`scripts/measure_m5_engine.py`, `reports/data/M5-engine.json`):
   - FIFO depth at 32 ports (latency 70, 4 matrices of 1024 × 512, memory
