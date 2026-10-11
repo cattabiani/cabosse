@@ -28,11 +28,10 @@
 #include <algorithm>
 #include <array>
 #include <map>
-#include <type_traits>
+#include <utility>
 
 #include "Vengine.h"
-#include "axi_mem.h"
-#include "stream.h"
+#include "axi_bench.h"
 
 namespace {
 
@@ -40,39 +39,7 @@ constexpr size_t kBeatWords = 8;      ///< 256 bits
 constexpr size_t kCmdWords = 7;       ///< rows, cols, addr lo, addr hi, a, dst, bf16
 constexpr size_t kXValues = 4;        ///< E: BF16 values per read
 constexpr size_t kWrites = 8;         ///< the write port's slots
-constexpr uint64_t kMaxIdleCycles = 100'000;  ///< cycles with no write before calling it a hang
 constexpr int kExitBadInput = 2, kExitHang = 3, kExitBadWrite = 4, kExitAxi = 5;
-
-/// @brief Bits [lsb, lsb + width) of a Verilated signal, width <= 64.
-/// @tparam T an integer (narrow signals) or VlWide (wide ones).
-template <typename T>
-uint64_t get_bits(const T& sig, size_t lsb, size_t width) {
-  uint64_t v = 0;
-  if constexpr (std::is_integral_v<T>) {
-    v = static_cast<uint64_t>(sig) >> lsb;
-  } else {
-    for (size_t i = 0; i < width + lsb % 32; i += 32) {
-      const size_t w = lsb / 32 + i / 32;
-      if (w < sizeof(T) / 4) v |= uint64_t{sig[w]} << i;
-    }
-    v >>= lsb % 32;
-  }
-  return width >= 64 ? v : v & ((uint64_t{1} << width) - 1);
-}
-
-/// @brief Set bits [lsb, lsb + width) of a Verilated signal, width <= 32.
-template <typename T>
-void set_bits(T& sig, size_t lsb, size_t width, uint32_t value) {
-  const uint64_t mask = (uint64_t{1} << width) - 1;
-  if constexpr (std::is_integral_v<T>) {
-    sig = static_cast<T>((sig & ~(mask << lsb)) | ((value & mask) << lsb));
-  } else {
-    for (size_t i = 0; i < width; ++i) {
-      const size_t b = lsb + i;
-      sig[b / 32] = (sig[b / 32] & ~(1u << b % 32)) | (((value >> i) & 1u) << b % 32);
-    }
-  }
-}
 
 /// @brief One engine command and what it wrote.
 struct Command {
@@ -103,13 +70,6 @@ struct Bench {
   bool offering = false;          ///< a command is on the port, waiting to be taken
   std::array<uint16_t, kXValues> x_q{};  ///< the RAM's output register
   uint64_t cycles = 0, writes = 0;
-
-  /// @brief Hold the engine in reset for kResetCycles cycles, then release it.
-  void reset() {
-    dut.rst_ni = 0;
-    for (int i = 0; i < kResetCycles; ++i) cycle();
-    dut.rst_ni = 1;
-  }
 
   /// @brief The x RAM's read: E values of a group, zeros past the buffer.
   std::array<uint16_t, kXValues> read_x(uint32_t buf, uint64_t group) const {
@@ -163,7 +123,6 @@ struct Bench {
       set_bits(dut.r_valid_i, p, 1, ports[p].r_valid());
       set_bits(dut.r_resp_i, 2 * p, 2, ports[p].r_resp());
       if (const auto data = ports[p].r_data(); !data.empty()) {
-        if (data.size() != 4 * kBeatWords) throw std::length_error("memory beat is not the engine's width");
         std::ranges::copy(data, std::as_writable_bytes(std::span(dut.r_data_i.data() + kBeatWords * p, kBeatWords)).begin());
       }
     }
@@ -258,17 +217,11 @@ int main(int argc, char** argv) {
     return kExitBadInput;
   }
 
-  AxiMemSettings settings;
-  settings.latency = plusarg(context, "latency", settings.latency);
-  settings.outstanding = plusarg(context, "outstanding", settings.outstanding);
-  settings.rate_permille = plusarg(context, "rate", settings.rate_permille);
-  settings.pause_permille = plusarg(context, "pause", settings.pause_permille);
-  settings.pause_max = plusarg(context, "pause_max", settings.pause_max);
-  settings.beat_bytes = 4 * kBeatWords;
+  AxiMemSettings settings = axi_settings(context, 4 * kBeatWords);
+  const uint64_t bad_beat = std::exchange(settings.bad_beat, UINT64_MAX);  // one port's only
+  const uint64_t bad_port = plusarg(context, "bad_port", UINT64_MAX);
   const uint64_t slow_port = plusarg(context, "slow_port", UINT64_MAX);
   const uint64_t slow_rate = plusarg(context, "slow_rate", settings.rate_permille);
-  const uint64_t bad_port = plusarg(context, "bad_port", UINT64_MAX);
-  const uint64_t bad_beat = plusarg(context, "bad", UINT64_MAX);
   const uint64_t seed = plusarg(context, "seed", 1);
   std::vector<AxiReadPort> ports;
   for (size_t p = 0; p < n_ports; ++p) {
@@ -285,19 +238,15 @@ int main(int argc, char** argv) {
               .offer_permille = plusarg(context, "offer", 1000),
               .rng = std::mt19937_64(seed)};
   try {
-    bench.reset();
-    uint64_t idle = 0;
-    while (bench.oldest < commands.size()) {
-      const uint64_t before = bench.writes + bench.oldest;
-      bench.cycle();
-      idle = bench.writes + bench.oldest == before ? idle + 1 : 0;
-      if (idle > kMaxIdleCycles) {
-        std::println(stderr, "hung: {} of {} commands taken, {} done, after {} cycles", bench.next_cmd,
-                     commands.size(), bench.oldest, bench.cycles);
-        return kExitHang;
-      }
+    reset(bench);
+    const auto cycles = run(
+        bench, [&] { return bench.oldest == commands.size(); },
+        [&] { return bench.writes + bench.oldest; });
+    if (!cycles) {
+      std::println(stderr, "hung: {} of {} commands taken, {} done, after {} cycles", bench.next_cmd,
+                   commands.size(), bench.oldest, bench.cycles);
+      return kExitHang;
     }
-    const uint64_t cycles = bench.cycles;
     for (int i = 0; i < kDrainCycles; ++i) bench.cycle();
     if (!std::ranges::all_of(ports, &AxiReadPort::idle)) throw WriteError("a memory still busy after the last done");
     std::vector<uint32_t> out;
@@ -308,7 +257,7 @@ int main(int argc, char** argv) {
     }
     uint64_t stalls = 0;
     for (const AxiReadPort& p : ports) stalls += p.r_stalls();
-    out.push_back(static_cast<uint32_t>(cycles));
+    out.push_back(static_cast<uint32_t>(*cycles));
     out.push_back(static_cast<uint32_t>(stalls));
     out.push_back(static_cast<uint32_t>(get_bits(dut->err_o, 0, std::min<size_t>(n_ports, 32))));
     std::fwrite(out.data(), sizeof(uint32_t), out.size(), stdout);

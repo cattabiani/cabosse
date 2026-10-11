@@ -973,6 +973,46 @@ at 128 lanes); engine attention; checkpoint report.
   full rate. A layout where each channel's positions of a head are
   contiguous (position `p` on channel `p mod 32`) makes a 128-position tile
   one 16-beat command per port; settle it before the tile buffer.
+- [ ] Engine `MATVEC`, first PR: the engine with small configurations.
+  `rtl/engine.sv`: `Ports` × 4 lanes in lockstep, a `port_dma` per port,
+  three stages with their own command queues (D-041): issue (per pass, one
+  DMA command of `ceil(m / 4)` beats to each port with rows in it, at
+  `addr` in every channel, D-040; no division by the port count), step (a
+  beat to every lane when every port with rows in the pass has one and every
+  lane is ready; x from a 1-cycle read port) and drain (8 results per cycle
+  to the write port, rounded by `rtl/fp32_to_bf16.sv` for a BF16
+  destination; lanes past the last row popped, not written). The engine
+  takes a reduced command (rows, cols, addr, a, dst, bf16); the controller
+  decodes the full one (M7). `verif/bulk/engine.cpp` drives it against one
+  memory model per port and checks every write as it comes (the oldest
+  command's dst, rows below its row count, each once). Tests
+  (`test_engine.py`, at 1, 2 and 5 ports): every row count around a group
+  and a pass × columns around a beat and a full-rate row, back to back with
+  FP32 and BF16 destinations, two x buffers and random 4 KB placements;
+  the same under 6 memory behaviours (latency 1; latency 80 with 2 bursts in
+  flight; 30% rate; pauses; one port at 15%; sparse commands); stale
+  infinities and NaN in x past the columns (masked); an error response on
+  its port. No gap between commands: 12 back-to-back commands take their
+  perf-model cycles to within 3 over the run (a command's last result
+  comes 3 cycles later after 64-column rows than after 128-column ones,
+  when the tree's adder is busier; measured). The rounder
+  (`test_fp32_to_bf16.py`): every high half × 6 low halves and the
+  specials. 12 hand mutations (listed in the PR), all caught; the unmasked
+  last beat only after the stale-x test was added. Lint at 32 ports;
+  synthesis at 5 (Yosys takes 3 minutes at 32).
+  FIFO depth against pauses (5 ports, latency 20, 4 matrices of 160 × 512,
+  memory seeds 1 to 5, rate as a share of a 1024-beat FIFO's):
+
+  | depth | pauses 5‰, up to 20 cycles | pauses 20‰, up to 40 cycles |
+  |---|---|---|
+  | 16 | 0.404-0.414 | 0.350-0.367 |
+  | 32 | 0.779-0.792 | 0.645-0.664 |
+  | 64 | 0.988-0.993 | 0.900-0.907 |
+  | 128 | 1.000 | 0.978-0.988 |
+
+  At 16 the memory's latency limits more than the pauses (a burst is asked
+  for only with room for it). 64 stays the default until the 32-port run
+  of the second PR.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
@@ -994,6 +1034,9 @@ the runtime stops the conversation with a clear message (see Non-goals).
 **Done when:** tiny configs are bit-exact for 3 prompts × 64 tokens.
 SmolLM2 is bit-exact for ≥ 8 tokens. The cycle breakdown per token is
 compared with the perf model and with the baseline profile.
+**Notes (from M5):** the engine needs `rows` ≥ 1 and `cols` ≥ 1; a `cols` = 0
+command hangs it, so the controller rejects one (or the list builder never
+makes one). The model's `Layout` moves to channel offsets (D-040).
 
 ### M8 — F2 bring-up (no model)
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and

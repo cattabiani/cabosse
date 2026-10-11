@@ -23,8 +23,9 @@ TOPS = (
 )
 IDS = [top + ("-ftz" if params else "") for top, _, params in TOPS]
 # Synthesized smaller than their default, which is linted: the check is that
-# Yosys takes the code, and the 32-port engine takes it 3 minutes.
-SYNTH_PARAMS = {"engine": (("Ports", 2),)}
+# Yosys takes the code, and the 32-port engine takes it 3 minutes. 5 ports
+# still build the padding lanes and a drain of several write groups.
+SYNTH_PARAMS = {"engine": (("Ports", 5),)}
 
 
 def test_there_is_rtl() -> None:

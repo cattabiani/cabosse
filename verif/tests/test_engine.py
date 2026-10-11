@@ -33,14 +33,13 @@ STARTUP_CYCLES = 60  # a command's first result after its start: latency 1 (meas
 # (measured: 3 more for 64 columns than for 128), so done_o's spacing moves
 # by that much; over a run the moves cancel but for the first and last.
 TAIL_CYCLES = 3
+COLS = (1, 3, 4, 5, 59, 60, 61, 64, 130)  # around a beat (4) and a full-rate row (60)
 
 
 def rows_around(lanes: int) -> list[int]:
     lpp = LANES_PER_PORT
     return sorted({1, lpp - 1, lpp, lpp + 1, lanes - 1, lanes, lanes + 1, 2 * lanes + 3} - {0})
 
-
-COLS = (1, 3, 4, 5, 59, 60, 61, 64, 130)
 
 
 def random_bf16(gen: torch.Generator, *shape: int) -> torch.Tensor:
@@ -123,7 +122,7 @@ def test_stale_x(ports: int) -> None:
     stale = torch.tensor(STALE, dtype=torch.bfloat16)
     xs = {i: torch.cat([random_bf16(gen, c), stale]) for i, c in enumerate(cols)}
     mats = [Matvec(random_bf16(gen, lanes + 1, c), a=i) for i, c in enumerate(cols)]
-    check_bits(mats, xs, eng.fetch(mats, xs, ports, latency=5), "stale x")
+    check_bits(mats, xs, eng.fetch(mats, xs, ports, latency=5), f"stale x, seed {SEED}")
 
 
 BACK_TO_BACK = ((1, 64), (3, 128), (2, 60)) * 4  # (passes, cols): rows of full-rate length
@@ -141,17 +140,19 @@ def test_back_to_back(ports: int) -> None:
     mats = [Matvec(random_bf16(gen, p * lanes, c)) for p, c in BACK_TO_BACK]
     xs = {0: random_bf16(gen, 128)}
     result = eng.fetch(mats, xs, ports, latency=40, outstanding=8)
-    check_bits(mats, xs, result, "back to back")
+    label = f"back to back, seed {SEED}"
+    check_bits(mats, xs, result, label)
     model = [model_cycles(m, ports) for m in mats]
-    assert result.done[0] <= model[0] + 40 + STARTUP_CYCLES, (result.done[0], model[0])
+    assert result.done[0] <= model[0] + 40 + STARTUP_CYCLES, (label, result.done[0], model[0])
     extra = int(result.done[-1] - result.done[0]) - sum(model[1:])
-    assert abs(extra) <= TAIL_CYCLES, (extra, np.diff(result.done).tolist(), model)
+    assert abs(extra) <= TAIL_CYCLES, (label, extra, np.diff(result.done).tolist(), model)
 
 
 DEPTHS = (16, 64, 128, 1024)  # 1024: deep enough that the pauses alone limit the rate
 PAUSES = dict(latency=20, outstanding=8, pause=20, pause_max=40)  # ports paused ~29% of cycles
 # Share of the 1024-beat FIFO's rate, at least (or at most for 16). Measured
-# over seeds 1 to 5: 0.35-0.37, 0.89-0.91, 0.98-0.99 (PLAN.md, M5).
+# on these shapes and pauses, memory seeds 1 to 5: 0.350-0.367 (16),
+# 0.900-0.907 (64), 0.978-0.988 (128) (PLAN.md, M5).
 MIN_SHARE = {64: 0.85, 128: 0.95}
 MAX_SHARE_16 = 0.5
 
@@ -168,12 +169,12 @@ def test_fifo_depth() -> None:
     rate = {}
     for depth in DEPTHS:
         result = eng.fetch(mats, xs, ports, params=(("Depth", depth),), seed=SEED, **PAUSES)
-        check_bits(mats, xs, result, f"depth {depth}")
+        check_bits(mats, xs, result, f"depth {depth}, seed {SEED}")
         rate[depth] = beats / (result.done[-1] - result.taken[0])
     share = {d: r / rate[1024] for d, r in rate.items()}
     print(f"share of the deep FIFO's rate by depth: {share}")
-    assert all(share[d] >= v for d, v in MIN_SHARE.items()), share
-    assert share[16] <= MAX_SHARE_16, share
+    assert all(share[d] >= v for d, v in MIN_SHARE.items()), (SEED, share)
+    assert share[16] <= MAX_SHARE_16, (SEED, share)
 
 
 @rtl.needs_verilator
@@ -183,4 +184,4 @@ def test_error_response(bad_port: int) -> None:
     mats = [Matvec(random_bf16(gen, 16, 64))]
     xs = {0: random_bf16(gen, 64)}
     result = eng.fetch(mats, xs, 2, bad_port=bad_port, bad=3)
-    assert result.err == 1 << bad_port, result.err
+    assert result.err == 1 << bad_port, (SEED, result.err)

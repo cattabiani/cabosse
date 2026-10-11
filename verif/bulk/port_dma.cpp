@@ -18,14 +18,12 @@
 #include <algorithm>
 
 #include "Vport_dma.h"
-#include "axi_mem.h"
-#include "stream.h"
+#include "axi_bench.h"
 
 namespace {
 
 constexpr size_t kBeatWords = 8;  ///< 256 bits
 static_assert(sizeof(Vport_dma::r_data_i) == 4 * kBeatWords, "the driver is for DataWidth = 256");
-constexpr uint64_t kMaxIdleCycles = 100'000;  ///< cycles with no beat out before calling it a hang
 constexpr size_t kStats = 5;  ///< words after the beats: cycles, bursts, in flight, stalls, err
 
 /// @brief The DMA, its memory and the test's side of its ports.
@@ -37,13 +35,6 @@ struct Bench {
   std::mt19937_64 rng;               ///< draws out_ready_i
   size_t next_cmd = 0;               ///< the first command not yet taken
   std::vector<uint32_t> out;         ///< the data words of the beats out, in order
-
-  /// @brief Hold the DMA in reset for kResetCycles cycles, then release it.
-  void reset() {
-    dut.rst_ni = 0;
-    for (int i = 0; i < kResetCycles; ++i) cycle();
-    dut.rst_ni = 1;
-  }
 
   /// @brief One clock cycle: put the memory's outputs and our inputs on the
   /// DMA, settle, collect a command taken and a beat out, let the memory see
@@ -58,7 +49,6 @@ struct Bench {
     if (const auto data = port.r_data(); !data.empty()) {
       const std::span<std::byte, 4 * kBeatWords> beat =
           std::as_writable_bytes(std::span<uint32_t, kBeatWords>(dut.r_data_i.data(), kBeatWords));
-      if (data.size() != beat.size()) throw std::length_error("memory beat is not the DMA's width");
       std::ranges::copy(data, beat.begin());
     }
     const bool offer = run && next_cmd < commands.size();
@@ -109,15 +99,7 @@ int main(int argc, char** argv) {
 
   VerilatedContext context;
   context.commandArgs(argc, argv);
-  AxiMemSettings settings;
-  settings.latency = plusarg(context, "latency", settings.latency);
-  settings.outstanding = plusarg(context, "outstanding", settings.outstanding);
-  settings.rate_permille = plusarg(context, "rate", settings.rate_permille);
-  settings.pause_permille = plusarg(context, "pause", settings.pause_permille);
-  settings.pause_max = plusarg(context, "pause_max", settings.pause_max);
-  settings.bad_beat = plusarg(context, "bad", settings.bad_beat);
-  settings.base = plusarg(context, "base", settings.base);
-  settings.beat_bytes = 4 * kBeatWords;
+  const AxiMemSettings settings = axi_settings(context, 4 * kBeatWords);
   const uint64_t ready_permille = plusarg(context, "ready", 1000);
   const uint64_t seed = plusarg(context, "seed", 1);
 
@@ -131,18 +113,15 @@ int main(int argc, char** argv) {
   bench.out.reserve(total_beats * kBeatWords + kStats);
 
   try {
-    bench.reset();
-    uint64_t cycles = 0, idle = 0;
-    while (bench.out.size() < total_beats * kBeatWords || bench.next_cmd < commands.size()) {
-      const size_t before = bench.out.size();
-      bench.cycle();
-      ++cycles;
-      idle = bench.out.size() == before ? idle + 1 : 0;
-      if (idle > kMaxIdleCycles) {
-        std::println(stderr, "hung: {} of {} beats, {} of {} commands after {} cycles",
-                     bench.out.size() / kBeatWords, total_beats, bench.next_cmd, commands.size(), cycles);
-        return 3;
-      }
+    reset(bench);
+    const auto cycles = run(
+        bench,
+        [&] { return bench.out.size() >= total_beats * kBeatWords && bench.next_cmd == commands.size(); },
+        [&] { return bench.out.size(); });
+    if (!cycles) {
+      std::println(stderr, "hung: {} of {} beats, {} of {} commands", bench.out.size() / kBeatWords,
+                   total_beats, bench.next_cmd, commands.size());
+      return 3;
     }
     for (int i = 0; i < kDrainCycles; ++i) bench.cycle();
     if (bench.out.size() != total_beats * kBeatWords || !port.idle()) {
@@ -150,7 +129,7 @@ int main(int argc, char** argv) {
                    port.idle() ? "idle" : "still busy");
       return 4;
     }
-    for (uint64_t v : {cycles, port.n_bursts(), port.max_in_flight(), port.r_stalls(),
+    for (uint64_t v : {*cycles, port.n_bursts(), port.max_in_flight(), port.r_stalls(),
                        uint64_t{dut->err_o}}) {
       bench.out.push_back(static_cast<uint32_t>(v));
     }
