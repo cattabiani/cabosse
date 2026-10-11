@@ -98,7 +98,7 @@ def test_seconds_by_hand() -> None:
 
 
 # (rows, cols) -> engine cycles with ENGINE_DESIGN.
-ENGINE_DESIGN = {"lanes": 4, "macs_per_lane": 2, "accumulators": 4}
+ENGINE_DESIGN = {"lanes": 4, "macs_per_lane": 2, "accumulators": 4, "engine_startup_cycles": 9}
 ENGINE_CASES = [
     ((4, 10), 5),  # one pass, 10 / 2 cycles per row
     ((5, 10), 10),  # a fifth row needs a second pass, with 3 lanes idle

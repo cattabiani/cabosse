@@ -23,6 +23,7 @@ DESIGN = perf.load_design("v0").values()  # its lanes are set per engine (design
 # F2's HBM read latency, 280 ns (measured by AWS, docs/f2.md), in core
 # cycles; our path's latency (switch, clock crossing) waits for M8.
 F2_LATENCY_CYCLES = round(280e-9 * DESIGN["clock_hz"])
+F2_MEMORY = dict(latency=F2_LATENCY_CYCLES, outstanding=8)  # the real-data and speed runs
 SMOLLM2_PROMPT = list(range(1000, 1063))  # the step runs at position 63 (also M4's lane test)
 # Large matrices for the bandwidth criterion: SmolLM2's gate and up and a
 # slice of its classifier fill whole passes; down (576 rows, 4.5 passes)
@@ -35,8 +36,9 @@ RATES = (1000, 500)  # permille of cycles each port may send a beat
 @dataclass
 class Matvec:
     """One MATVEC: dst = w · x[a], rounded to BF16 if bf16; with wait, its
-    weights are read ahead and it steps only after its go, which comes once
-    every earlier command is done (x[a] reads as NaN until then)."""
+    weights are read ahead and it steps only after its go, which the driver
+    gives once every earlier command is done, or at once (+go_early); x[a]
+    reads as NaN until then, and only later commands may share x[a]."""
 
     w: torch.Tensor  # BF16 [rows, cols]
     a: int = 0
@@ -142,6 +144,12 @@ class RealMatvec:
     want: np.ndarray  # its output as run() wrote it, uint32 FP32 bits
 
 
+def smollm2_step(model: decoder.Model) -> list[commands.EngineCall]:
+    """The engine commands of one SmolLM2 decode step at position 63
+    (commands.record_step after SMOLLM2_PROMPT)."""
+    return commands.record_step(model, SMOLLM2_PROMPT, SMOLLM2_PROMPT[-1] + 1)[1]
+
+
 def smollm2_matvecs(model: decoder.Model) -> tuple[list[RealMatvec], dict[int, torch.Tensor]]:
     """The MATVECs of one decode step (commands.record_step at position 63):
     the first and last layers' and the classifier, in command-list order,
@@ -149,15 +157,15 @@ def smollm2_matvecs(model: decoder.Model) -> tuple[list[RealMatvec], dict[int, t
     buffers: a waiting command opens one, the commands after it that read
     the same buffer share it (k and v with q, up with gate)."""
     last = f"layers.{len(model.layers) - 1}."
-    _, calls = commands.record_step(model, SMOLLM2_PROMPT, SMOLLM2_PROMPT[-1] + 1)
     found, xs, x_of = [], {}, {}  # x_of: a command buffer -> its current x buffer
-    for c in calls:
+    for c in smollm2_step(model):
         if c.cmd.op != commands.Op.MATVEC or not c.name.startswith(("layers.0.", last, "lm_head")):
             continue
         assert c.out.dtype == torch.float32, (c.name, c.out.dtype)
         if c.wait:
             x_of[c.cmd.a] = len(xs)
             xs[len(xs)] = c.a
+        assert c.cmd.a in x_of, f"{c.name}: its buffer's first reader kept here does not wait"
         a = x_of[c.cmd.a]
         assert torch.equal(xs[a], c.a), c.name  # shared, so the same bits
         m = Matvec(c.mem, a=a, dst=len(found), wait=c.wait)
@@ -173,6 +181,7 @@ def run_smollm2(
     result = fetch([f.matvec for f in found], xs, ports, **plusargs)
     for f, got in zip(found, result.out, strict=True):
         assert_bits(got, f.want, f.name)
+    assert result.err == 0 and result.r_stalls == 0, (result.err, result.r_stalls)
     return found, result
 
 
@@ -197,7 +206,7 @@ def design(ports: int) -> dict[str, float]:
     return DESIGN | {"lanes": ports * LANES_PER_PORT}
 
 
-def model_cycles(m: Matvec, ports: int, startup: bool = True) -> int:
+def model_cycles(m: Matvec, ports: int, startup: bool = True) -> float:
     """The perf model's cycles for the command, with the start-up of a
     waiting one (engine_startup_cycles, measured at 128 lanes) if startup."""
     return perf.engine_cycles((tuple(m.w.shape),), design(ports), int(m.wait and startup))
@@ -212,14 +221,15 @@ def read_share(m: Matvec, result: Result, ports: int, rate: int) -> float:
     return 2 * rows * cols / int(result.done[0] - result.taken[0]) / peak
 
 
-def bandwidth(rows: int, cols: int, ports: int, rate: int, seed: int) -> tuple[float, float]:
-    """A random rows × cols matrix alone at F2's latency, each port sending a
+def bandwidth(rows: int, cols: int, ports: int, rate: int, seed: int) -> dict[str, float]:
+    """A random rows × cols matrix alone (F2_MEMORY), each port sending a
     beat on `rate` permille of cycles: its read_share, checked bit for bit,
     and the perf model's engine use (the most a partial last pass allows)."""
     gen = torch.Generator().manual_seed(seed)
     m = Matvec(torch.randn(rows, cols, generator=gen).to(torch.bfloat16))
     x = torch.randn(cols, generator=gen).to(torch.bfloat16)
-    result = fetch([m], {0: x}, ports, latency=F2_LATENCY_CYCLES, rate=rate, seed=seed)
+    result = fetch([m], {0: x}, ports, rate=rate, seed=seed, **F2_MEMORY)
     assert_bits(result.out[0], expected(m, x), f"{rows} x {cols}, rate {rate}, seed {seed}")
     assert result.err == 0 and result.r_stalls == 0, (result.err, result.r_stalls)
-    return read_share(m, result, ports, rate), perf.engine_use(((rows, cols),), design(ports))
+    use = perf.engine_use(((rows, cols),), design(ports))
+    return {"share": read_share(m, result, ports, rate), "engine_use": use}

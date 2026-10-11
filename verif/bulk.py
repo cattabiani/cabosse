@@ -33,6 +33,7 @@ DRIVERS = Path(__file__).parent / "bulk"
 CHUNK = 1 << 21  # records per run of the driver: one run per test chunk
 WORKERS = 8  # drivers run at once by in_parallel
 _BUILD_LOCK = threading.Lock()  # tests may run chunks from several threads
+_BUILT: dict[tuple[str, tuple[tuple[str, int], ...]], Path] = {}  # this session's builds
 
 
 def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
@@ -43,7 +44,9 @@ def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
     The top's parameters are public, so a driver reads the build's values.
     Thread-safe: the first caller builds, the others wait for it."""
     with _BUILD_LOCK:
-        return _build(top, params)
+        if (top, params) not in _BUILT:
+            _BUILT[top, params] = _build(top, params)
+        return _BUILT[top, params]
 
 
 def build_dir(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
@@ -51,7 +54,6 @@ def build_dir(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
     return rtl.BUILD / "_".join(["bulk", top, *(f"{k}{v}" for k, v in params)])
 
 
-@functools.cache
 def _build(top: str, params: tuple[tuple[str, int], ...]) -> Path:
     directory = build_dir(top, params)
     directory.mkdir(parents=True, exist_ok=True)  # Verilator makes only the last level
@@ -75,7 +77,7 @@ def forget_build(top: str, params: tuple[tuple[str, int], ...] = ()) -> None:
     time it)."""
     with _BUILD_LOCK:
         shutil.rmtree(build_dir(top, params), ignore_errors=True)
-        _build.cache_clear()
+        _BUILT.pop((top, params), None)
 
 
 def build_program(name: str) -> Path:

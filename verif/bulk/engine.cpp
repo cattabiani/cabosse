@@ -278,7 +278,9 @@ int main(int argc, char** argv) {
               .go_delay = plusarg(context, "go_delay", 0),
               .rng = std::mt19937_64(seed),
               .poisoned = std::vector<bool>(kBufs)};
-  for (const Command& c : commands) bench.poisoned[c.a] = bench.poisoned[c.a] || c.wait;
+  for (const Command& c : commands) {
+    if (c.wait) bench.poisoned[c.a] = true;
+  }
   try {
     const auto start = std::chrono::steady_clock::now();
     reset(bench);

@@ -324,7 +324,7 @@ def hbm_bytes_per_s(platform: dict[str, float], design: dict[str, float]) -> flo
 
 def engine_cycles(
     shapes: tuple[tuple[int, int], ...], design: dict[str, float], waits: int = 0
-) -> int:
+) -> float:
     """Cycles of the engine for these (rows, cols), of which `waits` commands
     wait for an earlier result: rows in passes of `lanes` (a partial pass
     leaves lanes idle); a row takes cols / `macs_per_lane` cycles, but at
@@ -332,8 +332,7 @@ def engine_cycles(
     next row; each waiting command adds `engine_startup_cycles` (D-042)."""
     lanes, per_lane = int(design["lanes"]), int(design["macs_per_lane"])
     tree = int(design["accumulators"]) - 1
-    startup = waits * int(design["engine_startup_cycles"]) if waits else 0
-    return startup + sum(
+    return waits * design["engine_startup_cycles"] + sum(
         math.ceil(rows / lanes) * max(math.ceil(cols / per_lane), tree) for rows, cols in shapes
     )
 

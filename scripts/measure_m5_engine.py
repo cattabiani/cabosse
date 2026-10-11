@@ -37,7 +37,7 @@ from reporting import blocks, measure  # noqa: E402
 
 DATA = REPO / "reports" / "data" / "M5-engine.json"
 PORTS = 32
-MEMORY = dict(latency=eng.F2_LATENCY_CYCLES, outstanding=8)
+MEMORY = eng.F2_MEMORY
 DEPTHS = (64, 96, 128, 192, 256, 1024)  # 1024: deep enough that only the pauses limit
 REFERENCE_DEPTH = DEPTHS[-1]
 PAUSES = {  # per port, independently
@@ -116,14 +116,12 @@ def bandwidth() -> dict:
 
     def one(job: tuple[int, tuple[int, int]]) -> None:
         rate, shape = job
-        found[job] = eng.bandwidth(*shape, PORTS, rate, seed=1)
+        found[job] = {"shape": list(shape), "rate": rate} | eng.bandwidth(
+            *shape, PORTS, rate, seed=1
+        )
 
     bulk.in_parallel(one, jobs)
-    matrices = [
-        {"shape": list(shape), "rate": rate, "share": found[rate, shape][0]}
-        | {"engine_use": found[rate, shape][1]}
-        for rate, shape in jobs
-    ]
+    matrices = [found[job] for job in jobs]
     return {"ports": PORTS, "memory": MEMORY, "matrices": matrices}
 
 

@@ -238,9 +238,7 @@ def test_smollm2() -> None:
     and activations (position 63), waiting where the controller would, at
     F2's latency: bit for bit, and each command within 10% of the perf
     model's cycles (PLAN.md, M5), the first one included."""
-    found, result = eng.run_smollm2(
-        decoder.load(paths.SMOLLM2), WIDE, latency=eng.F2_LATENCY_CYCLES
-    )
+    found, result = eng.run_smollm2(decoder.load(paths.SMOLLM2), WIDE, **eng.F2_MEMORY)
     assert result.err == 0 and result.r_stalls == 0, (result.err, result.r_stalls)
     off = {
         f.name: c / eng.model_cycles(f.matvec, WIDE) - 1
@@ -262,8 +260,8 @@ def test_bandwidth(rate: int) -> None:
     share = {}
 
     def one(shape: tuple[int, int]) -> None:
-        read, use = eng.bandwidth(*shape, WIDE, rate, SEED)
-        share[shape] = read / use
+        b = eng.bandwidth(*shape, WIDE, rate, SEED)
+        share[shape] = b["share"] / b["engine_use"]
 
     bulk.in_parallel(one, eng.LARGE)
     print(f"read share over the engine use: {share}")
