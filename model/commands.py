@@ -529,18 +529,20 @@ def flags_ok(cmd: Command) -> bool:
 
 def engine_waits(commands: list[Command]) -> list[bool]:
     """Per command, whether it is an engine command that steps only after
-    its go (D-042): its input was written at or after the previous engine
-    command (by that command or by the vector unit since), so the controller
-    gives the go once the writer is done. One that shares its input with the
-    engine command before it (k and v after q, up after gate) does not wait."""
+    its go (D-042): the last write of its input has not been waited for by
+    an earlier engine command, so the controller gives the go once that
+    writer is done. One that reads what an earlier engine command waited
+    for (k and v after q, up after gate) does not wait, nor does one whose
+    input no command wrote (the host filled it)."""
     last_write: dict[Buf, int] = {}
-    previous_engine = -1
+    waited: set[int] = set()  # writes some engine command waited for
     waits = []
     for i, cmd in enumerate(commands):
-        engine = cmd.op in ENGINE_OPS
-        waits.append(engine and last_write.get(cmd.a, -1) >= previous_engine)
-        if engine:
-            previous_engine = i
+        writer = last_write.get(cmd.a)
+        wait = cmd.op in ENGINE_OPS and writer is not None and writer not in waited
+        if wait:
+            waited.add(writer)
+        waits.append(wait)
         if cmd.dst != Buf.NONE:
             last_write[cmd.dst] = i
     return waits

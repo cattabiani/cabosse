@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import bulk
 import commands
 import numpy as np
+import perf
 import torch
 from golden import arith, decoder, dot
 
@@ -22,6 +23,13 @@ STATS = 4  # words after the commands: cycles, stalls, err, wall time
 # core clock; our path's latency (switch, clock crossing) waits for M8.
 F2_LATENCY_CYCLES = 70
 SMOLLM2_PROMPT = list(range(1000, 1063))  # the step runs at position 63, as M4's lane test
+DESIGN = perf.load_design("v0").values()  # its lanes are set per engine (design())
+# Large matrices for the bandwidth criterion: SmolLM2's gate and up and a
+# slice of its classifier fill whole passes; down (576 rows, 4.5 passes)
+# leaves half the ports idle in its last pass, so the perf model's engine
+# use (90%) bounds it, not the memory.
+LARGE = ((1536, 576), (8192, 576), (576, 1536))
+RATES = (1000, 500)  # permille of cycles each port may send a beat
 
 
 @dataclass
@@ -160,3 +168,24 @@ def command_cycles(result: Result) -> list[int]:
     command's from its start) to its own: for a waiting command, from the
     cycle before its go, so its start-up counts."""
     return np.diff(np.r_[result.taken[0], result.done]).tolist()
+
+
+def design(ports: int) -> dict[str, float]:
+    """Design v0 with this engine's lanes."""
+    return DESIGN | {"lanes": ports * LANES_PER_PORT}
+
+
+def model_cycles(m: Matvec, ports: int) -> int:
+    """The perf model's cycles for the command, with the start-up of a
+    waiting one (engine_startup_cycles, measured at 128 lanes)."""
+    d = design(ports)
+    return perf.engine_cycles((tuple(m.w.shape),), d) + m.wait * int(d["engine_startup_cycles"])
+
+
+def read_share(m: Matvec, result: Result, ports: int, rate: int) -> float:
+    """Bytes per cycle of a command run alone, from its start to its done,
+    as a share of min(the memory's bytes per cycle at `rate` permille,
+    2·E·L) (PLAN.md, M5)."""
+    peak = min(ports * BEAT_BYTES * rate / 1000, 2 * E * ports * LANES_PER_PORT)
+    rows, cols = m.w.shape
+    return 2 * rows * cols / int(result.done[0] - result.taken[0]) / peak

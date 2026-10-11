@@ -20,7 +20,8 @@ the golden model's decode step). Four times follow from the work:
   have one row per head and position (64 long for SmolLM2); p·V has one row
   per head and output dimension. Back-to-back engine commands leave no gap;
   one whose input was just written (after a norm, RoPE, softmax, attention
-  or SwiGLU; D-042) adds `engine_startup_cycles`;
+  or SwiGLU; D-042) adds `engine_startup_cycles`, measured at 128 lanes and
+  reused by the other scenarios (an estimate there);
 - **vector**: element passes ÷ (elements per cycle × clock); every
   vector-unit command is one pass over its elements;
 - **commands**: the number of commands × a fixed cost in cycles.
@@ -75,7 +76,7 @@ v0: first-order design choices (M2), from `model/designs/v0.json`:
 | `accumulators` | 16 partial sums | choice | docs/architecture.md, engine: 4 multiply-adds x a 4-cycle loop (D-027) |
 | `vector_elems_per_cycle` | 16 elements/cycle | choice | docs/architecture.md, vector unit (D-030) |
 | `command_cycles` | 64 cycles/command | guess | none yet (the controller is designed in M2/M7) |
-| `engine_startup_cycles` | 55 cycles/command | measured by us | per engine command that waits for an earlier result (D-042), weights read ahead: the most a SmolLM2 MATVEC took over its engine cycles, 128-lane RTL in simulation (reports/data/M5-engine.json, real) |
+| `engine_startup_cycles` | 55 cycles/command | measured by us | per engine command that waits for an earlier result (D-042), weights read ahead: the most a SmolLM2 MATVEC after the first took over its engine cycles, 128-lane RTL in simulation (reports/data/M5-engine.json, real); scenarios with other lanes or accumulators reuse it (estimate: its drain and final sum change with them) |
 
 | scenario | changes |
 |---|---|

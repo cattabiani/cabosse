@@ -268,6 +268,18 @@ def test_engine_waits() -> None:
     assert waiting == [*layers, "lm_head"]
 
 
+def test_engine_waits_for_every_unwaited_write() -> None:
+    """An engine command between a write and its reader does not hide the
+    dependency; an input no command wrote needs no go."""
+    norm = commands.Command(
+        commands.Op.ADD, commands.Buf.X, commands.Buf.H, commands.Buf.H, n=1, m=8
+    )
+    q = commands.Command(commands.Op.MATVEC, commands.Buf.Q, commands.Buf.X, n=8, m=8)
+    other = commands.Command(commands.Op.MATVEC, commands.Buf.K, commands.Buf.T, n=8, m=8)
+    k = commands.Command(commands.Op.MATVEC, commands.Buf.K, commands.Buf.X, n=8, m=8)
+    assert commands.engine_waits([norm, other, q, k]) == [False, False, True, False]
+
+
 def lane_order_restated(w: torch.Tensor, lanes: int) -> list[list[list[int]]]:
     """docs/architecture.md's weight layout, element by element: each port's
     beats as BF16 bit patterns, zeros where no weight is."""

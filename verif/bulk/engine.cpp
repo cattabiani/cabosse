@@ -11,15 +11,17 @@
 /// its BF16 elements and the elements two per word (low half first); the
 /// number of commands, then per command rows, cols, address (low word, high
 /// word), a, dst, bf16 and wait. Commands are offered in order, each held
-/// until taken. A command with wait gets its go_i as the controller gives
-/// it (D-042): once it is taken and every earlier command is done, after a
-/// random delay; until then its x buffer reads as NaN, so a step before the
-/// go writes wrong bits (a buffer read by several waiting commands is clear
-/// from the first one's go).
+/// until taken. A command with wait gets its go_i as the controller may give
+/// it (D-042), in order, once it is taken: after every earlier command is
+/// done (its dependency is the one before), or at once (an earlier one, done
+/// already), then after a random delay. Until then its x buffer reads as NaN,
+/// so a step before the go writes wrong bits; no other command may read that
+/// buffer.
 /// Plusargs: the memories' (axi_bench.h: +latency, +outstanding, +rate,
 /// +pause, +pause_max, +bad with +bad_port, +slow_rate with +slow_port),
-/// +offer (permille of cycles a new command is offered), +go_delay (a go
-/// comes 0 to go_delay cycles late, uniformly), +seed (port p's memory draws
+/// +offer (permille of cycles a new command is offered), +go_early (permille
+/// of waiting commands whose go does not wait for the earlier ones' done),
+/// +go_delay (a go comes 0 to go_delay cycles late, uniformly), +seed (port p's memory draws
 /// with (seed << 16) + p, so no two runs or ports share a stream).
 /// Output: per command its rows' results in order (FP32, or BF16 in the low
 /// half), the cycle it was taken and the cycle of its done_o; then the
@@ -75,12 +77,14 @@ struct Bench {
   std::vector<std::vector<uint16_t>>& x_bufs;  ///< by buffer id
   std::vector<Command>& commands;
   uint64_t offer_permille;
+  uint64_t go_early;               ///< permille of gos that do not wait for the earlier dones
   uint64_t go_delay;               ///< a go comes up to this many cycles late
   std::mt19937_64 rng;            ///< draws the command offers and go delays
   std::vector<bool> poisoned;     ///< by buffer id: a waiting reader has no go yet
   size_t next_cmd = 0;            ///< the first command not yet taken
   size_t next_go = 0;             ///< the first waiting command without its go
-  std::optional<uint64_t> go_left;  ///< cycles until next_go's go, once due
+  std::optional<uint64_t> go_left;  ///< cycles until next_go's go, drawn once it is taken
+  bool go_now = false;            ///< next_go's go does not wait for the earlier dones
   size_t oldest = 0;              ///< the first command not yet done
   bool offering = false;          ///< a command is on the port, waiting to be taken
   std::array<uint16_t, kXValues> x_q{};  ///< the RAM's output register
@@ -98,11 +102,16 @@ struct Bench {
   }
 
   /// @brief go_i for this cycle: next_go's go once it is taken, every
-  /// earlier command is done and its random delay has passed.
+  /// earlier command is done (unless drawn early) and its random delay has
+  /// passed.
   bool go() {
     while (next_go < commands.size() && !commands[next_go].wait) ++next_go;
-    if (next_go >= next_cmd || oldest < next_go) return false;
-    if (!go_left) go_left = std::uniform_int_distribution<uint64_t>(0, go_delay)(rng);
+    if (next_go >= next_cmd) return false;
+    if (!go_left) {
+      go_now = rng() % 1000 < go_early;
+      go_left = std::uniform_int_distribution<uint64_t>(0, go_delay)(rng);
+    }
+    if (!go_now && oldest < next_go) return false;
     if ((*go_left)-- > 0) return false;
     poisoned[commands[next_go++].a] = false;
     go_left.reset();
@@ -238,6 +247,12 @@ int main(int argc, char** argv) {
       commands.push_back({.rows = f[0], .cols = f[1], .addr = f[2] | uint64_t{f[3]} << 32, .a = f[4],
                           .dst = f[5], .bf16 = f[6] != 0, .wait = f[7] != 0, .out = std::vector<uint32_t>(f[0]),
                           .written = std::vector<bool>(f[0])});
+      if (f[4] >= kBufs) throw std::out_of_range("a past BufWidth");
+    }
+    for (const Command& c : commands) {
+      if (c.wait && std::ranges::count(commands, c.a, &Command::a) > 1) {
+        throw std::out_of_range(std::format("a waiting command's x buffer {} is read by another", c.a));
+      }
     }
     if (in.at != words.size()) throw std::out_of_range("words left after the commands");
   } catch (const std::out_of_range& e) {
@@ -256,10 +271,11 @@ int main(int argc, char** argv) {
               .x_bufs = x_bufs,
               .commands = commands,
               .offer_permille = plusarg(context, "offer", 1000),
+              .go_early = plusarg(context, "go_early", 0),
               .go_delay = plusarg(context, "go_delay", 0),
               .rng = std::mt19937_64(seed),
               .poisoned = std::vector<bool>(kBufs)};
-  for (const Command& c : commands) bench.poisoned[c.a] = bench.poisoned[c.a] || c.wait;
+  for (const Command& c : commands) bench.poisoned[c.a] = c.wait;
   try {
     const auto start = std::chrono::steady_clock::now();
     reset(bench);

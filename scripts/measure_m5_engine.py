@@ -52,8 +52,6 @@ SEEDS = range(1, 6)
 DEPTH_SHAPE = (8 * PORTS * LANES_PER_PORT, 512)  # 8 passes of 128 beats
 DEPTH_MATRICES = 4
 SPEED_RUNS = 3
-BANDWIDTH_SHAPES = ((1536, 576), (8192, 576), (576, 1536))  # as verif's test_bandwidth
-RATES = (1000, 500)  # permille of cycles each port may send a beat
 POSITIONS = (63, 8191)  # a short and the longest position, for the per-token estimate
 
 
@@ -99,7 +97,6 @@ def real() -> dict:
     result = eng.fetch(mats, {i: f.x for i, f in enumerate(found)}, PORTS, **MEMORY)
     for f, got in zip(found, result.out, strict=True):
         assert np.array_equal(got, f.want), f.name
-    design = perf.load_design("v0").values()
     return {
         "ports": PORTS,
         "memory": MEMORY,
@@ -110,8 +107,7 @@ def real() -> dict:
                 "shape": list(f.matvec.w.shape),
                 "wait": f.matvec.wait,
                 "cycles": c,
-                "model": perf.engine_cycles((tuple(f.matvec.w.shape),), design)
-                + f.matvec.wait * design["engine_startup_cycles"],
+                "model": eng.model_cycles(f.matvec, PORTS),
             }
             for f, c in zip(found, eng.command_cycles(result), strict=True)
         ],
@@ -123,11 +119,9 @@ def bandwidth() -> dict:
     as a share of min(the memory's bytes per cycle, 2·E·L), and the perf
     model's engine use (the most a partial last pass allows)."""
     gen = torch.Generator().manual_seed(1)
-    design = perf.load_design("v0").values()
     found = []
-    for rate in RATES:
-        peak = min(PORTS * eng.BEAT_BYTES * rate / 1000, 2 * eng.E * PORTS * LANES_PER_PORT)
-        for rows, cols in BANDWIDTH_SHAPES:
+    for rate in eng.RATES:
+        for rows, cols in eng.LARGE:
             m = Matvec(torch.randn(rows, cols, generator=gen).to(torch.bfloat16))
             xs = {0: torch.randn(cols, generator=gen).to(torch.bfloat16)}
             r = eng.fetch([m], xs, PORTS, **MEMORY, rate=rate, seed=1)
@@ -136,8 +130,8 @@ def bandwidth() -> dict:
                 {
                     "shape": [rows, cols],
                     "rate": rate,
-                    "share": 2 * rows * cols / int(r.done[0] - r.taken[0]) / peak,
-                    "engine_use": perf.engine_use(((rows, cols),), design),
+                    "share": eng.read_share(m, r, PORTS, rate),
+                    "engine_use": perf.engine_use(((rows, cols),), eng.design(PORTS)),
                 }
             )
     return {"ports": PORTS, "memory": MEMORY, "matrices": found}

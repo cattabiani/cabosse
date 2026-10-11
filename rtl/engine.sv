@@ -42,7 +42,7 @@ module engine
   parameter  int unsigned Ports        = 32,
   parameter  int unsigned AddrWidth    = 34,   // F2's HBM: 16 GiB
   parameter  int unsigned DataWidth    = 256,  // an HBM port's beat
-  parameter  int unsigned Depth        = 128,  // each port's FIFO, beats: covers F2's latency (PLAN.md, M5)
+  parameter  int unsigned Depth        = 128,  // each port's FIFO, beats (PLAN.md, M5)
   parameter  int unsigned RowWidth     = 20,   // rows: Qwen2.5's classifier needs 18 bits
   parameter  int unsigned ColWidth     = 16,   // columns
   parameter  int unsigned BufWidth     = 8,    // buffer ids (docs/architecture.md, "Encoding")
