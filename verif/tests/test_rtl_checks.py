@@ -22,6 +22,11 @@ TOPS = (
     + [(t, (), FTZ) for t in ("bf16_mac", "fp32_fma", "dot_lane")]
 )
 IDS = [top + ("-ftz" if params else "") for top, _, params in TOPS]
+# Synthesized smaller than their default, which is linted: the check is that
+# Yosys takes the code, and the 32-port engine needs more than 8 GB (killed
+# at that cap after 3 minutes, M5). 5 ports still build the padding lanes
+# and a drain of several write groups.
+SYNTH_PARAMS = {"engine": (("Ports", 5),)}
 
 
 def test_there_is_rtl() -> None:
@@ -45,7 +50,7 @@ def test_lint_is_clean(top: str, extra: tuple, params: tuple) -> None:
 @rtl.needs_yosys
 @pytest.mark.parametrize(("top", "extra", "params"), TOPS, ids=IDS)
 def test_synthesizes(top: str, extra: tuple, params: tuple) -> None:
-    result = rtl.synthesize(top, extra, params)
+    result = rtl.synthesize(top, extra, (*SYNTH_PARAMS.get(top, ()), *params))
     assert result.returncode == 0, result.stdout + result.stderr
 
 

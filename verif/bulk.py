@@ -39,6 +39,7 @@ def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
     it, once per test session (Verilator's make rebuilds only what changed).
     The drivers need C++23 with <print> (GCC 14 or newer); the standard CXX
     variable picks the compiler, which Verilator's makefile otherwise fixes.
+    The top's parameters are public, so a driver reads the build's values.
     Thread-safe: the first caller builds, the others wait for it."""
     with _BUILD_LOCK:
         return _build(top, params)
@@ -51,7 +52,8 @@ def _build(top: str, params: tuple[tuple[str, int], ...]) -> Path:
     cxx = os.environ.get("CXX")
     argv = [
         "verilator", "--cc", "--exe", "--build", "-j", "0", "-O3",
-        "--x-assign", "fast", "--x-initial", "fast", "-CFLAGS", f"-std=c++23 -O3 -I{DRIVERS}",
+        "--x-assign", "fast", "--x-initial", "fast", "--public-params",
+        "-CFLAGS", f"-std=c++23 -O3 -I{DRIVERS}",
         "--top-module", top, "-Mdir", str(build_dir), "-o", "bulk",
         *(f"-G{k}={v}" for k, v in params),
         *(["-MAKEFLAGS", f"CXX={cxx}", "-MAKEFLAGS", f"LINK={cxx}"] if cxx else []),
