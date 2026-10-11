@@ -26,8 +26,12 @@ clock from the measured rate at the port's maximum clock. The engine is
 `lanes` lanes of `macs_per_lane` multiply-adds each; a lane computes one row
 at a time with `accumulators` partial sums (docs/numerics.md, section 3),
 and adds them on its own adder while it runs the next row (engine_cycles).
+Back-to-back engine commands leave no gap (D-041); one that steps only after
+an earlier command's result (D-042) adds `engine_startup_cycles`, its
+pipeline's fill and drain (its weights were read ahead).
 """
 
+import dataclasses
 import json
 import math
 from dataclasses import dataclass
@@ -81,6 +85,7 @@ class Step:
     # (rows, cols) on the engine: a row per lane, cols multiply-adds per row;
     # None off the engine.
     engine_shape: tuple[int, int] | None = None
+    waits: bool = False  # on the engine, steps only after an earlier result (D-042)
 
 
 class Param(BaseModel):
@@ -155,6 +160,7 @@ class Design(Inputs):
     accumulators: Param
     vector_elems_per_cycle: Param
     command_cycles: Param
+    engine_startup_cycles: Param
     scenarios: dict[str, dict[str, float]] = {}
 
     @model_validator(mode="after")
@@ -249,7 +255,11 @@ def ops(config: LlamaConfig, position: int) -> list[Step]:
     """The work of one decode step at `position` (0-based: it attends to
     position + 1 cache rows), one entry per command."""
     layout = commands.Layout.of(config, cap=position + 1)
-    return [step(cmd, position + 1) for cmd in commands.build(layout)]
+    cmds = commands.build(layout)
+    return [
+        dataclasses.replace(step(cmd, position + 1), waits=w)
+        for cmd, w in zip(cmds, commands.engine_waits(cmds), strict=True)
+    ]
 
 
 def parameter_bytes(config: LlamaConfig) -> int:
@@ -276,6 +286,7 @@ class Work:
     vector_elems: int
     commands: int
     engine_shapes: tuple[tuple[int, int], ...]  # (rows, cols) per engine op
+    engine_waits: int  # engine ops that wait for an earlier result
 
     @property
     def memory_bytes(self) -> int:
@@ -299,6 +310,7 @@ class Work:
             vector_elems=total("vector_elems"),
             commands=len(op_list),
             engine_shapes=tuple(o.engine_shape for o in op_list if o.engine_shape is not None),
+            engine_waits=total("waits"),
         )
 
 
@@ -310,14 +322,17 @@ def hbm_bytes_per_s(platform: dict[str, float], design: dict[str, float]) -> flo
     return min(measured, platform["hbm_ports"] * platform["hbm_port_bytes"] * clock)
 
 
-def engine_cycles(shapes: tuple[tuple[int, int], ...], design: dict[str, float]) -> int:
-    """Cycles of the engine for these (rows, cols): rows in passes of `lanes`
-    (a partial pass leaves lanes idle); a row takes cols / `macs_per_lane`
-    cycles, but at least the `accumulators` - 1 adds of its final sum, which
-    run during the next row."""
+def engine_cycles(
+    shapes: tuple[tuple[int, int], ...], design: dict[str, float], waits: int = 0
+) -> float:
+    """Cycles of the engine for these (rows, cols), of which `waits` commands
+    wait for an earlier result: rows in passes of `lanes` (a partial pass
+    leaves lanes idle); a row takes cols / `macs_per_lane` cycles, but at
+    least the `accumulators` - 1 adds of its final sum, which run during the
+    next row; each waiting command adds `engine_startup_cycles` (D-042)."""
     lanes, per_lane = int(design["lanes"]), int(design["macs_per_lane"])
     tree = int(design["accumulators"]) - 1
-    return sum(
+    return waits * design["engine_startup_cycles"] + sum(
         math.ceil(rows / lanes) * max(math.ceil(cols / per_lane), tree) for rows, cols in shapes
     )
 
@@ -333,7 +348,7 @@ def seconds(work: Work, platform: dict[str, float], design: dict[str, float]) ->
     clock = design["clock_hz"]
     return {
         "memory": work.memory_bytes / hbm_bytes_per_s(platform, design),
-        "engine": engine_cycles(work.engine_shapes, design) / clock,
+        "engine": engine_cycles(work.engine_shapes, design, work.engine_waits) / clock,
         "vector": work.vector_elems / (design["vector_elems_per_cycle"] * clock),
         "commands": work.commands * design["command_cycles"] / clock,
     }

@@ -527,6 +527,27 @@ def flags_ok(cmd: Command) -> bool:
     return not cmd.flags & ~accepted and all((cmd.flags & pair) != pair for pair in EXCLUSIVE)
 
 
+def engine_waits(commands: list[Command]) -> list[bool]:
+    """Per command, whether it is an engine command that steps only after
+    its go (D-042): the last write of its input has not been waited for by
+    an earlier engine command, so the controller gives the go once that
+    writer is done. One that reads what an earlier engine command waited
+    for (k and v after q, up after gate) does not wait, nor does one whose
+    input no command wrote (the host filled it)."""
+    last_write: dict[Buf, int] = {}
+    waited: set[int] = set()  # writes some engine command waited for
+    waits = []
+    for i, cmd in enumerate(commands):
+        writer = last_write.get(cmd.a)
+        wait = cmd.op in ENGINE_OPS and writer is not None and writer not in waited
+        if wait:
+            waited.add(writer)
+        waits.append(wait)
+        if cmd.dst != Buf.NONE:
+            last_write[cmd.dst] = i
+    return waits
+
+
 @dataclass(frozen=True)
 class EngineCall:
     """One engine command as run() executed it: what the engine reads and
@@ -538,6 +559,7 @@ class EngineCall:
     a: torch.Tensor  # the input buffer, BF16
     mem: torch.Tensor  # the matrix, or a copy of the cache's first t positions per head
     out: torch.Tensor  # dst as written: FP32, or rounded where the buffer is BF16
+    wait: bool  # steps only after its go (engine_waits)
 
 
 def run(
@@ -556,6 +578,7 @@ def run(
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
     formats = buffers(layout.config, layout.cap)
     names = {addr: name for name, (addr, _, _) in layout.tensors.items()} if record else {}
+    waits = engine_waits(commands) if record else []
     buf: dict[Buf, torch.Tensor] = {}
     output = None
     t = position + 1  # positions attention reads: 0 ... position
@@ -641,7 +664,8 @@ def run(
                 raise AssertionError(f"unknown command {cmd.op!r}")
         if record is not None and cmd.op in ENGINE_OPS:
             read = mem if cmd.op == Op.MATVEC else mem[:, :t].clone()  # later tokens write it
-            record(EngineCall(i, names[cmd.addr], cmd, a.clone(), read, buf[cmd.dst].clone()))
+            out = buf[cmd.dst].clone()
+            record(EngineCall(i, names[cmd.addr], cmd, a.clone(), read, out, waits[i]))
     raise AssertionError("command list without END")
 
 

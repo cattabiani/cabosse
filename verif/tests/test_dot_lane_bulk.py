@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 import bulk
 import commands
+import engine
 import numpy as np
 import paths
 import pytest
@@ -353,9 +354,8 @@ def smollm2_rows(model: decoder.Model) -> dict[str, list[Rows]]:
     after a 63-token prompt."""
     last = len(model.layers) - 1
     keep = ("layers.0.", f"layers.{last}.")
-    _, calls = commands.record_step(model, list(range(1000, 1063)), 1063)
     found = {}
-    for c in calls:
+    for c in engine.smollm2_step(model):
         if c.name == "lm_head":
             c = dataclasses.replace(c, mem=c.mem[:4096], out=c.out[:4096])
         elif not c.name.startswith(keep):

@@ -33,6 +33,7 @@ DESIGN = {
     "accumulators": 1,
     "vector_elems_per_cycle": 4,
     "command_cycles": 5,
+    "engine_startup_cycles": 25,
 }
 # One of our measurements, as a measurement script would write it.
 MEASUREMENT = {
@@ -81,22 +82,23 @@ def test_seconds_by_hand() -> None:
         vector_elems=200,
         commands=4,
         engine_shapes=((10, 100),),  # one pass of the 10 lanes, 100 cycles
+        engine_waits=2,  # 2 x 25 cycles of start-up
     )
     # memory: the ports' raw width caps the measured 1600 B/s at 2 x 1 x 400 = 800 B/s
     assert perf.seconds(work, PLATFORM, DESIGN) == {
         "memory": 2.0,
-        "engine": 1.0,
+        "engine": 1.5,
         "vector": 0.5,
         "commands": 0.2,
     }
     p = perf.Prediction(perf.seconds(work, PLATFORM, DESIGN))
     assert p.bound == "memory"
     assert p.tokens_per_s_overlapped == 0.5
-    assert p.tokens_per_s_serial == pytest.approx(1 / 3.7)
+    assert p.tokens_per_s_serial == pytest.approx(1 / 4.2)
 
 
 # (rows, cols) -> engine cycles with ENGINE_DESIGN.
-ENGINE_DESIGN = {"lanes": 4, "macs_per_lane": 2, "accumulators": 4}
+ENGINE_DESIGN = {"lanes": 4, "macs_per_lane": 2, "accumulators": 4, "engine_startup_cycles": 9}
 ENGINE_CASES = [
     ((4, 10), 5),  # one pass, 10 / 2 cycles per row
     ((5, 10), 10),  # a fifth row needs a second pass, with 3 lanes idle
@@ -138,7 +140,7 @@ def test_engine_use() -> None:
 def test_memory_time_scales_with_the_memory_clock() -> None:
     """Below the port's maximum clock the read rate scales with the clock;
     above it, it does not."""
-    work = perf.Work(100, 0, 0, 0, 0, 0, 0, ())
+    work = perf.Work(100, 0, 0, 0, 0, 0, 0, (), 0)
     platform = PLATFORM | {"hbm_ports": 100}  # no cap from the raw width
     time = {
         clock: perf.seconds(work, platform, DESIGN | {"memory_clock_hz": clock})["memory"]
