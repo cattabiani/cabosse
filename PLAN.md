@@ -341,6 +341,30 @@ the vector unit (D-038), and needs Vivado's retiming to reach 250 MHz
 be kept equal in different places. One set of units, written and tested
 for exactly what we need, is simpler to own.
 
+**D-040 (2026-10-11) — A matrix sits at the same offset in every channel.**
+An engine command's `addr` is an offset within a channel: port `p` reads its
+share of the matrix from channel `p` at `addr`, and every channel reserves
+the largest share, `ceil(n / L) × ceil(m / E)` beats (a port with fewer rows
+in the last pass leaves the rest unused). The KV cache follows the same
+rule (M5, attention). *Why:* a command has one address (32-byte encoding);
+32 per-port addresses do not fit and buy nothing, since the ports' shares
+differ only in the last pass. The model's `Layout` still uses one flat
+address space; it moves to channel offsets when the command list runs on
+the engine (M7).
+
+**D-041 (2026-10-11) — Engine commands overlap; the controller orders
+dependent ones.** The engine queues the commands it takes in three stages
+(issue to the DMAs, step the lanes, drain the results), so the next
+matrix's reads start while the current one computes, and back-to-back
+commands leave no gap. The engine does not check whether a command reads
+what an earlier, unfinished one writes: the controller waits for the
+earlier command's done before starting it (o after attention, down after
+SwiGLU; M7). *Why:* a command's start-up (memory latency and the lanes'
+pipeline, 50-150 cycles, estimate) is 20-50% of SmolLM2's k and v
+matrices at 128 lanes, above the 10% the M5 answers allow against the perf
+model. Back-to-back engine commands that share an input (q, k and v; gate
+and up) do not depend on each other.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -886,8 +910,9 @@ with `L` = 128), a single row. Idle lanes must not write results.
 - No AWS: the engine's Vivado run moves to M8.
 
 **Steps (one branch and PR each):** these answers; command-list recording
-and weight layout; memory model and DMA; engine `MATVEC`; engine attention;
-checkpoint report.
+and weight layout; memory model and DMA; engine `MATVEC` (two PRs, owner
+2026-10-11: the engine with small configurations, then real data and speed
+at 128 lanes); engine attention; checkpoint report.
 
 **Progress:**
 - [x] Answers above (PR #50).

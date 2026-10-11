@@ -38,6 +38,8 @@ Special values (D-012, D-016):
   PyTorch). The golden model has a flush-to-zero switch for experiments only;
   `bf16_mac` and `fp32_fma` have a matching `Ftz` parameter (default 0), bit
   for bit. `fp32_max` and `bf16_to_fp32` keep subnormals in both modes.
+  `fp32_to_bf16` has no flush-to-zero variant: it matches the golden model
+  with the switch off.
 - **Infinities** propagate per IEEE 754.
 - **NaN:** any NaN result is the canonical NaN: BF16 `0x7FC0`, FP32
   `0x7FC00000`. When comparing against torch, NaNs match by class, not by

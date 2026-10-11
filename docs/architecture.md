@@ -88,6 +88,14 @@ needed 5.
   only with one multiply-add per lane.
 - Q-25: answered above.
 
+**Commands overlap (D-041).** The engine queues the commands it takes in
+three stages: issue (per pass, a DMA command to each port with rows in it),
+step (a beat to every lane per cycle, x broadcast from the read port) and
+drain (the results to the write port, 8 per cycle, rounded for a BF16
+destination). The next matrix's reads start during the current one, and
+back-to-back commands leave no gap. The controller orders a command after
+one whose output it reads.
+
 **Left for later:** concatenating matrices that share an input (q, k and v;
 gate and up) into one, to fill the last pass; a small gain for SmolLM2.
 
@@ -144,9 +152,10 @@ crossed and all 32 run in parallel (Q-10). Port `p` feeds lanes `4p` to
 **Weight layout.** Each matrix is stored in the order the lanes read it. For
 pass `j` (rows `128j` to `128j+127`), port `p` holds, for `k` = 0, 4, 8, …,
 the beat `W[r][k…k+3]` for its 4 rows `r` = `128j+4p` … `128j+4p+3`. Each
-port reads its share of a matrix as one sequential stream. The host writes
-weights in this layout at load time (it is a reordering, not a conversion:
-D-015).
+port reads its share of a matrix as one sequential stream, from its own
+channel at the command's `addr`: the same offset in every channel, each
+reserving the largest share (D-040). The host writes weights in this layout
+at load time (it is a reordering, not a conversion: D-015).
 
 **KV cache layout.** K and V are stored as written: one row per position,
 `head_dim` BF16 values per KV head and layer, spread over the ports by
