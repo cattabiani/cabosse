@@ -166,10 +166,13 @@ def causal_attention(
     return torch.cat(blocks)
 
 
-def step(model: Model, cache: KVCache, tokens: list[int]) -> torch.Tensor:
+def step(
+    model: Model, cache: KVCache, tokens: list[int], *, last_only: bool = False
+) -> torch.Tensor:
     """Run `tokens` at positions cache.length, cache.length + 1, ...; return
     their FP32 logits [len(tokens), vocab] and write their K and V into the
-    cache.
+    cache. last_only: the logits of the last token only, [1, vocab] (the same
+    bits; filling a long cache skips the classifier for the others).
 
     Every position computes what one decode step at that position computes:
     the matrix-vector products just handle all positions together, and
@@ -198,6 +201,8 @@ def step(model: Model, cache: KVCache, tokens: list[int]) -> torch.Tensor:
         mlp = vector.swiglu(dot.matvec(layer.gate, x), dot.matvec(layer.up, x))
         h = arith.add(h, dot.matvec(layer.down, arith.bf16(mlp)))
     cache.length = start + n
+    if last_only:
+        h = h[-1:]
     x = arith.bf16(vector.rmsnorm(h, model.final_norm, eps))
     return dot.matvec(model.lm_head, x)
 

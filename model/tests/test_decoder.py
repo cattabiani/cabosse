@@ -173,6 +173,9 @@ def test_forward_equals_decode_steps(
         [decoder.step(model, cache, tokens[:11]), decoder.step(model, cache, tokens[11:])]
     )
     assert torch.equal(arith.bits_f32(parts), want) and cache.length == 30
+    cache = decoder.KVCache.empty(model, 30)
+    last = decoder.step(model, cache, tokens, last_only=True)
+    assert torch.equal(arith.bits_f32(last), want[-1:]) and cache.length == 30
 
 
 # --- wiring check against transformers ------------------------------------------
