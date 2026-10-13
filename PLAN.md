@@ -384,6 +384,19 @@ dependent command: 118 cycles at F2's latency, 16% of SmolLM2's q and o
 remain (the lanes' pipeline, the final sum and the last pass's drain;
 reports/data/M5-engine.json).
 
+**D-043 (2026-10-13) — KV cache positions are contiguous within a
+channel** (refines D-040 for the KV cache; owner, 2026-10-13). Position
+`p` of a KV head goes on channel `p mod Ports`, as row `p div Ports` of
+that head's region; the region sits at the same offset in every channel
+and reserves `ceil(cap / Ports)` rows. A tile of `L` = 4 × `Ports`
+positions is then 4 adjacent rows in every channel: one read of
+`4 × head_dim × 2 / 32` beats per port (16 for SmolLM2). `KV_STORE` writes
+one row to one channel either way. *Why:* architecture.md spread the
+positions over the channels but left their place within a channel open;
+with rows at their flat addresses a tile is 4 separate short reads per
+port, and short DMA commands run below full rate (M5, memory model and
+DMA: a 1-beat command at half rate).
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1034,7 +1047,7 @@ at 128 lanes); engine attention; checkpoint report.
   for only with room for it). 64 stays the default until the 32-port run
   of the second PR. (These seeds overlapped: port p drew with seed + 1 + p,
   so seeds 1 to 5 shared most ports' streams; fixed in the second PR.)
-- [ ] Engine `MATVEC`, second PR: real data and speed at 128 lanes.
+- [x] Engine `MATVEC`, second PR (#54): real data and speed at 128 lanes.
   Weights read ahead of a go (D-042, owner): `cmd_wait_i` and `go_i`
   credits; issue reads a waiting command's weights at once, step holds it
   until its go. `commands.engine_waits` marks the waiting commands (q,
@@ -1089,6 +1102,13 @@ at 128 lanes); engine attention; checkpoint report.
     and 310 s of wall time per simulated token (estimate; the full design
     will simulate slower). CI builds and runs the 128-lane tests (marked
     `wide`) in a job of its own, beside the RTL job.
+- [ ] Engine attention. Owner, 2026-10-13: the KV layout is D-043. A long
+  position's KV cache is computed once by the golden model and saved under
+  the git-ignored `weights/`, named by a hash of the weights, the prompt
+  and its length; the test recomputes a 64-position prefix and checks it
+  bit for bit, so a file older than a numerics change fails. The prompt is
+  our own docs (Apache-2.0), tokenized and cut to length. The fill computes
+  the classifier for the last position only.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,

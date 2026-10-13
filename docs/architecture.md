@@ -165,7 +165,10 @@ at load time (it is a reordering, not a conversion: D-015).
 
 **KV cache layout.** K and V are stored as written: one row per position,
 `head_dim` BF16 values per KV head and layer, spread over the ports by
-position. A token writes one row of K and one of V per KV head and layer.
+position: position `p` is row `p div 32` of its head's region in channel
+`p mod 32`, the region at the same offset in every channel (D-043). A
+128-position tile is then 4 adjacent rows, one 16-beat read, per port. A
+token writes one row of K and one of V per KV head and layer.
 For attention, the memory front end loads a tile of 128 positions (128 × 64
 × 2 B = 16 KiB for SmolLM2) into an on-chip buffer, and the engine reads
 it from there:
