@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""rtl/engine.sv running MATVEC (PLAN.md, M5) against golden.dot.dot, bit for
-bit, through verif/bulk/engine.cpp: one memory model per port, the x
-buffers as a RAM, every write checked as it comes (the oldest command's dst,
-rows below its row count only, each row once). Configurations of 1, 2 and 5
-ports (4, 8 and 20 lanes) and the 128-lane engine (32 ports, marked wide).
+"""rtl/engine.sv running MATVEC, SCORES and VALUES (PLAN.md, M5) against
+golden.dot.dot and the golden attention, bit for bit, through
+verif/bulk/engine.cpp: one memory model per port, the x buffers as a RAM,
+every write checked as it comes (the oldest command's dst, its rows only,
+each row once). Configurations of 1, 2 and 5 ports (4, 8 and 20 lanes),
+4 and 8 for attention's full-rate fill and speed, and the 128-lane engine
+(32 ports, marked wide).
 
 Shapes: rows around the lanes (fewer than a port's group, a partial group
 and pass, a single row) and columns around a beat and the lane's full-rate
@@ -14,17 +16,22 @@ same under the memory's latency, limits, bandwidth and pauses, one slow
 port and sparse commands; consecutive commands leave no gap; commands that
 wait for their go (D-042) read their weights ahead and never step early;
 the ports' FIFO depth against pauses; an error response reported on its
-port. Slow, at 128 lanes: SmolLM2's MATVECs with real data, cycles against
-the perf model, and the bandwidth reached on large matrices."""
+port. Attention: heads, grouping, head dimensions and positions around a
+tile, with stale NaN in the cache and in p past t, between MATVECs; the
+same under the memory behaviours and with gos; back-to-back units at the
+perf model's cycles. Slow, at 128 lanes: SmolLM2's MATVECs with real data,
+cycles against the perf model, and the bandwidth reached on large
+matrices."""
 
 import bulk
 import commands
 import engine as eng
 import numpy as np
 import paths
+import perf
 import pytest
 import torch
-from engine import LANES_PER_PORT, Matvec
+from engine import LANES_PER_PORT, Attention, Matvec
 from golden import decoder
 from lane import FULL_RATE_LEN
 
@@ -34,7 +41,10 @@ SEED = 20261011
 PORTS = (1, 2, 5)  # PLAN.md, M5: degenerate, plain, prime
 WIDE = 32  # 128 lanes, SmolLM2's engine
 ALL_PORTS = (*PORTS, pytest.param(WIDE, marks=pytest.mark.wide))
-STARTUP_CYCLES = 60  # a command's first result after its start: latency 1 (measured, with margin)
+# A command's last result after its start, past its engine cycles and the
+# memory's latency: 62 at 128 lanes (measured; 6 of them the scale's
+# multiply on the write path), with margin.
+STARTUP_CYCLES = 70
 # Around a beat and the lane's shortest full-rate row.
 COLS = (1, 3, 4, 5, FULL_RATE_LEN - 1, FULL_RATE_LEN, FULL_RATE_LEN + 1, 64, 130)
 
@@ -266,3 +276,155 @@ def test_bandwidth(rate: int) -> None:
     bulk.in_parallel(one, eng.LARGE)
     print(f"read share over the engine use: {share}")
     assert all(v >= 0.9 for v in share.values()), (SEED, share)
+
+
+# Attention ------------------------------------------------------------------
+
+# 4 and 8: the full-rate fill; 8: 2 heads per p.V pass (L >= 2d for d = 16)
+ATT_PORTS = (*PORTS, 4, 8, pytest.param(WIDE, marks=pytest.mark.wide))
+HEADS = ((4, 2), (3, 1), (5, 5))  # (query heads, KV heads): groups of 2, one group, plain
+SCALES = (0.125, 0.3)  # SmolLM2's, and one whose products round
+
+
+def positions_around(lanes: int) -> list[int]:
+    return sorted({1, lanes - 1, lanes, lanes + 1, 2 * lanes + 3} - {0})
+
+
+# Head dimensions: the smallest and the largest the engine takes, and
+# SmolLM2's (2 heads per p.V pass at 128 lanes); d > L on the small engines.
+HEAD_DIMS = (16, 64, 128)
+
+
+def stale_attention(
+    values: bool, heads: int, kv_heads: int, d: int, t: int, gen: torch.Generator, **kw
+) -> tuple[Attention, torch.Tensor]:
+    """A command and its x buffer, with NaN in the cache past t, in p past
+    t, and cap the next whole tile past t (plus one, at random)."""
+    lanes = kw.pop("lanes")
+    cap = lanes * (t // lanes + 1 + int(torch.randint(2, (1,), generator=gen)))
+    cache = random_bf16(gen, kv_heads, cap, d)
+    cache[:, t:] = float("nan")
+    if values:
+        x = random_bf16(gen, heads, cap)
+        x[:, t:] = float("nan")
+        x = x.reshape(-1)
+    else:
+        x = random_bf16(gen, heads * d)
+    return Attention(values, cache, heads, t, **kw), x
+
+
+def attention_batch(ports: int, seed: int) -> tuple[list[eng.Command], dict, list[int]]:
+    """Every op × head dimension × heads × positions, each with its own x
+    buffer, alternating dst, format and scale, a MATVEC after every fifth,
+    each placed after a random gap of 0 to 50 beats."""
+    gen = torch.Generator().manual_seed(seed)
+    lanes = ports * LANES_PER_PORT
+    cmds: list[eng.Command] = []
+    xs: dict[int, torch.Tensor] = {}
+    shapes = [
+        (v, h, d, t)
+        for v in (False, True)
+        for d in HEAD_DIMS
+        for h in HEADS
+        for t in positions_around(lanes)
+    ]
+    for i, (values, (heads, kv), d, t) in enumerate(shapes):
+        kw = dict(a=len(xs), dst=2 + i % 3, bf16=i % 4 == 1, scale=SCALES[i % 2], lanes=lanes)
+        c, xs[len(xs)] = stale_attention(values, heads, kv, d, t, gen, **kw)
+        cmds.append(c)
+        if i % 5 == 4:
+            xs[len(xs)] = random_bf16(gen, 64)
+            cmds.append(Matvec(random_bf16(gen, lanes + 1, 64), a=len(xs) - 1, dst=5))
+    gaps = np.random.default_rng(seed).integers(0, 50, len(cmds)).tolist()
+    return cmds, xs, eng.place(cmds, ports, gaps)
+
+
+def check_commands(
+    cmds: list[eng.Command], xs: dict[int, torch.Tensor], result: eng.Result, label: str
+) -> None:
+    for i, (c, got) in enumerate(zip(cmds, result.out, strict=True)):
+        what = type(c).__name__ if isinstance(c, Matvec) else ("VALUES" if c.values else "SCORES")
+        eng.assert_bits(got, eng.expected(c, xs[c.a]), f"{label}: command {i} ({what})")
+    assert result.err == 0, f"{label}: err_o {result.err:#x}"
+    assert result.r_stalls == 0, f"{label}: a memory waited {result.r_stalls} cycles on RREADY"
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize("ports", ATT_PORTS)
+def test_attention_shapes(ports: int) -> None:
+    """Every shape, back to back with MATVECs between: bit for bit, and the
+    stale NaN past t never reaches a result (masked, not multiplied by 0)."""
+    seed = SEED + 1000 + ports
+    cmds, xs, addrs = attention_batch(ports, seed)
+    check_commands(cmds, xs, eng.fetch(cmds, xs, ports, addrs, latency=20), f"seed {seed}")
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize("memory", MEMORIES)
+@pytest.mark.parametrize("ports", ATT_PORTS)
+def test_attention_memories(ports: int, memory: str) -> None:
+    seed = SEED + 2000 + 10 * ports + list(MEMORIES).index(memory)
+    cmds, xs, addrs = attention_batch(ports, seed)
+    cmds, addrs = cmds[::5], addrs[::5]  # every positions count, both ops
+    plusargs = MEMORIES[memory] | {"seed": seed}
+    result = eng.fetch(cmds, xs, ports, addrs, **plusargs)
+    check_commands(cmds, xs, result, f"{memory}, seed {seed}")
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize(("go_early", "go_delay"), GOS)
+@pytest.mark.parametrize("ports", ATT_PORTS)
+def test_attention_go(ports: int, go_early: int, go_delay: int) -> None:
+    """SCORES and VALUES that wait for their go (D-044) between independent
+    ones and MATVECs: their tiles are read ahead, they never step early (x
+    reads as NaN until the go)."""
+    seed = SEED + 3000 + 100 * ports + go_delay + go_early
+    gen = torch.Generator().manual_seed(seed)
+    lanes = ports * LANES_PER_PORT
+    cmds: list[eng.Command] = []
+    xs: dict[int, torch.Tensor] = {}
+    for i, wait in enumerate((True, False, True, True, False, True)):
+        kw = dict(a=len(xs), dst=2 + i % 3, wait=wait, lanes=lanes)
+        c, xs[len(xs)] = stale_attention(i % 2 == 1, 4, 2, 64, 2 * lanes + 3, gen, **kw)
+        cmds.append(c)
+        if i == 2:
+            xs[len(xs)] = random_bf16(gen, 64)
+            cmds.append(Matvec(random_bf16(gen, lanes, 64), a=len(xs) - 1, wait=True))
+    gos = dict(go_early=go_early, go_delay=go_delay)
+    result = eng.fetch(cmds, xs, ports, latency=GO_LATENCY, seed=seed, **gos)
+    check_commands(cmds, xs, result, f"{gos}, seed {seed}")
+
+
+def attention_model_cycles(c: Attention, ports: int) -> float:
+    _, _, d = c.cache.shape
+    shape = (c.heads * d, c.t) if c.values else (c.heads * c.t, d)
+    return perf.engine_cycles((shape,), eng.design(ports))
+
+
+# ports -> (SCORES' d, VALUES' d): heads of whole p.V passes, d <= L, so the
+# perf model counts the engine's passes; each unit's fill as long as its step.
+BALANCED = {8: (64, 16), WIDE: (64, 64)}
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize("ports", (8, pytest.param(WIDE, marks=pytest.mark.wide)))
+def test_attention_back_to_back(ports: int) -> None:
+    """Three SCORES, then three VALUES, t a whole number of tiles, the memory
+    at full rate: after the first of each kind, each takes its perf-model
+    cycles plus at most 1 (the command boundary): units leave no gap, the
+    next tile fills while the current one steps."""
+    gen = torch.Generator().manual_seed(SEED)
+    lanes = ports * LANES_PER_PORT
+    d_scores, d_values = BALANCED[ports]
+    cmds = [
+        Attention(v, random_bf16(gen, 3, 4 * lanes, d), 6, 3 * lanes)
+        for v, d in [(False, d_scores)] * 3 + [(True, d_values)] * 3
+    ]
+    xs = {0: random_bf16(gen, 6 * 4 * lanes)}
+    result = eng.fetch(cmds, xs, ports, latency=40, outstanding=32)
+    check_commands(cmds, xs, result, f"back to back, seed {SEED}")
+    took = np.diff(result.done).tolist()
+    model = [attention_model_cycles(c, ports) for c in cmds]
+    steady = [(i, took[i - 1], model[i]) for i in (1, 2, 4, 5)]
+    print(f"cycles (command, measured, perf model): {steady}")
+    assert all(m <= c <= m + 1 for _, c, m in steady), (SEED, steady)

@@ -16,4 +16,6 @@ fp32_max.sv
 dot_lane.sv
 stream_fifo.sv
 port_dma.sv
+rotate.sv
+tile_buffer.sv
 engine.sv
