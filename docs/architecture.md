@@ -176,8 +176,17 @@ it from there:
 - p·V: one lane per output dimension, 4 positions of that dimension per
   cycle: the buffer is read across positions, so V needs no transposed
   copy in HBM (Q-11).
-- The tile is loaded once per KV head and used by all of its query heads
-  (3 for SmolLM2), as the perf model assumes.
+- For q·K, a tile is loaded once per KV head and used by all of its query
+  heads (3 for SmolLM2). Port `p`'s 4 lanes take the 4 positions in its
+  own channel, so q·K needs no crossbar.
+- For p·V, a lane's row runs over all positions, so V is read once per
+  pass, not once per KV head (Q-27). The 4 consecutive positions a cycle
+  reads sit on 4 channels (D-043): a crossbar takes them from the ports'
+  tile buffers to the lanes.
+- The engine reads the cache, ahead of its go, only after the `KV_STORE`
+  that writes it is done (D-044).
+- Positions at or past the position count are left out of a row, not
+  multiplied by zero: the cache and P hold stale data there.
 - A p·V pass covers 2 query heads (128 lanes = 2 × 64 dimensions), and the
   two can belong to different KV heads (SmolLM2's heads 2 and 3 use KV heads
   0 and 1), so the buffer holds the tiles of two KV heads at once.

@@ -397,6 +397,24 @@ with rows at their flat addresses a tile is 4 separate short reads per
 port, and short DMA commands run below full rate (M5, memory model and
 DMA: a 1-beat command at half rate).
 
+**D-044 (2026-10-14) — An engine command reads the KV cache only after
+the KV_STORE that writes it is done** (refines D-041 and D-042; owner,
+2026-10-14). The controller gives the engine a `SCORES` or `VALUES` only
+once every `KV_STORE` writing rows it reads is done: every write response
+received, since the write path and the 32 read ports are separate AXI
+ports with no order between them. Both come with `wait` and read the cache
+ahead as D-042 allows: `SCORES` after `KV_STORE` K, its go once q after
+RoPE is written (in the command list RoPE of q follows `KV_STORE`, so its
+K reads overlap it); `VALUES` after `KV_STORE` V, its go once P is
+written. Besides the read-after-write rule of D-041, a command that writes
+an on-chip buffer is started only after every earlier command that reads
+that buffer is done (the current command list already orders every such
+case through its data; M7's controller must not rely on that). *Why:*
+read ahead, the engine could read the newest K or V row before
+`KV_STORE` writes it. The first draft of this entry gave `SCORES` without
+`wait` and claimed q was ready after `KV_STORE`; it is not (review of the
+command list, 2026-10-14).
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1109,6 +1127,21 @@ at 128 lanes); engine attention; checkpoint report.
   bit for bit, so a file older than a numerics change fails. The prompt is
   our own docs (Apache-2.0), tokenized and cut to length. The fill computes
   the classifier for the last position only.
+  Owner, 2026-10-14: `VALUES` reads the tile through a crossbar from
+  port-local tile buffers (4 consecutive positions per cycle sit on 4
+  channels, D-043; numerics and layout unchanged); `SCORES` needs none
+  (port `p`'s lanes take its own 4 positions of a tile). `VALUES` reads V
+  once per pass (a lane's row runs over all positions, Q-22), so per pass
+  and per KV head in it, not once per KV head: the perf model counts it so,
+  and perf.md states the bound (at most the engine's rate ÷ the memory's
+  rate, about 7% on F2 at 250 MHz, estimate); reuse across a GQA group is
+  Q-27. `SCORES` and `VALUES` wait for the `KV_STORE` that writes what
+  they read (D-044). The engine leaves positions at or past t out of a
+  row (not a zero product: the cache and P hold stale data there, maybe
+  NaN; tested with NaN); a tile slot is refilled only after all its
+  readers are done, and no tile is kept from one command to the next
+  (hand mutations). Two PRs, as for `MATVEC`:
+  small configurations, then real data and speed at 128 lanes.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
@@ -1175,7 +1208,8 @@ gate-level simulation bit-exact; then, perhaps, a shuttle run.
 
 ## Open questions
 
-None open. New ones are added as a table:
+New ones are added as a table:
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
+| Q-27 | Reuse V across a GQA group's query heads in `VALUES` (lanes that save and resume their partial sums, or a chunked summation order: a numerics change)? Today V is read once per pass. | Only if M8's HBM rate leaves `VALUES` memory-bound by much more than the ~7% estimated. |
