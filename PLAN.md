@@ -1143,6 +1143,21 @@ at 128 lanes); engine attention; checkpoint report.
   after its pass is done, and no tile is kept from one command to the
   next (hand mutations). Two PRs, as for `MATVEC`: small configurations,
   then real data and speed at 128 lanes.
+  First PR: the engine with small configurations. `rtl/engine.sv` gains a
+  fill stage and attention units (one head and a tile for `SCORES`; up to
+  2 heads, or `L` dimensions of one when `d > L`, and a tile for
+  `VALUES`), `rtl/tile_buffer.sv` (`L` banks, rotations by
+  `rtl/rotate.sv`) and the scale's `mul` on the write path (6 cycles more
+  for every command: `engine_startup_cycles` is re-measured in the second
+  PR). `commands.hazards()` checks the ordering rules (D-041, D-042,
+  D-044) on the command lists. Tests (`test_engine.py`, 1, 2, 4, 5 and 8
+  ports in CI, 32 in the wide job): every op × d of 16, 64, 128 × groups
+  of 1, 2, 3 × positions around a tile, with NaN in the cache and p past
+  t, between MATVECs; the 6 memory behaviours; gos; back to back, each
+  command takes its perf-model cycles plus 1 (289 for 288 at 32 ports,
+  measured). `VALUES` with `d > L` (small engines only) reloads whole rows
+  per pass and runs slower than the model; bits only. 12 hand mutations
+  (listed in the PR), all caught.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
