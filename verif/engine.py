@@ -89,7 +89,7 @@ def fields(c: Command, addr: int) -> tuple[int, ...]:
     if isinstance(c, Matvec):
         return (OP_MATVEC, *c.w.shape, *common, 0, 0, 0, 0, 0)
     _, cap, d = c.cache.shape
-    scale = int(arith.bits_f32(torch.tensor(c.scale, dtype=torch.float32)))
+    scale = commands.f32_bits(c.scale)
     op = OP_VALUES if c.values else OP_SCORES
     return (op, 0, d, *common, c.heads, c.group, c.t, cap, scale)
 
@@ -280,10 +280,18 @@ def design(ports: int) -> dict[str, float]:
     return DESIGN | {"lanes": ports * LANES_PER_PORT}
 
 
-def model_cycles(m: Matvec, ports: int, startup: bool = True) -> float:
-    """The perf model's cycles for the command, with the start-up of a
-    waiting one (engine_startup_cycles, measured at 128 lanes) if startup."""
-    return perf.engine_cycles((tuple(m.w.shape),), design(ports), int(m.wait and startup))
+def model_cycles(m: Command, ports: int, startup: bool = True) -> float:
+    """The perf model's cycles for the command (perf.attention's shapes for
+    SCORES and VALUES), with the start-up of a waiting one
+    (engine_startup_cycles, measured at 128 lanes) if startup."""
+    if isinstance(m, Attention):
+        kv_heads, _, d = m.cache.shape
+        op = commands.Op.VALUES if m.values else commands.Op.SCORES
+        cmd = commands.Command(op, n=m.heads, m=d, kv_heads=kv_heads)
+        shapes = perf.attention(cmd, m.t, ports * LANES_PER_PORT).engine_shapes
+    else:
+        shapes = (tuple(m.w.shape),)
+    return perf.engine_cycles(shapes, design(ports), int(m.wait and startup))
 
 
 def read_share(m: Matvec, result: Result, ports: int, rate: int) -> float:

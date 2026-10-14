@@ -19,7 +19,7 @@ from pathlib import Path
 
 import paths
 import torch
-from golden import decoder
+from golden import arith, decoder
 from transformers import AutoTokenizer
 
 N_POSITIONS = 8191  # a decode step at the last position SmolLM2 supports (8192)
@@ -74,8 +74,8 @@ def read(path: Path, model: decoder.Model, tokens: list[int]) -> decoder.KVCache
     n = min(CHECK_POSITIONS, cache.length)
     fresh = decoder.KVCache.empty(model, n)
     decoder.step(model, fresh, tokens[:n], last_only=True)
-    same = torch.equal(fresh.k.view(torch.int16), cache.k[:, :, :n].view(torch.int16))
-    same &= torch.equal(fresh.v.view(torch.int16), cache.v[:, :, :n].view(torch.int16))
+    same = torch.equal(arith.bits_bf16(fresh.k), arith.bits_bf16(cache.k[:, :, :n]))
+    same &= torch.equal(arith.bits_bf16(fresh.v), arith.bits_bf16(cache.v[:, :, :n]))
     assert same, f"{path}: the first {n} positions differ from the golden model's; refill it"
     return cache
 

@@ -28,7 +28,6 @@ import commands
 import engine as eng
 import numpy as np
 import paths
-import perf
 import pytest
 import torch
 from engine import LANES_PER_PORT, Attention, Matvec
@@ -83,12 +82,17 @@ def shape_batch(ports: int, seed: int) -> tuple[list[Matvec], dict[int, torch.Te
     return mats, xs, eng.place(mats, ports, gaps)
 
 
+def describe(c: eng.Command) -> str:
+    if isinstance(c, Matvec):
+        return f"MATVEC {tuple(c.w.shape)}, bf16={c.bf16}"
+    return f"{'VALUES' if c.values else 'SCORES'} {c.heads} heads, t={c.t}, bf16={c.bf16}"
+
+
 def check_bits(
-    mats: list[Matvec], xs: dict[int, torch.Tensor], result: eng.Result, label: str
+    mats: list[eng.Command], xs: dict[int, torch.Tensor], result: eng.Result, label: str
 ) -> None:
     for i, (m, got) in enumerate(zip(mats, result.out, strict=True)):
-        command = f"{label}: command {i} ({tuple(m.w.shape)}, bf16={m.bf16})"
-        eng.assert_bits(got, eng.expected(m, xs[m.a]), command)
+        eng.assert_bits(got, eng.expected(m, xs[m.a]), f"{label}: command {i} ({describe(m)})")
     assert result.err == 0, f"{label}: err_o {result.err:#x}"
     assert result.r_stalls == 0, f"{label}: a memory waited {result.r_stalls} cycles on RREADY"
 
@@ -296,12 +300,19 @@ def positions_around(lanes: int) -> list[int]:
 
 
 def stale_attention(
-    values: bool, heads: int, kv_heads: int, d: int, t: int, gen: torch.Generator, **kw
+    values: bool,
+    heads: int,
+    kv_heads: int,
+    d: int,
+    t: int,
+    gen: torch.Generator,
+    *,
+    lanes: int,
+    **kw,
 ) -> tuple[Attention, torch.Tensor]:
     """A command and its x buffer, with NaN in the cache past t, in p past
     t, and cap the whole tiles holding t (so t = cap when t is a whole
     number of tiles) plus one more, at random."""
-    lanes = kw.pop("lanes")
     cap = lanes * (-(-t // lanes) + int(torch.randint(2, (1,), generator=gen)))
     cache = random_bf16(gen, kv_heads, cap, d)
     cache[:, t:] = float("nan")
@@ -340,16 +351,6 @@ def attention_batch(ports: int, seed: int) -> tuple[list[eng.Command], dict, lis
     return cmds, xs, eng.place(cmds, ports, gaps)
 
 
-def check_commands(
-    cmds: list[eng.Command], xs: dict[int, torch.Tensor], result: eng.Result, label: str
-) -> None:
-    for i, (c, got) in enumerate(zip(cmds, result.out, strict=True)):
-        what = type(c).__name__ if isinstance(c, Matvec) else ("VALUES" if c.values else "SCORES")
-        eng.assert_bits(got, eng.expected(c, xs[c.a]), f"{label}: command {i} ({what})")
-    assert result.err == 0, f"{label}: err_o {result.err:#x}"
-    assert result.r_stalls == 0, f"{label}: a memory waited {result.r_stalls} cycles on RREADY"
-
-
 @rtl.needs_verilator
 @pytest.mark.parametrize("ports", ATT_PORTS)
 def test_attention_shapes(ports: int) -> None:
@@ -357,7 +358,7 @@ def test_attention_shapes(ports: int) -> None:
     stale NaN past t never reaches a result (masked, not multiplied by 0)."""
     seed = SEED + 1000 + ports
     cmds, xs, addrs = attention_batch(ports, seed)
-    check_commands(cmds, xs, eng.fetch(cmds, xs, ports, addrs, latency=20), f"seed {seed}")
+    check_bits(cmds, xs, eng.fetch(cmds, xs, ports, addrs, latency=20), f"seed {seed}")
 
 
 @rtl.needs_verilator
@@ -365,11 +366,12 @@ def test_attention_shapes(ports: int) -> None:
 @pytest.mark.parametrize("ports", ATT_PORTS)
 def test_attention_memories(ports: int, memory: str) -> None:
     seed = SEED + 2000 + 10 * ports + list(MEMORIES).index(memory)
-    cmds, xs, addrs = attention_batch(ports, seed)
-    cmds, addrs = cmds[::5], addrs[::5]  # every positions count, both ops
+    cmds, xs, _ = attention_batch(ports, seed)
+    cmds = cmds[::5]  # every positions count, both ops
+    xs = {c.a: xs[c.a] for c in cmds}
     plusargs = MEMORIES[memory] | {"seed": seed}
-    result = eng.fetch(cmds, xs, ports, addrs, **plusargs)
-    check_commands(cmds, xs, result, f"{memory}, seed {seed}")
+    result = eng.fetch(cmds, xs, ports, **plusargs)
+    check_bits(cmds, xs, result, f"{memory}, seed {seed}")
 
 
 @rtl.needs_verilator
@@ -393,13 +395,7 @@ def test_attention_go(ports: int, go_early: int, go_delay: int) -> None:
             cmds.append(Matvec(random_bf16(gen, lanes, 64), a=len(xs) - 1, wait=True))
     gos = dict(go_early=go_early, go_delay=go_delay)
     result = eng.fetch(cmds, xs, ports, latency=GO_LATENCY, seed=seed, **gos)
-    check_commands(cmds, xs, result, f"{gos}, seed {seed}")
-
-
-def attention_model_cycles(c: Attention, ports: int) -> float:
-    _, _, d = c.cache.shape
-    shape = (c.heads * d, c.t) if c.values else (c.heads * c.t, d)
-    return perf.engine_cycles((shape,), eng.design(ports))
+    check_bits(cmds, xs, result, f"{gos}, seed {seed}")
 
 
 # ports -> (SCORES' d, VALUES' d): heads of whole p.V passes, d <= L, so the
@@ -423,9 +419,9 @@ def test_attention_back_to_back(ports: int) -> None:
     ]
     xs = {0: random_bf16(gen, 6 * 4 * lanes)}
     result = eng.fetch(cmds, xs, ports, latency=40, outstanding=32)
-    check_commands(cmds, xs, result, f"back to back, seed {SEED}")
+    check_bits(cmds, xs, result, f"back to back, seed {SEED}")
     took = np.diff(result.done).tolist()
-    model = [attention_model_cycles(c, ports) for c in cmds]
+    model = [eng.model_cycles(c, ports) for c in cmds]
     steady = [(i, took[i - 1], model[i]) for i in (1, 2, 4, 5)]
     print(f"cycles (command, measured, perf model): {steady}")
     assert all(m <= c <= m + 1 for _, c, m in steady), (SEED, steady)
@@ -453,4 +449,4 @@ def test_attention_fill_order(ports: int) -> None:
         cmds.append(Matvec(random_bf16(gen, 2 * lanes, 64), a=len(xs) - 1, dst=5))
     c, xs[len(xs)] = stale_attention(False, 4, 2, 64, 2 * lanes, gen, a=len(xs), lanes=lanes)
     cmds.append(c)
-    check_commands(cmds, xs, eng.fetch(cmds, xs, ports, latency=5), f"seed {SEED}")
+    check_bits(cmds, xs, eng.fetch(cmds, xs, ports, latency=5), f"seed {SEED}")
