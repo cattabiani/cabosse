@@ -1134,7 +1134,7 @@ at 128 lanes); engine attention; checkpoint report.
   once per pass (a lane's row runs over all positions, Q-22), so per pass
   and per KV head in it, not once per KV head: the perf model counts it so,
   and perf.md states the bound (at most the engine's rate ÷ the memory's
-  rate, about 7% on F2 at 250 MHz, estimate); reuse across a GQA group is
+  rate, about 8% on F2 at 250 MHz, estimate); reuse across a GQA group is
   Q-27. `SCORES` and `VALUES` wait for the `KV_STORE` that writes what
   they read (D-044). The engine leaves positions at or past t out of a
   row (not a zero product: the cache and P hold stale data there, maybe
@@ -1212,4 +1212,4 @@ New ones are added as a table:
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-27 | Reuse V across a GQA group's query heads in `VALUES` (lanes that save and resume their partial sums, or a chunked summation order: a numerics change)? Today V is read once per pass. | Only if M8's HBM rate leaves `VALUES` memory-bound by much more than the ~7% estimated. |
+| Q-27 | Reuse V across a GQA group's query heads in `VALUES` (lanes that save and resume their partial sums, or a chunked summation order: a numerics change)? Today V is read once per pass. | Only if M8's HBM rate leaves `VALUES` memory-bound by much more than the ~8% estimated. |

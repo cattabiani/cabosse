@@ -10,6 +10,7 @@ import shutil
 from itertools import product
 from pathlib import Path
 
+import commands
 import paths
 import perf
 import pytest
@@ -35,6 +36,7 @@ DESIGN = {
     "command_cycles": 5,
     "engine_startup_cycles": 25,
 }
+LANES = 128  # the engine the work tests count on
 # One of our measurements, as a measurement script would write it.
 MEASUREMENT = {
     "value": 401.2e9,
@@ -56,20 +58,47 @@ def test_a_token_reads_every_weight_once(tied: bool) -> None:
     """All weights, plus the one embedding row and the position's FP32 RoPE
     rows; untied, minus the embedding table (only its row is read)."""
     c = tiny.tiny_config(tied=tied)
-    read = perf.Work.of(perf.ops(c, 0)).weight_bytes
+    read = perf.Work.of(perf.ops(c, 0, LANES)).weight_bytes
     table = 0 if tied else c.vocab_size * c.hidden_size * perf.BF16_BYTES
     rope = 2 * c.head_dim * 4  # FP32 cos and sin
     assert read == perf.parameter_bytes(c) + c.hidden_size * perf.BF16_BYTES + rope - table
 
 
 def test_kv_traffic_grows_with_the_position() -> None:
-    """Each position adds one row of K and one of V per KV head and layer to
-    what a token reads; the write is the new row."""
+    """With every head in one p.V pass, each position adds one row of K and
+    one of V per KV head and layer to what a token reads; the write is the
+    new row."""
     c = tiny.tiny_config(n_kv_heads=2)
+    assert c.num_attention_heads * c.head_dim <= LANES
     row = c.num_hidden_layers * c.num_key_value_heads * c.head_dim * perf.BF16_BYTES
-    a, b = (perf.Work.of(perf.ops(c, p)) for p in (3, 4))
+    a, b = (perf.Work.of(perf.ops(c, p, LANES)) for p in (3, 4))
     assert b.kv_read_bytes - a.kv_read_bytes == 2 * row
     assert a.kv_write_bytes == 2 * row
+
+
+# (query heads, KV heads, head_dim, lanes) -> KV heads p.V reads, counted by
+# hand over its passes.
+V_READS = [
+    ((9, 3, 64, 128), 6),  # SmolLM2: heads (0,1) (2,3) (4,5) (6,7) (8); (2,3) spans 2
+    ((9, 3, 64, 64), 9),  # a head per pass
+    ((9, 3, 64, 256), 5),  # (0-3): KV 0, 1; (4-7): KV 1, 2; (8): KV 2
+    ((9, 3, 64, 512), 4),  # (0-7): all 3; (8): KV 2
+    ((14, 2, 64, 128), 8),  # Qwen2.5-0.5B: 7 passes, (6,7) spans 2
+    ((4, 2, 8, 3), 12),  # 11 passes of 3 rows; rows 15-17 span KV heads 0 and 1
+    ((4, 4, 8, 32), 4),  # plain attention, one pass
+]
+
+
+@pytest.mark.parametrize(("shape", "reads"), V_READS)
+def test_values_reads_v_once_per_pass(shape: tuple[int, int, int, int], reads: int) -> None:
+    """p.V reads the V of every KV head in a pass, again in every pass;
+    q.K reads each KV head once whatever the lanes."""
+    heads, kv_heads, d, lanes = shape
+    attention = dict(n=heads, m=d, kv_heads=kv_heads)
+    values = commands.Command(commands.Op.VALUES, **attention)
+    scores = commands.Command(commands.Op.SCORES, **attention)
+    assert perf.kv_heads_read(values, lanes) == reads
+    assert perf.kv_heads_read(scores, lanes) == kv_heads
 
 
 def test_seconds_by_hand() -> None:
@@ -122,7 +151,7 @@ def test_engine_cycles_add_up_over_ops() -> None:
 def test_engine_shapes_cover_every_multiply_add(position: int) -> None:
     """The engine's rows times cols are exactly the ops' multiply-adds."""
     c = tiny.tiny_config(n_kv_heads=2)
-    op_list = perf.ops(c, position)
+    op_list = perf.ops(c, position, LANES)
     on_engine = [o for o in op_list if o.engine_shape is not None]
     assert all(math.prod(o.engine_shape) == o.macs for o in on_engine)
     assert {o.kind for o in on_engine} == {"matvec", *perf.ATTENTION_KINDS}
