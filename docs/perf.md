@@ -31,14 +31,12 @@ at most their sum. The tokens/s column gives that range (sum first). The
 largest term is what limits the design.
 
 Assumptions, to revisit in `docs/architecture.md`:
-- Weights and the KV cache live in HBM and are read once per token. A KV
-  head's K is read once and shared by its query heads. V is read once per
-  p·V pass, for each KV head the pass's rows belong to (a lane's row runs
-  over all positions, so a tile cannot wait for the next pass; Q-27): 6
-  KV-head reads per SmolLM2 layer at 128 lanes, not 3. This costs no
-  engine time while the memory keeps up: a pass never reads faster than
-  the engine consumes, so at most the engine's rate ÷ the memory's rate
-  (1024 ÷ 947 B/cycle on F2 at 250 MHz, about 8%, estimate).
+- Weights and the KV cache live in HBM and are read once per token, K and
+  V once per query head: the engine shares no tile between the heads of a
+  group (Q-27). This costs no engine time while the memory keeps up with
+  the engine (a pass reads no faster than the lanes consume), and at most
+  the engine's rate ÷ the memory's rate on attention otherwise (1024 ÷ 947
+  B/cycle on F2 at 250 MHz, about 8%, estimate).
 - Activations stay on chip, and cost no HBM traffic.
 - Attention's multiply-adds (q·K and p·V) run on the matrix-vector engine.
 - The HBM read rate scales with the memory clock from AWS's measured rate at
@@ -104,9 +102,9 @@ SmolLM2-135M-Instruct:
 | per token, at position | 0 | 1023 | 8191 |
 |---|---|---|---|
 | weights read (MB) | 269.03 | 269.03 | 269.03 |
-| KV cache read (MB) | 0.03 | 35.39 | 283.12 |
+| KV cache read (MB) | 0.07 | 70.78 | 566.23 |
 | KV cache written (MB) | 0.02 | 0.02 | 0.02 |
-| memory traffic (MB) | 269.09 | 304.44 | 552.17 |
+| memory traffic (MB) | 269.12 | 339.83 | 835.29 |
 | multiply-adds, matrix-vector (M) | 134.5 | 134.5 | 134.5 |
 | multiply-adds, attention (M) | 0.0 | 35.4 | 283.1 |
 | vector-unit element passes (M) | 0.4 | 1.8 | 11.5 |
@@ -134,20 +132,20 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 | scenario | position | tokens/s | limited by | memory (ms) | engine (ms) | vector (ms) | commands (ms) |
 |---|---|---|---|---|---|---|---|
 | as planned | 0 | 364–863 | engine | 1.136 | 1.159 | 0.110 | 0.341 |
-| as planned | 1023 | 284–695 | engine | 1.286 | 1.440 | 0.456 | 0.341 |
-| as planned | 8191 | 111–287 | engine | 2.332 | 3.483 | 2.875 | 0.341 |
+| as planned | 1023 | 272–695 | engine | 1.435 | 1.440 | 0.456 | 0.341 |
+| as planned | 8191 | 98–284 | memory | 3.527 | 3.483 | 2.875 | 0.341 |
 | 64 lanes x 8, A = 32 | 0 | 368–880 | memory | 1.136 | 1.128 | 0.110 | 0.341 |
-| 64 lanes x 8, A = 32 | 1023 | 257–567 | engine | 1.335 | 1.764 | 0.456 | 0.341 |
-| 64 lanes x 8, A = 32 | 8191 | 80–154 | engine | 2.730 | 6.482 | 2.875 | 0.341 |
+| 64 lanes x 8, A = 32 | 1023 | 250–567 | engine | 1.435 | 1.764 | 0.456 | 0.341 |
+| 64 lanes x 8, A = 32 | 8191 | 76–154 | engine | 3.527 | 6.482 | 2.875 | 0.341 |
 | 512 lanes x 1, A = 4 | 0 | 327–681 | engine | 1.136 | 1.467 | 0.110 | 0.341 |
-| 512 lanes x 1, A = 4 | 1023 | 257–543 | engine | 1.252 | 1.843 | 0.456 | 0.341 |
-| 512 lanes x 1, A = 4 | 8191 | 102–221 | engine | 2.066 | 4.531 | 2.875 | 0.341 |
+| 512 lanes x 1, A = 4 | 1023 | 245–543 | engine | 1.435 | 1.843 | 0.456 | 0.341 |
+| 512 lanes x 1, A = 4 | 8191 | 89–221 | engine | 3.527 | 4.531 | 2.875 | 0.341 |
 | core at 125 MHz | 0 | 229–431 | engine | 1.136 | 2.318 | 0.221 | 0.682 |
-| core at 125 MHz | 1023 | 174–347 | engine | 1.286 | 2.880 | 0.911 | 0.682 |
-| core at 125 MHz | 8191 | 64–144 | engine | 2.332 | 6.966 | 5.750 | 0.682 |
+| core at 125 MHz | 1023 | 169–347 | engine | 1.435 | 2.880 | 0.911 | 0.682 |
+| core at 125 MHz | 8191 | 59–144 | engine | 3.527 | 6.966 | 5.750 | 0.682 |
 | 256 lanes, HBM at 450 MHz | 0 | 580–1559 | engine | 0.631 | 0.642 | 0.110 | 0.341 |
-| 256 lanes, HBM at 450 MHz | 1023 | 435–1257 | engine | 0.705 | 0.796 | 0.456 | 0.341 |
-| 256 lanes, HBM at 450 MHz | 8191 | 157–348 | vector | 1.222 | 1.924 | 2.875 | 0.341 |
+| 256 lanes, HBM at 450 MHz | 1023 | 418–1254 | memory | 0.797 | 0.796 | 0.456 | 0.341 |
+| 256 lanes, HBM at 450 MHz | 8191 | 141–348 | vector | 1.959 | 1.924 | 2.875 | 0.341 |
 <!-- end: predictions -->
 
 ## Sensitivity
@@ -159,7 +157,7 @@ Tokens/s (overlapped) at position 1023, with the input scaled ×0.5 / ×1 / ×2:
 
 | input | as planned | 64 lanes x 8, A = 32 | 512 lanes x 1, A = 4 | core at 125 MHz | 256 lanes, HBM at 450 MHz |
 |---|---|---|---|---|---|
-| `hbm_port_bytes` (to verify) | 420 / 695 / 695 | 405 / 567 / 567 | 432 / 543 / 543 | 347 / 347 / 347 | 767 / 1257 / 1257 |
-| `hbm_read_bytes_per_s` (measured by AWS) | 389 / 695 / 695 | 374 / 567 / 567 | 399 / 543 / 543 | 347 / 347 / 347 | 709 / 1257 / 1257 |
-| `command_cycles` (guess) | 695 / 695 / 695 | 567 / 567 / 567 | 543 / 543 / 543 | 347 / 347 / 347 | 1257 / 1257 / 1257 |
+| `hbm_port_bytes` (to verify) | 377 / 695 / 695 | 377 / 567 / 567 | 377 / 543 / 543 | 347 / 347 / 347 | 678 / 1254 / 1254 |
+| `hbm_read_bytes_per_s` (measured by AWS) | 348 / 695 / 695 | 348 / 567 / 567 | 348 / 543 / 543 | 347 / 347 / 347 | 627 / 1254 / 1257 |
+| `command_cycles` (guess) | 695 / 695 / 695 | 567 / 567 / 567 | 543 / 543 / 543 | 347 / 347 / 347 | 1254 / 1254 / 1254 |
 <!-- end: sensitivity -->

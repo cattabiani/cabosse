@@ -1127,21 +1127,22 @@ at 128 lanes); engine attention; checkpoint report.
   bit for bit, so a file older than a numerics change fails. The prompt is
   our own docs (Apache-2.0), tokenized and cut to length. The fill computes
   the classifier for the last position only.
-  Owner, 2026-10-14: `VALUES` reads the tile through a crossbar from
-  port-local tile buffers (4 consecutive positions per cycle sit on 4
-  channels, D-043; numerics and layout unchanged); `SCORES` needs none
-  (port `p`'s lanes take its own 4 positions of a tile). `VALUES` reads V
-  once per pass (a lane's row runs over all positions, Q-22), so per pass
-  and per KV head in it, not once per KV head: the perf model counts it so,
-  and perf.md states the bound (at most the engine's rate ÷ the memory's
-  rate, about 8% on F2 at 250 MHz, estimate); reuse across a GQA group is
-  Q-27. `SCORES` and `VALUES` wait for the `KV_STORE` that writes what
-  they read (D-044). The engine leaves positions at or past t out of a
-  row (not a zero product: the cache and P hold stale data there, maybe
-  NaN; tested with NaN); a tile slot is refilled only after all its
-  readers are done, and no tile is kept from one command to the next
-  (hand mutations). Two PRs, as for `MATVEC`:
-  small configurations, then real data and speed at 128 lanes.
+  Owner, 2026-10-14: `VALUES` reads the tile through a crossbar
+  (4 consecutive positions per cycle sit on 4 channels, D-043; numerics
+  and layout unchanged); a banked tile buffer serves it, `SCORES` and the
+  fill (architecture.md, "Tile buffer banks"). Simplest first (owner): a
+  tile serves one query head and is used once, so K and V are read once
+  per query head; free while the memory keeps up with the engine, at most
+  the engine's rate ÷ the memory's rate on attention otherwise (about 8%
+  on F2 at 250 MHz, estimate); reuse across a GQA group is Q-27. The engine
+  requires `cap` a multiple of `L` (whole tiles) and a power-of-two head
+  dimension from 16 to 128. `SCORES` and `VALUES` wait for the `KV_STORE`
+  that writes what they read (D-044). The engine leaves positions at or
+  past t out of a row (not a zero product: the cache and P hold stale
+  data there, maybe NaN; tested with NaN); a tile slot is refilled only
+  after its pass is done, and no tile is kept from one command to the
+  next (hand mutations). Two PRs, as for `MATVEC`: small configurations,
+  then real data and speed at 128 lanes.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
@@ -1212,4 +1213,4 @@ New ones are added as a table:
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-27 | Reuse V across a GQA group's query heads in `VALUES` (lanes that save and resume their partial sums, or a chunked summation order: a numerics change)? Today V is read once per pass. | Only if M8's HBM rate leaves `VALUES` memory-bound by much more than the ~8% estimated. |
+| Q-27 | Share K and V tiles between the query heads of a GQA group (q·K: one tile for the group's heads in turn; p·V: lanes that save and resume their partial sums, or a chunked summation order, a numerics change)? Today each query head reads K and V. | Only if M8's HBM rate leaves attention memory-bound by much more than the ~8% estimated. |

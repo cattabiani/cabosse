@@ -67,11 +67,9 @@ def positions(config) -> list[int]:
     return [0, SENSITIVITY_POSITION, config.max_position_embeddings - 1]
 
 
-def work_table(config, design: perf.Inputs) -> str:
-    """The work of a token, on the planned design's engine."""
+def work_table(config) -> str:
     cols = positions(config)
-    lanes = int(design.values()["lanes"])
-    work = [perf.Work.of(perf.ops(config, p, lanes)) for p in cols]
+    work = [perf.Work.of(perf.ops(config, p)) for p in cols]
     return blocks.table(
         ["per token, at position"] + [str(p) for p in cols],
         [
@@ -97,11 +95,12 @@ def predictions_table(config, platform: perf.Inputs, design: perf.Inputs) -> str
 def engine_table(config, design: perf.Inputs) -> str:
     """Share of the engine's multiply-add slots that do work, per scenario."""
     cols = positions(config)
-    rows = []
-    for scenario in design.scenarios:
-        values = design.values(scenario)
-        work = [perf.Work.of(perf.ops(config, p, int(values["lanes"]))) for p in cols]
-        rows.append([scenario] + [f"{perf.engine_use(w.engine_shapes, values):.1%}" for w in work])
+    work = [perf.Work.of(perf.ops(config, p)) for p in cols]
+    rows = [
+        [scenario]
+        + [f"{perf.engine_use(w.engine_shapes, design.values(scenario)):.1%}" for w in work]
+        for scenario in design.scenarios
+    ]
     return blocks.table(["scenario, engine use at position"] + [str(p) for p in cols], rows)
 
 
@@ -136,7 +135,7 @@ def generated(model: str, platform_name: str, design_name: str) -> dict[str, str
         + params_table(design)
         + "\n\n"
         + scenarios_table(design),
-        "work": f"{model}:\n\n" + work_table(config, design),
+        "work": f"{model}:\n\n" + work_table(config),
         "engine": engine_table(config, design),
         "predictions": predictions_table(config, platform, design),
         "sensitivity": f"Tokens/s (overlapped) at position {SENSITIVITY_POSITION}, with the input "
