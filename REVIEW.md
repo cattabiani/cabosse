@@ -58,6 +58,11 @@ Read the full diff against `main`, plus the parts of `docs/numerics.md`,
    was made, milestone scope respected. A new dependency is fine when it is
    needed and the owner agreed to it (AGENTS.md rule 6): it is pinned in
    `requirements.txt` and its license is compatible.
+8. **Ordering.** For a change to the command list, to the ordering rules
+   (D-041, D-042, D-044) or to decision text about them, check that
+   `commands.hazards()` encodes the rule as stated and that its tests
+   cover the change: a read placed after the write it needs, a write after
+   the reads it overwrites, the KV cache included.
 
 ## Report
 

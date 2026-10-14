@@ -548,6 +548,152 @@ def engine_waits(commands: list[Command]) -> list[bool]:
     return waits
 
 
+def kv_waits(commands: list[Command]) -> list[int | None]:
+    """Per command, the KV_STORE an engine command is given after (D-044):
+    the last one before it that writes the cache it reads. None for the
+    rest."""
+    last_store: dict[int, int] = {}  # cache addr -> KV_STORE
+    after: list[int | None] = []
+    for i, cmd in enumerate(commands):
+        after.append(last_store.get(cmd.addr) if cmd.op in ENGINE_OPS else None)
+        if cmd.op == Op.KV_STORE:
+            last_store[cmd.addr] = i
+    return after
+
+
+@dataclass(frozen=True)
+class Hazard:
+    """A read or write the ordering rules do not place after the access it
+    must follow: `cmd` may touch `resource` before `earlier` is done."""
+
+    kind: str  # "read after write", "write after read", "write after write"
+    cmd: tuple[int, int]  # (token, index in the list)
+    earlier: tuple[int, int]
+    resource: Buf | tuple[int, int]  # an on-chip buffer, or (cache addr, row)
+
+
+def hazards(
+    commands: list[Command],
+    waits: list[bool] | None = None,
+    kv_after: list[int | None] | None = None,
+    write_after_reads: bool = True,
+) -> list[Hazard]:
+    """Every access the ordering rules leave unordered, over two tokens of
+    `commands` (the second at the next position). The rules (D-041, D-042,
+    D-044), as the controller and the engine keep them:
+
+    - the controller gives commands to their units in list order (handover);
+    - a command that is not the engine's starts only after the last writes
+      of the buffers it reads are done, and with `write_after_reads` after
+      the earlier readers and the last writer of its dst are done;
+    - an engine command steps after the engine command before it, and a
+      waiting one (`waits`) after the last write of its input is done; it
+      drains in order; it reads HBM (weights, the KV cache) from its
+      handover, and with `write_after_reads` is handed over only after the
+      earlier readers and the last writer of its dst are done;
+    - an engine command is handed over after its `kv_after` KV_STORE is done;
+    - END starts after every command of its token is done, and the next
+      token's first command after END.
+
+    Nothing else is assumed: a unit may run several commands at once, and
+    the engine's reads ahead may come at once. A token at position p
+    writes cache row p and reads rows 0 to p."""
+    waits = engine_waits(commands) if waits is None else waits
+    kv_after = kv_waits(commands) if kv_after is None else kv_after
+    n = len(commands)
+    handover, start, done = 0, 1, 2  # each command's events, in this order
+
+    def node(token: int, i: int, event: int) -> int:
+        return 3 * (token * n + i) + event
+
+    preds: dict[int, list[int]] = {}
+
+    def edge(a: int, b: int) -> None:
+        preds.setdefault(b, []).append(a)
+
+    readers: dict[Buf, list[int]] = {}  # since the last write; global command numbers
+    writer: dict[Buf | tuple[int, int], int] = {}
+    reads: list[tuple[int, Buf | tuple[int, int], int]] = []  # (command, what, from node)
+    writes: list[tuple[int, Buf | tuple[int, int]]] = []
+    last_engine: int | None = None
+    for token in range(2):
+        for i, cmd in enumerate(commands):
+            g = token * n + i  # global command number
+            here = (node(token, i, handover), node(token, i, start), node(token, i, done))
+            edge(here[0], here[1])
+            edge(here[1], here[2])
+            if g:
+                edge(3 * (g - 1) + handover, here[0])
+            engine = cmd.op in ENGINE_OPS
+            on_chip = [b for b in (cmd.a, cmd.b, cmd.c) if b != Buf.NONE]
+            for b in on_chip:
+                reads.append((g, b, here[1]))
+                if b in writer and (not engine or waits[i]):
+                    edge(3 * writer[b] + done, here[1] if engine else here[0])
+            if cmd.op in (Op.SCORES, Op.VALUES):
+                for row in range(token + 1):
+                    reads.append((g, (cmd.addr, row), here[0]))
+            if engine:
+                if last_engine is not None:
+                    edge(3 * last_engine + start, here[1])
+                    edge(3 * last_engine + done, here[2])
+                last_engine = g
+                if kv_after[i] is not None:
+                    edge(3 * (token * n + kv_after[i]) + done, here[0])
+            if cmd.op == Op.END:
+                for j in range(i):
+                    edge(node(token, j, done), here[0])
+            if cmd.dst != Buf.NONE:
+                if write_after_reads:
+                    for k in [*readers.get(cmd.dst, []), writer.get(cmd.dst)]:
+                        if k is not None and k != g:
+                            edge(3 * k + done, here[0])
+                writes.append((g, cmd.dst))
+            for b in on_chip:
+                readers.setdefault(b, []).append(g)
+            if cmd.dst != Buf.NONE:
+                writer[cmd.dst] = g
+                readers[cmd.dst] = []
+            if cmd.op == Op.KV_STORE:
+                writer[(cmd.addr, token)] = g
+                writes.append((g, (cmd.addr, token)))
+
+    # ancestors[v]: the events placed before v, as a bit set
+    ancestors = [0] * (3 * 2 * n)
+    for v in range(len(ancestors)):
+        for u in preds.get(v, []):
+            ancestors[v] |= ancestors[u] | (1 << u)
+
+    def before(g: int, v: int) -> bool:
+        """Command g is done before event v."""
+        return bool(ancestors[v] >> (3 * g + done) & 1)
+
+    def where(g: int) -> tuple[int, int]:
+        return divmod(g, n)
+
+    found = []
+    # Replay in list order: each read against the last write before it, each
+    # write against the reads and the write since the previous write.
+    last: dict[Buf | tuple[int, int], int] = {}
+    since: dict[Buf | tuple[int, int], list[int]] = {}
+    events = [(g, 0, r, v) for g, r, v in reads] + [(g, 1, w, 0) for g, w in writes]
+    events.sort(key=lambda e: e[:2])  # a command reads before it writes
+    for g, is_write, what, v in events:
+        if not is_write:
+            if what in last and last[what] != g and not before(last[what], v):
+                found.append(Hazard("read after write", where(g), where(last[what]), what))
+            since.setdefault(what, []).append(g)
+            continue
+        first = 3 * g + start
+        for k in since.get(what, []):
+            if k != g and not before(k, first):
+                found.append(Hazard("write after read", where(g), where(k), what))
+        if what in last and not before(last[what], first):
+            found.append(Hazard("write after write", where(g), where(last[what]), what))
+        last[what], since[what] = g, []
+    return found
+
+
 @dataclass(frozen=True)
 class EngineCall:
     """One engine command as run() executed it: what the engine reads and
