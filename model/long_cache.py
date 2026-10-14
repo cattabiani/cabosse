@@ -51,7 +51,8 @@ def prompt_tokens(weights: Path, n: int) -> list[int]:
 
 
 def cache_path(weights: Path, tokens: list[int]) -> Path:
-    h = hashlib.sha256((weights / "model.safetensors").read_bytes())
+    with (weights / "model.safetensors").open("rb") as f:
+        h = hashlib.file_digest(f, "sha256")  # streamed: the file can be 1 GB
     h.update(torch.tensor(tokens, dtype=torch.int32).numpy().tobytes())
     return paths.WEIGHTS / "kv" / f"{weights.name}-{len(tokens)}-{h.hexdigest()[:16]}.pt"
 

@@ -133,6 +133,8 @@ module engine
   localparam int unsigned SlotDepth = Heads * MaxD / E;
   localparam int unsigned TW        = $clog2(2 * SlotDepth);  // a tile buffer address
   localparam int unsigned EntryBits = E * 16;
+  localparam int unsigned BeatValues = DataWidth / 16;     // BF16 values per beat
+  localparam int unsigned TileRows  = LanesPerPort;        // a tile's rows per channel
   localparam int unsigned Entries   = DataWidth / EntryBits;  // a beat's entries
   localparam bit          FullFill  = Ports % 4 == 0;  // a whole beat per port and cycle
   localparam int unsigned DW        = $clog2(MaxD + 1);
@@ -256,7 +258,7 @@ module engine
   function automatic unit_t unit_init(cmd_t c);
     unit_t u;
     u = '0;
-    for (int unsigned i = 0; i < 8; i++) if (c.cols[i]) u.dlog = 3'(i);
+    for (int unsigned i = 0; i < ColWidth; i++) if (c.cols[i]) u.dlog = 3'(i);  // d = 2^dlog
     u.values  = c.op == OpValues;
     u.chunked = u.values && 32'(c.cols) > L;
     u.heads2  = u.values && 2 * 32'(c.cols) <= L;
@@ -427,7 +429,7 @@ module engine
         iss_beats_q  <= n_beats(q_head[0].cols);
       end else begin
         iss_active_q <= '1;
-        iss_beats_q  <= q_head[0].cols / ColWidth'(E);  // 4 rows of d / 16 beats
+        iss_beats_q  <= ColWidth'(TileRows) * q_head[0].cols / ColWidth'(BeatValues);
       end
     end else if (iss_done) begin
       iss_taken_q <= '0;
@@ -453,10 +455,12 @@ module engine
   logic [1:0]            tile_full_q;   // per slot: filled, not yet stepped
   logic [1:0]            tile_fill, tile_free;
   logic                  fill_busy_q, fill_slot_q, fill_head_q;
-  logic [1:0]            fill_row_q, fill_entry_q;  // a tile's row; the beat's entry (quarter rate)
+  logic [$clog2(TileRows)-1:0] fill_row_q;       // the tile's row
+  logic [$clog2(Entries)-1:0]  fill_entry_q;     // the beat's entry (quarter rate)
   logic [DW-1:0]         fill_beat_q;   // the row's beat
   unit_t                 fill_unit_q;
-  logic                  fill_fire, fill_beat_end, fill_unit_end, step_mv_end;
+  logic                  fill_fire, fill_beat_end, fill_row_end, fill_unit_end, step_mv_end;
+  logic                  fill_mv_q;     // a MATVEC whose beats step still reads
   logic [L-1:0]          fill_valid;
   logic [L-1:0][TW-1:0]  fill_addr;
   logic [L-1:0][EntryBits-1:0] fill_data;
@@ -465,22 +469,28 @@ module engine
   // A slot freed this cycle takes writes at once: step's reads are in the other slot.
   assign fill_fire     = fill_busy_q && (!tile_full_q[fill_slot_q] || tile_free[fill_slot_q])
                          && &dma_out_valid;
-  assign fill_beat_end = fill_fire && (FullFill || fill_entry_q == 2'd3);
-  assign fill_unit_end = fill_beat_end && fill_row_q == 2'd3
-                         && 32'(fill_beat_q) + 1 == 32'(dim(fill_unit_q)) / 16
+  assign fill_beat_end = fill_fire && (FullFill || 32'(fill_entry_q) == Entries - 1);
+  assign fill_row_end  = fill_beat_end && 32'(fill_beat_q) + 1 == 32'(dim(fill_unit_q)) / BeatValues;
+  assign fill_unit_end = fill_row_end && 32'(fill_row_q) == TileRows - 1
                          && 2'(fill_head_q) + 2'd1 == unit_heads(fill_unit_q);
   assign tile_fill     = fill_unit_end ? 2'(1) << fill_slot_q : 2'b00;
-  // A MATVEC's beats go to step: fill takes it off its queue once step has read them.
+  // A MATVEC's beats go to step: fill takes it off its queue when step takes
+  // it, and starts the next attention command once step has read them.
   assign q_pop[1]      = q_valid[1] && !fill_busy_q
-                         && (q_head[1].op != OpMatvec || step_mv_end);
+                         && (q_head[1].op == OpMatvec
+                             ? step_load && q_head[2].op == OpMatvec  // the same one: in order
+                             : !fill_mv_q || step_mv_end);
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       fill_busy_q  <= 1'b0;
+      fill_mv_q    <= 1'b0;
       fill_slot_q  <= 1'b0;
       tile_full_q  <= '0;
     end else begin
       tile_full_q <= (tile_full_q | tile_fill) & ~tile_free;
+      if (step_mv_end) fill_mv_q <= 1'b0;
+      if (q_pop[1] && q_head[1].op == OpMatvec) fill_mv_q <= 1'b1;
       if (q_pop[1] && q_head[1].op != OpMatvec) begin
         fill_busy_q  <= 1'b1;
         fill_unit_q  <= unit_init(q_head[1]);
@@ -493,10 +503,10 @@ module engine
         if (fill_beat_end) begin
           fill_entry_q <= '0;
           fill_beat_q  <= fill_beat_q + 1'b1;
-          if (32'(fill_beat_q) + 1 == 32'(dim(fill_unit_q)) / 16) begin
+          if (fill_row_end) begin
             fill_beat_q <= '0;
             fill_row_q  <= fill_row_q + 1'b1;
-            if (fill_row_q == 2'd3) begin
+            if (32'(fill_row_q) == TileRows - 1) begin
               fill_head_q <= !fill_head_q;
               if (fill_unit_end) begin
                 fill_head_q <= 1'b0;

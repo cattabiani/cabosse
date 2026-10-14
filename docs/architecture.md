@@ -190,6 +190,9 @@ it from there:
   multiplied by zero: the cache and P hold stale data there.
 - The cache's `cap` is a multiple of `L`, so every tile is 4 whole rows in
   every channel; the head dimension is a power of two from 16 to 128.
+- Scores and probabilities: head h's row at `h·cap` in S and P (stride
+  `cap`, aligned to E for p·V's reads), so softmax reads rows of t at that
+  stride (M6, M7).
 
 **Tile buffer banks.** `L` banks, each 4 BF16 values wide, one write and
 one read per cycle. The 4 values `u` (elements `4u` to `4u+3`) of position
@@ -201,7 +204,7 @@ is a multiple of 4, else `u`. Each access is then a rotation of an
 one entry per port and cycle when `P` is not a multiple of 4 (a quarter of
 the rate: such engines are small test configurations). The three patterns
 are conflict-free for 1 to 69 ports, head dimensions 16 to 256 and up to 4
-heads per pass (checked exhaustively). Two tile slots: the next tile
+heads per pass (checked exhaustively: `verif/tests/test_tile_banks.py`). Two tile slots: the next tile
 fills while the engine reads the current one.
 
 ## Clocks (D-028)

@@ -48,6 +48,16 @@ STARTUP_CYCLES = 70
 # Around a beat and the lane's shortest full-rate row.
 COLS = (1, 3, 4, 5, FULL_RATE_LEN - 1, FULL_RATE_LEN, FULL_RATE_LEN + 1, 64, 130)
 
+# 4 and 8: the full-rate fill; 8: 2 heads per p.V pass (L >= 2d for d = 16)
+ATT_PORTS = (*PORTS, 4, 8, pytest.param(WIDE, marks=pytest.mark.wide))
+# (query heads, KV heads): groups of 2, one group, plain, and SmolLM2's 3
+# (its 2-head p.V pass (2, 3) moves to the next KV head inside a group).
+HEADS = ((4, 2), (3, 1), (5, 5), (9, 3))
+SCALES = (0.125, 0.3)  # SmolLM2's, and one whose products round
+# Head dimensions: the smallest and the largest the engine takes, and
+# SmolLM2's (2 heads per p.V pass at 128 lanes); d > L on the small engines.
+HEAD_DIMS = (16, 64, 128)
+
 
 def rows_around(lanes: int) -> list[int]:
     lpp = LANES_PER_PORT
@@ -280,28 +290,19 @@ def test_bandwidth(rate: int) -> None:
 
 # Attention ------------------------------------------------------------------
 
-# 4 and 8: the full-rate fill; 8: 2 heads per p.V pass (L >= 2d for d = 16)
-ATT_PORTS = (*PORTS, 4, 8, pytest.param(WIDE, marks=pytest.mark.wide))
-HEADS = ((4, 2), (3, 1), (5, 5))  # (query heads, KV heads): groups of 2, one group, plain
-SCALES = (0.125, 0.3)  # SmolLM2's, and one whose products round
-
 
 def positions_around(lanes: int) -> list[int]:
     return sorted({1, lanes - 1, lanes, lanes + 1, 2 * lanes + 3} - {0})
-
-
-# Head dimensions: the smallest and the largest the engine takes, and
-# SmolLM2's (2 heads per p.V pass at 128 lanes); d > L on the small engines.
-HEAD_DIMS = (16, 64, 128)
 
 
 def stale_attention(
     values: bool, heads: int, kv_heads: int, d: int, t: int, gen: torch.Generator, **kw
 ) -> tuple[Attention, torch.Tensor]:
     """A command and its x buffer, with NaN in the cache past t, in p past
-    t, and cap the next whole tile past t (plus one, at random)."""
+    t, and cap the whole tiles holding t (so t = cap when t is a whole
+    number of tiles) plus one more, at random."""
     lanes = kw.pop("lanes")
-    cap = lanes * (t // lanes + 1 + int(torch.randint(2, (1,), generator=gen)))
+    cap = lanes * (-(-t // lanes) + int(torch.randint(2, (1,), generator=gen)))
     cache = random_bf16(gen, kv_heads, cap, d)
     cache[:, t:] = float("nan")
     if values:
@@ -428,3 +429,28 @@ def test_attention_back_to_back(ports: int) -> None:
     steady = [(i, took[i - 1], model[i]) for i in (1, 2, 4, 5)]
     print(f"cycles (command, measured, perf model): {steady}")
     assert all(m <= c <= m + 1 for _, c, m in steady), (SEED, steady)
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize("ports", (4, 5))
+def test_attention_fill_order(ports: int) -> None:
+    """Fill runs ahead of step: a short SCORES (one unit) fills while step is
+    still on a long one (short rows: step waits for the lanes' final sums,
+    fill does not), so fill reaches the MATVECs after it before step does.
+    Fill must pass each MATVEC only when step takes that one, and start the
+    next attention command only once step has read the MATVECs' beats (they
+    come first in the ports' FIFOs)."""
+    gen = torch.Generator().manual_seed(SEED)
+    lanes = ports * LANES_PER_PORT
+    shapes = [(False, 6, 3, 16, 4 * lanes), (False, 1, 1, 16, lanes - 1)]
+    cmds: list[eng.Command] = []
+    xs: dict[int, torch.Tensor] = {}
+    for values, heads, kv, d, t in shapes:
+        c, xs[len(xs)] = stale_attention(values, heads, kv, d, t, gen, a=len(xs), lanes=lanes)
+        cmds.append(c)
+    for _ in range(2):
+        xs[len(xs)] = random_bf16(gen, 64)
+        cmds.append(Matvec(random_bf16(gen, 2 * lanes, 64), a=len(xs) - 1, dst=5))
+    c, xs[len(xs)] = stale_attention(False, 4, 2, 64, 2 * lanes, gen, a=len(xs), lanes=lanes)
+    cmds.append(c)
+    check_commands(cmds, xs, eng.fetch(cmds, xs, ports, latency=5), f"seed {SEED}")

@@ -102,9 +102,9 @@ SmolLM2-135M-Instruct:
 | per token, at position | 0 | 1023 | 8191 |
 |---|---|---|---|
 | weights read (MB) | 269.03 | 269.03 | 269.03 |
-| KV cache read (MB) | 0.07 | 70.78 | 566.23 |
+| KV cache read (MB) | 8.85 | 70.78 | 566.23 |
 | KV cache written (MB) | 0.02 | 0.02 | 0.02 |
-| memory traffic (MB) | 269.12 | 339.83 | 835.29 |
+| memory traffic (MB) | 277.90 | 339.83 | 835.29 |
 | multiply-adds, matrix-vector (M) | 134.5 | 134.5 | 134.5 |
 | multiply-adds, attention (M) | 0.0 | 35.4 | 283.1 |
 | vector-unit element passes (M) | 0.4 | 1.8 | 11.5 |
@@ -119,11 +119,11 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: engine -->
 | scenario, engine use at position | 0 | 1023 | 8191 |
 |---|---|---|---|
-| as planned | 93.9% | 94.8% | 94.8% |
-| 64 lanes x 8, A = 32 | 96.6% | 77.0% | 50.6% |
-| 512 lanes x 1, A = 4 | 73.6% | 73.6% | 72.6% |
-| core at 125 MHz | 93.9% | 94.8% | 94.8% |
-| 256 lanes, HBM at 450 MHz | 87.3% | 87.8% | 86.6% |
+| as planned | 92.6% | 94.8% | 94.8% |
+| 64 lanes x 8, A = 32 | 94.0% | 77.0% | 50.6% |
+| 512 lanes x 1, A = 4 | 70.6% | 73.6% | 72.6% |
+| core at 125 MHz | 92.6% | 94.8% | 94.8% |
+| 256 lanes, HBM at 450 MHz | 85.1% | 87.8% | 86.6% |
 <!-- end: engine -->
 
 ## Predictions
@@ -131,19 +131,19 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: predictions -->
 | scenario | position | tokens/s | limited by | memory (ms) | engine (ms) | vector (ms) | commands (ms) |
 |---|---|---|---|---|---|---|---|
-| as planned | 0 | 364–863 | engine | 1.136 | 1.159 | 0.110 | 0.341 |
+| as planned | 0 | 357–852 | engine | 1.173 | 1.174 | 0.110 | 0.341 |
 | as planned | 1023 | 272–695 | engine | 1.435 | 1.440 | 0.456 | 0.341 |
 | as planned | 8191 | 98–284 | memory | 3.527 | 3.483 | 2.875 | 0.341 |
-| 64 lanes x 8, A = 32 | 0 | 368–880 | memory | 1.136 | 1.128 | 0.110 | 0.341 |
+| 64 lanes x 8, A = 32 | 0 | 362–864 | engine | 1.155 | 1.157 | 0.110 | 0.341 |
 | 64 lanes x 8, A = 32 | 1023 | 250–567 | engine | 1.435 | 1.764 | 0.456 | 0.341 |
 | 64 lanes x 8, A = 32 | 8191 | 76–154 | engine | 3.527 | 6.482 | 2.875 | 0.341 |
-| 512 lanes x 1, A = 4 | 0 | 327–681 | engine | 1.136 | 1.467 | 0.110 | 0.341 |
+| 512 lanes x 1, A = 4 | 0 | 306–654 | engine | 1.286 | 1.529 | 0.110 | 0.341 |
 | 512 lanes x 1, A = 4 | 1023 | 245–543 | engine | 1.435 | 1.843 | 0.456 | 0.341 |
 | 512 lanes x 1, A = 4 | 8191 | 89–221 | engine | 3.527 | 4.531 | 2.875 | 0.341 |
-| core at 125 MHz | 0 | 229–431 | engine | 1.136 | 2.318 | 0.221 | 0.682 |
+| core at 125 MHz | 0 | 226–426 | engine | 1.173 | 2.349 | 0.221 | 0.682 |
 | core at 125 MHz | 1023 | 169–347 | engine | 1.435 | 2.880 | 0.911 | 0.682 |
 | core at 125 MHz | 8191 | 59–144 | engine | 3.527 | 6.966 | 5.750 | 0.682 |
-| 256 lanes, HBM at 450 MHz | 0 | 580–1559 | engine | 0.631 | 0.642 | 0.110 | 0.341 |
+| 256 lanes, HBM at 450 MHz | 0 | 561–1487 | memory | 0.673 | 0.657 | 0.110 | 0.341 |
 | 256 lanes, HBM at 450 MHz | 1023 | 418–1254 | memory | 0.797 | 0.796 | 0.456 | 0.341 |
 | 256 lanes, HBM at 450 MHz | 8191 | 141–348 | vector | 1.959 | 1.924 | 2.875 | 0.341 |
 <!-- end: predictions -->
