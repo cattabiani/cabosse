@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """Compute the long KV cache of the attention tests (model/long_cache.py)
-into weights/kv/. About 5 hours for SmolLM2 (estimate), saved every 512
+into weights/kv/. 107 minutes for SmolLM2 on 16 cores (2026-10-14), saved every 512
 positions: stop it with Ctrl-C at any time, and run it again to resume.
 
     nice -n 19 python scripts/fill_long_cache.py

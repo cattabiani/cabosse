@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """A long KV cache of real text for the attention tests (PLAN.md, M5): the
-golden model runs a prompt of N_POSITIONS tokens once (about 5 hours for
-SmolLM2, estimate), and the cache is saved under the git-ignored weights/.
+golden model runs a prompt of N_POSITIONS tokens once (107 minutes for
+SmolLM2 on 16 cores), and the cache is saved under the git-ignored weights/.
 
 The prompt is our own docs at a fixed commit (Apache-2.0), so it never
 changes with the repo. A cache's prefix is the cache of a shorter prompt
@@ -32,7 +32,7 @@ SOURCE_FILES = (
     "docs/f2.md",
     "docs/aws-setup.md",
 )
-CHUNK_POSITIONS = 512  # saved after each chunk; the last ones take about 35 minutes
+CHUNK_POSITIONS = 512  # saved after each chunk; the last one took 12 minutes
 CHECK_POSITIONS = 64
 
 
