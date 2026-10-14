@@ -11,6 +11,10 @@ package fp_pkg;
   // Unused in tops that never make a NaN (fp_product, leading_zeros, ...).
   /* verilator lint_off UNUSEDPARAM */
   localparam logic [31:0] CanonicalNaN = 32'h7FC0_0000;  // docs/numerics.md, section 2
+  localparam logic [31:0] FP32One = 32'h3F80_0000;
+  // fp32_fma's op_i (any other value: fma).
+  localparam logic [1:0]  Fp32Add = 2'd1;
+  localparam logic [1:0]  Fp32Mul = 2'd2;
   /* verilator lint_on UNUSEDPARAM */
 
   // An operand: (-1)^sign * sig * 2^(exp - 126 - W) for a significand of W

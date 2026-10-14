@@ -47,14 +47,15 @@ STARTUP_CYCLES = 70
 # Around a beat and the lane's shortest full-rate row.
 COLS = (1, 3, 4, 5, FULL_RATE_LEN - 1, FULL_RATE_LEN, FULL_RATE_LEN + 1, 64, 130)
 
-# 4 and 8: the full-rate fill; 8: 2 heads per p.V pass (L >= 2d for d = 16)
-ATT_PORTS = (*PORTS, 4, 8, pytest.param(WIDE, marks=pytest.mark.wide))
+# Attention needs ports a multiple of 4 (the tile buffer's mapping); 8: 2
+# heads per p.V pass (L >= 2d for d = 16).
+ATT_PORTS = (4, 8, pytest.param(WIDE, marks=pytest.mark.wide))
 # (query heads, KV heads): groups of 2, one group, plain, and SmolLM2's 3
 # (its 2-head p.V pass (2, 3) moves to the next KV head inside a group).
 HEADS = ((4, 2), (3, 1), (5, 5), (9, 3))
 SCALES = (0.125, 0.3)  # SmolLM2's, and one whose products round
 # Head dimensions: the smallest and the largest the engine takes, and
-# SmolLM2's (2 heads per p.V pass at 128 lanes); d > L on the small engines.
+# SmolLM2's (2 heads per p.V pass at 128 lanes); p.V only those up to L.
 HEAD_DIMS = (16, 64, 128)
 
 
@@ -337,6 +338,7 @@ def attention_batch(ports: int, seed: int) -> tuple[list[eng.Command], dict, lis
         (v, h, d, t)
         for v in (False, True)
         for d in HEAD_DIMS
+        if not v or d <= lanes
         for h in HEADS
         for t in positions_around(lanes)
     ]
@@ -388,7 +390,8 @@ def test_attention_go(ports: int, go_early: int, go_delay: int) -> None:
     xs: dict[int, torch.Tensor] = {}
     for i, wait in enumerate((True, False, True, True, False, True)):
         kw = dict(a=len(xs), dst=2 + i % 3, wait=wait, lanes=lanes)
-        c, xs[len(xs)] = stale_attention(i % 2 == 1, 4, 2, 64, 2 * lanes + 3, gen, **kw)
+        d = min(64, lanes)  # p.V: d <= L
+        c, xs[len(xs)] = stale_attention(i % 2 == 1, 4, 2, d, 2 * lanes + 3, gen, **kw)
         cmds.append(c)
         if i == 2:
             xs[len(xs)] = random_bf16(gen, 64)
@@ -428,7 +431,7 @@ def test_attention_back_to_back(ports: int) -> None:
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("ports", (4, 5))
+@pytest.mark.parametrize("ports", (4,))
 def test_attention_fill_order(ports: int) -> None:
     """Fill runs ahead of step: a short SCORES (one unit) fills while step is
     still on a long one (short rows: step waits for the lanes' final sums,

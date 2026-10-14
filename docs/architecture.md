@@ -178,9 +178,8 @@ it from there:
 - p·V (`VALUES`): one lane per output dimension, 4 positions of that
   dimension per cycle, with x the head's probabilities: the buffer is read
   across positions, so V needs no transposed copy in HBM (Q-11). A pass is
-  `min(2, L / d)` heads (2 for SmolLM2: 128 lanes = 2 × 64), or part of
-  one head when `d > L`; a lane's row runs over all positions, through
-  every tile.
+  `min(2, L / d)` heads (2 for SmolLM2: 128 lanes = 2 × 64; `d ≤ L`); a
+  lane's row runs over all positions, through every tile.
 - Every tile is loaded for one query head and used once: no tile is shared
   by the heads of a group, so a GQA model reads K and V once per query
   head (Q-27). Simple, and free while the memory keeps up with the engine.
@@ -189,7 +188,9 @@ it from there:
 - Positions at or past the position count are left out of a row, not
   multiplied by zero: the cache and P hold stale data there.
 - The cache's `cap` is a multiple of `L`, so every tile is 4 whole rows in
-  every channel; the head dimension is a power of two from 16 to 128.
+  every channel; the head dimension is a power of two from 16 to 128; the
+  port count is a multiple of 4 (the banks' mapping, below; `MATVEC` runs
+  on any).
 - Scores and probabilities: head h's row at `h·cap` in S and P (stride
   `cap`, aligned to E for p·V's reads), so softmax reads rows of t at that
   stride (M6, M7).
@@ -197,15 +198,14 @@ it from there:
 **Tile buffer banks.** `L` banks, each 4 BF16 values wide, one write and
 one read per cycle. The 4 values `u` (elements `4u` to `4u+3`) of position
 `q` sit in bank `(q + 4·α(u)) mod L`, at address `u` (plus the tile slot and
-the head slot); `α(u) = (P/4)·(u mod 4) + u div 4` when the port count `P`
-is a multiple of 4, else `u`. Each access is then a rotation of an
-`L`-wide vector: q·K reads one `u` from every bank; p·V reads 4 positions
-× the pass's `u`s; a fill writes one beat (4 entries) from every port, or
-one entry per port and cycle when `P` is not a multiple of 4 (a quarter of
-the rate: such engines are small test configurations). The three patterns
-are conflict-free for 1 to 69 ports, head dimensions 16 to 256 and up to 4
-heads per pass (checked exhaustively: `verif/tests/test_tile_banks.py`). Two tile slots: the next tile
-fills while the engine reads the current one.
+the head slot), `α(u) = (P/4)·(u mod 4) + u div 4` (mod `P`, the port
+count). Each access is then a rotation of an `L`-wide vector: q·K reads
+one `u` from every bank; p·V reads 4 positions × the pass's `u`s; a fill
+writes one beat (4 entries) from every port. The three patterns are
+conflict-free for 4 to 68 ports, head dimensions 16 to 256 and up to 4
+heads per pass (checked exhaustively: `verif/tests/test_tile_banks.py`).
+Two tile slots: the next tile fills while the engine reads the current
+one.
 
 ## Clocks (D-028)
 

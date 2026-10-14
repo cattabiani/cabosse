@@ -1136,7 +1136,12 @@ at 128 lanes); engine attention; checkpoint report.
   the engine's rate ÷ the memory's rate on attention otherwise (about 8%
   on F2 at 250 MHz, estimate); reuse across a GQA group is Q-27. The engine
   requires `cap` a multiple of `L` (whole tiles) and a power-of-two head
-  dimension from 16 to 128. `SCORES` and `VALUES` wait for the `KV_STORE`
+  dimension from 16 to 128. Owner, 2026-10-15 (after `/simplify`): attention
+  needs the port count a multiple of 4 and `VALUES` `d ≤ L`; a second bank
+  mapping with a quarter-rate fill and `VALUES` passes split by dimension,
+  for test engines only, are dropped (this narrows the M5 answer "the
+  attention mapping works for any `L`" to the engines the chip can be;
+  `MATVEC` still runs on 1, 2 and 5 ports). `SCORES` and `VALUES` wait for the `KV_STORE`
   that writes what they read (D-044). The engine leaves positions at or
   past t out of a row (not a zero product: the cache and P hold stale
   data there, maybe NaN; tested with NaN); a tile slot is refilled only
@@ -1145,19 +1150,19 @@ at 128 lanes); engine attention; checkpoint report.
   then real data and speed at 128 lanes.
   First PR: the engine with small configurations. `rtl/engine.sv` gains a
   fill stage and attention units (one head and a tile for `SCORES`; up to
-  2 heads, or `L` dimensions of one when `d > L`, and a tile for
-  `VALUES`), `rtl/tile_buffer.sv` (`L` banks, rotations by
+  2 heads and a tile for `VALUES`), `rtl/tile_buffer.sv` (`L` banks, rotations by
   `rtl/rotate.sv`) and the scale's `mul` on the write path (6 cycles more
   for every command: `engine_startup_cycles` is re-measured in the second
   PR). `commands.hazards()` checks the ordering rules (D-041, D-042,
-  D-044) on the command lists. Tests (`test_engine.py`, 1, 2, 4, 5 and 8
-  ports in CI, 32 in the wide job): every op × d of 16, 64, 128 × groups
-  of 1, 2, 3 × positions around a tile, with NaN in the cache and p past
-  t, between MATVECs; the 6 memory behaviours; gos; back to back, each
-  command takes its perf-model cycles plus 1 (289 for 288 at 32 ports,
-  measured). `VALUES` with `d > L` (small engines only) reloads whole rows
-  per pass and runs slower than the model; bits only. 12 hand mutations
-  (listed in the PR), all caught.
+  D-044) on the command lists. Tests (`test_engine.py`, attention at 4
+  and 8 ports in CI, 32 in the wide job): every op × d of 16, 64, 128
+  (`VALUES` up to `L`) × groups of 1, 2, 3 and SmolLM2's 9 / 3 ×
+  positions around a tile and `t = cap`, with NaN in the cache and p past
+  t, between MATVECs; the 6 memory behaviours; gos; fill running ahead
+  past MATVECs; back to back, each command takes its perf-model cycles
+  plus 1 (289 for 288 at 32 ports, measured). The bank mapping is checked
+  exhaustively (`test_tile_banks.py`). Hand mutations (listed in the PR),
+  all caught.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
