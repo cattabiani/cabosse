@@ -4,9 +4,9 @@
 golden.dot.dot and the golden attention, bit for bit, through
 verif/bulk/engine.cpp: one memory model per port, the x buffers as a RAM,
 every write checked as it comes (the oldest command's dst, its rows only,
-each row once). Configurations of 1, 2 and 5 ports (4, 8 and 20 lanes),
-4 and 8 for attention's full-rate fill and speed, and the 128-lane engine
-(32 ports, marked wide).
+each row once). Configurations of 4, 8 and 20 ports (16, 32 and 80
+lanes; 80 divides no SmolLM2 size), and the 128-lane engine (32 ports,
+marked wide).
 
 Shapes: rows around the lanes (fewer than a port's group, a partial group
 and pass, a single row) and columns around a beat and the lane's full-rate
@@ -37,7 +37,7 @@ from lane import FULL_RATE_LEN
 import rtl
 
 SEED = 20261011
-PORTS = (1, 2, 5)  # PLAN.md, M5: degenerate, plain, prime
+PORTS = (4, 8, 20)  # the smallest, plain, and a factor 5 (owner, 2026-10-15)
 WIDE = 32  # 128 lanes, SmolLM2's engine
 ALL_PORTS = (*PORTS, pytest.param(WIDE, marks=pytest.mark.wide))
 # A command's last result after its start, past its engine cycles and the
@@ -47,9 +47,6 @@ STARTUP_CYCLES = 70
 # Around a beat and the lane's shortest full-rate row.
 COLS = (1, 3, 4, 5, FULL_RATE_LEN - 1, FULL_RATE_LEN, FULL_RATE_LEN + 1, 64, 130)
 
-# Attention needs ports a multiple of 4 (the tile buffer's mapping); 8: 2
-# heads per p.V pass (L >= 2d for d = 16).
-ATT_PORTS = (4, 8, pytest.param(WIDE, marks=pytest.mark.wide))
 # (query heads, KV heads): groups of 2, one group, plain, and SmolLM2's 3
 # (its 2-head p.V pass (2, 3) moves to the next KV head inside a group).
 HEADS = ((4, 2), (3, 1), (5, 5), (9, 3))
@@ -219,17 +216,17 @@ DEPTHS = (16, 64, 128, 1024)  # 1024: deep enough that the pauses alone limit th
 PAUSES = dict(latency=20, outstanding=8, pause=20, pause_max=40)  # ports paused ~29% of cycles
 # Share of the 1024-beat FIFO's rate, at least (or at most for 16). Measured
 # on these shapes and pauses, memory seeds 1 to 5 (each port its own stream):
-# 0.347-0.357 (16), 0.865-0.931 (64), 0.941-0.993 (128).
+# 0.357-0.375 (16), 0.884-0.933 (64), 0.941-0.993 (128), at 4 ports.
 MIN_SHARE = {64: 0.80, 128: 0.90}
 MAX_SHARE_16 = 0.5
 
 
 @rtl.needs_verilator
 def test_fifo_depth() -> None:
-    """Five ports pausing at random, independently, in lockstep: each
+    """Four ports pausing at random, independently, in lockstep: each
     port's FIFO must cover both the memory's latency and the other ports'
     pauses. Rates against a FIFO deep enough not to matter."""
-    ports, gen = 5, torch.Generator().manual_seed(SEED)
+    ports, gen = 4, torch.Generator().manual_seed(SEED)
     mats = [Matvec(random_bf16(gen, 8 * ports * LANES_PER_PORT, 512)) for _ in range(4)]
     xs = {0: random_bf16(gen, 512)}
     beats = sum(eng.n_beats(m, ports) for m in mats)
@@ -250,7 +247,7 @@ def test_error_response(bad_port: int) -> None:
     gen = torch.Generator().manual_seed(SEED)
     mats = [Matvec(random_bf16(gen, 16, 64))]
     xs = {0: random_bf16(gen, 64)}
-    result = eng.fetch(mats, xs, 2, bad_port=bad_port, bad=3)
+    result = eng.fetch(mats, xs, 4, bad_port=bad_port, bad=3)
     assert result.err == 1 << bad_port, (SEED, result.err)
 
 
@@ -354,7 +351,7 @@ def attention_batch(ports: int, seed: int) -> tuple[list[eng.Command], dict, lis
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("ports", ATT_PORTS)
+@pytest.mark.parametrize("ports", ALL_PORTS)
 def test_attention_shapes(ports: int) -> None:
     """Every shape, back to back with MATVECs between: bit for bit, and the
     stale NaN past t never reaches a result (masked, not multiplied by 0)."""
@@ -365,7 +362,7 @@ def test_attention_shapes(ports: int) -> None:
 
 @rtl.needs_verilator
 @pytest.mark.parametrize("memory", MEMORIES)
-@pytest.mark.parametrize("ports", ATT_PORTS)
+@pytest.mark.parametrize("ports", ALL_PORTS)
 def test_attention_memories(ports: int, memory: str) -> None:
     seed = SEED + 2000 + 10 * ports + list(MEMORIES).index(memory)
     cmds, xs, _ = attention_batch(ports, seed)
@@ -378,7 +375,7 @@ def test_attention_memories(ports: int, memory: str) -> None:
 
 @rtl.needs_verilator
 @pytest.mark.parametrize(("go_early", "go_delay"), GOS)
-@pytest.mark.parametrize("ports", ATT_PORTS)
+@pytest.mark.parametrize("ports", ALL_PORTS)
 def test_attention_go(ports: int, go_early: int, go_delay: int) -> None:
     """SCORES and VALUES that wait for their go (D-044) between independent
     ones and MATVECs: their tiles are read ahead, they never step early (x
@@ -431,18 +428,13 @@ def test_attention_back_to_back(ports: int) -> None:
     assert all(m <= c <= m + 1 for _, c, m in steady), (SEED, steady)
 
 
-@pytest.mark.parametrize(
-    ("values", "ports", "d", "error"),
-    ((False, 5, 16, "multiple of 4"), (True, 6, 16, "multiple of 4"), (True, 4, 32, "d <= L")),
-)
-def test_attention_unsupported(values: bool, ports: int, d: int, error: str) -> None:
-    """The engine does not check attention's requirements, so the harness
-    refuses a command outside them before running the driver."""
+def test_values_wider_than_the_lanes() -> None:
+    """The engine does not check VALUES' d <= L, so the harness refuses a
+    command past it before running the driver."""
     gen = torch.Generator().manual_seed(SEED)
-    lanes = ports * LANES_PER_PORT
-    c, x = stale_attention(values, 2, 1, d, lanes, gen, lanes=lanes)
-    with pytest.raises(AssertionError, match=error):
-        eng.fetch([c], {0: x}, ports)
+    c, x = stale_attention(True, 2, 1, 32, 16, gen, lanes=16)
+    with pytest.raises(AssertionError, match="d <= L"):
+        eng.fetch([c], {0: x}, 4)
 
 
 @rtl.needs_verilator

@@ -1140,8 +1140,13 @@ at 128 lanes); engine attention; checkpoint report.
   needs the port count a multiple of 4 and `VALUES` `d ≤ L`; a second bank
   mapping with a quarter-rate fill and `VALUES` passes split by dimension,
   for test engines only, are dropped (this narrows the M5 answer "the
-  attention mapping works for any `L`" to the engines the chip can be;
-  `MATVEC` still runs on 1, 2 and 5 ports). `SCORES` and `VALUES` wait for the `KV_STORE`
+  attention mapping works for any `L`" to the engines the chip can be).
+  Owner, 2026-10-15 (after reviewing that): the whole engine needs the
+  port count a multiple of 4, checked at elaboration, so `MATVEC` and
+  attention test on the same engines: 4, 8 and 20 ports (L = 80 divides
+  no SmolLM2 size, as 20 did) in CI, 32 in the wide job (this replaces
+  the M5 answer's 1 / 4, 2 / 8 and 5 / 20). A pass is then whole write
+  groups, so the drain's padding lanes are gone. `SCORES` and `VALUES` wait for the `KV_STORE`
   that writes what they read (D-044). The engine leaves positions at or
   past t out of a row (not a zero product: the cache and P hold stale
   data there, maybe NaN; tested with NaN); a tile slot is refilled only
@@ -1154,8 +1159,8 @@ at 128 lanes); engine attention; checkpoint report.
   `rtl/rotate.sv`) and the scale's `mul` on the write path (6 cycles more
   for every command: `engine_startup_cycles` is re-measured in the second
   PR). `commands.hazards()` checks the ordering rules (D-041, D-042,
-  D-044) on the command lists. Tests (`test_engine.py`, attention at 4
-  and 8 ports in CI, 32 in the wide job): every op × d of 16, 64, 128
+  D-044) on the command lists. Tests (`test_engine.py`, at 4, 8 and 20
+  ports in CI, 32 in the wide job): every op × d of 16, 64, 128
   (`VALUES` up to `L`) × groups of 1, 2, 3 and SmolLM2's 9 / 3 ×
   positions around a tile and `t = cap`, with NaN in the cache and p past
   t, between MATVECs; the 6 memory behaviours; gos; fill running ahead
@@ -1195,8 +1200,7 @@ Attention (M5): `SCORES` writes head h's scores at `S[h·cap + i]` and
 `cap`, so `VALUES` reads them aligned to E); the softmax commands
 (`LEN_T`) must read and write rows of t at that stride, not packed. The
 engine needs `cap` a multiple of L, a power-of-two head dimension from
-16 to 128 (`VALUES`: at most L) and a port count that is a multiple of 4,
-and does not check any of them; `SCORES` and `VALUES` are given after the `KV_STORE` they
+16 to 128 (`VALUES`: at most L), and does not check them; `SCORES` and `VALUES` are given after the `KV_STORE` they
 depend on (D-044).
 
 ### M8 — F2 bring-up (no model)

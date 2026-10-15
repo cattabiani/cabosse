@@ -160,11 +160,10 @@ def fetch(
     """The driver on these commands, with the x buffers xs (id -> BF16) and
     the matrices at addrs (default: place()); checked to finish, its output
     split per command."""
-    for m in mats:  # the engine does not check these (rtl/engine.sv's header)
-        if isinstance(m, Attention):
-            assert ports % 4 == 0, f"attention needs ports a multiple of 4, not {ports}"
+    for m in mats:  # the engine does not check it (rtl/engine.sv's header)
+        if isinstance(m, Attention) and m.values:
             d, lanes = m.cache.shape[2], ports * LANES_PER_PORT
-            assert not m.values or d <= lanes, f"VALUES needs d <= L: d = {d}, L = {lanes}"
+            assert d <= lanes, f"VALUES needs d <= L: d = {d}, L = {lanes}"
     addrs = place(mats, ports) if addrs is None else addrs
     images = channel_images(mats, addrs, ports)
     words: list[np.ndarray] = [np.array([images.shape[1]]), images.ravel(), np.array([len(xs)])]

@@ -17,10 +17,10 @@
 //   the t values of x at h * cap. A pass is up to Heads heads (one lane per
 //   head and output dimension); a unit is a pass and a tile, and a lane's
 //   row runs through all tiles.
-// The attention commands need Ports a multiple of 4 (the tile buffer's
-// mapping), d a power of two from 16 to MaxD (VALUES: d <= L), cap a
-// multiple of L, 1 <= t <= cap, group dividing heads. MATVEC runs on any
-// Ports.
+// Ports is a multiple of 4 (the tile buffer's mapping), so a pass is whole
+// write groups. The attention commands need d a power of two from 16 to
+// MaxD (VALUES: d <= L), cap a multiple of L, 1 <= t <= cap, group
+// dividing heads.
 //
 // Four stages, each with its own queue of the commands taken, so a command
 // starts while earlier ones finish (PLAN.md, M5):
@@ -74,7 +74,7 @@ module engine
   parameter  int unsigned MulRegs      = 2,    // registers in the scale's multiply (fp32_fma)
   localparam int unsigned LanesPerPort = DataWidth / (16 * E),  // a beat holds E weights each
   localparam int unsigned L            = Ports * LanesPerPort,
-  localparam int unsigned Groups       = (L + Writes - 1) / Writes,  // write groups per pass
+  localparam int unsigned Groups       = L / Writes,  // write groups per pass
   localparam int unsigned Heads        = 2     // heads per VALUES pass, at most
 ) (
   input  logic                                clk_i,
@@ -144,8 +144,11 @@ module engine
   if (DataWidth % (16 * E) != 0 || LanesPerPort == 0) begin : gen_bad_width
     $error("engine: a beat must hold E BF16 weights for a whole number of lanes");
   end
-  if ((Writes & (Writes - 1)) != 0) begin : gen_bad_writes
-    $error("engine: Writes must be a power of two");
+  if ((Writes & (Writes - 1)) != 0 || L % Writes != 0) begin : gen_bad_writes
+    $error("engine: Writes must be a power of two dividing L");
+  end
+  if (Ports % 4 != 0) begin : gen_bad_ports
+    $error("engine: Ports must be a multiple of 4");
   end
   if (E != 4 || LanesPerPort != 4 || Entries != 4) begin : gen_bad_tile
     $error("engine: the tile buffer's mapping assumes 4 lanes per port and E = 4");
@@ -306,9 +309,8 @@ module engine
 
   // The tile buffer's mapping (docs/architecture.md, "Tile buffer banks"):
   // entry u (elements E*u ...) of position q sits in bank (q + E*alpha(u))
-  // mod L. Ports a multiple of 4; on other engines it is never used (and
-  // Quarter >= 1 keeps it defined).
-  localparam int unsigned Quarter = Ports >= 4 ? Ports / 4 : 1;
+  // mod L.
+  localparam int unsigned Quarter = Ports / 4;
   function automatic int unsigned alpha(int unsigned u);
     return (Quarter * (u % 4) + u / 4) % Ports;
   endfunction
@@ -634,70 +636,61 @@ module engine
 
   // --- Lanes -------------------------------------------------------------------
 
-  // Padded to whole write groups: lanes past L never have a result.
-  logic [Groups*Writes-1:0]       lane_out_valid;
-  // verilator lint_off UNUSEDSIGNAL
-  logic [Groups*Writes-1:0]       lane_out_ready;  // the padding's bits go nowhere
-  // verilator lint_on UNUSEDSIGNAL
-  logic [31:0]                    lane_out[Groups*Writes];
+  logic [L-1:0]                   lane_out_valid, lane_out_ready;
+  logic [31:0]                    lane_out[L];
   logic [E-1:0]                   values_mask;     // positions of this cycle before t
 
   for (genvar e = 0; e < E; e++) begin : gen_values_mask
     assign values_mask[e] = E * step_cyc_q + e < rem(step_unit_q);
   end
 
-  for (genvar l = 0; l < Groups * Writes; l++) begin : gen_lane
-    if (l < L) begin : gen_real
-      localparam int unsigned P = l / LanesPerPort, I = l % LanesPerPort;
-      localparam int unsigned G = E * alpha(l / E);  // VALUES: the lane's entries
-      logic [E-1:0][15:0] w, x, vw;
-      logic [E-1:0]       mask;
-      logic               valid, last, second;
-      for (genvar e = 0; e < E; e++) begin : gen_vw
-        assign vw[e] = tile_data[(G + e) % L][(l % E)*16 +: 16];
-      end
-      always_comb begin
-        second = (l >> step_unit_q.dlog) == 1;  // VALUES: the pass's second head
-        if (!step_attn_q) begin
-          w     = dma_out_data[P][I*E*16 +: E*16];
-          x     = x_data_i[0];
-          mask  = step_last ? step_mask_q : '1;
-          last  = step_last;
-          valid = fire && step_active_q[P];
-        end else if (!step_unit_q.values) begin
-          w     = tile_data[l];
-          x     = x_data_i[0];
-          mask  = '1;
-          last  = unit_last_cyc;
-          valid = fire && l < 32'(res_lanes(step_unit_q));
-        end else begin
-          w     = vw;
-          x     = x_data_i[second];
-          mask  = values_mask;
-          last  = unit_last_cyc && last_tile(step_unit_q);
-          valid = fire && l < 32'(res_lanes(step_unit_q));
-        end
-      end
-      dot_lane #(
-        .E(E),
-        .A(A)
-      ) u_lane (
-        .clk_i,
-        .rst_ni,
-        .in_valid_i (valid),
-        .in_ready_o (lane_in_ready[l]),
-        .w_i        (w),
-        .x_i        (x),
-        .mask_i     (mask),
-        .last_i     (last),
-        .out_valid_o(lane_out_valid[l]),
-        .out_ready_i(lane_out_ready[l]),
-        .out_o      (lane_out[l])
-      );
-    end else begin : gen_pad
-      assign lane_out_valid[l] = 1'b0;
-      assign lane_out[l]       = '0;
+  for (genvar l = 0; l < L; l++) begin : gen_lane
+    localparam int unsigned P = l / LanesPerPort, I = l % LanesPerPort;
+    localparam int unsigned G = E * alpha(l / E);  // VALUES: the lane's entries
+    logic [E-1:0][15:0] w, x, vw;
+    logic [E-1:0]       mask;
+    logic               valid, last, second;
+    for (genvar e = 0; e < E; e++) begin : gen_vw
+      assign vw[e] = tile_data[(G + e) % L][(l % E)*16 +: 16];
     end
+    always_comb begin
+      second = (l >> step_unit_q.dlog) == 1;  // VALUES: the pass's second head
+      if (!step_attn_q) begin
+        w     = dma_out_data[P][I*E*16 +: E*16];
+        x     = x_data_i[0];
+        mask  = step_last ? step_mask_q : '1;
+        last  = step_last;
+        valid = fire && step_active_q[P];
+      end else if (!step_unit_q.values) begin
+        w     = tile_data[l];
+        x     = x_data_i[0];
+        mask  = '1;
+        last  = unit_last_cyc;
+        valid = fire && l < 32'(res_lanes(step_unit_q));
+      end else begin
+        w     = vw;
+        x     = x_data_i[second];
+        mask  = values_mask;
+        last  = unit_last_cyc && last_tile(step_unit_q);
+        valid = fire && l < 32'(res_lanes(step_unit_q));
+      end
+    end
+    dot_lane #(
+      .E(E),
+      .A(A)
+    ) u_lane (
+      .clk_i,
+      .rst_ni,
+      .in_valid_i (valid),
+      .in_ready_o (lane_in_ready[l]),
+      .w_i        (w),
+      .x_i        (x),
+      .mask_i     (mask),
+      .last_i     (last),
+      .out_valid_o(lane_out_valid[l]),
+      .out_ready_i(lane_out_ready[l]),
+      .out_o      (lane_out[l])
+    );
   end
 
   // --- Drain: results to the write port, Writes lanes per cycle ----------------
