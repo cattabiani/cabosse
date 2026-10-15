@@ -1194,8 +1194,9 @@ Attention (M5): `SCORES` writes head h's scores at `S[h·cap + i]` and
 `VALUES` reads head h's probabilities at `P[h·cap + i]` (rows at stride
 `cap`, so `VALUES` reads them aligned to E); the softmax commands
 (`LEN_T`) must read and write rows of t at that stride, not packed. The
-engine needs `cap` a multiple of L and a power-of-two head dimension from
-16 to 128; `SCORES` and `VALUES` are given after the `KV_STORE` they
+engine needs `cap` a multiple of L, a power-of-two head dimension from
+16 to 128 (`VALUES`: at most L) and a port count that is a multiple of 4,
+and does not check any of them; `SCORES` and `VALUES` are given after the `KV_STORE` they
 depend on (D-044).
 
 ### M8 — F2 bring-up (no model)

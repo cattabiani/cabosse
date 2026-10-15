@@ -34,7 +34,7 @@ module fp32_fma
   always_comb begin
     {fa, fb, fc} = {a_i, b_i, c_i};
     case (op_i)
-      Fp32Add: {fa, fb, fc} = {a_i, FP32One, b_i};
+      Fp32Add: {fa, fb, fc} = {a_i, Fp32One, b_i};
       Fp32Mul: {fa, fb, fc} = {a_i, b_i, NegZ};
       default: ;
     endcase

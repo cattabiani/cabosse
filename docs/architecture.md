@@ -202,7 +202,7 @@ the head slot), `α(u) = (P/4)·(u mod 4) + u div 4` (mod `P`, the port
 count). Each access is then a rotation of an `L`-wide vector: q·K reads
 one `u` from every bank; p·V reads 4 positions × the pass's `u`s; a fill
 writes one beat (4 entries) from every port. The three patterns are
-conflict-free for 4 to 68 ports, head dimensions 16 to 256 and up to 4
+conflict-free for port counts that are multiples of 4 from 4 to 68, head dimensions 16 to 256 and up to 4
 heads per pass (checked exhaustively: `verif/tests/test_tile_banks.py`).
 Two tile slots: the next tile fills while the engine reads the current
 one.

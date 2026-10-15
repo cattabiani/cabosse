@@ -390,8 +390,9 @@ def test_attention_go(ports: int, go_early: int, go_delay: int) -> None:
     xs: dict[int, torch.Tensor] = {}
     for i, wait in enumerate((True, False, True, True, False, True)):
         kw = dict(a=len(xs), dst=2 + i % 3, wait=wait, lanes=lanes)
-        d = min(64, lanes)  # p.V: d <= L
-        c, xs[len(xs)] = stale_attention(i % 2 == 1, 4, 2, d, 2 * lanes + 3, gen, **kw)
+        values = i % 2 == 1
+        d = min(64, lanes) if values else 64  # p.V: d <= L
+        c, xs[len(xs)] = stale_attention(values, 4, 2, d, 2 * lanes + 3, gen, **kw)
         cmds.append(c)
         if i == 2:
             xs[len(xs)] = random_bf16(gen, 64)
@@ -428,6 +429,20 @@ def test_attention_back_to_back(ports: int) -> None:
     steady = [(i, took[i - 1], model[i]) for i in (1, 2, 4, 5)]
     print(f"cycles (command, measured, perf model): {steady}")
     assert all(m <= c <= m + 1 for _, c, m in steady), (SEED, steady)
+
+
+@pytest.mark.parametrize(
+    ("values", "ports", "d", "error"),
+    ((False, 5, 16, "multiple of 4"), (True, 6, 16, "multiple of 4"), (True, 4, 32, "d <= L")),
+)
+def test_attention_unsupported(values: bool, ports: int, d: int, error: str) -> None:
+    """The engine does not check attention's requirements, so the harness
+    refuses a command outside them before running the driver."""
+    gen = torch.Generator().manual_seed(SEED)
+    lanes = ports * LANES_PER_PORT
+    c, x = stale_attention(values, 2, 1, d, lanes, gen, lanes=lanes)
+    with pytest.raises(AssertionError, match=error):
+        eng.fetch([c], {0: x}, ports)
 
 
 @rtl.needs_verilator

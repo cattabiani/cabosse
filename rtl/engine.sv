@@ -752,7 +752,7 @@ module engine
       drain_unit_q   <= to_last_tile(unit_init(q_head[3]));
       drain_buf_q    <= q_head[3].dst;
       drain_bf16_q   <= q_head[3].bf16;
-      drain_scale_q  <= q_head[3].op == OpScores ? q_head[3].scale : FP32One;
+      drain_scale_q  <= q_head[3].op == OpScores ? q_head[3].scale : Fp32One;
     end else if (drain_end) begin
       drain_busy_q <= 1'b0;
     end else if (pass_end) begin
