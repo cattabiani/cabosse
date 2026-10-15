@@ -4,14 +4,16 @@
 // FP32 fused multiply-add, add and multiply, round to nearest even, one
 // rounding per operation (docs/numerics.md, section 2; D-039). Golden model:
 // golden.arith.fma, add, mul.
-//   OpAdd: y = a + b      = fma(a, 1, b)
-//   OpMul: y = a * b      = fma(a, b, -0)  (x + -0 = x for every x, -0 too)
+//   Fp32Add: y = a + b    = fma(a, 1, b)       (fp_pkg's op codes)
+//   Fp32Mul: y = a * b    = fma(a, b, -0)  (x + -0 = x for every x, -0 too)
 //   any other op_i (fma): y = a * b + c
 // fp_mul_add with M = 24 and MulRegs registers in the product (D-039:
 // 250 MHz on F2 needs them): a result leaves MulRegs + 4 cycles after its
 // operands enter; valid_o marks it.
 
-module fp32_fma #(
+module fp32_fma
+  import fp_pkg::*;
+#(
   parameter int unsigned MulRegs = 2,
   parameter bit          Ftz     = 1'b0  // flush-to-zero variant (fp_mul_add)
 ) (
@@ -26,17 +28,14 @@ module fp32_fma #(
   output logic [31:0] y_o
 );
 
-  localparam logic [1:0]  OpAdd = 2'd1;
-  localparam logic [1:0]  OpMul = 2'd2;
-  localparam logic [31:0] One   = 32'h3F80_0000;
-  localparam logic [31:0] NegZ  = 32'h8000_0000;
+  localparam logic [31:0] NegZ = 32'h8000_0000;
 
   logic [31:0] fa, fb, fc;  // the fma's operands: fa * fb + fc
   always_comb begin
     {fa, fb, fc} = {a_i, b_i, c_i};
     case (op_i)
-      OpAdd:   {fa, fb, fc} = {a_i, One, b_i};
-      OpMul:   {fa, fb, fc} = {a_i, b_i, NegZ};
+      Fp32Add: {fa, fb, fc} = {a_i, Fp32One, b_i};
+      Fp32Mul: {fa, fb, fc} = {a_i, b_i, NegZ};
       default: ;
     endcase
   end

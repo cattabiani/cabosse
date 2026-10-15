@@ -24,9 +24,9 @@ TOPS = (
 IDS = [top + ("-ftz" if params else "") for top, _, params in TOPS]
 # Synthesized smaller than their default, which is linted: the check is that
 # Yosys takes the code, and the 32-port engine needs more than 8 GB (killed
-# at that cap after 3 minutes, M5). 5 ports still build the padding lanes
-# and a drain of several write groups.
-SYNTH_PARAMS = {"engine": (("Ports", 5),)}
+# at that cap after 3 minutes, M5). 4 ports still build a drain of several
+# write groups.
+SYNTH_PARAMS = {"engine": (("Ports", 4),)}
 
 
 def test_there_is_rtl() -> None:
@@ -94,4 +94,16 @@ def test_port_dma_rejects_a_bad_shape(params: tuple, message: str) -> None:
     width that is not a power of two, a count narrower than a burst:
     elaboration stops with a message."""
     result = rtl.lint("port_dma", params=list(params))
+    assert result.returncode != 0 and message in result.stderr, result.stderr
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize(
+    ("params", "message"),
+    [((("Ports", 5),), "multiple of 4"), ((("Ports", 4), ("Writes", 32)), "dividing L")],
+)
+def test_engine_rejects_a_bad_shape(params: tuple, message: str) -> None:
+    """A port count that is not a multiple of 4 (the tile buffer's mapping)
+    and a write port wider than a pass: elaboration stops with a message."""
+    result = rtl.lint("engine", params=list(params))
     assert result.returncode != 0 and message in result.stderr, result.stderr

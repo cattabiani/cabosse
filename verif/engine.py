@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""What the engine's tests share: the matrices placed in every port's
-channel (the same offset in each, docs/architecture.md, "Weight layout"),
-the driver verif/bulk/engine.cpp run on them, and the golden results."""
+"""What the engine's tests share: the matrices and KV caches placed in every
+port's channel (the same offset in each, docs/architecture.md, "Weight
+layout" and "KV cache layout"), the driver verif/bulk/engine.cpp run on
+them, and the golden results."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -31,6 +32,7 @@ SMOLLM2_PROMPT = list(range(1000, 1063))  # the step runs at position 63 (also M
 # use (90%) bounds it, not the memory.
 LARGE = ((1536, 576), (8192, 576), (576, 1536))
 RATES = (1000, 500)  # permille of cycles each port may send a beat
+OP_MATVEC, OP_SCORES, OP_VALUES = 0, 1, 2  # rtl/engine.sv's cmd_op_i
 
 
 @dataclass
@@ -48,6 +50,51 @@ class Matvec:
 
 
 @dataclass
+class Attention:
+    """SCORES (values=False) or VALUES on a KV cache of kv_heads × cap
+    positions × d (positions past t may hold anything): x[a] is q (heads × d)
+    or p (heads rows of cap, past t anything). SCORES writes dst[h * cap +
+    i] for i < t, VALUES dst[h * d + c]. wait as for Matvec."""
+
+    values: bool
+    cache: torch.Tensor  # BF16 [kv_heads, cap, d]
+    heads: int
+    t: int
+    a: int = 0
+    dst: int = 1
+    scale: float = 0.125  # SCORES; rounded to FP32
+    bf16: bool = False
+    wait: bool = False
+
+    @property
+    def group(self) -> int:
+        return self.heads // self.cache.shape[0]
+
+
+Command = Matvec | Attention
+
+
+def n_rows(c: Command) -> int:
+    """The rows of dst the command's output spans (the driver's output)."""
+    if isinstance(c, Matvec):
+        return c.w.shape[0]
+    _, cap, d = c.cache.shape
+    return c.heads * (d if c.values else cap)
+
+
+def fields(c: Command, addr: int) -> tuple[int, ...]:
+    """The driver's command words: op, rows, cols, address (low, high), a,
+    dst, bf16, wait, heads, group, t, cap, scale."""
+    common = (addr & 0xFFFFFFFF, addr >> 32, c.a, c.dst, int(c.bf16), int(c.wait))
+    if isinstance(c, Matvec):
+        return (OP_MATVEC, *c.w.shape, *common, 0, 0, 0, 0, 0)
+    _, cap, d = c.cache.shape
+    scale = commands.f32_bits(c.scale)
+    op = OP_VALUES if c.values else OP_SCORES
+    return (op, 0, d, *common, c.heads, c.group, c.t, cap, scale)
+
+
+@dataclass
 class Result:
     out: list[np.ndarray]  # per command, uint32 [rows]: FP32, or BF16 in the low half
     taken: np.ndarray  # per command, the cycle it was taken
@@ -58,13 +105,17 @@ class Result:
     wall_us: int  # the driver's simulation loop, wall-clock microseconds
 
 
-def n_beats(m: Matvec, ports: int) -> int:
-    """Beats each port reserves for the matrix: every pass's, as if full."""
+def n_beats(m: Command, ports: int) -> int:
+    """Beats each port reserves: a matrix's passes, as if full; a cache's
+    regions of cap / ports rows per KV head (D-043)."""
+    if isinstance(m, Attention):
+        kv_heads, cap, d = m.cache.shape
+        return kv_heads * cap // ports * d * 2 // BEAT_BYTES
     rows, cols = m.w.shape
     return -(-rows // (ports * LANES_PER_PORT)) * -(-cols // E)
 
 
-def place(mats: Sequence[Matvec], ports: int, gaps: Sequence[int] | None = None) -> list[int]:
+def place(mats: Sequence[Command], ports: int, gaps: Sequence[int] | None = None) -> list[int]:
     """Each matrix's offset in every channel, one after another, with
     gaps[i] free beats before matrix i (to move it across 4 KB boundaries)."""
     addrs, beat = [], 0
@@ -75,12 +126,22 @@ def place(mats: Sequence[Matvec], ports: int, gaps: Sequence[int] | None = None)
     return addrs
 
 
-def channel_images(mats: Sequence[Matvec], addrs: Sequence[int], ports: int) -> np.ndarray:
+def channel_images(mats: Sequence[Command], addrs: Sequence[int], ports: int) -> np.ndarray:
     """Every port's channel, uint32 [ports, words]: each matrix in the lanes'
-    order (commands.lane_order) at its offset."""
+    order (commands.lane_order), each cache by D-043 (position i of a KV
+    head on channel i mod ports, row i div ports of its region), at its
+    offset."""
     end = max(a // BEAT_BYTES + n_beats(m, ports) for m, a in zip(mats, addrs, strict=True))
     images = np.zeros((ports, end * BEAT_WORDS), dtype=np.uint32)
     for m, addr in zip(mats, addrs, strict=True):
+        if isinstance(m, Attention):
+            kv_heads, cap, d = m.cache.shape
+            bits = arith.bits_bf16(m.cache).numpy().astype(np.uint16)
+            # [kv, row, channel, d] -> channel-major: each channel's rows in order
+            rows = bits.reshape(kv_heads, cap // ports, ports, d).transpose(2, 0, 1, 3)
+            words = np.ascontiguousarray(rows).view(np.uint32).reshape(ports, -1)
+            images[:, addr // 4 : addr // 4 + words.shape[1]] = words
+            continue
         for p, beats in enumerate(commands.lane_order(m.w, ports * LANES_PER_PORT)):
             words = arith.bits_bf16(beats).numpy().astype(np.uint16).view(np.uint32).ravel()
             start = addr // 4
@@ -89,7 +150,7 @@ def channel_images(mats: Sequence[Matvec], addrs: Sequence[int], ports: int) -> 
 
 
 def fetch(
-    mats: Sequence[Matvec],
+    mats: Sequence[Command],
     xs: dict[int, torch.Tensor],
     ports: int,
     addrs: Sequence[int] | None = None,
@@ -99,6 +160,10 @@ def fetch(
     """The driver on these commands, with the x buffers xs (id -> BF16) and
     the matrices at addrs (default: place()); checked to finish, its output
     split per command."""
+    for m in mats:  # the engine does not check it (rtl/engine.sv's header)
+        if isinstance(m, Attention) and m.values:
+            d, lanes = m.cache.shape[2], ports * LANES_PER_PORT
+            assert d <= lanes, f"VALUES needs d <= L: d = {d}, L = {lanes}"
     addrs = place(mats, ports) if addrs is None else addrs
     images = channel_images(mats, addrs, ports)
     words: list[np.ndarray] = [np.array([images.shape[1]]), images.ravel(), np.array([len(xs)])]
@@ -106,18 +171,15 @@ def fetch(
         bits = arith.bits_bf16(x).numpy().astype(np.uint16)
         packed = np.concatenate([bits, np.zeros(len(bits) % 2, np.uint16)]).view(np.uint32)
         words += [np.array([buf, len(bits)]), packed]
-    fields = [
-        (m.w.shape[0], m.w.shape[1], a & 0xFFFFFFFF, a >> 32, m.a, m.dst, int(m.bf16), int(m.wait))
-        for m, a in zip(mats, addrs, strict=True)
-    ]
-    words += [np.array([len(mats)]), np.array(fields, dtype=np.int64).ravel()]
+    cmd_words = [fields(m, a) for m, a in zip(mats, addrs, strict=True)]
+    words += [np.array([len(mats)]), np.array(cmd_words, dtype=np.int64).ravel()]
     stdin = np.concatenate(words).astype(np.uint32)
     result = bulk.run_driver("engine", stdin, (("Ports", ports), *params), **plusargs)
     assert result.returncode == 0, f"{plusargs}: {result.stderr.decode()}"
     words = np.frombuffer(result.stdout, dtype="<u4")
     out, taken, done, at = [], [], [], 0
     for m in mats:
-        rows = m.w.shape[0]
+        rows = n_rows(m)
         out.append(words[at : at + rows])
         taken.append(words[at + rows])
         done.append(words[at + rows + 1])
@@ -127,10 +189,26 @@ def fetch(
     return Result(out, np.array(taken), np.array(done), cycles, stalls, err, wall_us)
 
 
-def expected(m: Matvec, x: torch.Tensor) -> np.ndarray:
+def golden_attention(c: Attention, x: torch.Tensor) -> torch.Tensor:
+    """FP32 [n_rows(c)]: the golden SCORES (0 at positions past t) or VALUES
+    (docs/numerics.md, attention), head h on KV head h // group."""
+    kv_heads, cap, d = c.cache.shape
+    kv = c.cache[torch.arange(c.heads) // c.group, : c.t]  # [heads, t, d]
+    if c.values:
+        p = x[: c.heads * cap].reshape(c.heads, cap)[:, : c.t]
+        return decoder.attention_values(p, kv).reshape(-1)
+    q = x[: c.heads * d].reshape(c.heads, d)
+    scores = decoder.attention_scores(q, kv, torch.tensor(c.scale, dtype=torch.float32))
+    out = torch.zeros(c.heads, cap, dtype=torch.float32)
+    out[:, : c.t] = scores
+    return out.reshape(-1)
+
+
+def expected(m: Command, x: torch.Tensor) -> np.ndarray:
     """The golden result as the write port gives it: golden.dot.dot of each
-    row with x, FP32 bits, or BF16 bits in the low half."""
-    y = dot.dot(m.w, x[: m.w.shape[1]])
+    row with x (or golden_attention), FP32 bits, or BF16 bits in the low
+    half."""
+    y = golden_attention(m, x) if isinstance(m, Attention) else dot.dot(m.w, x[: m.w.shape[1]])
     bits = arith.bits_bf16(arith.bf16(y)) if m.bf16 else arith.bits_f32(y)
     return bits.numpy().astype(np.uint32) & (0xFFFF if m.bf16 else 0xFFFFFFFF)
 
@@ -206,10 +284,18 @@ def design(ports: int) -> dict[str, float]:
     return DESIGN | {"lanes": ports * LANES_PER_PORT}
 
 
-def model_cycles(m: Matvec, ports: int, startup: bool = True) -> float:
-    """The perf model's cycles for the command, with the start-up of a
-    waiting one (engine_startup_cycles, measured at 128 lanes) if startup."""
-    return perf.engine_cycles((tuple(m.w.shape),), design(ports), int(m.wait and startup))
+def model_cycles(m: Command, ports: int, startup: bool = True) -> float:
+    """The perf model's cycles for the command (perf.attention's shapes for
+    SCORES and VALUES), with the start-up of a waiting one
+    (engine_startup_cycles, measured at 128 lanes) if startup."""
+    if isinstance(m, Attention):
+        kv_heads, _, d = m.cache.shape
+        op = commands.Op.VALUES if m.values else commands.Op.SCORES
+        cmd = commands.Command(op, n=m.heads, m=d, kv_heads=kv_heads)
+        shapes = perf.attention(cmd, m.t, ports * LANES_PER_PORT).engine_shapes
+    else:
+        shapes = (tuple(m.w.shape),)
+    return perf.engine_cycles(shapes, design(ports), int(m.wait and startup))
 
 
 def read_share(m: Matvec, result: Result, ports: int, rate: int) -> float:
