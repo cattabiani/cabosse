@@ -6,8 +6,9 @@ pythonpath = ["model", "model/tests", "verif"]
 markers = [
     "slow: exhaustive tests that take minutes (run with: pytest -m slow)",
     "wide: the 128-lane engine (a build of minutes; CI runs these in their own job)",
+    "sweep: every FP32 input of an RTL unit (tens of minutes): only on request (pytest -m sweep)",
 ]
-addopts = "-m 'not slow'"
+addopts = "-m 'not slow and not sweep'"
 
 [tool.ruff]
 line-length = 100

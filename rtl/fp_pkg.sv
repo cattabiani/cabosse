@@ -17,6 +17,17 @@ package fp_pkg;
   localparam logic [1:0]  Fp32Mul = 2'd2;
   /* verilator lint_on UNUSEDPARAM */
 
+  // fp32_chain's op_i (D-048): the vector unit's arithmetic, one result per
+  // element.
+  typedef enum logic [2:0] {
+    ChainAdd   = 3'd0,  // a + b
+    ChainMul   = 3'd1,  // a * b
+    ChainFma   = 3'd2,  // a * b + c
+    ChainExp   = 3'd3,  // exp(a)
+    ChainRecip = 3'd4,  // 1 / a
+    ChainRsqrt = 3'd5   // 1 / sqrt(a)
+  } chain_op_e;
+
   // An operand: (-1)^sign * sig * 2^(exp - 126 - W) for a significand of W
   // bits (sig[W-1] has weight 2^(exp - 127)); exp is biased like FP32's.
   // exp >= 1, and sig[W-1] = 1 whenever exp > 1 (a subnormal or zero has exp
