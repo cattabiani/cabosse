@@ -1372,6 +1372,26 @@ with the memory model's write side; real data, speed and
 
 **Progress:**
 - [ ] Answers above.
+- [ ] One slot's FP chain (D-048): `rtl/fp32_chain.sv`, 7 stages of
+  `fp32_fma` and integer steps; 50 cycles at `MulRegs` = 2. In Q3 the
+  scalings of recip's and rsqrt's inputs were to be exponent edits; a
+  subnormal input needs normalizing, so they stay multiplies, and rsqrt
+  uses 7 stages, recip 6 (the chain stays 7). Tests
+  (`verif/tests/test_fp32_chain.py`), bit for bit against the golden
+  functions: specials (every triple for add, mul, fma), each function's
+  edges (exp's ties and integers of t, clamp, subnormal results; the
+  inputs recip and rsqrt scale) and random bits, operations interleaved;
+  slow: 10^8 per operation and the M1 exhaustive ranges (82 s on 16
+  cores). Every input of exp, recip and rsqrt: marker `sweep`, on request,
+  about 30 minutes (estimate from the slow run's rate). Hand mutations: 4
+  of 5 caught; the fifth (exp's clamp at 151) gives the same bits (past
+  ±150 the result is +inf or rounds to +0 either way). Area
+  (`scripts/measure_m6.py area`, `reports/data/M6.json`): Yosys for
+  UltraScale+, one `fp32_fma` 1,554 LUTs, 409 registers, 2 DSPs; the chain
+  11,858 LUTs, 4,386 registers, 14 DSPs. Scaled by M3's Vivado numbers for
+  one FMA (estimate): 9,630 LUTs and 14 DSPs a slot, 154,078 LUTs, 91,795
+  registers and 224 DSPs for 16 slots. Fewer Newton steps would not save
+  area (the chain's length is exp's).
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register

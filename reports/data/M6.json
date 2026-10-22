@@ -1,0 +1,22 @@
+{
+ "area": {
+  "provenance": {
+   "commit": "ef1eca8b82dd52dd8f99dd0823ad6a68b61f18ba",
+   "dirty": false,
+   "date": "2026-10-22",
+   "machine": "Linux x86_64"
+  },
+  "fp32_fma": {
+   "LUTs": 1554,
+   "registers": 409,
+   "DSPs": 2,
+   "carry blocks": 71
+  },
+  "fp32_chain": {
+   "LUTs": 11858,
+   "registers": 4386,
+   "DSPs": 14,
+   "carry blocks": 542
+  }
+ }
+}

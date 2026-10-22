@@ -16,9 +16,7 @@ records the commit.
 import argparse
 import json
 import re
-import subprocess
 import sys
-from collections import Counter
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -46,18 +44,7 @@ KINDS = {
 
 def yosys_cells(top: str) -> dict[str, int]:
     """Cells of `top` after Yosys's synthesis for UltraScale+, by kind."""
-    script = (
-        f"read_slang -F {rtl.SOURCES} --top {top}; "
-        f"synth_xilinx -family xcup -flatten -noiopad -noclkbuf -top {top}; stat"
-    )
-    run = subprocess.run(
-        ["yosys", "-m", "slang", "-p", script], capture_output=True, text=True, check=True
-    )
-    stats = run.stdout[run.stdout.rindex("Printing statistics.") :]
-    stats = stats.split("=== design hierarchy")[0]  # the flattened top only
-    cells = Counter()
-    for count, name in re.findall(r"^\s+(\d+)\s+([A-Z]\w*)\s*$", stats, re.M):
-        cells[name] += int(count)
+    cells = rtl.cells(top)
     return {
         kind: sum(n for c, n in cells.items() if pat.fullmatch(c)) for kind, pat in KINDS.items()
     }

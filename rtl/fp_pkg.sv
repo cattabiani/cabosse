@@ -15,6 +15,7 @@ package fp_pkg;
   // fp32_fma's op_i (any other value: fma).
   localparam logic [1:0]  Fp32Add = 2'd1;
   localparam logic [1:0]  Fp32Mul = 2'd2;
+  localparam logic [1:0]  Fp32Fma = 2'd0;  // or 3
   /* verilator lint_on UNUSEDPARAM */
 
   // fp32_chain's op_i (D-048): the vector unit's arithmetic, one result per

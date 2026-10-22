@@ -9,14 +9,17 @@ each function's integer steps (exp's clamp, rounding of t and subnormal
 results; the inputs recip and rsqrt scale), rounding families and random
 bits. Slow: 10⁸ random inputs per operation, and the M1 golden model's
 exhaustive ranges for recip and rsqrt (one period of the bit-trick error;
-the scaled inputs). Sweep, on request: every FP32 input of exp, recip and
-rsqrt (PLAN.md, M6 answers)."""
+the scaled inputs). On request (CABOSSE_SWEEP=1, tens of minutes): every
+FP32 input of exp, recip and rsqrt (PLAN.md, M6 answers)."""
+
+import os
+from collections.abc import Iterable
 
 import bulk
 import numpy as np
 import pytest
 import torch
-from fp_inputs import families, random_bits, special_tuples, with_exponents
+from fp_inputs import random_bits, rounding_batch, special_tuples, with_exponents
 from golden import arith, funcs
 
 import rtl
@@ -37,14 +40,25 @@ N_EDGE = 2_000  # per exponent band of an edge, fast run
 N_SLOW, PER_CHUNK = 10**8, 1 << 21  # per operation, slow run; records per chunk
 LOG2E = float(np.uint32(funcs.LOG2E_BITS).view(np.float32))
 ULPS = 8  # exp: ulps on each side of x where t = x * log2(e) meets an edge
-F32_ONE, F32_TWO, F32_FOUR = 0x3F80_0000, 0x4000_0000, 0x4080_0000
 SIGN = np.uint32(0x8000_0000)
-SWEEP_CHUNK = 1 << 22  # inputs per chunk of the every-input run (memory: 8 at once)
+# (operation, first, end): the M1 golden model's exhaustive ranges (one
+# period of the bit-trick error: test_funcs) and every input each function
+# scales, as FP32 bit patterns; recip's both signs.
+PERIODS = {
+    "rsqrt [1, 4)": ("rsqrt", 0x3F80_0000, 0x4080_0000),
+    "rsqrt below 2^-124": ("rsqrt", 0, 0x0100_0000),
+    "recip [1, 2)": ("recip", 0x3F80_0000, 0x4000_0000),
+    "recip subnormal": ("recip", 0, 0x0080_0000),
+    "recip from 2^125": ("recip", 0x7E00_0000, 0x7F80_0000),
+}
+SWEEP = os.environ.get("CABOSSE_SWEEP") == "1"  # the every-input run, on request
+SWEEP_CHUNK = 1 << 22  # inputs per chunk of it (memory: bulk.WORKERS at once)
 
 
-def records(op: str, abc: np.ndarray) -> np.ndarray:
-    """The driver's rows: op_i, then a, b, c."""
-    return np.concatenate([np.full((len(abc), 1), OPS[op][0], dtype=np.uint32), abc], axis=1)
+def records(code: int | np.ndarray, abc: np.ndarray) -> np.ndarray:
+    """The driver's rows: op_i (one, or one per row), then a, b, c."""
+    codes = np.broadcast_to(np.asarray(code, dtype=np.uint32), (len(abc),))
+    return np.concatenate([codes[:, None], abc], axis=1)
 
 
 def expected(op: str, abc: np.ndarray) -> np.ndarray:
@@ -54,23 +68,14 @@ def expected(op: str, abc: np.ndarray) -> np.ndarray:
 
 
 def check(op: str, abc: np.ndarray, label: str | int) -> None:
-    bulk.check("fp32_chain", records(op, abc), expected(op, abc), f"{op}, {label}")
+    bulk.check("fp32_chain", records(OPS[op][0], abc), expected(op, abc), f"{op}, {label}")
 
 
-def unary(x: np.ndarray, rng: np.random.Generator) -> np.ndarray:
-    """(a, b, c) rows for a one-input operation: x, and random bits in b and
-    c, which it must ignore."""
+def unary(x: np.ndarray) -> np.ndarray:
+    """(a, b, c) rows for a one-input operation: x, and zeros (the
+    interleaved test sends it random b and c)."""
     x = np.asarray(x, dtype=np.uint32).ravel()
-    return np.stack([x, *random_bits(rng, (2, len(x)))], axis=1)
-
-
-def binary_batch(rng: np.random.Generator, n_family: int, n_random: int) -> np.ndarray:
-    """(a, b, c) bit patterns: every rounding family, then random bits."""
-    abc = [
-        np.stack([x.view(np.uint32) for x in t], axis=1) for t in families(rng, n_family).values()
-    ]
-    abc.append(random_bits(rng, (n_random, 3)))
-    return np.concatenate(abc)
+    return np.stack([x, np.zeros_like(x), np.zeros_like(x)], axis=1)
 
 
 def around(x: np.ndarray, ulps: int) -> np.ndarray:
@@ -80,11 +85,9 @@ def around(x: np.ndarray, ulps: int) -> np.ndarray:
     return near.clip(0, 2**32 - 1).astype(np.uint32).ravel()
 
 
-def bands(rng: np.random.Generator, fields: list[int], n: int, signs: bool = True) -> np.ndarray:
-    """n random values in each exponent field of `fields`, either sign (or
-    positive only)."""
-    x = np.concatenate([with_exponents(rng, n, f, f, 32) for f in fields])
-    return x if signs else x & ~SIGN
+def bands(rng: np.random.Generator, fields: Iterable[int], n: int) -> np.ndarray:
+    """n random values of either sign in each exponent field of `fields`."""
+    return np.concatenate([with_exponents(rng, n, f, f, 32) for f in fields])
 
 
 def edges(op: str, rng: np.random.Generator) -> np.ndarray:
@@ -99,8 +102,8 @@ def edges(op: str, rng: np.random.Generator) -> np.ndarray:
         return np.concatenate(
             [
                 around(targets.astype(np.float32), ULPS),
-                bands(rng, list(range(0, 127)), 50),  # |x| < 1, subnormals too
-                (rng.uniform(-110, 95, N_EDGE).astype(np.float32)).view(np.uint32),
+                bands(rng, range(127), 50),  # |x| < 1, subnormals too
+                rng.uniform(-110, 95, N_EDGE).astype(np.float32).view(np.uint32),
             ]
         )
     if op == "recip":
@@ -108,8 +111,13 @@ def edges(op: str, rng: np.random.Generator) -> np.ndarray:
         # largest results overflow, the smallest are subnormal.
         return bands(rng, [0, 1, 2, 125, 126, 127, 128, 250, 251, 252, 253, 254], N_EDGE // 4)
     # rsqrt: scaled by 2^24 below 2^-125 (fields 0 and 1); negatives are NaN.
-    positive = bands(rng, [0, 1, 2, 3, 126, 127, 128, 254], N_EDGE // 4, signs=False)
+    positive = bands(rng, [0, 1, 2, 3, 126, 127, 128, 254], N_EDGE // 4) & ~SIGN
     return np.concatenate([positive, positive[:N_EDGE] | SIGN])
+
+
+def all_between(first: int, end: int) -> np.ndarray:
+    """Every FP32 bit pattern from first up to (not including) end <= 2^32."""
+    return np.arange(first, end, dtype=np.uint64).astype(np.uint32)
 
 
 @rtl.needs_verilator
@@ -121,7 +129,7 @@ def test_binary_specials(op: str) -> None:
 @rtl.needs_verilator
 @pytest.mark.parametrize("op", BINARY)
 def test_binary_random(op: str) -> None:
-    check(op, binary_batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM), SEED)
+    check(op, rounding_batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM), SEED)
 
 
 @rtl.needs_verilator
@@ -129,25 +137,25 @@ def test_binary_random(op: str) -> None:
 def test_unary_specials_and_edges(op: str) -> None:
     rng = np.random.default_rng(SEED)
     x = np.concatenate([special_tuples(1).ravel(), edges(op, rng), random_bits(rng, N_RANDOM)])
-    check(op, unary(x, rng), f"specials, edges, seed {SEED}")
+    check(op, unary(x), f"specials, edges, seed {SEED}")
 
 
 @rtl.needs_verilator
 def test_operations_interleave() -> None:
-    """Every operation in a random order, one per cycle: a stage's state
-    follows its own input, whatever the operations around it."""
+    """Every operation in a random order, one per cycle, random bits in the
+    inputs an operation ignores: a stage's state follows its own input,
+    whatever the operations around it."""
     rng = np.random.default_rng(SEED)
     n = 6 * N_FAMILY
     ops = rng.choice(list(OPS), n)
-    batch = binary_batch(rng, N_FAMILY // 4, n)
+    batch = rounding_batch(rng, N_FAMILY // 4, n)
     abc = batch[rng.choice(len(batch), n, replace=False)]
     abc[:, 0] = np.where(np.isin(ops, UNARY), random_bits(rng, n), abc[:, 0])
-    rows = np.concatenate([np.array([OPS[o][0] for o in ops], np.uint32)[:, None], abc], axis=1)
     want = np.empty(n, dtype=np.uint32)
     for op in OPS:
-        m = ops == op
-        want[m] = expected(op, abc[m])
-    bulk.check("fp32_chain", rows, want, f"interleaved, seed {SEED}")
+        want[ops == op] = expected(op, abc[ops == op])
+    codes = np.array([OPS[o][0] for o in ops])
+    bulk.check("fp32_chain", records(codes, abc), want, f"interleaved, seed {SEED}")
 
 
 @pytest.mark.slow
@@ -161,57 +169,37 @@ def test_random_slow(op: str) -> None:
     def one(seed: int) -> None:
         rng = np.random.default_rng(seed)
         if op in BINARY:
-            abc = binary_batch(rng, PER_CHUNK // 20, PER_CHUNK // 2)
+            abc = rounding_batch(rng, PER_CHUNK // 20, PER_CHUNK // 2)
         else:
-            abc = unary(np.concatenate([edges(op, rng), random_bits(rng, PER_CHUNK)]), rng)
+            abc = unary(np.concatenate([edges(op, rng), random_bits(rng, PER_CHUNK)]))
         check(op, abc, seed)
 
     bulk.in_parallel(one, bulk.chunk_seeds(SEED, N_SLOW, PER_CHUNK))
-
-
-def all_between(lo: int, hi: int) -> np.ndarray:
-    """Every FP32 bit pattern from lo up to (not including) hi <= 2^32."""
-    return np.arange(lo, hi, dtype=np.uint64).astype(np.uint32)
-
-
-# (operation, inputs): the M1 golden model's exhaustive ranges (one period
-# of the bit-trick error: test_funcs) and every input each function scales,
-# both signs for recip.
-PERIODS = {
-    "rsqrt [1, 4)": ("rsqrt", lambda: all_between(F32_ONE, F32_FOUR)),
-    "rsqrt subnormal and below 2^-125": ("rsqrt", lambda: all_between(0, 0x0100_0000)),
-    "recip [1, 2)": ("recip", lambda: all_between(F32_ONE, F32_TWO)),
-    "recip subnormal": ("recip", lambda: all_between(0, 0x0080_0000)),
-    "recip from 2^125": ("recip", lambda: all_between(0x7E00_0000, 0x7F80_0000)),
-}
 
 
 @pytest.mark.slow
 @rtl.needs_verilator
 @pytest.mark.parametrize("name", list(PERIODS))
 def test_exhaustive_ranges(name: str) -> None:
-    op, inputs = PERIODS[name]
-    x = inputs()
-    if op == "recip":
-        x = np.concatenate([x, x | SIGN])
-    chunks = np.array_split(x, -(-len(x) // PER_CHUNK))
+    op, first, end = PERIODS[name]
+    signs = (0, SIGN) if op == "recip" else (0,)
+    chunks = [(s, k) for s in signs for k in range(first, end, PER_CHUNK)]
 
-    def one(k: int) -> None:
-        check(op, unary(chunks[k], np.random.default_rng(SEED + k)), f"{name}, chunk {k}")
+    def one(chunk: tuple[int, int]) -> None:
+        sign, k = chunk
+        check(op, unary(all_between(k, min(k + PER_CHUNK, end)) | sign), f"{name}, {chunk}")
 
-    bulk.in_parallel(one, range(len(chunks)))
+    bulk.in_parallel(one, chunks)
 
 
-@pytest.mark.sweep
+@pytest.mark.skipif(not SWEEP, reason="every FP32 input, tens of minutes: CABOSSE_SWEEP=1")
 @rtl.needs_verilator
 @pytest.mark.parametrize("op", UNARY)
 def test_every_input(op: str) -> None:
-    """Every FP32 bit pattern, 2^32, in chunks of SWEEP_CHUNK run
-    bulk.WORKERS at a time."""
+    """Every FP32 bit pattern, 2^32, in chunks of SWEEP_CHUNK, bulk.WORKERS
+    at a time."""
 
     def one(k: int) -> None:
-        x = all_between(k * SWEEP_CHUNK, (k + 1) * SWEEP_CHUNK)
-        abc = np.stack([x, np.zeros_like(x), np.zeros_like(x)], axis=1)
-        check(op, abc, f"chunk {k}")
+        check(op, unary(all_between(k, k + SWEEP_CHUNK)), f"from 0x{k:08X}")
 
-    bulk.in_parallel(one, range(2**32 // SWEEP_CHUNK))
+    bulk.in_parallel(one, range(0, 2**32, SWEEP_CHUNK))

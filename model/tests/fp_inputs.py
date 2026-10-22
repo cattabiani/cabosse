@@ -144,6 +144,16 @@ def families(rng: np.random.Generator, n: int) -> dict[str, tuple[np.ndarray, ..
     return fam
 
 
+def rounding_batch(rng: np.random.Generator, n_family: int, n_random: int) -> np.ndarray:
+    """(a, b, c) FP32 bit patterns, uint32 rows of 3: every rounding family,
+    then random bits."""
+    abc = [
+        np.stack([x.view(np.uint32) for x in t], axis=1) for t in families(rng, n_family).values()
+    ]
+    abc.append(random_bits(rng, (n_random, 3)))
+    return np.concatenate(abc)
+
+
 def step_ulps(x: np.ndarray, k: np.ndarray) -> np.ndarray:
     """Move each x by k[i] FP32 ulps."""
     out = np.asarray(x, F32).copy()

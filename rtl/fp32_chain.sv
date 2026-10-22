@@ -49,7 +49,6 @@ module fp32_chain
 
   localparam int unsigned Stages = 7;
   localparam int unsigned FmaLatency = MulRegs + 4;
-  localparam logic [1:0] Fp32Fma = 2'd0;  // fp32_fma's op_i: any but add and mul
 
   // FP32 bits (docs/numerics.md, section 5; golden.funcs).
   localparam logic [31:0] OneHalf = 32'h3FC0_0000, PosInf = 32'h7F80_0000;
@@ -71,12 +70,10 @@ module fp32_chain
   } special_e;
 
   typedef struct packed {
-    logic              valid;
     chain_op_e         op;
     logic [31:0]       u, v, w;  // the values of the table: add, mul, fma's a, b, c, then v
     logic signed [8:0] i;        // exp: round(t), |i| <= 150
-    logic [1:0]        k;        // the input's scale: 1: 2^24, 2: 2^-24, else 1
-    logic              lift;     // exp: below the normal range, times 2^-64 at stage 7
+    logic [1:0]        k;        // a scale (scale()): recip's, rsqrt's input; exp's 2^-64
     logic              sign;     // recip: x's sign; the special result's sign
     special_e          special;
   } state_t;
@@ -91,15 +88,20 @@ module fp32_chain
   endfunction
 
   function automatic logic [31:0] scale(logic [1:0] k);
-    return k == 2'd1 ? Two24 : k == 2'd2 ? TwoM24 : Fp32One;
+    case (k)
+      2'd1: return Two24;
+      2'd2: return TwoM24;
+      2'd3: return TwoM64;
+      default: return Fp32One;
+    endcase
   endfunction
 
   // The input's state: its scale and the special result it sets.
-  function automatic state_t entry(logic valid, chain_op_e op, logic [31:0] a, b, c);
+  function automatic state_t entry(chain_op_e op, logic [31:0] a, b, c);
     state_t     s;
     logic [7:0] e;
     logic       nan, zero;
-    s = '{valid: valid, op: op, u: a, v: b, w: c, sign: a[31], special: Computed, default: '0};
+    s = '{op: op, u: a, v: b, w: c, sign: a[31], special: Computed, default: '0};
     e = a[30:23];
     nan = is_nan_f32(a[30:0]);
     zero = a[30:0] == '0;
@@ -123,9 +125,9 @@ module fp32_chain
     return s;
   endfunction
 
-  // exp: t clamped to [-150, 150], a NaN to 0.
+  // exp: t clamped to [-150, 150] (a NaN too, by its bits: the entry set
+  // its result).
   function automatic logic [31:0] exp_clamp(logic [31:0] t);
-    if (is_nan_f32(t[30:0])) return '0;
     return t[30:0] > ExpClamp[30:0] ? {t[31], ExpClamp[30:0]} : t;
   endfunction
 
@@ -159,134 +161,105 @@ module fp32_chain
     return f;
   endfunction
 
-  // exp after stage 6: 2^i p, by an add to p's exponent field when it stays
-  // normal; below, 2^(i+64) p now and 2^-64 at stage 7 (one rounding).
+  // exp after stage 6: 2^i p by an add to p's exponent field (p is in
+  // [0.7, 1.5], so the field stays in range); below the normal range,
+  // 2^(i+64) p now and 2^-64 at stage 7 (one rounding).
   function automatic state_t exp_scale(state_t s, logic [31:0] p);
     logic signed [10:0] e;
     e = $signed({3'b0, p[30:23]}) + 11'(s.i);
     if (e >= 11'sd255) begin
       s.v = PosInf;
-    end else if (e >= 11'sd1) begin
-      s.v = p + (32'(s.i) << 23);
     end else begin
-      s.v    = p + (32'(s.i + 9'sd64) << 23);
-      s.lift = 1'b1;
+      if (e < 11'sd1) begin
+        e   = e + 11'sd64;
+        s.k = 2'd3;
+      end
+      s.v = {p[31], e[7:0], p[22:0]};
     end
     return s;
   endfunction
 
   // The helpers below take the whole state and read the fields they need.
   // verilator lint_off UNUSEDSIGNAL
-  // Stage `stage`'s FMA (the table): a pass leaves it idle, zeros.
+
+  // Stage `stage`'s FMA: a column of the table. A pass leaves it idle, zeros.
   function automatic fma_in_t operands(int unsigned stage, state_t s);
     fma_in_t f;
     f = '0;
-    case (stage)
-      1:
-      case (s.op)
-        ChainAdd: f = '{Fp32Add, s.u, s.v, '0};
-        ChainMul: f = '{Fp32Mul, s.u, s.v, '0};
-        ChainFma: f = '{Fp32Fma, s.u, s.v, s.w};
-        ChainExp: f = '{Fp32Mul, s.u, Log2E, '0};
-        ChainRecip, ChainRsqrt: f = '{Fp32Mul, s.u, scale(s.k), '0};
+    case (s.op)
+      ChainAdd: if (stage == 1) f = '{Fp32Add, s.u, s.v, '0};
+      ChainMul: if (stage == 1) f = '{Fp32Mul, s.u, s.v, '0};
+      ChainFma: if (stage == 1) f = '{Fp32Fma, s.u, s.v, s.w};
+      ChainExp:
+      case (stage)
+        1: f = '{Fp32Mul, s.u, Log2E, '0};
+        2: f = '{Fp32Add, s.u, neg_int_f32(s.i), '0};
+        3: f = '{Fp32Fma, s.v, s.u, Exp2C[3]};  // p = c4 (stage 2), p * f + c
+        4: f = '{Fp32Fma, s.v, s.u, Exp2C[2]};
+        5: f = '{Fp32Fma, s.v, s.u, Exp2C[1]};
+        6: f = '{Fp32Fma, s.v, s.u, Exp2C[0]};
+        7: f = '{Fp32Mul, s.v, scale(s.k), '0};
         default: ;
       endcase
-      2:
-      case (s.op)
-        ChainExp: f = '{Fp32Add, s.u, neg_int_f32(s.i), '0};
-        ChainRecip: f = '{Fp32Fma, neg(s.u), s.v, Fp32One};
-        ChainRsqrt: f = '{Fp32Mul, s.u, s.v, '0};
+      ChainRecip:
+      case (stage)
+        1: f = '{Fp32Mul, s.u, scale(s.k), '0};
+        2, 4: f = '{Fp32Fma, neg(s.u), s.v, Fp32One};
+        3, 5: f = '{Fp32Fma, s.v, s.w, s.v};
+        6: f = '{Fp32Mul, s.v, scale(s.k), '0};
         default: ;
       endcase
-      3:
-      case (s.op)
-        ChainExp: f = '{Fp32Fma, Exp2C[4], s.u, Exp2C[3]};
-        ChainRecip: f = '{Fp32Fma, s.v, s.w, s.v};
-        ChainRsqrt: f = '{Fp32Fma, neg(s.w), s.v, OneHalf};
+      ChainRsqrt:
+      case (stage)
+        1: f = '{Fp32Mul, s.u, scale(s.k), '0};
+        2, 5: f = '{Fp32Mul, s.u, s.v, '0};
+        3, 6: f = '{Fp32Fma, neg(s.w), s.v, OneHalf};
+        4, 7: f = '{Fp32Mul, s.v, s.w, '0};
         default: ;
       endcase
-      4:
-      case (s.op)
-        ChainExp: f = '{Fp32Fma, s.v, s.u, Exp2C[2]};
-        ChainRecip: f = '{Fp32Fma, neg(s.u), s.v, Fp32One};
-        ChainRsqrt: f = '{Fp32Mul, s.v, s.w, '0};
-        default: ;
-      endcase
-      5:
-      case (s.op)
-        ChainExp: f = '{Fp32Fma, s.v, s.u, Exp2C[1]};
-        ChainRecip: f = '{Fp32Fma, s.v, s.w, s.v};
-        ChainRsqrt: f = '{Fp32Mul, s.u, s.v, '0};
-        default: ;
-      endcase
-      6:
-      case (s.op)
-        ChainExp: f = '{Fp32Fma, s.v, s.u, Exp2C[0]};
-        ChainRecip: f = '{Fp32Mul, s.v, scale(s.k), '0};
-        ChainRsqrt: f = '{Fp32Fma, neg(s.w), s.v, OneHalf};
-        default: ;
-      endcase
-      default:
-      case (s.op)
-        ChainExp: f = '{Fp32Mul, s.v, s.lift ? TwoM64 : Fp32One, '0};
-        ChainRsqrt: f = '{Fp32Mul, s.v, s.w, '0};
-        default: ;
-      endcase
+      default: ;
     endcase
     return f;
   endfunction
 
-  // The state after stage `stage`, whose FMA gave r (the table).
+  // The state after stage `stage`, whose FMA gave r. A pass keeps it.
   function automatic state_t result(int unsigned stage, state_t s, logic [31:0] r);
-    case (stage)
-      1:
-      case (s.op)
-        ChainExp: begin
-          s.u = exp_clamp(r);
+    case (s.op)
+      ChainAdd, ChainMul, ChainFma: if (stage == 1) s.v = r;
+      ChainExp:
+      case (stage)
+        1: begin
+          s.u = exp_clamp(r);  // t
           s.i = round_even(s.u);
         end
-        ChainRecip: begin
-          s.u = r;
+        2: begin
+          s.u = r;  // f
+          s.v = Exp2C[4];
+        end
+        6: s = exp_scale(s, r);
+        default: s.v = r;  // p
+      endcase
+      ChainRecip:
+      case (stage)
+        1: begin
+          s.u = r;  // xs
           s.v = RRecip - r;
         end
-        ChainRsqrt: begin
+        2, 4: s.w = r;  // e
+        3, 5, 6: s.v = r;  // y
+        default: ;
+      endcase
+      ChainRsqrt:
+      case (stage)
+        1: begin
           s.u = {r[31], r[30:23] - 8'd1, r[22:0]};  // h = xs / 2
           s.v = RRsqrt - {1'b0, r[31:1]};
         end
-        default: s.v = r;  // add, mul, fma: done
+        4, 7: s.v = r;  // y
+        default: s.w = r;  // a, b
       endcase
-      2:
-      case (s.op)
-        ChainExp: s.u = r;
-        ChainRecip, ChainRsqrt: s.w = r;
-        default: ;
-      endcase
-      3, 5:
-      case (s.op)
-        ChainExp, ChainRecip: s.v = r;
-        ChainRsqrt: s.w = r;
-        default: ;
-      endcase
-      4:
-      case (s.op)
-        ChainExp, ChainRsqrt: s.v = r;
-        ChainRecip: s.w = r;
-        default: ;
-      endcase
-      6:
-      case (s.op)
-        ChainExp: s = exp_scale(s, r);
-        ChainRecip: s.v = r;
-        ChainRsqrt: s.w = r;
-        default: ;
-      endcase
-      default:
-      case (s.op)
-        ChainExp, ChainRsqrt: s.v = r;
-        default: ;
-      endcase
+      default: ;
     endcase
-    // A pass (add, mul and fma after stage 1, recip at 7) keeps the state.
     return s;
   endfunction
 
@@ -295,7 +268,7 @@ module fp32_chain
     logic [31:0] y;
     y = s.v;
     if (s.op == ChainRecip) y = {s.sign, s.v[30:0]};
-    if (s.op == ChainRsqrt && s.k[0]) y = s.v + (32'd12 << 23);
+    if (s.op == ChainRsqrt && s.k[0]) y = {s.v[31], s.v[30:23] + 8'd12, s.v[22:0]};
     case (s.special)
       SpecialNan:  y = CanonicalNaN;
       SpecialInf:  y = {s.sign, PosInf[30:0]};
@@ -307,17 +280,19 @@ module fp32_chain
 
   // verilator lint_on UNUSEDSIGNAL
 
-  function automatic state_t gate(state_t s, logic rst_n);  // valid only out of reset
-    s.valid = s.valid && rst_n;
-    return s;
-  endfunction
-
-  state_t st_q[Stages+1];  // st_q[s]: stage s + 1's input; st_q[Stages]: the result
-  always_ff @(posedge clk_i) st_q[0] <= entry(rst_ni && valid_i, op_i, a_i, b_i, c_i);
+  // st_q[s]: stage s + 1's input; st_q[Stages]: the result. valid_q
+  // alongside: each stage's from its FMA's valid_o.
+  state_t st_q[Stages+1];
+  logic   valid_q[Stages+1];
+  always_ff @(posedge clk_i) begin
+    st_q[0]    <= entry(op_i, a_i, b_i, c_i);
+    valid_q[0] <= rst_ni && valid_i;
+  end
 
   for (genvar s = 0; s < Stages; s++) begin : gen_stage
     fma_in_t     f;
     logic [31:0] r;
+    logic        r_valid;
     state_t      d_q[FmaLatency];  // the state, delayed to meet r
     assign f = operands(s + 1, st_q[s]);
     fp32_fma #(
@@ -325,24 +300,23 @@ module fp32_chain
     ) u_fma (
       .clk_i,
       .rst_ni,
-      .valid_i(st_q[s].valid),
+      .valid_i(valid_q[s]),
       .op_i   (f.op),
       .a_i    (f.a),
       .b_i    (f.b),
       .c_i    (f.c),
-      // verilator lint_off PINCONNECTEMPTY
-      .valid_o(),
-      // verilator lint_on PINCONNECTEMPTY
+      .valid_o(r_valid),
       .y_o    (r)
     );
     always_ff @(posedge clk_i) begin
-      d_q[0] <= gate(st_q[s], rst_ni);
-      for (int unsigned j = 1; j < FmaLatency; j++) d_q[j] <= gate(d_q[j-1], rst_ni);
-      st_q[s+1] <= gate(result(s + 1, d_q[FmaLatency-1], r), rst_ni);
+      d_q[0] <= st_q[s];
+      for (int unsigned j = 1; j < FmaLatency; j++) d_q[j] <= d_q[j-1];
+      st_q[s+1]    <= result(s + 1, d_q[FmaLatency-1], r);
+      valid_q[s+1] <= rst_ni && r_valid;
     end
   end
 
-  assign valid_o = st_q[Stages].valid;
+  assign valid_o = valid_q[Stages];
   assign y_o     = exit_value(st_q[Stages]);
 
 endmodule
