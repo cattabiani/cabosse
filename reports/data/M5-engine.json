@@ -1,8 +1,8 @@
 {
  "depth": {
   "provenance": {
-   "commit": "e7d0c3498c7ebd2a02d800f1208c82df38375d2f",
-   "dirty": true,
+   "commit": "7f44150daf24b21ee601ea809826fd3a2f2d30fb",
+   "dirty": false,
    "date": "2026-10-22",
    "machine": "Linux x86_64"
   },
@@ -171,12 +171,14 @@
  },
  "real": {
   "provenance": {
-   "commit": "e7d0c3498c7ebd2a02d800f1208c82df38375d2f",
-   "dirty": true,
+   "commit": "7f44150daf24b21ee601ea809826fd3a2f2d30fb",
+   "dirty": false,
    "date": "2026-10-22",
    "machine": "Linux x86_64"
   },
   "ports": 32,
+  "depth_beats": 128,
+  "writes": 8,
   "memory": {
    "latency": 70,
    "outstanding": 8
@@ -926,8 +928,8 @@
  },
  "bandwidth": {
   "provenance": {
-   "commit": "e7d0c3498c7ebd2a02d800f1208c82df38375d2f",
-   "dirty": true,
+   "commit": "7f44150daf24b21ee601ea809826fd3a2f2d30fb",
+   "dirty": false,
    "date": "2026-10-22",
    "machine": "Linux x86_64"
   },
@@ -936,6 +938,7 @@
    "latency": 70,
    "outstanding": 8
   },
+  "bound": 1024,
   "matrices": [
    {
     "shape": [
