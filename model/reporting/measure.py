@@ -18,8 +18,11 @@ def git(*args: str) -> str:
 
 
 def commit_and_dirty() -> tuple[str, bool]:
-    """The checked-out commit, and whether there are uncommitted changes."""
-    commit, dirty = git("rev-parse", "HEAD").strip(), bool(git("status", "--porcelain").strip())
+    """The checked-out commit, and whether there are uncommitted changes
+    outside reports/data/ (a script that measures in parts writes its data
+    file after each one)."""
+    status = git("status", "--porcelain", "--", ".", ":!reports/data")
+    commit, dirty = git("rev-parse", "HEAD").strip(), bool(status.strip())
     if dirty:
         print("warning: uncommitted changes; the report will say so")
     return commit, dirty

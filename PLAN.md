@@ -431,6 +431,15 @@ position 63 and 0.6% at 8191 (estimate, from M5's start-up with and
 without read-ahead), for a controller that tracks each buffer's readers.
 Premature (owner). M7 measures the loss.
 
+**D-046 (2026-10-22) — M5's bandwidth criterion is 90% of min(BW, 2·E·L)
+times the perf model's engine use** (owner, 2026-10-22, at the M5
+checkpoint). A matrix whose rows are not a multiple of `L` leaves ports idle
+in its last pass; the perf model's engine use is the most that allows (0.90
+for `down`, 576 × 1536, at 128 lanes). *Why:* the shortfall is the matrix's
+shape, not the engine: `down` reaches 0.845 of the bound as written and every
+large matrix at least 0.929 of the restated one (reports/M5.md). Using the
+idle ports is Q-28.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1235,6 +1244,15 @@ step and drain, so a sequencing fix is made once); checkpoint report.
   harmless (a `MATVEC` reading every port: the extra beats are popped and
   ignored, only memory traffic grows; a `MATVEC` unit freeing a tile slot:
   both slots are empty while a `MATVEC` steps).
+- [x] Checkpoint report: [reports/M5.md](reports/M5.md), tables generated
+  by `scripts/report_m5.py` from the engine's measurements on the final
+  RTL (`reports/data/M5-engine.json`) and the test runs
+  (`reports/data/M5.json`): exit criteria, the engine, SmolLM2 with real
+  data, bandwidth, FIFO depth, Verilator speed, the timing proxy, tests,
+  open issues. The bandwidth criterion is not met as written: a matrix
+  whose rows are not a multiple of `L` leaves ports idle in its last pass
+  (Q-28); the restated one (90% of the perf model's engine use) is met and
+  the owner accepted it (D-046). M5 is done.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
@@ -1330,3 +1348,4 @@ New ones are added as a table:
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
 | Q-27 | Share K and V tiles between the query heads of a GQA group (q·K: one tile for the group's heads in turn; p·V: lanes that save and resume their partial sums, or a chunked summation order, a numerics change)? Today each query head reads K and V. | Only if M8's HBM rate leaves attention memory-bound by much more than the ~8% estimated. |
+| Q-28 | Use the ports a partial last pass leaves idle (rows not a multiple of `L`: SmolLM2's `q`, `o`, `down`, `k`, `v` at 128 lanes)? Either split the last pass's dot products across lanes and add the halves (a numerics change), or start the next command's first pass on the idle ports (controller and engine redesign). | After M7/M8 measure a whole token at F2's HBM rate; only if the idle ports show up there. |

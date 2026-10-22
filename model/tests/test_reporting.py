@@ -7,7 +7,7 @@ import re
 
 import paths
 import pytest
-from reporting import blocks, m1, m2, m3, m4
+from reporting import blocks, m1, m2, m3, m4, m5
 
 TEXT = """# Title
 
@@ -76,7 +76,13 @@ def test_m4_report_is_up_to_date() -> None:
     assert m4.render() == m4.PATH.read_text()
 
 
-@pytest.mark.parametrize("script", ["report_m1.py", "report_m3.py", "report_m4.py"])
+def test_m5_report_is_up_to_date() -> None:
+    """reports/M5.md matches its data. After measuring, run:
+    python scripts/report_m5.py render"""
+    assert m5.render() == m5.PATH.read_text()
+
+
+@pytest.mark.parametrize("script", ["report_m1.py", "report_m3.py", "report_m4.py", "report_m5.py"])
 def test_measure_deselects_a_test_that_exists(script: str) -> None:
     """The report scripts' measure leaves out the up-to-date test by its pytest
     id; pytest ignores an id that matches nothing, so check it here."""
