@@ -1194,6 +1194,24 @@ step and drain, so a sequencing fix is made once); checkpoint report.
   31 was the measure walking through clocked cells (RAMs, shift-register
   LUTs); `logic_depth` now builds small memories from flip-flops and cuts
   block RAMs.
+  Second PR: real data at 128 lanes. `test_smollm2` runs the first and
+  last layers' `MATVEC`s, `SCORES` and `VALUES` and the classifier at
+  positions 63, 1023 and 8191 (the latter two from the long cache, cut back
+  to the position; `record_step` takes a given cache, tested): bit-exact,
+  every command within 10% of the perf model
+  (`scripts/measure_m5_engine.py real`, `reports/data/M5-engine.json`).
+  `SCORES` and `VALUES` are within 0.8% at 1023 and 8191, so the engine
+  use criterion holds there. At 63, `VALUES` first took 23.7% more than
+  the model: a p.V unit fills its two heads' tile (32 cycles) but steps
+  only 64 positions (16), so later units wait. The model was wrong, not
+  the hardware (whole tiles are the owner's simplest tile use):
+  `perf.tile_wait_cols` adds the wait (two slots, the first two read
+  ahead); position 0 in docs/perf.md loses under 1%. `engine_startup_cycles`
+  re-measured with the scale's 6 cycles: 61 for `MATVEC`s, 64 for `SCORES`
+  at 1023 and 8191; design v0 takes 64. With it, at every position: the
+  first `q` +7.7% (nothing before it to read behind), `VALUES` at 63 -5.1%,
+  `SCORES` at 63 -3.8%, the other `MATVEC`s -1.4% to 0.0%. `long_cache`
+  has tests on a tiny model (two hand mutations caught).
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
