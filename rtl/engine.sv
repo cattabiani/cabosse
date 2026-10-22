@@ -144,7 +144,7 @@ module engine
   localparam int unsigned TileRows  = LanesPerPort;        // a tile's rows per channel
   localparam int unsigned Entries   = DataWidth / EntryBits;  // a beat's entries
   localparam int unsigned DW        = $clog2(MaxD + 1);
-  localparam int unsigned DrainLat  = MulRegs + 4;     // fp32_fma's latency (its header)
+  localparam int unsigned DrainLat  = mul_add_latency(MulRegs);  // fp32_fma's
 
   if (DataWidth % (16 * E) != 0 || LanesPerPort == 0) begin : gen_bad_width
     $error("engine: a beat must hold E BF16 weights for a whole number of lanes");

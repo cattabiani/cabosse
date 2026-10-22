@@ -46,11 +46,14 @@ SIGN = np.uint32(0x8000_0000)
 # scales, as FP32 bit patterns; recip's both signs.
 PERIODS = {
     "rsqrt [1, 4)": ("rsqrt", 0x3F80_0000, 0x4080_0000),
-    "rsqrt below 2^-124": ("rsqrt", 0, 0x0100_0000),
+    "rsqrt below 2^-124": ("rsqrt", 0, 0x0180_0000),
     "recip [1, 2)": ("recip", 0x3F80_0000, 0x4000_0000),
     "recip subnormal": ("recip", 0, 0x0080_0000),
     "recip from 2^125": ("recip", 0x7E00_0000, 0x7F80_0000),
 }
+# fp32_chain's FMA registers: the same bits at each (the default, 2, in the
+# other tests).
+PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (("MulRegs", 1),)}
 SWEEP = os.environ.get("CABOSSE_SWEEP") == "1"  # the every-input run, on request
 SWEEP_CHUNK = 1 << 22  # inputs per chunk of it (memory: bulk.WORKERS at once)
 
@@ -72,8 +75,8 @@ def check(op: str, abc: np.ndarray, label: str | int) -> None:
 
 
 def unary(x: np.ndarray) -> np.ndarray:
-    """(a, b, c) rows for a one-input operation: x, and zeros (the
-    interleaved test sends it random b and c)."""
+    """(a, b, c) rows for a one-input operation: x, and zeros
+    (test_operations_interleave sends it random b and c)."""
     x = np.asarray(x, dtype=np.uint32).ravel()
     return np.stack([x, np.zeros_like(x), np.zeros_like(x)], axis=1)
 
@@ -141,21 +144,27 @@ def test_unary_specials_and_edges(op: str) -> None:
 
 
 @rtl.needs_verilator
-def test_operations_interleave() -> None:
-    """Every operation in a random order, one per cycle, random bits in the
-    inputs an operation ignores: a stage's state follows its own input,
-    whatever the operations around it."""
+@pytest.mark.parametrize("pipeline", [None, *PIPELINES])
+def test_operations_interleave(pipeline: str | None) -> None:
+    """Every operation in a random order, one per cycle, at every FMA
+    pipeline depth: a stage's state follows its own input, whatever the
+    operations around it. add, mul and fma take rounding families; exp,
+    recip and rsqrt their edges in a, random bits in b and c (ignored)."""
     rng = np.random.default_rng(SEED)
     n = 6 * N_FAMILY
     ops = rng.choice(list(OPS), n)
     batch = rounding_batch(rng, N_FAMILY // 4, n)
     abc = batch[rng.choice(len(batch), n, replace=False)]
-    abc[:, 0] = np.where(np.isin(ops, UNARY), random_bits(rng, n), abc[:, 0])
+    for op in UNARY:
+        m = ops == op
+        abc[m, 0] = rng.choice(edges(op, rng), m.sum())
+        abc[m, 1:] = random_bits(rng, (m.sum(), 2))
     want = np.empty(n, dtype=np.uint32)
     for op in OPS:
         want[ops == op] = expected(op, abc[ops == op])
     codes = np.array([OPS[o][0] for o in ops])
-    bulk.check("fp32_chain", records(codes, abc), want, f"interleaved, seed {SEED}")
+    params = PIPELINES.get(pipeline, ())
+    bulk.check("fp32_chain", records(codes, abc), want, f"interleaved, seed {SEED}", params)
 
 
 @pytest.mark.slow
@@ -166,15 +175,16 @@ def test_random_slow(op: str) -> None:
     bulk.WORKERS at a time: rounding families and random bits for add, mul
     and fma; edges and random bits for the functions."""
 
-    def one(seed: int) -> None:
+    def inputs(seed: int) -> np.ndarray:
         rng = np.random.default_rng(seed)
         if op in BINARY:
-            abc = rounding_batch(rng, PER_CHUNK // 20, PER_CHUNK // 2)
-        else:
-            abc = unary(np.concatenate([edges(op, rng), random_bits(rng, PER_CHUNK)]))
-        check(op, abc, seed)
+            return rounding_batch(rng, PER_CHUNK // 20, PER_CHUNK // 2)
+        return unary(np.concatenate([edges(op, rng), random_bits(rng, PER_CHUNK)]))
 
-    bulk.in_parallel(one, bulk.chunk_seeds(SEED, N_SLOW, PER_CHUNK))
+    per_chunk = len(inputs(0))
+    bulk.in_parallel(
+        lambda seed: check(op, inputs(seed), seed), bulk.chunk_seeds(SEED, N_SLOW, per_chunk)
+    )
 
 
 @pytest.mark.slow

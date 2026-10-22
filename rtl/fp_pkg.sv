@@ -50,6 +50,12 @@ package fp_pkg;
     return (2 * m > F32SigW ? 2 * m : F32SigW) + 3;
   endfunction
 
+  // fp_mul_add's latency (bf16_mac, fp32_fma): fp_product's mul_regs
+  // registers, one, then fp_add's three.
+  function automatic int unsigned mul_add_latency(int unsigned mul_regs);
+    return mul_regs + 4;
+  endfunction
+
   // Whether FP32 bits are a NaN, from all but the sign bit.
   function automatic logic is_nan_f32(logic [30:0] f);
     return (f[30:23] == 8'hFF) && (f[22:0] != 0);

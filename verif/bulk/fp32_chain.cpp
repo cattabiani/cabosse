@@ -7,6 +7,7 @@
 #include "Vfp32_chain.h"
 #include "stream.h"
 
+/// @brief Stream the records on stdin through the chain (stream.h's protocol).
 int main(int argc, char** argv) {
   auto set_inputs = [](Vfp32_chain& dut, Record r) {
     dut.op_i = r[0];

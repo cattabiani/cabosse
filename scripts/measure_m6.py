@@ -77,6 +77,8 @@ def main() -> None:
     if args.part != "show":
         data[args.part] = {"provenance": measure.provenance()} | globals()[args.part]()
         DATA.write_text(json.dumps(data, indent=1) + "\n")
+    if "area" not in data:
+        sys.exit(f"no area data in {DATA}: run `python scripts/measure_m6.py area` first")
     print(table(data["area"]))
 
 

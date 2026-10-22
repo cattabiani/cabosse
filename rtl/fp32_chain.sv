@@ -48,7 +48,7 @@ module fp32_chain
 );
 
   localparam int unsigned Stages = 7;
-  localparam int unsigned FmaLatency = MulRegs + 4;
+  localparam int unsigned FmaLatency = mul_add_latency(MulRegs);
 
   // FP32 bits (docs/numerics.md, section 5; golden.funcs).
   localparam logic [31:0] OneHalf = 32'h3FC0_0000, PosInf = 32'h7F80_0000;
@@ -194,7 +194,7 @@ module fp32_chain
       case (stage)
         1: f = '{Fp32Mul, s.u, Log2E, '0};
         2: f = '{Fp32Add, s.u, neg_int_f32(s.i), '0};
-        3: f = '{Fp32Fma, s.v, s.u, Exp2C[3]};  // p = c4 (stage 2), p * f + c
+        3: f = '{Fp32Fma, Exp2C[4], s.u, Exp2C[3]};  // p = c4 * f + c3, then p * f + c
         4: f = '{Fp32Fma, s.v, s.u, Exp2C[2]};
         5: f = '{Fp32Fma, s.v, s.u, Exp2C[1]};
         6: f = '{Fp32Fma, s.v, s.u, Exp2C[0]};
@@ -232,10 +232,7 @@ module fp32_chain
           s.u = exp_clamp(r);  // t
           s.i = round_even(s.u);
         end
-        2: begin
-          s.u = r;  // f
-          s.v = Exp2C[4];
-        end
+        2: s.u = r;  // f
         6: s = exp_scale(s, r);
         default: s.v = r;  // p
       endcase
