@@ -96,6 +96,22 @@ def test_values_passes_of_two_heads() -> None:
     assert len(perf.attention(cmd, 100, 64).engine_shapes) == 9
 
 
+def test_tile_wait_by_hand() -> None:
+    """Two slots, the first two full at the go: a unit after them waits when
+    its fill is longer than the step before it. SmolLM2's p.V at 64
+    positions on 128 lanes: 4 passes of 2 heads and 1 of 1 (fills of 128,
+    128, 128, 128 and 64 cols, steps of 64): 64 + 64 + 0 cols. Balanced
+    units, and SCORES (d to fill, d to step), never wait."""
+    units = [(128, 64)] * 4 + [(64, 64)]
+    assert perf.tile_wait_cols(units) == 128
+    assert perf.tile_wait_cols([(128, 128)] * 9) == 0
+    values = commands.Command(commands.Op.VALUES, n=9, m=64, kv_heads=3)
+    assert perf.attention(values, 64, 128).fill_cols == 128
+    assert perf.attention(values, 1024, 128).fill_cols == 0
+    scores = commands.Command(commands.Op.SCORES, n=9, m=64, kv_heads=3)
+    assert perf.attention(scores, 64, 128).fill_cols == 0
+
+
 def test_seconds_by_hand() -> None:
     work = perf.Work(
         weight_bytes=1000,

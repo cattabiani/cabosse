@@ -36,7 +36,10 @@ Assumptions, to revisit in `docs/architecture.md`:
   group (Q-27). This costs no engine time while the memory keeps up with
   the engine (a pass reads no faster than the lanes consume), and at most
   the engine's rate ÷ the memory's rate on attention otherwise (1024 ÷ 947
-  B/cycle on F2 at 250 MHz, about 8%, estimate).
+  B/cycle on F2 at 250 MHz, about 8%, estimate). A p.V tile fills its
+  heads' d values per position and steps its positions, so a partly filled
+  last tile can wait for its fill (`perf.tile_wait_cols`: two slots, the
+  first two read ahead; 32 cycles at position 63, measured).
 - Activations stay on chip, and cost no HBM traffic.
 - Attention's multiply-adds (q·K and p·V) run on the matrix-vector engine.
 - The HBM read rate scales with the memory clock from AWS's measured rate at
@@ -131,19 +134,19 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: predictions -->
 | scenario | position | tokens/s | limited by | memory (ms) | engine (ms) | vector (ms) | commands (ms) |
 |---|---|---|---|---|---|---|---|
-| as planned | 0 | 357–852 | engine | 1.173 | 1.174 | 0.110 | 0.341 |
+| as planned | 0 | 356–845 | engine | 1.173 | 1.184 | 0.110 | 0.341 |
 | as planned | 1023 | 272–695 | engine | 1.435 | 1.440 | 0.456 | 0.341 |
 | as planned | 8191 | 98–284 | memory | 3.527 | 3.483 | 2.875 | 0.341 |
-| 64 lanes x 8, A = 32 | 0 | 362–864 | engine | 1.155 | 1.157 | 0.110 | 0.341 |
+| 64 lanes x 8, A = 32 | 0 | 361–859 | engine | 1.155 | 1.164 | 0.110 | 0.341 |
 | 64 lanes x 8, A = 32 | 1023 | 250–567 | engine | 1.435 | 1.764 | 0.456 | 0.341 |
 | 64 lanes x 8, A = 32 | 8191 | 76–154 | engine | 3.527 | 6.482 | 2.875 | 0.341 |
-| 512 lanes x 1, A = 4 | 0 | 306–654 | engine | 1.286 | 1.530 | 0.110 | 0.341 |
+| 512 lanes x 1, A = 4 | 0 | 303–638 | engine | 1.286 | 1.568 | 0.110 | 0.341 |
 | 512 lanes x 1, A = 4 | 1023 | 225–452 | engine | 1.435 | 2.212 | 0.456 | 0.341 |
 | 512 lanes x 1, A = 4 | 8191 | 70–134 | engine | 3.527 | 7.480 | 2.875 | 0.341 |
-| core at 125 MHz | 0 | 226–426 | engine | 1.173 | 2.349 | 0.221 | 0.682 |
+| core at 125 MHz | 0 | 225–422 | engine | 1.173 | 2.368 | 0.221 | 0.682 |
 | core at 125 MHz | 1023 | 169–347 | engine | 1.435 | 2.880 | 0.911 | 0.682 |
 | core at 125 MHz | 8191 | 59–144 | engine | 3.527 | 6.966 | 5.750 | 0.682 |
-| 256 lanes, HBM at 450 MHz | 0 | 560–1487 | memory | 0.673 | 0.661 | 0.110 | 0.341 |
+| 256 lanes, HBM at 450 MHz | 0 | 557–1487 | memory | 0.673 | 0.670 | 0.110 | 0.341 |
 | 256 lanes, HBM at 450 MHz | 1023 | 408–1167 | engine | 0.797 | 0.857 | 0.456 | 0.341 |
 | 256 lanes, HBM at 450 MHz | 8191 | 132–348 | vector | 1.959 | 2.416 | 2.875 | 0.341 |
 <!-- end: predictions -->
