@@ -110,9 +110,14 @@ def n_beats(m: Command, ports: int) -> int:
     regions of cap / ports rows per KV head (D-043)."""
     if isinstance(m, Attention):
         kv_heads, cap, d = m.cache.shape
-        return kv_heads * cap // ports * d * 2 // BEAT_BYTES
+        return commands.n_bytes((kv_heads, cap // ports, d), torch.bfloat16) // BEAT_BYTES
     rows, cols = m.w.shape
     return -(-rows // (ports * LANES_PER_PORT)) * -(-cols // E)
+
+
+def bf16_bits(t: torch.Tensor) -> np.ndarray:
+    """t's BF16 bit patterns, uint16, in t's shape."""
+    return arith.bits_bf16(t.contiguous()).numpy().astype(np.uint16)
 
 
 def place(mats: Sequence[Command], ports: int, gaps: Sequence[int] | None = None) -> list[int]:
@@ -136,14 +141,14 @@ def channel_images(mats: Sequence[Command], addrs: Sequence[int], ports: int) ->
     for m, addr in zip(mats, addrs, strict=True):
         if isinstance(m, Attention):
             kv_heads, cap, d = m.cache.shape
-            bits = arith.bits_bf16(m.cache).numpy().astype(np.uint16)
+            bits = bf16_bits(m.cache)
             # [kv, row, channel, d] -> channel-major: each channel's rows in order
             rows = bits.reshape(kv_heads, cap // ports, ports, d).transpose(2, 0, 1, 3)
             words = np.ascontiguousarray(rows).view(np.uint32).reshape(ports, -1)
             images[:, addr // 4 : addr // 4 + words.shape[1]] = words
             continue
         for p, beats in enumerate(commands.lane_order(m.w, ports * LANES_PER_PORT)):
-            words = arith.bits_bf16(beats).numpy().astype(np.uint16).view(np.uint32).ravel()
+            words = bf16_bits(beats).view(np.uint32).ravel()
             start = addr // 4
             images[p, start : start + len(words)] = words
     return images
@@ -168,7 +173,7 @@ def fetch(
     images = channel_images(mats, addrs, ports)
     words: list[np.ndarray] = [np.array([images.shape[1]]), images.ravel(), np.array([len(xs)])]
     for buf, x in xs.items():
-        bits = arith.bits_bf16(x).numpy().astype(np.uint16)
+        bits = bf16_bits(x)
         packed = np.concatenate([bits, np.zeros(len(bits) % 2, np.uint16)]).view(np.uint32)
         words += [np.array([buf, len(bits)]), packed]
     cmd_words = [fields(m, a) for m, a in zip(mats, addrs, strict=True)]

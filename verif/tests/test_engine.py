@@ -213,6 +213,7 @@ def test_go(ports: int, go_early: int, go_delay: int) -> None:
 
 
 DEPTHS = (16, 64, 128, 1024)  # 1024: deep enough that the pauses alone limit the rate
+DEFAULT_DEPTH = 128  # rtl/engine.sv's Depth: its run reuses the plain 4-port build
 PAUSES = dict(latency=20, outstanding=8, pause=20, pause_max=40)  # ports paused ~29% of cycles
 # Share of the 1024-beat FIFO's rate, at least (or at most for 16). Measured
 # on these shapes and pauses, memory seeds 1 to 5 (each port its own stream):
@@ -232,7 +233,8 @@ def test_fifo_depth() -> None:
     beats = sum(eng.n_beats(m, ports) for m in mats)
     rate = {}
     for depth in DEPTHS:
-        result = eng.fetch(mats, xs, ports, params=(("Depth", depth),), seed=SEED, **PAUSES)
+        params = () if depth == DEFAULT_DEPTH else (("Depth", depth),)
+        result = eng.fetch(mats, xs, ports, params=params, seed=SEED, **PAUSES)
         check_bits(mats, xs, result, f"depth {depth}, seed {SEED}")
         rate[depth] = beats / (result.done[-1] - result.taken[0])
     share = {d: r / rate[1024] for d, r in rate.items()}
@@ -294,7 +296,7 @@ def test_bandwidth(rate: int) -> None:
 
 
 def positions_around(lanes: int) -> list[int]:
-    return sorted({1, lanes - 1, lanes, lanes + 1, 2 * lanes + 3} - {0})
+    return sorted({1, lanes - 1, lanes, lanes + 1, 2 * lanes + 3})
 
 
 def stale_attention(
@@ -438,15 +440,14 @@ def test_values_wider_than_the_lanes() -> None:
 
 
 @rtl.needs_verilator
-@pytest.mark.parametrize("ports", (4,))
-def test_attention_fill_order(ports: int) -> None:
+def test_attention_fill_order() -> None:
     """Fill runs ahead of step: a short SCORES (one unit) fills while step is
     still on a long one (short rows: step waits for the lanes' final sums,
     fill does not), so fill reaches the MATVECs after it before step does.
     Fill must pass each MATVEC only when step takes that one, and start the
     next attention command only once step has read the MATVECs' beats (they
     come first in the ports' FIFOs)."""
-    gen = torch.Generator().manual_seed(SEED)
+    gen, ports = torch.Generator().manual_seed(SEED), 4
     lanes = ports * LANES_PER_PORT
     shapes = [(False, 6, 3, 16, 4 * lanes), (False, 1, 1, 16, lanes - 1)]
     cmds: list[eng.Command] = []

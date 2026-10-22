@@ -24,9 +24,28 @@ TOPS = (
 IDS = [top + ("-ftz" if params else "") for top, _, params in TOPS]
 # Synthesized smaller than their default, which is linted: the check is that
 # Yosys takes the code, and the 32-port engine needs more than 8 GB (killed
-# at that cap after 3 minutes, M5). 4 ports still build a drain of several
-# write groups.
+# at that cap after 3 minutes, M5). 4 ports (16 lanes, with the default
+# Writes = 8) still build a drain of several write groups.
 SYNTH_PARAMS = {"engine": (("Ports", 4),)}
+# (top, parameters, message): shapes that must not elaborate.
+BAD_SHAPES = [
+    # fp_product: its callers delay the addend by Regs cycles; a third
+    # register would not be placed.
+    ("fp_product", (("Regs", 3),), "Regs must be 0, 1 or 2"),
+    # dot_lane: E = 8 leaves each unit A / E = 2 partial sums for a 4-cycle
+    # loop; a group would read a sum still in the adder.
+    ("dot_lane", (("E", 8),), "A / E >= 4"),
+    # port_dma: longer bursts than AXI3 allows, a FIFO smaller than a burst,
+    # a data width that is not a power of two, a count narrower than a burst.
+    ("port_dma", (("MaxBurst", 17),), "MaxBurst"),
+    ("port_dma", (("Depth", 8),), "Depth"),
+    ("port_dma", (("DataWidth", 96),), "DataWidth"),
+    ("port_dma", (("CountWidth", 4),), "CountWidth"),
+    # engine: a port count that is not a multiple of 4 (the tile buffer's
+    # mapping), a write port wider than a pass.
+    ("engine", (("Ports", 5),), "multiple of 4"),
+    ("engine", (("Ports", 4), ("Writes", 32)), "dividing L"),
+]
 
 
 def test_there_is_rtl() -> None:
@@ -54,14 +73,6 @@ def test_synthesizes(top: str, extra: tuple, params: tuple) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-@rtl.needs_verilator
-def test_fp_product_rejects_more_than_two_registers() -> None:
-    """Its callers delay the addend by Regs cycles; a third register would not
-    be placed, so Regs = 3 must not elaborate."""
-    result = rtl.lint("fp_product", params=[("Regs", 3)])
-    assert result.returncode != 0 and "Regs must be 0, 1 or 2" in result.stderr, result.stderr
-
-
 @rtl.needs_yosys
 def test_lane_logic_depth() -> None:
     """A proxy for the lane's timing at 250 MHz (PLAN.md, M4): its deepest
@@ -72,38 +83,8 @@ def test_lane_logic_depth() -> None:
 
 
 @rtl.needs_verilator
-def test_dot_lane_rejects_a_short_loop() -> None:
-    """E = 8 leaves each unit A / E = 2 partial sums for a 4-cycle loop: a
-    group would read a sum still in the adder, so it must not elaborate."""
-    result = rtl.lint("dot_lane", params=[("E", 8)])
-    assert result.returncode != 0 and "A / E >= 4" in result.stderr, result.stderr
-
-
-@rtl.needs_verilator
-@pytest.mark.parametrize(
-    ("params", "message"),
-    [
-        ((("MaxBurst", 17),), "MaxBurst"),
-        ((("Depth", 8),), "Depth"),
-        ((("DataWidth", 96),), "DataWidth"),
-        ((("CountWidth", 4),), "CountWidth"),
-    ],
-)
-def test_port_dma_rejects_a_bad_shape(params: tuple, message: str) -> None:
-    """Longer bursts than AXI3 allows, a FIFO smaller than a burst, a data
-    width that is not a power of two, a count narrower than a burst:
-    elaboration stops with a message."""
-    result = rtl.lint("port_dma", params=list(params))
-    assert result.returncode != 0 and message in result.stderr, result.stderr
-
-
-@rtl.needs_verilator
-@pytest.mark.parametrize(
-    ("params", "message"),
-    [((("Ports", 5),), "multiple of 4"), ((("Ports", 4), ("Writes", 32)), "dividing L")],
-)
-def test_engine_rejects_a_bad_shape(params: tuple, message: str) -> None:
-    """A port count that is not a multiple of 4 (the tile buffer's mapping)
-    and a write port wider than a pass: elaboration stops with a message."""
-    result = rtl.lint("engine", params=list(params))
+@pytest.mark.parametrize(("top", "params", "message"), BAD_SHAPES)
+def test_rejects_a_bad_shape(top: str, params: tuple, message: str) -> None:
+    """Elaboration stops with a message."""
+    result = rtl.lint(top, params=list(params))
     assert result.returncode != 0 and message in result.stderr, result.stderr

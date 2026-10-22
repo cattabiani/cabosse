@@ -130,7 +130,7 @@ module engine
   localparam int unsigned GW        = Groups > 1 ? $clog2(Groups) : 1;
   localparam int unsigned CW        = $clog2(CmdDepth + 2);  // go credits: 0 .. CmdDepth + 1
   localparam int unsigned LW        = $clog2(L + 1);         // a count of lanes
-  localparam int unsigned SW        = L > 1 ? $clog2(L) : 1; // a tile buffer rotation
+  localparam int unsigned SW        = $clog2(L);             // a tile buffer rotation
   // The tile buffer: per slot, Heads heads of MaxD / E entries of E values.
   localparam int unsigned SlotDepth = Heads * MaxD / E;
   localparam int unsigned TW        = $clog2(2 * SlotDepth);  // a tile buffer address
@@ -150,7 +150,7 @@ module engine
   if (Ports % 4 != 0) begin : gen_bad_ports
     $error("engine: Ports must be a multiple of 4");
   end
-  if (E != 4 || LanesPerPort != 4 || Entries != 4) begin : gen_bad_tile
+  if (E != 4 || LanesPerPort != 4) begin : gen_bad_tile
     $error("engine: the tile buffer's mapping assumes 4 lanes per port and E = 4");
   end
 
@@ -579,8 +579,7 @@ module engine
           ? TW'(32'(slot_n) * SlotDepth + 32'(cyc_n))
           : TW'(32'(slot_n) * SlotDepth + alpha_inv(i / E));
     end
-    tile_rot = !unit_n.values ? SW'(E * alpha(32'(cyc_n)) % L)
-             : SW'(E * 32'(cyc_n) % L);
+    tile_rot = !unit_n.values ? SW'(E * alpha(32'(cyc_n))) : SW'(E * 32'(cyc_n));
   end
 
   tile_buffer #(
@@ -651,7 +650,7 @@ module engine
     logic [E-1:0]       mask;
     logic               valid, last, second;
     for (genvar e = 0; e < E; e++) begin : gen_vw
-      assign vw[e] = tile_data[(G + e) % L][(l % E)*16 +: 16];
+      assign vw[e] = tile_data[G + e][(l % E)*16 +: 16];
     end
     always_comb begin
       second = (l >> step_unit_q.dlog) == 1;  // VALUES: the pass's second head

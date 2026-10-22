@@ -188,9 +188,9 @@ it from there:
 - Positions at or past the position count are left out of a row, not
   multiplied by zero: the cache and P hold stale data there.
 - The cache's `cap` is a multiple of `L`, so every tile is 4 whole rows in
-  every channel; the head dimension is a power of two from 16 to 128; the
-  port count is a multiple of 4 (the banks' mapping, below; `MATVEC` runs
-  on any).
+  every channel; the head dimension is a power of two from 16 to 128. The
+  whole engine needs the port count a multiple of 4 (the banks' mapping,
+  below), checked at elaboration.
 - Scores and probabilities: head h's row at `h·cap` in S and P (stride
   `cap`, aligned to E for p·V's reads), so softmax reads rows of t at that
   stride (M6, M7).
