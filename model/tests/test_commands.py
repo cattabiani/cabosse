@@ -18,13 +18,20 @@ TOKENS = [3, 17, 200, 5, 99]  # one decode step each, at positions 0, 1, ...
 LAYER_READS = ("q", "k", "v", "k_cache", "v_cache", "o", "gate", "up", "down")  # engine order
 
 
-@pytest.mark.parametrize(("n_kv_heads", "tied"), [(1, False), (2, True), (4, True)])
-def test_commands_give_the_golden_decode_step(n_kv_heads: int, tied: bool) -> None:
+# (KV heads, tied, cap, S and P's stride): grouped and plain attention, the
+# stride above and below the cache's cap.
+DECODE_CASES = [(1, False, 7, 16), (2, True, 20, 16), (4, True, 5, 32)]
+
+
+@pytest.mark.parametrize(("n_kv_heads", "tied", "cap", "stride"), DECODE_CASES)
+def test_commands_give_the_golden_decode_step(
+    n_kv_heads: int, tied: bool, cap: int, stride: int
+) -> None:
     """Logits and KV cache bit-exact against decoder.decode_step, token by
     token, with grouped (1, 2 KV heads) and plain (4) attention."""
     c = tiny.tiny_config(n_kv_heads=n_kv_heads, tied=tied)
     model = decoder.from_state_dict(c, tiny.random_weights(c, seed=1))
-    layout = commands.Layout.of(c, cap=len(TOKENS) + 2)
+    layout = commands.Layout.of(c, cap=cap, stride=stride)
     hbm, cmds = commands.load(model, layout), commands.build(layout)
     cache = decoder.KVCache.empty(model, layout.cap)
     for position, token in enumerate(TOKENS):
@@ -33,8 +40,10 @@ def test_commands_give_the_golden_decode_step(n_kv_heads: int, tied: bool) -> No
         assert torch.equal(arith.bits_f32(got), arith.bits_f32(expected)), position
     for i in range(c.num_hidden_layers):
         for name, golden in (("k_cache", cache.k[i]), ("v_cache", cache.v[i])):
-            stored = hbm[layout.addr(f"layers.{i}.{name}")]
-            assert torch.equal(arith.bits_bf16(stored), arith.bits_bf16(golden)), (i, name)
+            stored = hbm[layout.addr(f"layers.{i}.{name}")][:, : len(TOKENS)]  # the rest is stale
+            assert torch.equal(
+                arith.bits_bf16(stored), arith.bits_bf16(golden[:, : len(TOKENS)])
+            ), (i, name)
 
 
 @pytest.mark.slow
@@ -43,7 +52,7 @@ def test_commands_give_the_golden_decode_step_on_smollm2() -> None:
     """The same check on the real model, 7 tokens (about 20 s)."""
     model = decoder.load(paths.SMOLLM2)
     tokens = [1, 9690, 314, 253, 1789, 28, 2]
-    layout = commands.Layout.of(model.config, cap=len(tokens))
+    layout = commands.Layout.of(model.config, cap=len(tokens), stride=16)
     hbm, cmds = commands.load(model, layout), commands.build(layout)
     cache = decoder.KVCache.empty(model, layout.cap)
     for position, token in enumerate(tokens):
@@ -135,7 +144,7 @@ def test_ladder_command_lists_fit_the_command_buffer(name: str) -> None:
 def test_buffer_capacities_cover_every_ladder_model() -> None:
     caps = arch_doc.capacities()
     for layout in arch_doc.ladder_layouts().values():
-        for b, (dtype, n) in commands.buffers(layout.config, layout.cap).items():
+        for b, (dtype, n) in commands.buffers(layout.config, layout.stride).items():
             assert caps[b][0] == dtype and n <= caps[b][1], (b, layout.config)
 
 
@@ -191,8 +200,8 @@ def test_a_list_without_output_returns_nothing() -> None:
     cmds = [x for x in commands.build(layout) if x.op != commands.Op.OUTPUT]
     assert commands.run(cmds, layout, hbm, 3, 0) is None
     decoder.decode_step(model, cache := decoder.KVCache.empty(model, 2), 3)
-    stored = hbm[layout.addr("layers.0.k_cache")]
-    assert torch.equal(arith.bits_bf16(stored), arith.bits_bf16(cache.k[0]))
+    stored = hbm[layout.addr("layers.0.k_cache")][:, :1]  # the row written; the rest is stale
+    assert torch.equal(arith.bits_bf16(stored), arith.bits_bf16(cache.k[0][:, :1]))
 
 
 def test_architecture_doc_is_up_to_date() -> None:
@@ -254,8 +263,8 @@ def test_record_step_from_a_longer_cache() -> None:
 @pytest.mark.parametrize("tied", [True, False])
 def test_recorded_calls_are_the_engine_commands(tied: bool) -> None:
     """Every MATVEC, SCORES and VALUES, in order, named after what it reads;
-    attention reads the cache's first t positions; a MATVEC's output is its
-    matrix times its input."""
+    attention records the whole cache (t = cap here); a MATVEC's output is
+    its matrix times its input."""
     c = tiny.tiny_config(tied=tied)
     model = decoder.from_state_dict(c, tiny.random_weights(c, seed=3))
     prompt = TOKENS[:3]
@@ -269,7 +278,47 @@ def test_recorded_calls_are_the_engine_commands(tied: bool) -> None:
             assert x.mem.shape == (x.cmd.n, x.cmd.m), x.name
             assert same_bits(x.out, dot.matvec(x.mem, x.a[None])[0]), x.name
         else:
-            assert x.mem.shape == (c.num_key_value_heads, t, c.head_dim), x.name
+            assert x.t == t and x.mem.shape == (c.num_key_value_heads, t, c.head_dim), x.name
+
+
+def test_stride_is_a_multiple_of_the_vector_unit_s_width() -> None:
+    """S and P's stride (the STRIDE register) is cap rounded up to 16 by
+    default; one that is not a multiple of 16 is refused."""
+    c = tiny.tiny_config()
+    assert commands.Layout.of(c, cap=20).stride == 32
+    assert commands.Layout.of(c, cap=20, stride=16).stride == 16
+    for bad in (0, 8, 20):
+        with pytest.raises(AssertionError):
+            commands.Layout.of(c, cap=20, stride=bad)
+
+
+@pytest.mark.parametrize(("cap", "stride"), [(8, 16), (20, 16), (4, 32)])
+def test_record_step_with_other_cap_and_stride(cap: int, stride: int) -> None:
+    """A cache of more positions than the step reads, and S and P at another
+    stride than the default (cap rounded up to 16), give the same step: S
+    and P hold the same rows of t at the stride, and the cache's rows past
+    t are stale (NaN)."""
+    c = tiny.tiny_config(n_kv_heads=2)
+    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=2))
+    prompt, token = TOKENS[:3], TOKENS[3]
+    got, want = (
+        commands.record_step(model, prompt, token, cap=cap, stride=stride),
+        commands.record_step(model, prompt, token),
+    )
+    assert same_bits(got[0], want[0])
+    t = len(prompt) + 1
+    for g, w in zip(got[1], want[1], strict=True):
+        assert (g.index, g.name, g.t, g.cmd.op) == (w.index, w.name, w.t, w.cmd.op), g.name
+        assert g.stride == stride, g.name
+        # P (VALUES' a) and S (SCORES' out) as rows of t, each at its stride
+        a = (g.rows(g.a), w.rows(w.a)) if g.cmd.op == commands.Op.VALUES else (g.a, w.a)
+        out = (g.rows(g.out), w.rows(w.out)) if g.cmd.op == commands.Op.SCORES else (g.out, w.out)
+        assert same_bits(*a) and same_bits(*out), g.name
+        if g.cmd.op == commands.Op.MATVEC:
+            assert same_bits(g.mem, w.mem), g.name
+        else:
+            assert g.cmd.cap == cap and g.mem.shape[1] == cap, g.name
+            assert same_bits(g.mem[:, :t], w.mem) and g.mem[:, t:].isnan().all(), g.name
 
 
 # Engine commands whose input the vector unit (or the engine command before)
@@ -358,6 +407,27 @@ def test_write_after_read_hazard() -> None:
         for earlier, kind in ((0, "write after write"), (1, "write after read"))
     ]
     assert commands.hazards(cmds) == []
+
+
+def test_read_port_hazard() -> None:
+    """A vector command reading the engine's input while the engine may
+    still read it, or the reverse, is a hazard (one read port per buffer);
+    the engine's own commands, and the vector unit's, share it in order."""
+    op, buf = commands.Op, commands.Buf
+    norm = commands.Command(op.ADD, buf.X, buf.H, buf.H, n=1, m=8)
+    q = commands.Command(op.MATVEC, buf.Q, buf.X, n=8, m=8)
+    k = commands.Command(op.MATVEC, buf.K, buf.X, n=8, m=8)
+    sumsq = commands.Command(op.SUMSQ, buf.R, buf.X, n=1, m=8)
+    end = commands.Command(op.END)
+    cases = (([norm, q, k, sumsq, end], {(3, 1), (3, 2)}), ([norm, sumsq, q, end], {(2, 1)}))
+    for cmds, pairs in cases:
+        found = commands.hazards(cmds)
+        assert {(h.kind, h.resource) for h in found} == {("read port", buf.X)}
+        assert sorted((h.cmd, h.earlier) for h in found) == sorted(
+            ((token, later), (token, earlier)) for token in (0, 1) for later, earlier in pairs
+        )
+    assert commands.hazards([norm, q, k, end]) == []
+    assert commands.hazards([norm, sumsq, sumsq, end]) == []
 
 
 def test_kv_waits() -> None:

@@ -7,20 +7,21 @@
 //   columns, W stored in the lanes' order ("Weight layout") at the same
 //   offset `addr` in every port's channel. Rows go in passes of L; in each
 //   pass port p reads its group of LanesPerPort rows, ceil(cols / E) beats.
-// - SCORES: dst[h * cap + i] = mul(dot(q[h], K[kv][i]), scale) for the heads
+// - SCORES: dst[h * stride + i] = mul(dot(q[h], K[kv][i]), scale) for the heads
 //   h < heads and positions i < t, q[h] the d = cols values of x at h * d,
 //   kv = h div group, K the cache at `addr` (D-043: position i of KV head kv
 //   in channel i mod Ports, row i div Ports of the head's region of
 //   cap / Ports rows). A unit is one head and a tile of L positions: lane l
 //   takes position j * L + l.
 // - VALUES: dst[h * d + c] = dot over i < t of (p[h][i], V[kv][i][c]), p[h]
-//   the t values of x at h * cap. A pass is up to Heads heads (one lane per
+//   the t values of x at h * stride. A pass is up to Heads heads (one lane per
 //   head and output dimension); a unit is a pass and a tile, and a lane's
 //   row runs through all tiles.
 // Ports is a multiple of 4 (the tile buffer's mapping), so a pass is whole
 // write groups. Commands need rows >= 1 and cols >= 1 (cols = 0 hangs
 // step). The attention commands need d a power of two from 16 to
-// MaxD (VALUES: d <= L), cap a multiple of L, 1 <= t <= cap, group
+// MaxD (VALUES: d <= L), cap a multiple of L, 1 <= t <= cap, stride (S and
+// P's rows, the STRIDE register) a multiple of E with t <= stride, group
 // dividing heads.
 //
 // Four stages, each with its own queue of the commands taken, so a command
@@ -97,6 +98,7 @@ module engine
   input  logic [HeadWidth-1:0]                cmd_group_i,  // query heads per KV head
   input  logic [RowWidth-1:0]                 cmd_t_i,      // positions read
   input  logic [RowWidth-1:0]                 cmd_cap_i,    // the cache's positions per head
+  input  logic [RowWidth-1:0]                 cmd_stride_i, // S and P's rows: SCORES' dst, VALUES' x
   input  logic [31:0]                         cmd_scale_i,  // SCORES, FP32
   input  logic                                go_i,         // a waiting command's x is ready
   output logic                                done_o,       // a command's last write
@@ -178,6 +180,7 @@ module engine
     logic [HeadWidth-1:0] group;
     logic [RowWidth-1:0]  t;
     logic [RowWidth-1:0]  cap;
+    logic [RowWidth-1:0]  stride;
     logic [31:0]          scale;
   } cmd_t;
 
@@ -196,12 +199,12 @@ module engine
     logic                  values, heads2;           // VALUES; Heads heads a pass
     logic [HeadWidth-1:0]  n, g;                     // heads, group
     logic [2:0]            dlog;                     // log2(d)
-    logic [RowWidth-1:0]   t, cap;                   // positions (MATVEC: rows); cap
+    logic [RowWidth-1:0]   t, stride;                // positions (MATVEC: rows); S, P's rows
     logic [AddrWidth-1:0]  region;    // bytes of a KV head's region per channel
     logic [HeadWidth-1:0]  h, r;      // the unit's first head; h mod g
     logic [AddrWidth-1:0]  kv_off;    // (h div g) * region
-    logic [RowWidth-1:0]   head_row;  // SCORES: h * cap; VALUES: h * d
-    logic [RowWidth-1:0]   xh;        // head h's x group: SCORES h * d / E; VALUES h * cap / E
+    logic [RowWidth-1:0]   head_row;  // SCORES: h * stride; VALUES: h * d
+    logic [RowWidth-1:0]   xh;        // head h's x group: SCORES h * d / E; VALUES h * stride / E
     logic [RowWidth-1:0]   pos;       // the tile's first position, j * L
     logic [AddrWidth-1:0]  unit_off;  // j * beats * BeatBytes (attention: 4 rows of d)
   } unit_t;
@@ -272,7 +275,7 @@ module engine
     u.n       = c.heads;
     u.g       = c.group;
     u.t       = c.t;
-    u.cap     = c.cap;
+    u.stride  = c.stride;
     u.region  = AddrWidth'(c.cap / RowWidth'(Ports)) << (32'(u.dlog) + 1);  // * d * 2 bytes
     return u;
   endfunction
@@ -297,16 +300,16 @@ module engine
     u.unit_off = '0;
     if (!u.values) begin
       u          = next_head(u);
-      u.head_row = u.head_row + u.cap;
+      u.head_row = u.head_row + u.stride;
       u.xh       = u.xh + RowWidth'(dim(u)) / RowWidth'(E);
     end else begin
       u          = next_head(u);
       u.head_row = u.head_row + RowWidth'(dim(u));
-      u.xh       = u.xh + u.cap / RowWidth'(E);
+      u.xh       = u.xh + u.stride / RowWidth'(E);
       if (u.heads2) begin
         u          = next_head(u);
         u.head_row = u.head_row + RowWidth'(dim(u));
-        u.xh       = u.xh + u.cap / RowWidth'(E);
+        u.xh       = u.xh + u.stride / RowWidth'(E);
       end
     end
     return u;
@@ -335,7 +338,7 @@ module engine
   assign cmd = '{op: cmd_op_i, rows: cmd_rows_i, cols: cmd_cols_i, addr: cmd_addr_i,
                  a: cmd_a_i, dst: cmd_dst_i, bf16: cmd_bf16_i, wait_go: cmd_wait_i,
                  heads: cmd_heads_i, group: cmd_group_i, t: cmd_t_i, cap: cmd_cap_i,
-                 scale: cmd_scale_i};
+                 stride: cmd_stride_i, scale: cmd_scale_i};
 
   logic [3:0] q_in_ready, q_valid, q_pop;  // issue, fill, step, drain
   cmd_t       q_head[4];
@@ -562,7 +565,7 @@ module engine
     end else begin
       x_addr_o[0] = unit_n.xh + unit_n.pos / RowWidth'(E) + cyc_n;
     end
-    x_addr_o[1] = x_addr_o[0] + unit_n.cap / RowWidth'(E);
+    x_addr_o[1] = x_addr_o[0] + unit_n.stride / RowWidth'(E);
     // SCORES reads entry cyc of every position; VALUES the 4 positions
     // E*cyc ... of every entry.
     for (int unsigned i = 0; i < L; i++) begin

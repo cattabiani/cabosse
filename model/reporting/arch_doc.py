@@ -75,7 +75,7 @@ def capacities() -> dict[commands.Buf, tuple[torch.dtype, int, str]]:
     """Each buffer at the largest size the ladder needs, and which model sets it."""
     out = {}
     for name, layout in ladder_layouts().items():
-        for b, (dtype, n) in commands.buffers(layout.config, layout.cap).items():
+        for b, (dtype, n) in commands.buffers(layout.config, layout.stride).items():
             if b not in out or n > out[b][1]:
                 out[b] = (dtype, n, name)
     return out

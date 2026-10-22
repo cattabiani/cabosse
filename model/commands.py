@@ -40,6 +40,7 @@ BF16, F32 = torch.bfloat16, torch.float32
 BEAT_BYTES = 32  # one beat of an HBM port (256 bits)
 E = 4  # weights a lane takes per cycle (D-027)
 LANES_PER_PORT = BEAT_BYTES // (E * BF16.itemsize)  # a beat holds E weights for each
+STRIDE_ALIGN = 16  # elements: S and P's stride, the vector unit's width (D-030, D-049)
 
 
 class Op(enum.IntEnum):
@@ -84,14 +85,16 @@ FLAGS = {
     Flag.NEG_B: "use -b",
     Flag.B_PER_ROW: "b holds one value per row, used for the whole row",
     Flag.B_ROW: "b holds one row, used for every row",
-    Flag.LEN_T: "rows are t long (the positions attention reads), not m",
+    Flag.LEN_T: "rows are t long (the positions attention reads), at stride STRIDE, not m",
     Flag.BY_TOKEN: "LOAD row `token` of the tensor at addr",
     Flag.BY_POSITION: "LOAD row `position` of the tensor at addr",
     Flag.SRC_BF16: "LOAD from BF16 (else FP32); converted to FP32 exactly",
 }
-# Vector-unit commands work on n rows of m elements (t with LEN_T). b is a
-# buffer of the same shape, unless a B_ flag says otherwise; with b = NONE,
-# b is the constant in `scalar`.
+# Vector-unit commands work on n rows of m elements, packed; with LEN_T, on
+# n rows of t at the STRIDE register's stride (head h's scores at
+# S[h·stride], where SCORES writes them). b is a buffer of the same shape,
+# unless a B_ flag says otherwise; with b = NONE, b is the constant in
+# `scalar`.
 ROWS = ("n", "m", "flags")
 _OPERANDS = Flag.NEG_A | Flag.NEG_B | Flag.B_PER_ROW | Flag.B_ROW | Flag.LEN_T
 # The flags each command accepts; any other flag, or both flags of an
@@ -123,11 +126,11 @@ OPS = {
         ("a", "n", "m", "cap", "addr"),
     ),
     Op.SCORES: (
-        "dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t",
+        "dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t (rows at STRIDE)",
         ("dst", "a", "n", "m", "kv_heads", "cap", "addr", "scalar"),
     ),
     Op.VALUES: (
-        "dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t",
+        "dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t (rows of a at STRIDE)",
         ("dst", "a", "n", "m", "kv_heads", "cap", "addr"),
     ),
     Op.OUTPUT: ("a (n FP32) to host memory at LOGITS_HI:LOGITS_LO", ("a", "n")),
@@ -171,12 +174,12 @@ class Buf(enum.IntEnum):
     E = 21  # SiLU's steps
 
 
-def buffers(config: LlamaConfig, cap: int) -> dict[Buf, tuple[torch.dtype, int]]:
-    """Each buffer's format and length in elements, for a model and a KV
-    cache of `cap` positions."""
+def buffers(config: LlamaConfig, stride: int) -> dict[Buf, tuple[torch.dtype, int]]:
+    """Each buffer's format and length in elements, for a model and S and P
+    rows at `stride`."""
     c = config
     q, kv = c.num_attention_heads * c.head_dim, c.num_key_value_heads * c.head_dim
-    hidden, inter, scores = c.hidden_size, c.intermediate_size, c.num_attention_heads * cap
+    hidden, inter, scores = c.hidden_size, c.intermediate_size, c.num_attention_heads * stride
     return {
         Buf.H: (F32, hidden),
         Buf.X: (BF16, hidden),
@@ -271,6 +274,7 @@ REGISTERS = [
     (0x24, "LOGITS_HI", "RW", "host address for OUTPUT, high 32 bits"),
     (0x28, "CYCLES_LO", "R", "cycles of the last token, low 32 bits"),
     (0x2C, "CYCLES_HI", "R", "cycles of the last token, high 32 bits"),
+    (0x30, "STRIDE", "RW", "row stride of S and P, in elements (SCORES, VALUES, LEN_T)"),
     (0x10000, "COMMAND_BUFFER", "W", "the command list: 64 KiB, up to 2,048 commands"),
 ]
 
@@ -287,16 +291,23 @@ def f32_value(bits: int) -> torch.Tensor:
 @dataclass(frozen=True)
 class Layout:
     """Where each tensor sits in HBM: name -> (address, shape, dtype). The KV
-    cache has `cap` rows per KV head and layer."""
+    cache has `cap` rows per KV head and layer. Also the STRIDE register's
+    value: S and P hold head h's row of t at h·stride, on chip (by default
+    `cap` rounded up to STRIDE_ALIGN; any multiple of it from the longest t
+    up works)."""
 
     config: LlamaConfig
     cap: int
+    stride: int
     tensors: dict[str, tuple[int, tuple[int, ...], torch.dtype]]
 
     @staticmethod
-    def of(config: LlamaConfig, cap: int) -> Layout:
+    def of(config: LlamaConfig, cap: int, stride: int | None = None) -> Layout:
         c = config
         assert 1 <= cap <= c.max_position_embeddings, (cap, c.max_position_embeddings)
+        if stride is None:
+            stride = -(-cap // STRIDE_ALIGN) * STRIDE_ALIGN
+        assert stride >= 1 and stride % STRIDE_ALIGN == 0, stride
         d, hidden, inter = c.head_dim, c.hidden_size, c.intermediate_size
         q, kv = c.num_attention_heads * d, c.num_key_value_heads * d
         cache = (c.num_key_value_heads, cap, d)
@@ -329,7 +340,7 @@ class Layout:
             addr += -(-n_bytes(shape, dtype) // ALIGN) * ALIGN
         if c.tie_word_embeddings:
             tensors["lm_head"] = tensors["embed"]  # last: run() names the address lm_head
-        return Layout(config, cap, tensors)
+        return Layout(config, cap, stride, tensors)
 
     def addr(self, name: str) -> int:
         return self.tensors[name][0]
@@ -348,7 +359,8 @@ def load(
     """HBM as the host fills it: weights and RoPE tables (shared with the
     model, never written), and an empty KV cache, or a copy of `cache`'s
     filled positions (a prompt run by decoder.step, which writes the same
-    bits as one decode step per position)."""
+    bits as one decode step per position). Cache rows no token has written
+    hold stale data: NaN here, so a read of one shows."""
     names = {
         "embed": model.embed,
         "rope_cos": model.cos[: layout.cap],
@@ -361,7 +373,7 @@ def load(
         names |= {p + f.name: getattr(layer, f.name) for f in fields(layer)}
     hbm = {}
     for name, (addr, shape, dtype) in layout.tensors.items():
-        t = names[name] if name in names else torch.zeros(shape, dtype=dtype)
+        t = names[name] if name in names else torch.full(shape, torch.nan, dtype=dtype)
         assert t.shape == shape and t.dtype == dtype, (name, t.shape, shape, t.dtype)
         hbm[addr] = t
     if cache is not None:
@@ -566,7 +578,7 @@ class Hazard:
     """A read or write the ordering rules do not place after the access it
     must follow: `cmd` may touch `resource` before `earlier` is done."""
 
-    kind: str  # "read after write", "write after read", "write after write"
+    kind: str  # "read after write", "write after read", "write after write", "read port"
     cmd: tuple[int, int]  # (token, index in the list)
     earlier: tuple[int, int]
     resource: Buf | tuple[int, int]  # an on-chip buffer, or (cache addr, row)
@@ -599,7 +611,14 @@ def hazards(
 
     Nothing else is assumed: a unit may run several commands at once, and
     the engine's reads ahead may come at once. A token at position p
-    writes cache row p and reads rows 0 to p."""
+    writes cache row p and reads rows 0 to p.
+
+    Besides the orderings, a buffer has one read port: two commands of
+    different units (the engine; the vector unit, which also runs LOAD and
+    KV_STORE) that read the same buffer at once are a "read port" hazard.
+    A unit reads its commands' operands in order, so its own commands
+    share a port without one. (Two writers are already ordered: "write
+    after write".)"""
     waits = engine_waits(commands) if waits is None else waits
     kv_after = kv_waits(commands) if kv_after is None else kv_after
     n = len(commands)
@@ -619,6 +638,11 @@ def hazards(
     writer: dict[Resource, int] = {}
     checks: list[tuple[str, int, int, Resource, int]] = []  # kind, cmd, earlier, what, at node
     last_engine: int | None = None
+
+    def is_engine(g: int) -> bool:
+        """Whether command g is the engine's (else the vector unit's)."""
+        return commands[g % n].op in ENGINE_OPS
+
     for token in range(2):
         for i, cmd in enumerate(commands):
             g = token * n + i
@@ -628,9 +652,8 @@ def hazards(
             if g:
                 edge(node(g - 1, handover), h)
             engine = cmd.op in ENGINE_OPS
-            reads: list[tuple[Resource, int]] = [
-                (b, st) for b in (cmd.a, cmd.b, cmd.c) if b != Buf.NONE
-            ]
+            operands = dict.fromkeys(b for b in (cmd.a, cmd.b, cmd.c) if b != Buf.NONE)
+            reads: list[tuple[Resource, int]] = [(b, st) for b in operands]
             for b, _ in reads:
                 if b in writer and (not engine or waits[i]):
                     edge(node(writer[b], done), st if engine else h)
@@ -652,6 +675,9 @@ def hazards(
             for what, at in reads:
                 if what in writer:
                     checks.append(("read after write", g, writer[what], what, at))
+                if isinstance(what, Buf):
+                    others = (k for k in readers.get(what, []) if is_engine(k) != engine)
+                    checks += [("read port", g, k, what, at) for k in others]
                 readers.setdefault(what, []).append(g)
             for what in writes:
                 earlier = [("write after read", k) for k in readers.get(what, []) if k != g]
@@ -683,10 +709,30 @@ class EngineCall:
     index: int  # in the command list
     name: str  # the Layout name of what it reads in HBM
     cmd: Command
-    a: torch.Tensor  # the input buffer, BF16
-    mem: torch.Tensor  # the matrix, or a copy of the cache's first t positions per head
-    out: torch.Tensor  # dst as written: FP32, or rounded where the buffer is BF16
+    t: int  # the positions attention reads
+    stride: int  # the STRIDE register: S and P's rows
+    a: torch.Tensor  # what it reads of its input buffer, BF16 (engine_spans)
+    mem: torch.Tensor  # the matrix, or a copy of the cache (rows at or past t stale)
+    out: torch.Tensor  # what it writes of dst: FP32, or rounded where the buffer is BF16
     wait: bool  # steps only after its go (engine_waits)
+
+    def rows(self, x: torch.Tensor) -> torch.Tensor:
+        """x (S or P as recorded: n rows at the stride) as its n rows of t."""
+        return x.view(self.cmd.n, self.stride)[:, : self.t]
+
+
+def engine_spans(cmd: Command, stride: int) -> tuple[int, int]:
+    """The elements an engine command reads from the start of its input
+    buffer and writes from the start of dst: SCORES writes rows of t at
+    `stride` (past t, the rows keep what they held), VALUES reads them."""
+    match cmd.op:
+        case Op.MATVEC:
+            return cmd.m, cmd.n
+        case Op.SCORES:
+            return cmd.n * cmd.m, cmd.n * stride
+        case Op.VALUES:
+            return cmd.n * stride, cmd.n * cmd.m
+    raise AssertionError(f"not an engine command: {cmd.op!r}")
 
 
 def run(
@@ -698,27 +744,40 @@ def run(
     record: Callable[[EngineCall], None] | None = None,
 ) -> torch.Tensor | None:
     """Execute a command list for one token, as the controller does: buffers
-    start empty, HBM (the KV cache) is updated in place. Returns what OUTPUT
-    wrote to the host, or None for a list without OUTPUT (a prompt token
-    whose logits the host does not need). `record` gets every engine
+    start with stale data (NaN here, so a read of an element no command
+    wrote shows), HBM (the KV cache) is updated in place. Returns what
+    OUTPUT wrote to the host, or None for a list without OUTPUT (a prompt
+    token whose logits the host does not need). `record` gets every engine
     command's EngineCall."""
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
-    formats = buffers(layout.config, layout.cap)
+    formats = buffers(layout.config, layout.stride)
     names = {addr: name for name, (addr, _, _) in layout.tensors.items()} if record else {}
     waits = engine_waits(commands) if record else []
-    buf: dict[Buf, torch.Tensor] = {}
+    buf = {
+        b: torch.full((length,), torch.nan, dtype=dtype) for b, (dtype, length) in formats.items()
+    }
     output = None
     t = position + 1  # positions attention reads: 0 ... position
+    stride = layout.stride  # the STRIDE register
+    assert t <= min(layout.cap, stride), (t, layout.cap, stride)
 
-    def write(dst: Buf, x: torch.Tensor) -> None:
-        """Store an FP32 result, rounded if the buffer is BF16."""
-        dtype, length = formats[dst]
-        assert x.dtype == F32 and x.numel() <= length, (dst, x.dtype, x.numel(), length)
-        buf[dst] = arith.bf16(x) if dtype == BF16 else x
+    def span(x: Buf, n: int, length: int, row_stride: int = 0) -> torch.Tensor:
+        """n rows of `length` elements of buffer x, `row_stride` apart
+        (packed by default), as a view."""
+        row_stride = row_stride or length
+        assert length <= row_stride and n * row_stride <= len(buf[x]), (x, n, length, row_stride)
+        return buf[x][: n * row_stride].view(n, row_stride)[:, :length]
+
+    def write(dst: torch.Tensor, x: torch.Tensor) -> None:
+        """Store an FP32 result in a span, rounded if the buffer is BF16."""
+        assert x.dtype == F32 and x.shape == dst.shape, (x.dtype, x.shape, dst.shape)
+        dst.copy_(arith.bf16(x) if dst.dtype == BF16 else x)
 
     def rows(cmd: Command, x: Buf) -> torch.Tensor:
-        """Buffer x as the command's n rows."""
-        return buf[x].reshape(cmd.n, cmd.row_length(t))
+        """Buffer x as the command's n rows: of m, or of t at the stride."""
+        if cmd.flags & Flag.LEN_T:
+            return span(x, cmd.n, t, stride)
+        return span(x, cmd.n, cmd.m)
 
     def operand_a(cmd: Command) -> torch.Tensor:
         v = rows(cmd, cmd.a)
@@ -728,9 +787,9 @@ def run(
         if cmd.b == Buf.NONE:
             v = f32_value(cmd.scalar)
         elif cmd.flags & Flag.B_PER_ROW:
-            v = buf[cmd.b].reshape(cmd.n, 1)
+            v = span(cmd.b, cmd.n, 1)
         elif cmd.flags & Flag.B_ROW:
-            v = buf[cmd.b].reshape(1, -1)
+            v = span(cmd.b, 1, cmd.row_length(t))
         else:
             v = rows(cmd, cmd.b)
         return -v if cmd.flags & Flag.NEG_B else v
@@ -754,45 +813,46 @@ def run(
                 elif cmd.flags & Flag.BY_POSITION:
                     mem = mem[position]
                 assert mem.numel() == cmd.m, (mem.shape, cmd.m)
-                write(cmd.dst, arith.up(mem.reshape(-1)) if mem.dtype == BF16 else mem.reshape(-1))
+                mem = mem.reshape(1, -1)
+                write(span(cmd.dst, 1, cmd.m), arith.up(mem) if mem.dtype == BF16 else mem)
             case Op.MATVEC:
                 assert mem.shape == (cmd.n, cmd.m) and a.dtype == BF16, (mem.shape, a.dtype)
-                write(cmd.dst, dot.matvec(mem, a[None])[0])  # one vector
+                write(span(cmd.dst, 1, cmd.n), dot.matvec(mem, span(cmd.a, 1, cmd.m)))  # one vector
             case Op.KV_STORE:
                 assert mem.shape == (cmd.n, cmd.cap, cmd.m) and a.dtype == F32, (mem.shape, a.dtype)
-                mem[:, position] = arith.bf16(a.reshape(cmd.n, cmd.m))  # the cache is BF16
+                mem[:, position] = arith.bf16(span(cmd.a, cmd.n, cmd.m))  # the cache is BF16
             case Op.SCORES:
-                q = a.reshape(
-                    cmd.kv_heads, cmd.n // cmd.kv_heads, cmd.m
-                )  # head h: KV head h // group
+                q = span(cmd.a, cmd.n, cmd.m).reshape(cmd.kv_heads, -1, cmd.m)  # KV head h // group
                 s = decoder.attention_scores(q, mem[:, None, :t], f32_value(cmd.scalar))
-                write(cmd.dst, s.reshape(-1))
+                write(span(cmd.dst, cmd.n, t, stride), s.reshape(cmd.n, t))
             case Op.VALUES:
-                p = a.reshape(cmd.kv_heads, cmd.n // cmd.kv_heads, t)
-                write(cmd.dst, decoder.attention_values(p, mem[:, None, :t]).reshape(-1))
+                p = span(cmd.a, cmd.n, t, stride).reshape(cmd.kv_heads, -1, t)
+                o = decoder.attention_values(p, mem[:, None, :t])
+                write(span(cmd.dst, cmd.n, cmd.m), o.reshape(cmd.n, cmd.m))
             case Op.OUTPUT:
-                assert a.shape == (cmd.n,) and a.dtype == F32, (a.shape, a.dtype)
-                output = a.clone()
+                assert a.dtype == F32, a.dtype
+                output = span(cmd.a, 1, cmd.n)[0].clone()
             case Op.ADD | Op.MUL:
-                write(cmd.dst, binary[cmd.op](operand_a(cmd), operand_b(cmd)).reshape(-1))
+                write(rows(cmd, cmd.dst), binary[cmd.op](operand_a(cmd), operand_b(cmd)))
             case Op.FMA:
                 fma = arith.fma(operand_a(cmd), operand_b(cmd), rows(cmd, cmd.c))
-                write(cmd.dst, fma.reshape(-1))
+                write(rows(cmd, cmd.dst), fma)
             case Op.EXP | Op.RECIP | Op.RSQRT:
-                write(cmd.dst, unary[cmd.op](operand_a(cmd)).reshape(-1))
+                write(rows(cmd, cmd.dst), unary[cmd.op](operand_a(cmd)))
             case Op.SUM | Op.SUMSQ | Op.MAX:
-                write(cmd.dst, reduce[cmd.op](rows(cmd, cmd.a)))
+                write(span(cmd.dst, 1, cmd.n), reduce[cmd.op](rows(cmd, cmd.a))[None])
             case Op.ROTATE_HALF:
-                write(cmd.dst, vector.rotate_half(rows(cmd, cmd.a)).reshape(-1))
+                write(rows(cmd, cmd.dst), vector.rotate_half(rows(cmd, cmd.a)))
             case Op.END:  # must be the last command (the COMMANDS register's count)
                 assert i == len(commands) - 1, f"{len(commands) - 1 - i} commands after END"
                 return output
             case _:  # the controller stops with STATUS error and the index in ERROR
                 raise AssertionError(f"unknown command {cmd.op!r}")
         if record is not None and cmd.op in ENGINE_OPS:
-            read = mem if cmd.op == Op.MATVEC else mem[:, :t].clone()  # later tokens write it
-            out = buf[cmd.dst].clone()
-            record(EngineCall(i, names[cmd.addr], cmd, a.clone(), read, out, waits[i]))
+            read = mem if cmd.op == Op.MATVEC else mem.clone()  # later tokens write the cache
+            n_in, n_out = engine_spans(cmd, stride)
+            x, out = span(cmd.a, 1, n_in)[0].clone(), span(cmd.dst, 1, n_out)[0].clone()
+            record(EngineCall(i, names[cmd.addr], cmd, t, stride, x, read, out, waits[i]))
     raise AssertionError("command list without END")
 
 
@@ -801,11 +861,15 @@ def record_step(
     prompt: list[int],
     token: int,
     cache: decoder.KVCache | None = None,
+    cap: int | None = None,
+    stride: int | None = None,
 ) -> tuple[torch.Tensor, list[EngineCall]]:
     """One decode step of `token` at position len(prompt), after `prompt`
     (run by decoder.step, or given as `cache`, its KV cache copied into HBM):
-    the logits and the step's engine commands as run() executed them."""
-    layout = Layout.of(model.config, cap=len(prompt) + 1)
+    the logits and the step's engine commands as run() executed them. The
+    KV cache holds `cap` positions (by default just the step's), S and P's
+    rows sit at `stride` (by default cap)."""
+    layout = Layout.of(model.config, len(prompt) + 1 if cap is None else cap, stride)
     if cache is None:
         cache = decoder.KVCache.empty(model, layout.cap)
         if prompt:
