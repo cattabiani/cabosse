@@ -1381,7 +1381,7 @@ with the memory model's write side; real data, speed and
   functions: specials (every triple for add, mul, fma), each function's
   edges (exp's ties and integers of t, clamp, subnormal results; the
   inputs recip and rsqrt scale) and random bits, operations interleaved;
-  slow: 10^8 per operation and the M1 exhaustive ranges (82 s on 16
+  slow: 10^8 per operation and the M1 exhaustive ranges (87 s on 16
   cores). Every input of exp, recip and rsqrt: `CABOSSE_SWEEP=1`, on
   request, about 30 minutes (estimate from the slow run's rate). Hand
   mutations: 8 caught; one (exp's clamp at 151) gives the same bits (past
@@ -1389,9 +1389,9 @@ with the memory model's write side; real data, speed and
   chain: it is only a reduction (`MAX` per row), so it goes with the
   reductions (the vector-unit step). Area (`scripts/measure_m6.py area`,
   `reports/data/M6.json`): Yosys for UltraScale+, one `fp32_fma` 1,554
-  LUTs, 409 registers, 2 DSPs; the chain 11,622 LUTs, 4,424 registers, 14
-  DSPs. Scaled by M3's Vivado numbers for one FMA (estimate): 9,438 LUTs
-  and 14 DSPs a slot, 151,011 LUTs, 92,590 registers and 224 DSPs for 16
+  LUTs, 409 registers, 2 DSPs; the chain 11,707 LUTs, 4,392 registers, 14
+  DSPs. Scaled by M3's Vivado numbers for one FMA (estimate): 9,507 LUTs
+  and 14 DSPs a slot, 152,116 LUTs, 91,921 registers and 224 DSPs for 16
   slots. Fewer Newton steps would not save area (the chain's length is
   exp's). Not done (simplify review): the delay lines carry every state
   field (about 1-2% of the LUTs could go, at some readability), and the
