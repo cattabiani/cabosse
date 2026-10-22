@@ -24,7 +24,6 @@ for sub in ("model", "verif"):
     sys.path.insert(0, str(REPO / sub))
 
 from reporting import blocks, m5, measure  # noqa: E402
-from reporting.measure import pytest_summary  # noqa: E402
 
 import rtl  # noqa: E402, F401  (puts .tools/ on PATH for the suites)
 
@@ -35,7 +34,7 @@ SUITES = {"fast": ["--deselect", UP_TO_DATE], "slow": ["-m", "slow"]}
 def measure_tests() -> None:
     data = {"provenance": measure.provenance(), "tests": {}}
     for name, extra in SUITES.items():
-        data["tests"][name] = pytest_summary(extra)
+        data["tests"][name] = measure.pytest_summary(extra)
         print(name, data["tests"][name], flush=True)
     m5.DATA.write_text(json.dumps(data, indent=1) + "\n")
     print(f"written: {m5.DATA}")

@@ -11,7 +11,7 @@ import re
 
 import paths
 
-from reporting import blocks
+from reporting import blocks, m3
 
 PATH = paths.REPORTS / "M5.md"
 DATA = paths.REPORTS / "data" / "M5.json"
@@ -20,7 +20,6 @@ RTL_CHECKS = paths.REPO / "verif" / "tests" / "test_rtl_checks.py"
 ENGINE_RTL = paths.REPO / "rtl" / "engine.sv"
 CRITERION = 0.9  # PLAN.md, M5: 90% of the bandwidth, and of the perf model on attention
 LONG = ("1023", "8191")  # the long positions of the attention criterion
-REFERENCE_DEPTH = "1024"  # the FIFO deep enough that only the pauses limit (the measurement's)
 
 
 def span(values: list[float], fmt: str = ".3f") -> str:
@@ -47,15 +46,17 @@ def real_table(real: dict) -> str:
     """Per position: how far the measured cycles are from the perf model's."""
     rows = []
     for position, cmds in real["positions"].items():
-        mv = [c for c in cmds if c["op"] == "matvec"]
-        by_op = {op: [c for c in cmds if c["op"] == op] for op in ("scores", "values")}
+        others = [off(c) for c in cmds[1:] if c["op"] == "matvec"]
+        worst = [
+            max((off(c) for c in cmds if c["op"] == op), key=abs) for op in ("scores", "values")
+        ]
         rows.append(
             [
                 position,
                 len(cmds),
                 f"{off(cmds[0]):+.1%}",
-                f"{min(map(off, mv[1:])):+.1%} to {max(map(off, mv[1:])):+.1%}",
-                *(f"{max(map(off, by_op[op]), key=abs):+.1%}" for op in by_op),
+                f"{min(others):+.1%} to {max(others):+.1%}",
+                *(f"{w:+.1%}" for w in worst),
             ]
         )
     header = ["position", "commands", "first q", "other MATVECs", "SCORES", "VALUES"]
@@ -85,15 +86,16 @@ def bandwidth_table(bandwidth: dict) -> str:
 
 
 def depth_table(depth: dict) -> str:
-    """Rate by FIFO depth, as a share of the reference depth's, per pause
-    setting (a range over the memory seeds)."""
+    """Rate by FIFO depth, as a share of the deepest FIFO's (deep enough that
+    only the pauses limit), per pause setting (a range over the memory
+    seeds)."""
     rates = depth["rates"]
     pauses = list(rates)
-    depths = [d for d in rates[pauses[0]] if d != REFERENCE_DEPTH]
+    *depths, reference = sorted(rates[pauses[0]], key=int)
     rows = [
         [d]
         + [
-            span([r / ref for r, ref in zip(rates[p][d], rates[p][REFERENCE_DEPTH], strict=True)])
+            span([r / ref for r, ref in zip(rates[p][d], rates[p][reference], strict=True)])
             for p in pauses
         ]
         for d in depths
@@ -105,16 +107,22 @@ def cycles_per_s(speed: dict) -> list[float]:
     return [c / t for c, t in zip(speed["run_cycles"], speed["run_s"], strict=True)]
 
 
+def speed_measured(speed: dict) -> str:
+    return (
+        f"build {span(speed['build_s'], '.0f')} s; "
+        f"{span(cycles_per_s(speed), ',.0f')} simulated cycles/s"
+    )
+
+
 def speed_text(speed: dict) -> str:
-    rates = cycles_per_s(speed)
-    per_s = min(rates)
+    per_s = min(cycles_per_s(speed))
     tokens = [
         f"position {p}: {sum(terms.values()):,.0f} cycles per token (perf model, serial), "
         f"about {sum(terms.values()) / per_s:.0f} s"
         for p, terms in speed["token_cycles"].items()
     ]
     return (
-        f"Build {span(speed['build_s'], '.0f')} s; {span(rates, ',.0f')} simulated cycles/s "
+        f"{speed_measured(speed).capitalize()} "
         f"({speed['ports']} ports, three runs). In M7 at that speed (estimate; the full "
         f"design will simulate slower): {'; '.join(tokens)}."
     )
@@ -132,14 +140,11 @@ def generated() -> dict[str, str]:
         if m["share"] < CRITERION
     ]
     use = attention_use(real)
-    worst_at, worst = max(
-        (
-            (f"{c['name']} at {p}", abs(off(c)))
-            for p, cmds in real["positions"].items()
-            for c in cmds
-        ),
-        key=lambda pair: pair[1],
+    worst_p, worst_c = max(
+        ((p, c) for p, cmds in real["positions"].items() for c in cmds),
+        key=lambda pc: abs(off(pc[1])),
     )
+    worst = abs(off(worst_c))
     speed = engine["speed"]
     exit_rows = [
         [
@@ -165,8 +170,7 @@ def generated() -> dict[str, str]:
         ],
         [
             "Verilator speed measured, to plan M7",
-            f"build {span(speed['build_s'], '.0f')} s; "
-            f"{span(cycles_per_s(speed), ',.0f')} cycles/s",
+            speed_measured(speed),
             "yes",
         ],
         [
@@ -181,11 +185,11 @@ def generated() -> dict[str, str]:
     answer_row = [
         "Every engine command of the layer test within 10% of the perf model (M5 "
         "answers; not an exit criterion)",
-        f"at most {worst:.1%} off ({worst_at})",
+        f"at most {worst:.1%} off ({worst_c['name']} at {worst_p})",
         blocks.met(worst <= 0.10),
     ]
     shape = (
-        f"{engine['real']['ports']} ports, {4 * engine['real']['ports']} lanes, a "
+        f"{real['ports']} ports, {4 * real['ports']} lanes, a "
         f"{constant(ENGINE_RTL, 'Depth')}-beat FIFO per port, "
         f"{constant(ENGINE_RTL, 'Writes')} results per cycle on the write port; the "
         f"memory model at F2's read latency, {real['memory']['latency']} cycles, with "
@@ -210,7 +214,7 @@ def generated() -> dict[str, str]:
         "speed-provenance": blocks.provenance_text(speed["provenance"]),
         "logic-depth": depth_limits,
         "tests-provenance": blocks.provenance_text(data["provenance"]),
-        "tests": blocks.table(["suite", "pytest summary"], [[k, v] for k, v in tests.items()]),
+        "tests": m3.tests_table(tests),
     }
 
 
