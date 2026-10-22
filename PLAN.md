@@ -1212,6 +1212,12 @@ step and drain, so a sequencing fix is made once); checkpoint report.
   first `q` +7.7% (nothing before it to read behind), `VALUES` at 63 -5.1%,
   `SCORES` at 63 -3.8%, the other `MATVEC`s -1.4% to 0.0%. `long_cache`
   has tests on a tiny model (two hand mutations caught).
+  Verilator (16 cores, quiet machine, three runs): build 261-275 s (was
+  155-165 s before attention); 6,688-6,698 simulated cycles/s (was
+  6,970-7,199). With the perf model's serial cycles per token (707,894 at
+  position 63, 2,558,093 at 8191), M7 would need about 106 s and 382 s of
+  wall time per simulated token (estimate; the full design will simulate
+  slower).
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
