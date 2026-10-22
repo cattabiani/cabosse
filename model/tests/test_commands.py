@@ -229,6 +229,24 @@ def test_record_step_matches_running_token_by_token(n_kv_heads: int, n_prompt: i
         assert all(same_bits(getattr(g, f), getattr(e, f)) for f in ("a", "mem", "out")), g.name
 
 
+def test_record_step_from_a_longer_cache() -> None:
+    """A cache filled past the prompt and cut back to it (as the long
+    positions reuse one saved cache) gives the same step as the prompt run
+    by record_step itself: the rows past the prompt are never read."""
+    c = tiny.tiny_config(n_kv_heads=2)
+    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=2))
+    prompt, token = TOKENS[:4], TOKENS[4]
+    cache = decoder.KVCache.empty(model, 16)
+    decoder.step(model, cache, TOKENS)  # position 4 too, which the step rewrites
+    cache.length = len(prompt)
+    got_logits, got = commands.record_step(model, prompt, token, cache)
+    want_logits, want = commands.record_step(model, prompt, token)
+    assert same_bits(got_logits, want_logits)
+    for g, w in zip(got, want, strict=True):
+        assert (g.index, g.name, g.cmd) == (w.index, w.name, w.cmd)
+        assert all(same_bits(getattr(g, f), getattr(w, f)) for f in ("a", "mem", "out")), g.name
+
+
 @pytest.mark.parametrize("tied", [True, False])
 def test_recorded_calls_are_the_engine_commands(tied: bool) -> None:
     """Every MATVEC, SCORES and VALUES, in order, named after what it reads;
