@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from cocotb_tools.runner import get_runner
 from paths import REPO
 
 RTL = REPO / "rtl"
+STUBS = REPO / "verif" / "stubs"  # stand-ins for logic_depth
 SOURCES = RTL / "sources.f"  # every RTL file in compile order
 BUILD = REPO / "verif" / "sim_build"  # git-ignored
 TOOLS_BIN = REPO / ".tools" / "oss-cad-suite" / "bin"
@@ -104,7 +106,10 @@ def synthesize(
 
 
 def logic_depth(
-    top: str, extra: Sequence[Path] = (), params: Sequence[tuple[str, int]] = ()
+    top: str,
+    extra: Sequence[Path] = (),
+    params: Sequence[tuple[str, int]] = (),
+    stubs: Sequence[Path] = (),
 ) -> int:
     """The longest register-to-register path of `top`, in cells (LUTs, carry
     chains, muxes), after Yosys's synthesis for UltraScale+ (F2's family): a
@@ -114,15 +119,30 @@ def logic_depth(
     LUTs), and flip-flops and block RAMs are deleted. A LUT RAM's read is
     then a mux of flip-flops, about as deep. Each carry block (CARRY4, 4
     bits of an add) counts as one cell, though it is much faster than a
-    LUT."""
+    LUT. stubs replace the RTL files of the same name (verif/stubs/)."""
+    sources = SOURCES
+    if stubs:
+        names = {p.name for p in stubs}
+        lines = [ln.strip() for ln in SOURCES.read_text().splitlines()]
+        kept = [str(RTL / ln) for ln in lines if ln.endswith(".sv") and Path(ln).name not in names]
+        listed = tempfile.NamedTemporaryFile("w", suffix=".f", delete=False)
+        listed.write("\n".join([*kept, *map(str, stubs)]) + "\n")
+        listed.close()
+        sources = Path(listed.name)
     files = " ".join(str(p) for p in extra)
     overrides = " ".join(f"-G {name}={value}" for name, value in params)
     script = (
-        f"read_slang -F {SOURCES} {files} --top {top} {overrides}; "
+        f"read_slang -F {sources} {files} --top {top} {overrides}; "
         f"synth_xilinx -family xcup -flatten -noiopad -noclkbuf -nolutram -nosrl -top {top}; "
         "delete t:FD* t:RAMB* t:URAM*; ltp -noff"
     )
-    result = subprocess.run(["yosys", "-m", "slang", "-p", script], capture_output=True, text=True)
+    try:
+        result = subprocess.run(
+            ["yosys", "-m", "slang", "-p", script], capture_output=True, text=True
+        )
+    finally:
+        if stubs:
+            sources.unlink()
     assert result.returncode == 0, result.stdout[-2000:] + result.stderr
     match = re.search(r"Longest topological path in \S+ \(length=(\d+)\)", result.stdout)
     assert match, result.stdout[-2000:]

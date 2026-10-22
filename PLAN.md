@@ -1138,7 +1138,7 @@ step and drain, so a sequencing fix is made once); checkpoint report.
     and 310 s of wall time per simulated token (estimate; the full design
     will simulate slower). CI builds and runs the 128-lane tests (marked
     `wide`) in a job of its own, beside the RTL job.
-- [ ] Engine attention. Owner, 2026-10-13: the KV layout is D-043. A long
+- [x] Engine attention (PRs #55, #56 and the walker PR). Owner, 2026-10-13: the KV layout is D-043. A long
   position's KV cache is computed once by the golden model and saved under
   the git-ignored `weights/`, named by a hash of the weights, the prompt
   and its length; the test recomputes a 64-position prefix and checks it
@@ -1222,6 +1222,19 @@ step and drain, so a sequencing fix is made once); checkpoint report.
   position 63, 2,558,093 at 8191), M7 would need about 106 s and 382 s of
   wall time per simulated token (estimate; the full design will simulate
   slower).
+  Walker PR: a `MATVEC` pass is a `SCORES` unit of one head whose
+  positions are rows (`unit_t`'s `matvec` and `beats`; t = rows), so issue,
+  step and drain each walk one sequence (`unit_init`, `unit_next`,
+  `last_unit`); the per-stage pass counters, the drain's row mask and
+  `last_pass` are gone, and lanes past a `MATVEC`'s rows take no beat (as
+  attention's already did). Step registers the unit's cycle count. Logic
+  depth with the FMA stubbed (8 ports): 22 cells, 11 of them carry blocks
+  (before the PR: 23, 12; the first version, before the registered count
+  and `/simplify`: 25, 12). New check: `ColWidth` at most `RowWidth`. All engine tests
+  pass unchanged, cycle counts included; 7 hand mutations: 5 caught, 2
+  harmless (a `MATVEC` reading every port: the extra beats are popped and
+  ignored, only memory traffic grows; a `MATVEC` unit freeing a tile slot:
+  both slots are empty while a `MATVEC` steps).
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,

@@ -14,6 +14,10 @@ FTZ = (("Ftz", 1),)  # the flush-to-zero variant (D-016's cost)
 # mac_loop, the accumulate loop that met 250 MHz on F2's part (Vivado, M3,
 # +0.877 ns), has 17 by the same count.
 MAX_LANE_DEPTH = 19
+# The engine's own control path (8 ports, the scale's FMA stubbed: the FMA
+# alone is 27, and met 250 MHz in M3), its value when written (M5's walker
+# PR): next-cycle unit state into the RAMs' addresses.
+MAX_ENGINE_CONTROL_DEPTH = 22
 # (top, extra files, parameters): our modules, the harnesses in platforms/,
 # then the units' flush-to-zero variants.
 TOPS = (
@@ -43,11 +47,13 @@ BAD_SHAPES = [
     ("port_dma", (("CountWidth", 4),), "CountWidth"),
     # engine: a port count that is not a multiple of 4 (the tile buffer's
     # mapping), a write port wider than a pass, a head dimension unit_t.dlog
-    # cannot hold or not a power of two.
+    # cannot hold or not a power of two, a row's beats wider than step's
+    # cycle count.
     ("engine", (("Ports", 5),), "multiple of 4"),
     ("engine", (("Ports", 4), ("Writes", 32)), "dividing L"),
     ("engine", (("Ports", 4), ("MaxD", 256)), "MaxD"),
     ("engine", (("Ports", 4), ("MaxD", 96)), "MaxD"),
+    ("engine", (("Ports", 4), ("ColWidth", 24)), "ColWidth"),
 ]
 
 
@@ -83,6 +89,16 @@ def test_lane_logic_depth() -> None:
     not grow past MAX_LANE_DEPTH cells. Vivado has the last word."""
     depth = rtl.logic_depth("dot_lane")
     assert depth <= MAX_LANE_DEPTH, f"dot_lane: {depth} cells deep, limit {MAX_LANE_DEPTH}"
+
+
+@pytest.mark.slow
+@rtl.needs_yosys
+def test_engine_control_depth() -> None:
+    """The engine's deepest path without the FMA may not grow past
+    MAX_ENGINE_CONTROL_DEPTH cells (about 5 minutes and 4 GB). Vivado has
+    the last word (M8)."""
+    depth = rtl.logic_depth("engine", params=[("Ports", 8)], stubs=[rtl.STUBS / "fp32_fma.sv"])
+    assert depth <= MAX_ENGINE_CONTROL_DEPTH, f"engine: {depth} cells deep"
 
 
 @rtl.needs_verilator
