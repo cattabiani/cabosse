@@ -24,9 +24,9 @@
 // dividing heads.
 //
 // Four stages, each with its own queue of the commands taken, so a command
-// starts while earlier ones finish (PLAN.md, M5). Each walks a command's
-// units (unit_init, unit_next): a MATVEC's passes, an attention command's
-// units as above.
+// starts while earlier ones finish (PLAN.md, M5). Issue, step and drain
+// each walk a command's units (unit_init, unit_next): a MATVEC's passes, an
+// attention command's units as above; fill walks attention's only.
 // - Issue: DMA commands, in order. MATVEC: per pass, one to each port with
 //   rows in it. Attention: per unit and head, one to every port, the tile's
 //   4 rows (d / 4 beats). It runs ahead as far as the DMAs' FIFOs allow.
@@ -181,13 +181,6 @@ module engine
     logic [31:0]          scale;
   } cmd_t;
 
-  // --- MATVEC helpers ----------------------------------------------------------
-
-  // Beats per row.
-  function automatic logic [ColWidth-1:0] n_beats(logic [ColWidth-1:0] cols);
-    return cols / ColWidth'(E) + ColWidth'(cols % ColWidth'(E) != '0);
-  endfunction
-
   // --- Units -------------------------------------------------------------------
   //
   // A command is a sequence of units. MATVEC: its passes of L rows.
@@ -257,17 +250,28 @@ module engine
     return ports;
   endfunction
 
+  // Each port's beats per unit and head: a row's ceil(cols / E), for
+  // attention TileRows * d / BeatValues = d / E.
+  function automatic logic [ColWidth-1:0] n_beats(logic [ColWidth-1:0] cols);
+    return cols / ColWidth'(E) + ColWidth'(cols % ColWidth'(E) != '0);
+  endfunction
+  // A MATVEC: one head of t = rows positions; its attention fields stay 0.
   function automatic unit_t unit_init(cmd_t c);
     unit_t u;
     u = '0;
-    u.matvec  = c.op == OpMatvec;
-    u.beats   = n_beats(c.cols);  // attention: TileRows * d / BeatValues = d / E
+    u.matvec = c.op == OpMatvec;
+    u.beats  = n_beats(c.cols);
+    if (u.matvec) begin
+      u.n = HeadWidth'(1);
+      u.t = c.rows;
+      return u;
+    end
     for (int unsigned i = 0; i < ColWidth; i++) if (c.cols[i]) u.dlog = 3'(i);  // d = 2^dlog
     u.values  = c.op == OpValues;
     u.heads2  = u.values && 2 * 32'(c.cols) <= L;
-    u.n       = u.matvec ? HeadWidth'(1) : c.heads;
+    u.n       = c.heads;
     u.g       = c.group;
-    u.t       = u.matvec ? c.rows : c.t;
+    u.t       = c.t;
     u.cap     = c.cap;
     u.region  = AddrWidth'(c.cap / RowWidth'(Ports)) << (32'(u.dlog) + 1);  // * d * 2 bytes
     return u;
@@ -417,6 +421,8 @@ module engine
       iss_busy_q   <= 1'b1;
       iss_addr_q   <= q_head[0].addr;
       iss_head_q   <= 1'b0;
+      // The unit and its ports from each branch's own copy, in parallel: a
+      // mux of the two units before unit_ports would lengthen the path.
       iss_unit_q   <= unit_init(q_head[0]);
       iss_active_q <= unit_ports(unit_init(q_head[0]));
     end else if (iss_done) begin
