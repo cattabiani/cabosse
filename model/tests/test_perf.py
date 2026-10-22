@@ -85,6 +85,17 @@ def test_scores_pass_per_head_and_tile() -> None:
     assert perf.engine_cycles(shapes, design) == 4 * 16
 
 
+def test_values_passes_of_two_heads() -> None:
+    """p.V's engine cycles: passes of at most 2 heads, as the engine runs
+    them, even when the lanes would hold more (SmolLM2's 9 heads of 64 on
+    256 lanes: 5 passes, not 3); one head a pass when two do not fit."""
+    design = {"lanes": 256, "macs_per_lane": 4, "accumulators": 16, "engine_startup_cycles": 0}
+    cmd = commands.Command(commands.Op.VALUES, n=9, m=64, kv_heads=3)
+    one_pass = perf.engine_cycles(((128, 100),), design)
+    assert perf.engine_cycles(perf.attention(cmd, 100, 256).engine_shapes, design) == 5 * one_pass
+    assert len(perf.attention(cmd, 100, 64).engine_shapes) == 9
+
+
 def test_seconds_by_hand() -> None:
     work = perf.Work(
         weight_bytes=1000,

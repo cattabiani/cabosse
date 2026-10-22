@@ -66,6 +66,7 @@ UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 ATTENTION_KINDS = ("scores", "values")
 # Design values that are counts: whole numbers (Design checks).
 ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
+VALUES_HEADS = 2  # heads per p.V pass, at most (rtl/engine.sv's Heads)
 
 
 @dataclass(frozen=True)
@@ -222,13 +223,15 @@ def attention(cmd: commands.Command, positions: int, lanes: int) -> Step:
     runs it (architecture.md, KV cache layout): K or V read in whole tiles of
     `lanes` positions, once per query head (no tile shared between heads;
     Q-27). Scores have a row per position, a pass per head and tile; p.V a
-    row per head and output dimension."""
+    row per head and output dimension, in passes of up to VALUES_HEADS heads
+    (one if two do not fit the lanes)."""
     heads, d = cmd.n, cmd.m
     tiles = math.ceil(positions / lanes)
     if cmd.op == commands.Op.SCORES:
         shapes = ((positions, d),) * heads
     else:
-        shapes = ((heads * d, positions),)
+        per_pass = max(1, min(VALUES_HEADS, lanes // d))
+        shapes = tuple((min(per_pass, heads - h) * d, positions) for h in range(0, heads, per_pass))
     return Step(
         cmd.op.name.lower(),
         (heads, positions, d),

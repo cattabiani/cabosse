@@ -121,9 +121,9 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 |---|---|---|---|
 | as planned | 92.6% | 94.8% | 94.8% |
 | 64 lanes x 8, A = 32 | 94.0% | 77.0% | 50.6% |
-| 512 lanes x 1, A = 4 | 70.6% | 73.6% | 72.6% |
+| 512 lanes x 1, A = 4 | 70.5% | 61.1% | 43.8% |
 | core at 125 MHz | 92.6% | 94.8% | 94.8% |
-| 256 lanes, HBM at 450 MHz | 85.1% | 87.8% | 86.6% |
+| 256 lanes, HBM at 450 MHz | 84.7% | 81.2% | 68.6% |
 <!-- end: engine -->
 
 ## Predictions
@@ -137,15 +137,15 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 | 64 lanes x 8, A = 32 | 0 | 362–864 | engine | 1.155 | 1.157 | 0.110 | 0.341 |
 | 64 lanes x 8, A = 32 | 1023 | 250–567 | engine | 1.435 | 1.764 | 0.456 | 0.341 |
 | 64 lanes x 8, A = 32 | 8191 | 76–154 | engine | 3.527 | 6.482 | 2.875 | 0.341 |
-| 512 lanes x 1, A = 4 | 0 | 306–654 | engine | 1.286 | 1.529 | 0.110 | 0.341 |
-| 512 lanes x 1, A = 4 | 1023 | 245–543 | engine | 1.435 | 1.843 | 0.456 | 0.341 |
-| 512 lanes x 1, A = 4 | 8191 | 89–221 | engine | 3.527 | 4.531 | 2.875 | 0.341 |
+| 512 lanes x 1, A = 4 | 0 | 306–654 | engine | 1.286 | 1.530 | 0.110 | 0.341 |
+| 512 lanes x 1, A = 4 | 1023 | 225–452 | engine | 1.435 | 2.212 | 0.456 | 0.341 |
+| 512 lanes x 1, A = 4 | 8191 | 70–134 | engine | 3.527 | 7.480 | 2.875 | 0.341 |
 | core at 125 MHz | 0 | 226–426 | engine | 1.173 | 2.349 | 0.221 | 0.682 |
 | core at 125 MHz | 1023 | 169–347 | engine | 1.435 | 2.880 | 0.911 | 0.682 |
 | core at 125 MHz | 8191 | 59–144 | engine | 3.527 | 6.966 | 5.750 | 0.682 |
-| 256 lanes, HBM at 450 MHz | 0 | 561–1487 | memory | 0.673 | 0.657 | 0.110 | 0.341 |
-| 256 lanes, HBM at 450 MHz | 1023 | 418–1254 | memory | 0.797 | 0.796 | 0.456 | 0.341 |
-| 256 lanes, HBM at 450 MHz | 8191 | 141–348 | vector | 1.959 | 1.924 | 2.875 | 0.341 |
+| 256 lanes, HBM at 450 MHz | 0 | 560–1487 | memory | 0.673 | 0.661 | 0.110 | 0.341 |
+| 256 lanes, HBM at 450 MHz | 1023 | 408–1167 | engine | 0.797 | 0.857 | 0.456 | 0.341 |
+| 256 lanes, HBM at 450 MHz | 8191 | 132–348 | vector | 1.959 | 2.416 | 2.875 | 0.341 |
 <!-- end: predictions -->
 
 ## Sensitivity
@@ -157,7 +157,7 @@ Tokens/s (overlapped) at position 1023, with the input scaled ×0.5 / ×1 / ×2:
 
 | input | as planned | 64 lanes x 8, A = 32 | 512 lanes x 1, A = 4 | core at 125 MHz | 256 lanes, HBM at 450 MHz |
 |---|---|---|---|---|---|
-| `hbm_port_bytes` (to verify) | 377 / 695 / 695 | 377 / 567 / 567 | 377 / 543 / 543 | 347 / 347 / 347 | 678 / 1254 / 1254 |
-| `hbm_read_bytes_per_s` (measured by AWS) | 348 / 695 / 695 | 348 / 567 / 567 | 348 / 543 / 543 | 347 / 347 / 347 | 627 / 1254 / 1257 |
-| `command_cycles` (guess) | 695 / 695 / 695 | 567 / 567 / 567 | 543 / 543 / 543 | 347 / 347 / 347 | 1254 / 1254 / 1254 |
+| `hbm_port_bytes` (to verify) | 377 / 695 / 695 | 377 / 567 / 567 | 377 / 452 / 452 | 347 / 347 / 347 | 678 / 1167 / 1167 |
+| `hbm_read_bytes_per_s` (measured by AWS) | 348 / 695 / 695 | 348 / 567 / 567 | 348 / 452 / 452 | 347 / 347 / 347 | 627 / 1167 / 1167 |
+| `command_cycles` (guess) | 695 / 695 / 695 | 567 / 567 / 567 | 452 / 452 / 452 | 347 / 347 / 347 | 1167 / 1167 / 1167 |
 <!-- end: sensitivity -->

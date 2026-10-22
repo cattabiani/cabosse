@@ -1229,7 +1229,9 @@ buffers: area and timing at 250 MHz) moved here (owner, 2026-10-09).
 Its Yosys proxy (M5, attention) puts the deepest path in the scale's
 `fp32_fma` and the engine's own control 4 cells shallower; if Vivado finds
 the control path (unit end into the RAMs' next addresses) failing, register
-the addresses a cycle earlier.
+the addresses a cycle earlier. The engine's four stage queues each hold the
+whole command (about 178 bits); check in the utilization report that
+synthesis drops the fields a stage never reads, or narrow them.
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
@@ -1239,7 +1241,11 @@ Compared with the Gemmini baseline (a different model) using normalized
 figures: weight bytes/s and MACs/s.
 **From M5:** with HBM at 450 MHz a port delivers about 1.8 beats per core
 cycle, so lanes per port becomes 8 (256 lanes on 32 ports), with a clock
-crossing on the memory side.
+crossing on the memory side. `VALUES` runs at most 2 heads a pass (the
+engine's `Heads`; the perf model follows it since M5, attention): at 256
+lanes that leaves half the lanes idle on p.V, and docs/perf.md's 256-lane
+row is limited by the engine at position 1023. Raise `Heads` to L / d
+there.
 
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
