@@ -29,11 +29,9 @@ for sub in ("model", "verif"):
 import bulk  # noqa: E402
 import engine as eng  # noqa: E402
 import numpy as np  # noqa: E402
-import paths  # noqa: E402
 import perf  # noqa: E402
 import torch  # noqa: E402
 from engine import LANES_PER_PORT, Matvec  # noqa: E402
-from golden import decoder  # noqa: E402
 from reporting import blocks, measure  # noqa: E402
 
 DATA = REPO / "reports" / "data" / "M5-engine.json"
@@ -91,7 +89,7 @@ def real() -> dict:
     with and without the start-up of a waiting command (design v0's
     engine_startup_cycles: the most a waiting command after the first takes
     over its engine cycles, from this measurement)."""
-    model = decoder.load(paths.SMOLLM2)
+    model = eng.smollm2()
     positions = {}
     for position in eng.SMOLLM2_POSITIONS:
         found, result = eng.run_smollm2(model, PORTS, position, **MEMORY)
@@ -156,7 +154,7 @@ def speed() -> dict:
         start = time.monotonic()
         bulk.build("engine", params)
         build_s.append(time.monotonic() - start)
-    found, xs = eng.smollm2_commands(decoder.load(paths.SMOLLM2), PORTS)
+    found, xs = eng.smollm2_commands(eng.smollm2(), PORTS)
     runs = [eng.fetch([f.command for f in found], xs, PORTS, **MEMORY) for _ in range(SPEED_RUNS)]
     config, design = perf.load_config("SmolLM2-135M-Instruct"), eng.DESIGN
     platform = perf.load_platform("f2").values()

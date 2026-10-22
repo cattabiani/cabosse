@@ -5,6 +5,8 @@ chunks it is the cache of one run, bit for bit; an interrupted fill
 resumes; a file that disagrees with the golden model, or holds another
 prompt, is refused. The prompt itself needs SmolLM2's tokenizer (slow)."""
 
+from pathlib import Path
+
 import long_cache
 import paths
 import pytest
@@ -13,6 +15,7 @@ from golden import decoder, tiny
 from test_commands import same_bits
 from test_decoder import random_tokens
 
+SEED = 3
 N_TOKENS = 40  # 3 chunks of 16 (the last one short)
 CHUNK = 16
 CHECK = 8
@@ -23,8 +26,8 @@ def small(monkeypatch: pytest.MonkeyPatch) -> tuple[decoder.Model, list[int]]:
     monkeypatch.setattr(long_cache, "CHUNK_POSITIONS", CHUNK)
     monkeypatch.setattr(long_cache, "CHECK_POSITIONS", CHECK)
     c = tiny.tiny_config()
-    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=3))
-    return model, random_tokens(N_TOKENS, c.vocab_size, seed=3)
+    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=SEED))
+    return model, random_tokens(N_TOKENS, c.vocab_size, seed=SEED)
 
 
 def one_run(model: decoder.Model, tokens: list[int]) -> decoder.KVCache:
@@ -37,15 +40,17 @@ def same_cache(a: decoder.KVCache, b: decoder.KVCache) -> bool:
     return a.length == b.length and same_bits(a.k, b.k) and same_bits(a.v, b.v)
 
 
-def test_fill_in_chunks_is_one_run(small, tmp_path) -> None:
+def test_fill_in_chunks_is_one_run(small: tuple[decoder.Model, list[int]], tmp_path: Path) -> None:
     model, tokens = small
     path = tmp_path / "cache.pt"
     assert list(long_cache.fill(model, tokens, path)) == [16, 32, 40]
     assert path.exists() and not path.with_suffix(".partial").exists()
-    assert same_cache(long_cache.read(path, model, tokens), one_run(model, tokens))
+    assert same_cache(long_cache.read(path, model, tokens), one_run(model, tokens)), f"seed {SEED}"
 
 
-def test_an_interrupted_fill_resumes(small, tmp_path) -> None:
+def test_an_interrupted_fill_resumes(
+    small: tuple[decoder.Model, list[int]], tmp_path: Path
+) -> None:
     model, tokens = small
     path = tmp_path / "cache.pt"
     for n in long_cache.fill(model, tokens, path):
@@ -53,10 +58,10 @@ def test_an_interrupted_fill_resumes(small, tmp_path) -> None:
             break  # stopped after its first save
     assert not path.exists() and path.with_suffix(".partial").exists()
     assert list(long_cache.fill(model, tokens, path)) == [32, 40]
-    assert same_cache(long_cache.read(path, model, tokens), one_run(model, tokens))
+    assert same_cache(long_cache.read(path, model, tokens), one_run(model, tokens)), f"seed {SEED}"
 
 
-def test_a_stale_file_is_refused(small, tmp_path) -> None:
+def test_a_stale_file_is_refused(small: tuple[decoder.Model, list[int]], tmp_path: Path) -> None:
     """One value's sign flipped in the last checked position (a numerics
     change would change bits there): read() refuses the file."""
     model, tokens = small
@@ -69,7 +74,7 @@ def test_a_stale_file_is_refused(small, tmp_path) -> None:
         long_cache.read(path, model, tokens)
 
 
-def test_another_prompt_is_refused(small, tmp_path) -> None:
+def test_another_prompt_is_refused(small: tuple[decoder.Model, list[int]], tmp_path: Path) -> None:
     model, tokens = small
     path = tmp_path / "cache.pt"
     long_cache.save(path, tokens, one_run(model, tokens))

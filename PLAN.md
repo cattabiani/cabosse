@@ -1206,9 +1206,13 @@ step and drain, so a sequencing fix is made once); checkpoint report.
   only 64 positions (16), so later units wait. The model was wrong, not
   the hardware (whole tiles are the owner's simplest tile use):
   `perf.tile_wait_cols` adds the wait (two slots, the first two read
-  ahead); position 0 in docs/perf.md loses under 1%. `engine_startup_cycles`
+  ahead). `engine_startup_cycles`
   re-measured with the scale's 6 cycles: 61 for `MATVEC`s, 64 for `SCORES`
-  at 1023 and 8191; design v0 takes 64. With it, at every position: the
+  at 1023 and 8191; design v0 takes 64. Together they change only
+  position 0 of docs/perf.md by more than 1%: 852 -> 840 tokens/s at the
+  top of the planned design's range (-1.4%), 654 -> 635 at 512 lanes, and
+  256 lanes at 450 MHz turns from limited by memory to by the engine there.
+  With it, at every position: the
   first `q` +7.7% (nothing before it to read behind), `VALUES` at 63 -5.1%,
   `SCORES` at 63 -3.8%, the other `MATVEC`s -1.4% to 0.0%. `long_cache`
   has tests on a tiny model (two hand mutations caught).

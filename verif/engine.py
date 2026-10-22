@@ -261,29 +261,37 @@ def smollm2() -> decoder.Model:
     return decoder.load(paths.SMOLLM2)
 
 
+class NoLongCache(Exception):
+    """The long cache was not computed (scripts/fill_long_cache.py)."""
+
+
 @functools.cache
 def saved_cache() -> tuple[list[int], decoder.KVCache]:
     """The long cache of smollm2() (model/long_cache.py), loaded and checked
-    once; FileNotFoundError if it was not computed."""
+    once, and its prompt with one more token (the step's at the last
+    position); NoLongCache if it was not computed."""
     saved = long_cache.load(smollm2(), paths.SMOLLM2)
     if saved is None:
-        raise FileNotFoundError("no long cache: python scripts/fill_long_cache.py")
-    return saved
+        raise NoLongCache("no long cache: python scripts/fill_long_cache.py")
+    tokens = long_cache.prompt_tokens(paths.SMOLLM2, long_cache.N_POSITIONS + 1)
+    assert tokens[:-1] == saved[0]
+    return tokens, saved[1]
 
 
 def smollm2_step(
     model: decoder.Model, position: int = len(SMOLLM2_PROMPT)
 ) -> list[commands.EngineCall]:
     """The engine commands of one SmolLM2 decode step at `position`
-    (commands.record_step): after SMOLLM2_PROMPT at 63, else after the long
-    cache's first `position` tokens (saved_cache(), cut back to them). The
-    step's token is the prompt's last plus one."""
+    (commands.record_step): of SMOLLM2_PROMPT[-1] + 1 after SMOLLM2_PROMPT
+    at 63, else of the text's next token after the long cache's first
+    `position` tokens (saved_cache(), cut back to them)."""
     if position == len(SMOLLM2_PROMPT):
-        prompt, cache = SMOLLM2_PROMPT, None
+        prompt, token, cache = SMOLLM2_PROMPT, SMOLLM2_PROMPT[-1] + 1, None
     else:
         tokens, saved = saved_cache()
-        prompt, cache = tokens[:position], dataclasses.replace(saved, length=position)
-    return commands.record_step(model, prompt, prompt[-1] + 1, cache)[1]
+        prompt, token = tokens[:position], tokens[position]
+        cache = dataclasses.replace(saved, length=position)
+    return commands.record_step(model, prompt, token, cache)[1]
 
 
 def real_attention(
@@ -390,7 +398,7 @@ def model_cycles(m: Command, ports: int, startup: bool = True) -> float:
         shapes, fill_cols = step.engine_shapes, step.fill_cols
     else:
         shapes = (tuple(m.w.shape),)
-    return perf.engine_cycles(shapes, design(ports), int(m.wait and startup), fill_cols)
+    return perf.engine_cycles(shapes, design(ports), int(m.wait and startup), (fill_cols,))
 
 
 def read_share(m: Matvec, result: Result, ports: int, rate: int) -> float:

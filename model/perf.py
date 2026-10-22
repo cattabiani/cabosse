@@ -325,7 +325,7 @@ class Work:
     commands: int
     engine_shapes: tuple[tuple[int, int], ...]  # (rows, cols) per engine op
     engine_waits: int  # engine ops that wait for an earlier result
-    engine_fill_cols: int = 0  # Step.fill_cols, summed
+    engine_fill_cols: tuple[int, ...] = ()  # Step.fill_cols of each engine op
 
     @property
     def memory_bytes(self) -> int:
@@ -350,7 +350,7 @@ class Work:
             commands=len(op_list),
             engine_shapes=tuple(shape for o in op_list for shape in o.engine_shapes),
             engine_waits=total("waits"),
-            engine_fill_cols=total("fill_cols"),
+            engine_fill_cols=tuple(o.fill_cols for o in op_list if o.engine_shapes),
         )
 
 
@@ -366,28 +366,31 @@ def engine_cycles(
     shapes: tuple[tuple[int, int], ...],
     design: dict[str, float],
     waits: int = 0,
-    fill_cols: int = 0,
+    fill_cols: tuple[int, ...] = (),
 ) -> float:
     """Cycles of the engine for these (rows, cols), of which `waits` commands
     wait for an earlier result: rows in passes of `lanes` (a partial pass
     leaves lanes idle); a row takes cols / `macs_per_lane` cycles, but at
     least the `accumulators` - 1 adds of its final sum, which run during the
     next row; each waiting command adds `engine_startup_cycles` (D-042), and
-    the tiles' fills fill_cols / `macs_per_lane` (Step.fill_cols)."""
+    each command's tile wait its fill_cols / `macs_per_lane` (Step.fill_cols)."""
     lanes, per_lane = int(design["lanes"]), int(design["macs_per_lane"])
     tree = int(design["accumulators"]) - 1
     return (
         waits * design["engine_startup_cycles"]
-        + math.ceil(fill_cols / per_lane)
+        + sum(math.ceil(f / per_lane) for f in fill_cols)
         + sum(
             math.ceil(rows / lanes) * max(math.ceil(cols / per_lane), tree) for rows, cols in shapes
         )
     )
 
 
-def engine_use(shapes: tuple[tuple[int, int], ...], design: dict[str, float]) -> float:
-    """Share of the engine's multiply-add slots that do work."""
-    slots = design["lanes"] * design["macs_per_lane"] * engine_cycles(shapes, design)
+def engine_use(
+    shapes: tuple[tuple[int, int], ...], design: dict[str, float], fill_cols: tuple[int, ...] = ()
+) -> float:
+    """Share of the engine's multiply-add slots that do work (tile waits
+    count as idle)."""
+    slots = design["lanes"] * design["macs_per_lane"] * engine_cycles(shapes, design, 0, fill_cols)
     return sum(rows * cols for rows, cols in shapes) / slots
 
 

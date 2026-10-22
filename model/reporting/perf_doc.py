@@ -101,7 +101,10 @@ def engine_table(config, design: perf.Inputs) -> str:
     for scenario in design.scenarios:
         values = design.values(scenario)
         work = [perf.Work.of(perf.ops(config, p, int(values["lanes"]))) for p in cols]
-        rows.append([scenario] + [f"{perf.engine_use(w.engine_shapes, values):.1%}" for w in work])
+        rows.append(
+            [scenario]
+            + [f"{perf.engine_use(w.engine_shapes, values, w.engine_fill_cols):.1%}" for w in work]
+        )
     return blocks.table(["scenario, engine use at position"] + [str(p) for p in cols], rows)
 
 

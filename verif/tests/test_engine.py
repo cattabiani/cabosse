@@ -267,7 +267,7 @@ def test_smollm2(position: int) -> None:
     past 63 read the long cache (scripts/fill_long_cache.py)."""
     try:
         found, result = eng.run_smollm2(eng.smollm2(), WIDE, position, **eng.F2_MEMORY)
-    except FileNotFoundError as e:
+    except eng.NoLongCache as e:
         pytest.skip(str(e))
     off = {
         f.name: c / eng.model_cycles(f.command, WIDE) - 1

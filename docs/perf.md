@@ -39,7 +39,8 @@ Assumptions, to revisit in `docs/architecture.md`:
   B/cycle on F2 at 250 MHz, about 8%, estimate). A p.V tile fills its
   heads' d values per position and steps its positions, so a partly filled
   last tile can wait for its fill (`perf.tile_wait_cols`: two slots, the
-  first two read ahead; 32 cycles at position 63, measured).
+  first two read ahead: 32 cycles at position 63, the excess measured
+  over the model before it, with a 55-cycle start-up).
 - Activations stay on chip, and cost no HBM traffic.
 - Attention's multiply-adds (q·K and p·V) run on the matrix-vector engine.
 - The HBM read rate scales with the memory clock from AWS's measured rate at
@@ -122,11 +123,11 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: engine -->
 | scenario, engine use at position | 0 | 1023 | 8191 |
 |---|---|---|---|
-| as planned | 92.6% | 94.8% | 94.8% |
-| 64 lanes x 8, A = 32 | 94.0% | 77.0% | 50.6% |
-| 512 lanes x 1, A = 4 | 70.5% | 61.1% | 43.8% |
-| core at 125 MHz | 92.6% | 94.8% | 94.8% |
-| 256 lanes, HBM at 450 MHz | 84.7% | 81.2% | 68.6% |
+| as planned | 91.9% | 94.8% | 94.8% |
+| 64 lanes x 8, A = 32 | 93.5% | 77.0% | 50.6% |
+| 512 lanes x 1, A = 4 | 68.8% | 61.1% | 43.8% |
+| core at 125 MHz | 91.9% | 94.8% | 94.8% |
+| 256 lanes, HBM at 450 MHz | 83.4% | 81.2% | 68.6% |
 <!-- end: engine -->
 
 ## Predictions
