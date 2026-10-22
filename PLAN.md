@@ -1372,7 +1372,7 @@ with the memory model's write side; real data, speed and
 
 **Progress:**
 - [x] Answers above (PR #59).
-- [x] S and P at stride `cap`, and the buffer-port check. `run()` keeps
+- [x] S and P at stride `cap`, and the buffer-port check (PR #60). `run()` keeps
   every buffer at its full size, starting as NaN (stale data), and every
   command reads and writes only its span: a read of an element no command
   wrote gives NaN and fails the bit-exact tests. `LEN_T` commands carry
