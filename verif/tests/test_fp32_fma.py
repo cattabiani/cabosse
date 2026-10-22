@@ -10,7 +10,13 @@ import bulk
 import numpy as np
 import pytest
 import torch
-from fp_inputs import all_bf16_widened, families, random_bits, special_tuples, subnormal_f32
+from fp_inputs import (
+    all_bf16_widened,
+    random_bits,
+    rounding_batch,
+    special_tuples,
+    subnormal_f32,
+)
 from golden import arith, settings
 
 import rtl
@@ -34,15 +40,6 @@ N_FLUSHED = 500  # results each flush changes, at least, per operation
 # Per operation, the (a, b, c) columns that reach fp_product's inputs and
 # fp_add's FP32 input: add is fma(a, 1, b); mul adds -0, never subnormal.
 FLUSH_SITES = {"fma": ((0, 1), (2,)), "add": ((0,), (1,)), "mul": ((0, 1), ())}
-
-
-def batch(rng: np.random.Generator, n_family: int, n_random: int) -> np.ndarray:
-    """(a, b, c) bit patterns: every rounding family, then random bits."""
-    abc = [
-        np.stack([x.view(np.uint32) for x in t], axis=1) for t in families(rng, n_family).values()
-    ]
-    abc.append(random_bits(rng, (n_random, 3)))
-    return np.concatenate(abc)
 
 
 def records(op: str, abc: np.ndarray) -> np.ndarray:
@@ -76,13 +73,18 @@ def test_specials(op: str, pipeline: str) -> None:
 @pytest.mark.parametrize("pipeline", PIPELINES)
 @pytest.mark.parametrize("op", OPS)
 def test_random(op: str, pipeline: str) -> None:
-    check(op, batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM), SEED, PIPELINES[pipeline])
+    check(
+        op,
+        rounding_batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM),
+        SEED,
+        PIPELINES[pipeline],
+    )
 
 
 def ftz_inputs() -> np.ndarray:
     """The flush-to-zero test's (a, b, c) rows: the specials, the random batch."""
     return np.concatenate(
-        [special_tuples(3), batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM)]
+        [special_tuples(3), rounding_batch(np.random.default_rng(SEED), N_FAMILY, N_RANDOM)]
     )
 
 
@@ -150,10 +152,10 @@ def test_bf16_products_exhaustive(op: str) -> None:
 def test_random_slow(op: str) -> None:
     """10⁸ inputs in chunks of about 10⁶, each with its own seed (printed on
     failure), bulk.WORKERS at a time."""
-    per_chunk = len(batch(np.random.default_rng(0), N_FAMILY_SLOW, N_RANDOM_SLOW))
+    per_chunk = len(rounding_batch(np.random.default_rng(0), N_FAMILY_SLOW, N_RANDOM_SLOW))
     seeds = bulk.chunk_seeds(SEED, N_SLOW, per_chunk)
 
     def one(seed: int) -> None:
-        check(op, batch(np.random.default_rng(seed), N_FAMILY_SLOW, N_RANDOM_SLOW), seed)
+        check(op, rounding_batch(np.random.default_rng(seed), N_FAMILY_SLOW, N_RANDOM_SLOW), seed)
 
     bulk.in_parallel(one, seeds)

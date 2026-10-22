@@ -105,6 +105,26 @@ def synthesize(
     )
 
 
+def cells(top: str, params: Sequence[tuple[str, int]] = ()) -> dict[str, int]:
+    """`top`'s cells by type (LUT6, FDRE, DSP48E2, ...) after Yosys's
+    synthesis for UltraScale+ (F2's family), flattened: an area proxy, not
+    Vivado's utilization. Unlike logic_depth, shift registers and LUT RAMs
+    are inferred, as Vivado would."""
+    overrides = " ".join(f"-G {name}={value}" for name, value in params)
+    script = (
+        f"read_slang -F {SOURCES} --top {top} {overrides}; "
+        f"synth_xilinx -family xcup -flatten -noiopad -noclkbuf -top {top}; stat"
+    )
+    result = subprocess.run(["yosys", "-m", "slang", "-p", script], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout[-2000:] + result.stderr
+    stats = result.stdout[result.stdout.rindex("Printing statistics.") :]
+    stats = stats.split("=== design hierarchy")[0]  # the flattened top only
+    found: dict[str, int] = {}
+    for count, name in re.findall(r"^\s+(\d+)\s+([A-Z]\w*)\s*$", stats, re.M):
+        found[name] = found.get(name, 0) + int(count)
+    return found
+
+
 def logic_depth(
     top: str,
     extra: Sequence[Path] = (),

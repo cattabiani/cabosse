@@ -1409,6 +1409,31 @@ with the memory model's write side; real data, speed and
   write there). `commands.hazards()` finds a "read port" hazard: two
   commands of different units (the engine, the vector unit) reading one
   buffer at once; none in the ladder lists, two hand-made lists have them.
+- [x] One slot's FP chain (D-048, PR #61): `rtl/fp32_chain.sv`, 7 stages of
+  `fp32_fma` and integer steps; 50 cycles at `MulRegs` = 2. In Q3 the
+  scalings of recip's and rsqrt's inputs were to be exponent edits; a
+  subnormal input needs normalizing, so they stay multiplies, and rsqrt
+  uses 7 stages, recip 6 (the chain stays 7). Tests
+  (`verif/tests/test_fp32_chain.py`), bit for bit against the golden
+  functions: specials (every triple for add, mul, fma), each function's
+  edges (exp's ties and integers of t, clamp, subnormal results; the
+  inputs recip and rsqrt scale) and random bits, operations interleaved;
+  slow: 10^8 per operation and the M1 exhaustive ranges (87 s on 16
+  cores). Every input of exp, recip and rsqrt (`CABOSSE_SWEEP=1`, on
+  request): all 2^32 bit-exact for each, 21 min 26 s on 16 cores (exp
+  457 s, recip 440 s, rsqrt 389 s; 2026-10-23, commit 05519c1). Hand
+  mutations: 8 caught; one (exp's clamp at 151) gives the same bits (past
+  ±150 the result is +inf or rounds to +0 either way). MAX is not in the
+  chain: it is only a reduction (`MAX` per row), so it goes with the
+  reductions (the vector-unit step). Area (`scripts/measure_m6.py area`,
+  `reports/data/M6.json`): Yosys for UltraScale+, one `fp32_fma` 1,554
+  LUTs, 409 registers, 2 DSPs; the chain 11,707 LUTs, 4,392 registers, 14
+  DSPs. Scaled by M3's Vivado numbers for one FMA (estimate): 9,507 LUTs
+  and 14 DSPs a slot, 152,116 LUTs, 91,921 registers and 224 DSPs for 16
+  slots. Fewer Newton steps would not save area (the chain's length is
+  exp's). Not done (simplify review): the delay lines carry every state
+  field (about 1-2% of the LUTs could go, at some readability), and the
+  register after each FMA (latency 50 -> 43) waits for Vivado's timing.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register

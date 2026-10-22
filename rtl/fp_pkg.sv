@@ -15,7 +15,19 @@ package fp_pkg;
   // fp32_fma's op_i (any other value: fma).
   localparam logic [1:0]  Fp32Add = 2'd1;
   localparam logic [1:0]  Fp32Mul = 2'd2;
+  localparam logic [1:0]  Fp32Fma = 2'd0;  // or 3
   /* verilator lint_on UNUSEDPARAM */
+
+  // fp32_chain's op_i (D-048): the vector unit's arithmetic, one result per
+  // element.
+  typedef enum logic [2:0] {
+    ChainAdd   = 3'd0,  // a + b
+    ChainMul   = 3'd1,  // a * b
+    ChainFma   = 3'd2,  // a * b + c
+    ChainExp   = 3'd3,  // exp(a)
+    ChainRecip = 3'd4,  // 1 / a
+    ChainRsqrt = 3'd5   // 1 / sqrt(a)
+  } chain_op_e;
 
   // An operand: (-1)^sign * sig * 2^(exp - 126 - W) for a significand of W
   // bits (sig[W-1] has weight 2^(exp - 127)); exp is biased like FP32's.
@@ -36,6 +48,12 @@ package fp_pkg;
   // product, at least FP32's 24 bits, then guard, round, sticky.
   function automatic int unsigned prod_sig_w(int unsigned m);
     return (2 * m > F32SigW ? 2 * m : F32SigW) + 3;
+  endfunction
+
+  // fp_mul_add's latency (bf16_mac, fp32_fma): fp_product's mul_regs
+  // registers, one, then fp_add's three.
+  function automatic int unsigned mul_add_latency(int unsigned mul_regs);
+    return mul_regs + 4;
   endfunction
 
   // Whether FP32 bits are a NaN, from all but the sign bit.

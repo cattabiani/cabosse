@@ -111,6 +111,16 @@ gate and up) into one, to fill the last pass; a small gain for SmolLM2.
 reductions. Each of the 16 slots has the FP32 add, multiply, FMA and max of
 numerics.md, section 2, and the rsqrt, recip and exp of section 5.
 
+**A slot's arithmetic (D-048):** one chain of 7 stages, each an FP32 FMA
+and the integer steps around it (`rtl/fp32_chain.sv`), that every
+operation flows through: add, multiply and FMA use the first stage, exp
+and rsqrt all seven, recip six. Every operation runs at one element per
+cycle per slot, with a latency of 50 cycles. The integer steps (exp's
+rounding of t and its 2^i, the first guesses, exact halvings and scalings)
+need no FP unit. Area (Yosys for UltraScale+, scaled by M3's Vivado
+numbers for one FMA; an estimate until M8): about 9,500 LUTs and 14 DSPs a
+slot, 152,000 LUTs and 224 DSPs for 16 (`scripts/measure_m6.py`).
+
 - Elementwise work (RoPE, SwiGLU, residual adds, the roundings to BF16)
   takes n ÷ 16 cycles.
 - A sum (RMSNorm's sum of squares, softmax's denominator) puts element `k`
