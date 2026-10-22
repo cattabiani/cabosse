@@ -1382,16 +1382,20 @@ with the memory model's write side; real data, speed and
   edges (exp's ties and integers of t, clamp, subnormal results; the
   inputs recip and rsqrt scale) and random bits, operations interleaved;
   slow: 10^8 per operation and the M1 exhaustive ranges (82 s on 16
-  cores). Every input of exp, recip and rsqrt: marker `sweep`, on request,
-  about 30 minutes (estimate from the slow run's rate). Hand mutations: 4
-  of 5 caught; the fifth (exp's clamp at 151) gives the same bits (past
-  ±150 the result is +inf or rounds to +0 either way). Area
-  (`scripts/measure_m6.py area`, `reports/data/M6.json`): Yosys for
-  UltraScale+, one `fp32_fma` 1,554 LUTs, 409 registers, 2 DSPs; the chain
-  11,858 LUTs, 4,386 registers, 14 DSPs. Scaled by M3's Vivado numbers for
-  one FMA (estimate): 9,630 LUTs and 14 DSPs a slot, 154,078 LUTs, 91,795
-  registers and 224 DSPs for 16 slots. Fewer Newton steps would not save
-  area (the chain's length is exp's).
+  cores). Every input of exp, recip and rsqrt: `CABOSSE_SWEEP=1`, on
+  request, about 30 minutes (estimate from the slow run's rate). Hand
+  mutations: 8 caught; one (exp's clamp at 151) gives the same bits (past
+  ±150 the result is +inf or rounds to +0 either way). MAX is not in the
+  chain: it is only a reduction (`MAX` per row), so it goes with the
+  reductions (the vector-unit step). Area (`scripts/measure_m6.py area`,
+  `reports/data/M6.json`): Yosys for UltraScale+, one `fp32_fma` 1,554
+  LUTs, 409 registers, 2 DSPs; the chain 11,622 LUTs, 4,424 registers, 14
+  DSPs. Scaled by M3's Vivado numbers for one FMA (estimate): 9,438 LUTs
+  and 14 DSPs a slot, 151,011 LUTs, 92,590 registers and 224 DSPs for 16
+  slots. Fewer Newton steps would not save area (the chain's length is
+  exp's). Not done (simplify review): the delay lines carry every state
+  field (about 1-2% of the LUTs could go, at some readability), and the
+  register after each FMA (latency 50 -> 43) waits for Vivado's timing.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register

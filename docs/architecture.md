@@ -118,8 +118,8 @@ and rsqrt all seven, recip six. Every operation runs at one element per
 cycle per slot, with a latency of 50 cycles. The integer steps (exp's
 rounding of t and its 2^i, the first guesses, exact halvings and scalings)
 need no FP unit. Area (Yosys for UltraScale+, scaled by M3's Vivado
-numbers for one FMA; an estimate until M8): about 9,600 LUTs and 14 DSPs a
-slot, 154,000 LUTs and 224 DSPs for 16 (`scripts/measure_m6.py`).
+numbers for one FMA; an estimate until M8): about 9,400 LUTs and 14 DSPs a
+slot, 151,000 LUTs and 224 DSPs for 16 (`scripts/measure_m6.py`).
 
 - Elementwise work (RoPE, SwiGLU, residual adds, the roundings to BF16)
   takes n ÷ 16 cycles.
