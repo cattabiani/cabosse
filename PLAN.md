@@ -1371,7 +1371,22 @@ with the memory model's write side; real data, speed and
 `vector_startup_cycles`; checkpoint report.
 
 **Progress:**
-- [ ] Answers above.
+- [x] Answers above (PR #59).
+- [x] S and P at stride `cap`, and the buffer-port check. `run()` keeps
+  every buffer at its full size, starting as NaN (stale data), and every
+  command reads and writes only its span: a read of an element no command
+  wrote gives NaN and fails the bit-exact tests. `LEN_T` commands carry
+  `cap`, their row stride (the encoding's `cap` field, now used by the
+  vector commands with `LEN_T`). The KV cache's unwritten rows are NaN
+  too. `EngineCall` records the span an engine command reads and writes,
+  the whole cache and `t`; `record_step` takes a `cap`, and
+  `verif/engine.py`'s `real_attention` passes the recorded command through
+  (a cap of whole tiles); the engine tests compare only the rows a
+  command writes (`written()`: scores past t stay stale, and the C++
+  driver rejects a write there). `commands.hazards()` finds a "read port"
+  hazard: two commands of different units (the engine, the vector unit)
+  reading one buffer at once; none in the ladder lists, two hand-made lists
+  have them.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
@@ -1399,10 +1414,8 @@ Attention (M5): `SCORES` writes head h's scores at `S[h·cap + i]` and
 (`LEN_T`) must read and write rows of t at that stride, not packed. The
 engine needs `cap` a multiple of L, a power-of-two head dimension from
 16 to 128 (`VALUES`: at most L), and does not check them; `SCORES` and `VALUES` are given after the `KV_STORE` they
-depend on (D-044). The golden command list still writes S and P packed (rows
-of t, `cap` = positions + 1); once it moves them to stride `cap` with `cap`
-a multiple of L, `verif/engine.py`'s `real_attention` drops its padding and
-re-striding and passes the recorded commands through.
+depend on (D-044). The golden command list writes S and P at stride `cap`
+(M6), so the controller passes `cap` to the softmax commands too.
 
 ### M8 — F2 bring-up (no model)
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and

@@ -337,8 +337,10 @@ def lane_rows(call: commands.EngineCall) -> Rows:
     cmd, a, mem = call.cmd, call.a, call.mem
     if cmd.op == commands.Op.MATVEC:
         w, x = mem, a[None, :]
-    else:  # query head h reads KV head h // group
-        kv_heads = mem.shape[0]
+    else:  # query head h reads KV head h // group; p's rows are t at stride cap
+        kv_heads, mem = mem.shape[0], mem[:, : call.t]
+        if cmd.op == commands.Op.VALUES:
+            a = call.rows(a)
         x = a.reshape(kv_heads, cmd.n // kv_heads, 1, -1)
         w = (mem if cmd.op == commands.Op.SCORES else mem.transpose(1, 2))[:, None]
     w, x = torch.broadcast_tensors(w, x)
@@ -372,11 +374,13 @@ def reproduces(call: commands.EngineCall, rows: Rows) -> bool:
     y = arith.f32_from_bits(
         torch.from_numpy(golden_dot(rows.w, rows.x, rows.valid).astype(np.int64))
     )
-    if call.cmd.op == commands.Op.SCORES:
+    out = call.out
+    if call.cmd.op == commands.Op.SCORES:  # rows of t at stride cap
         y = arith.mul(y, commands.f32_value(call.cmd.scalar))
-    if call.out.dtype == torch.bfloat16:
-        return torch.equal(arith.bits_bf16(arith.bf16(y)), arith.bits_bf16(call.out))
-    return torch.equal(arith.bits_f32(y), arith.bits_f32(call.out))
+        out = call.rows(out).reshape(-1)
+    if out.dtype == torch.bfloat16:
+        return torch.equal(arith.bits_bf16(arith.bf16(y)), arith.bits_bf16(out))
+    return torch.equal(arith.bits_f32(y), arith.bits_f32(out))
 
 
 @pytest.mark.slow

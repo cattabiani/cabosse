@@ -91,7 +91,7 @@ def check_bits(
     mats: list[eng.Command], xs: dict[int, torch.Tensor], result: eng.Result, label: str
 ) -> None:
     for i, (m, got) in enumerate(zip(mats, result.out, strict=True)):
-        eng.assert_bits(got, eng.expected(m, xs[m.a]), f"{label}: command {i} ({describe(m)})")
+        eng.assert_bits(m, got, eng.expected(m, xs[m.a]), f"{label}: command {i} ({describe(m)})")
     assert result.err == 0, f"{label}: err_o {result.err:#x}"
     assert result.r_stalls == 0, f"{label}: a memory waited {result.r_stalls} cycles on RREADY"
 

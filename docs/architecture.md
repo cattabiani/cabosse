@@ -192,8 +192,10 @@ it from there:
   whole engine needs the port count a multiple of 4 (the banks' mapping,
   below), checked at elaboration.
 - Scores and probabilities: head h's row at `h·cap` in S and P (stride
-  `cap`, aligned to E for p·V's reads), so softmax reads rows of t at that
-  stride (M6, M7).
+  `cap`; with `cap` a multiple of `L`, as the engine needs, every row is
+  aligned to E for p·V's reads and to the vector unit's 16), and
+  softmax's commands (`LEN_T`) read and write rows of t at that stride. A
+  row starts at the same address at every position.
 
 **Tile buffer banks.** `L` banks, each 4 BF16 values wide, one write and
 one read per cycle. The 4 values `u` (elements `4u` to `4u+3`) of position
@@ -275,7 +277,7 @@ chain gives the golden function's bits, and a model with a different step
 (a bias, a norm on q and k) needs a new list, not new hardware. A
 vector-unit command works on `n` rows of `m` elements; flags pick the
 variants (negated operands, a value per row, a row for every row, rows `t`
-long, a constant from `scalar`):
+long at stride `cap`, a constant from `scalar`):
 
 <!-- begin: flags -->
 | bit | flag | meaning |
@@ -284,7 +286,7 @@ long, a constant from `scalar`):
 | 1 | `NEG_B` | use -b |
 | 2 | `B_PER_ROW` | b holds one value per row, used for the whole row |
 | 3 | `B_ROW` | b holds one row, used for every row |
-| 4 | `LEN_T` | rows are t long (the positions attention reads), not m |
+| 4 | `LEN_T` | rows are t long (the positions attention reads), at stride cap, not m |
 | 5 | `BY_TOKEN` | LOAD row `token` of the tensor at addr |
 | 6 | `BY_POSITION` | LOAD row `position` of the tensor at addr |
 | 7 | `SRC_BF16` | LOAD from BF16 (else FP32); converted to FP32 exactly |
@@ -310,7 +312,7 @@ and every MATVEC input is already BF16.
 | 6 | 2 | `kv_heads` | KV heads | SCORES, VALUES |
 | 8 | 4 | `n` | rows or heads | MATVEC, KV_STORE, SCORES, VALUES, OUTPUT, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
 | 12 | 4 | `m` | columns, row length or elements | LOAD, MATVEC, KV_STORE, SCORES, VALUES, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
-| 16 | 4 | `cap` | KV cache rows per head | KV_STORE, SCORES, VALUES |
+| 16 | 4 | `cap` | KV cache rows per head; with LEN_T, the row stride | KV_STORE, SCORES, VALUES, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX |
 | 20 | 8 | `addr` | HBM byte address | LOAD, MATVEC, KV_STORE, SCORES, VALUES |
 | 28 | 4 | `scalar` | FP32 bits: a constant (scale, 1/n, eps, 1) | SCORES, ADD, MUL |
 
