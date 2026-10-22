@@ -43,11 +43,13 @@ BAD_SHAPES = [
     ("port_dma", (("CountWidth", 4),), "CountWidth"),
     # engine: a port count that is not a multiple of 4 (the tile buffer's
     # mapping), a write port wider than a pass, a head dimension unit_t.dlog
-    # cannot hold or not a power of two.
+    # cannot hold or not a power of two, a row's beats wider than step's
+    # cycle count.
     ("engine", (("Ports", 5),), "multiple of 4"),
     ("engine", (("Ports", 4), ("Writes", 32)), "dividing L"),
     ("engine", (("Ports", 4), ("MaxD", 256)), "MaxD"),
     ("engine", (("Ports", 4), ("MaxD", 96)), "MaxD"),
+    ("engine", (("Ports", 4), ("ColWidth", 24)), "ColWidth"),
 ]
 
 
