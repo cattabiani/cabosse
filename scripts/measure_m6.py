@@ -54,7 +54,7 @@ def yosys_cells(top: str) -> dict[str, int]:
         ["yosys", "-m", "slang", "-p", script], capture_output=True, text=True, check=True
     )
     stats = run.stdout[run.stdout.rindex("Printing statistics.") :]
-    stats = stats[: stats.index("=== design hierarchy")]  # the flattened top only
+    stats = stats.split("=== design hierarchy")[0]  # the flattened top only
     cells = Counter()
     for count, name in re.findall(r"^\s+(\d+)\s+([A-Z]\w*)\s*$", stats, re.M):
         cells[name] += int(count)
