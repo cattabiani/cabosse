@@ -23,6 +23,8 @@ perf model's cycles. Slow, at 128 lanes: SmolLM2's MATVECs with real data,
 cycles against the perf model, and the bandwidth reached on large
 matrices."""
 
+import dataclasses
+
 import bulk
 import commands
 import engine as eng
@@ -430,12 +432,31 @@ def test_attention_back_to_back(ports: int) -> None:
     assert all(m <= c <= m + 1 for _, c, m in steady), (SEED, steady)
 
 
-def test_values_wider_than_the_lanes() -> None:
-    """The engine does not check VALUES' d <= L, so the harness refuses a
-    command past it before running the driver."""
+# (name, the command's change, the harness's message): 4 ports, L = 16.
+BAD_ATTENTION = [
+    ("values d > L", dict(values=True, d=32), "d <= L"),
+    ("d not a power of two", dict(d=24), "power of two"),
+    ("d below 16", dict(d=8), "power of two"),
+    ("cap not whole tiles", dict(cap=True), "cap a multiple of L"),
+    ("t = 0", dict(t=0), "t <= cap"),
+    ("group not dividing heads", dict(heads=3), "dividing heads"),
+]
+
+
+@pytest.mark.parametrize(
+    ("change", "message"), [b[1:] for b in BAD_ATTENTION], ids=[b[0] for b in BAD_ATTENTION]
+)
+def test_attention_outside_the_engine_s_shapes(change: dict, message: str) -> None:
+    """The engine does not check these, so the harness refuses a command
+    past them before running the driver."""
     gen = torch.Generator().manual_seed(SEED)
-    c, x = stale_attention(True, 2, 1, 32, 16, gen, lanes=16)
-    with pytest.raises(AssertionError, match="d <= L"):
+    k = dict(values=False, d=16, heads=2) | change
+    c, x = stale_attention(k["values"], k["heads"], 2, k["d"], 16, gen, lanes=16)
+    if "cap" in change:  # 4 positions past whole tiles
+        c = dataclasses.replace(c, cache=torch.cat([c.cache, c.cache[:, :4]], dim=1))
+    if "t" in change:
+        c = dataclasses.replace(c, t=change["t"])
+    with pytest.raises(AssertionError, match=message):
         eng.fetch([c], {0: x}, 4)
 
 

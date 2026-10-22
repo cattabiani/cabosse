@@ -20,6 +20,7 @@ BEAT_WORDS = BEAT_BYTES // 4
 E = commands.E
 LANES_PER_PORT = commands.LANES_PER_PORT
 STATS = 4  # words after the commands: cycles, stalls, err, wall time
+MAX_D = 128  # rtl/engine.sv's MaxD
 DESIGN = perf.load_design("v0").values()  # its lanes are set per engine (design())
 # F2's HBM read latency, 280 ns (measured by AWS, docs/f2.md), in core
 # cycles; our path's latency (switch, clock crossing) waits for M8.
@@ -120,6 +121,17 @@ def bf16_bits(t: torch.Tensor) -> np.ndarray:
     return arith.bits_bf16(t.contiguous()).numpy().astype(np.uint16)
 
 
+def check_attention(c: Attention, lanes: int) -> None:
+    """The attention requirements the engine does not check (rtl/engine.sv's
+    header): a command past them fails here, not as wrong bits."""
+    kv_heads, cap, d = c.cache.shape
+    assert 16 <= d <= MAX_D and d & (d - 1) == 0, f"d a power of two from 16 to {MAX_D}: d = {d}"
+    assert not c.values or d <= lanes, f"VALUES needs d <= L: d = {d}, L = {lanes}"
+    assert cap % lanes == 0, f"cap a multiple of L: cap = {cap}, L = {lanes}"
+    assert 1 <= c.t <= cap, f"1 <= t <= cap: t = {c.t}, cap = {cap}"
+    assert c.heads % kv_heads == 0, f"group dividing heads: {c.heads} heads, {kv_heads} KV"
+
+
 def place(mats: Sequence[Command], ports: int, gaps: Sequence[int] | None = None) -> list[int]:
     """Each matrix's offset in every channel, one after another, with
     gaps[i] free beats before matrix i (to move it across 4 KB boundaries)."""
@@ -165,10 +177,9 @@ def fetch(
     """The driver on these commands, with the x buffers xs (id -> BF16) and
     the matrices at addrs (default: place()); checked to finish, its output
     split per command."""
-    for m in mats:  # the engine does not check it (rtl/engine.sv's header)
-        if isinstance(m, Attention) and m.values:
-            d, lanes = m.cache.shape[2], ports * LANES_PER_PORT
-            assert d <= lanes, f"VALUES needs d <= L: d = {d}, L = {lanes}"
+    for m in mats:
+        if isinstance(m, Attention):
+            check_attention(m, ports * LANES_PER_PORT)
     addrs = place(mats, ports) if addrs is None else addrs
     images = channel_images(mats, addrs, ports)
     words: list[np.ndarray] = [np.array([images.shape[1]]), images.ravel(), np.array([len(xs)])]
