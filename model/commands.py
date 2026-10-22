@@ -735,6 +735,87 @@ def engine_spans(cmd: Command, stride: int) -> tuple[int, int]:
     raise AssertionError(f"not an engine command: {cmd.op!r}")
 
 
+VECTOR_OPS = frozenset(OPS) - ENGINE_OPS - {Op.LOAD, Op.KV_STORE, Op.OUTPUT, Op.END}
+UNARY = {Op.EXP: funcs.exp, Op.RECIP: funcs.recip, Op.RSQRT: funcs.rsqrt}
+BINARY = {Op.ADD: arith.add, Op.MUL: arith.mul}
+REDUCE = {Op.SUM: vector.reduce_sum, Op.SUMSQ: vector.reduce_sum_squares, Op.MAX: vector.reduce_max}
+
+
+def empty_buffers(formats: dict[Buf, tuple[torch.dtype, int]]) -> dict[Buf, torch.Tensor]:
+    """The on-chip buffers at the start of a token: stale data, NaN here, so
+    a read of an element no command wrote shows."""
+    return {
+        b: torch.full((length,), torch.nan, dtype=dtype) for b, (dtype, length) in formats.items()
+    }
+
+
+def buffer_span(buf: torch.Tensor, n: int, length: int, row_stride: int = 0) -> torch.Tensor:
+    """n rows of `length` elements of a buffer, `row_stride` apart (packed by
+    default), as a view."""
+    row_stride = row_stride or length
+    assert length <= row_stride and n * row_stride <= len(buf), (len(buf), n, length, row_stride)
+    return buf[: n * row_stride].view(n, row_stride)[:, :length]
+
+
+def store(dst: torch.Tensor, x: torch.Tensor) -> None:
+    """Write an FP32 result into a span, rounded if the buffer is BF16."""
+    assert x.dtype == F32 and x.shape == dst.shape, (x.dtype, x.shape, dst.shape)
+    dst.copy_(arith.bf16(x) if dst.dtype == BF16 else x)
+
+
+def overlap_ok(cmd: Command) -> bool:
+    """Whether a vector-unit command's dst may share a buffer with its
+    sources: the unit writes each group of elements about 50 cycles after
+    reading it, so dst may be a source only where an element is read once,
+    before its own write: not ROTATE_HALF's a, nor a b read for every row
+    (B_ROW) or by row (B_PER_ROW)."""
+    if cmd.op == Op.ROTATE_HALF and cmd.dst == cmd.a:
+        return False
+    return not (cmd.flags & (Flag.B_ROW | Flag.B_PER_ROW) and cmd.dst == cmd.b)
+
+
+def vector_command(cmd: Command, buf: dict[Buf, torch.Tensor], t: int, stride: int) -> None:
+    """Run one vector-unit command (VECTOR_OPS) on the buffers, in place: t
+    is the positions attention reads, stride the STRIDE register. Its
+    sources are FP32 buffers."""
+    assert cmd.op in VECTOR_OPS and flags_ok(cmd) and overlap_ok(cmd), cmd
+    sources = [x for x in (cmd.a, cmd.b, cmd.c) if x != Buf.NONE]
+    assert all(buf[x].dtype == F32 for x in sources), cmd
+
+    def rows(x: Buf) -> torch.Tensor:
+        """Buffer x as the command's n rows: of m, or of t at the stride."""
+        if cmd.flags & Flag.LEN_T:
+            return buffer_span(buf[x], cmd.n, t, stride)
+        return buffer_span(buf[x], cmd.n, cmd.m)
+
+    def operand_a() -> torch.Tensor:
+        v = rows(cmd.a)
+        return -v if cmd.flags & Flag.NEG_A else v  # unary minus: an exact sign flip
+
+    def operand_b() -> torch.Tensor:
+        if cmd.b == Buf.NONE:
+            v = f32_value(cmd.scalar)
+        elif cmd.flags & Flag.B_PER_ROW:
+            v = buffer_span(buf[cmd.b], cmd.n, 1)
+        elif cmd.flags & Flag.B_ROW:
+            v = buffer_span(buf[cmd.b], 1, cmd.row_length(t))
+        else:
+            v = rows(cmd.b)
+        return -v if cmd.flags & Flag.NEG_B else v
+
+    match cmd.op:
+        case Op.ADD | Op.MUL:
+            store(rows(cmd.dst), BINARY[cmd.op](operand_a(), operand_b()))
+        case Op.FMA:
+            store(rows(cmd.dst), arith.fma(operand_a(), operand_b(), rows(cmd.c)))
+        case Op.EXP | Op.RECIP | Op.RSQRT:
+            store(rows(cmd.dst), UNARY[cmd.op](operand_a()))
+        case Op.SUM | Op.SUMSQ | Op.MAX:
+            store(buffer_span(buf[cmd.dst], 1, cmd.n), REDUCE[cmd.op](rows(cmd.a))[None])
+        case Op.ROTATE_HALF:
+            store(rows(cmd.dst), vector.rotate_half(rows(cmd.a)))
+
+
 def run(
     commands: list[Command],
     layout: Layout,
@@ -744,63 +825,22 @@ def run(
     record: Callable[[EngineCall], None] | None = None,
 ) -> torch.Tensor | None:
     """Execute a command list for one token, as the controller does: buffers
-    start with stale data (NaN here, so a read of an element no command
-    wrote shows), HBM (the KV cache) is updated in place. Returns what
-    OUTPUT wrote to the host, or None for a list without OUTPUT (a prompt
-    token whose logits the host does not need). `record` gets every engine
-    command's EngineCall."""
+    start with stale data (empty_buffers), HBM (the KV cache) is updated in
+    place. Returns what OUTPUT wrote to the host, or None for a list without
+    OUTPUT (a prompt token whose logits the host does not need). `record`
+    gets every engine command's EngineCall."""
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
-    formats = buffers(layout.config, layout.stride)
     names = {addr: name for name, (addr, _, _) in layout.tensors.items()} if record else {}
     waits = engine_waits(commands) if record else []
-    buf = {
-        b: torch.full((length,), torch.nan, dtype=dtype) for b, (dtype, length) in formats.items()
-    }
+    buf = empty_buffers(buffers(layout.config, layout.stride))
     output = None
     t = position + 1  # positions attention reads: 0 ... position
     stride = layout.stride  # the STRIDE register
     assert t <= min(layout.cap, stride), (t, layout.cap, stride)
 
     def span(x: Buf, n: int, length: int, row_stride: int = 0) -> torch.Tensor:
-        """n rows of `length` elements of buffer x, `row_stride` apart
-        (packed by default), as a view."""
-        row_stride = row_stride or length
-        assert length <= row_stride and n * row_stride <= len(buf[x]), (x, n, length, row_stride)
-        return buf[x][: n * row_stride].view(n, row_stride)[:, :length]
+        return buffer_span(buf[x], n, length, row_stride)
 
-    def write(dst: torch.Tensor, x: torch.Tensor) -> None:
-        """Store an FP32 result in a span, rounded if the buffer is BF16."""
-        assert x.dtype == F32 and x.shape == dst.shape, (x.dtype, x.shape, dst.shape)
-        dst.copy_(arith.bf16(x) if dst.dtype == BF16 else x)
-
-    def rows(cmd: Command, x: Buf) -> torch.Tensor:
-        """Buffer x as the command's n rows: of m, or of t at the stride."""
-        if cmd.flags & Flag.LEN_T:
-            return span(x, cmd.n, t, stride)
-        return span(x, cmd.n, cmd.m)
-
-    def operand_a(cmd: Command) -> torch.Tensor:
-        v = rows(cmd, cmd.a)
-        return -v if cmd.flags & Flag.NEG_A else v  # unary minus: an exact sign flip
-
-    def operand_b(cmd: Command) -> torch.Tensor:
-        if cmd.b == Buf.NONE:
-            v = f32_value(cmd.scalar)
-        elif cmd.flags & Flag.B_PER_ROW:
-            v = span(cmd.b, cmd.n, 1)
-        elif cmd.flags & Flag.B_ROW:
-            v = span(cmd.b, 1, cmd.row_length(t))
-        else:
-            v = rows(cmd, cmd.b)
-        return -v if cmd.flags & Flag.NEG_B else v
-
-    unary = {Op.EXP: funcs.exp, Op.RECIP: funcs.recip, Op.RSQRT: funcs.rsqrt}
-    binary = {Op.ADD: arith.add, Op.MUL: arith.mul}
-    reduce = {
-        Op.SUM: vector.reduce_sum,
-        Op.SUMSQ: vector.reduce_sum_squares,
-        Op.MAX: vector.reduce_max,
-    }
     for i, cmd in enumerate(commands):
         assert cmd.op in OPS, f"unknown command {cmd.op!r}"  # stops, as case _ below
         assert flags_ok(cmd), f"command {i}: flags {cmd.flags!r} not accepted by {cmd.op!r}"
@@ -814,35 +854,26 @@ def run(
                     mem = mem[position]
                 assert mem.numel() == cmd.m, (mem.shape, cmd.m)
                 mem = mem.reshape(1, -1)
-                write(span(cmd.dst, 1, cmd.m), arith.up(mem) if mem.dtype == BF16 else mem)
+                store(span(cmd.dst, 1, cmd.m), arith.up(mem) if mem.dtype == BF16 else mem)
             case Op.MATVEC:
                 assert mem.shape == (cmd.n, cmd.m) and a.dtype == BF16, (mem.shape, a.dtype)
-                write(span(cmd.dst, 1, cmd.n), dot.matvec(mem, span(cmd.a, 1, cmd.m)))  # one vector
+                store(span(cmd.dst, 1, cmd.n), dot.matvec(mem, span(cmd.a, 1, cmd.m)))  # one vector
             case Op.KV_STORE:
                 assert mem.shape == (cmd.n, cmd.cap, cmd.m) and a.dtype == F32, (mem.shape, a.dtype)
                 mem[:, position] = arith.bf16(span(cmd.a, cmd.n, cmd.m))  # the cache is BF16
             case Op.SCORES:
                 q = span(cmd.a, cmd.n, cmd.m).reshape(cmd.kv_heads, -1, cmd.m)  # KV head h // group
                 s = decoder.attention_scores(q, mem[:, None, :t], f32_value(cmd.scalar))
-                write(span(cmd.dst, cmd.n, t, stride), s.reshape(cmd.n, t))
+                store(span(cmd.dst, cmd.n, t, stride), s.reshape(cmd.n, t))
             case Op.VALUES:
                 p = span(cmd.a, cmd.n, t, stride).reshape(cmd.kv_heads, -1, t)
                 o = decoder.attention_values(p, mem[:, None, :t])
-                write(span(cmd.dst, cmd.n, cmd.m), o.reshape(cmd.n, cmd.m))
+                store(span(cmd.dst, cmd.n, cmd.m), o.reshape(cmd.n, cmd.m))
             case Op.OUTPUT:
                 assert a.dtype == F32, a.dtype
                 output = span(cmd.a, 1, cmd.n)[0].clone()
-            case Op.ADD | Op.MUL:
-                write(rows(cmd, cmd.dst), binary[cmd.op](operand_a(cmd), operand_b(cmd)))
-            case Op.FMA:
-                fma = arith.fma(operand_a(cmd), operand_b(cmd), rows(cmd, cmd.c))
-                write(rows(cmd, cmd.dst), fma)
-            case Op.EXP | Op.RECIP | Op.RSQRT:
-                write(rows(cmd, cmd.dst), unary[cmd.op](operand_a(cmd)))
-            case Op.SUM | Op.SUMSQ | Op.MAX:
-                write(span(cmd.dst, 1, cmd.n), reduce[cmd.op](rows(cmd, cmd.a))[None])
-            case Op.ROTATE_HALF:
-                write(rows(cmd, cmd.dst), vector.rotate_half(rows(cmd, cmd.a)))
+            case op if op in VECTOR_OPS:
+                vector_command(cmd, buf, t, stride)
             case Op.END:  # must be the last command (the COMMANDS register's count)
                 assert i == len(commands) - 1, f"{len(commands) - 1 - i} commands after END"
                 return output

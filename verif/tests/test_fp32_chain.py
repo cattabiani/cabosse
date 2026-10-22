@@ -33,6 +33,7 @@ OPS = {
     "exp": (3, lambda a, *_: funcs.exp(a)),
     "recip": (4, lambda a, *_: funcs.recip(a)),
     "rsqrt": (5, lambda a, *_: funcs.rsqrt(a)),
+    "pass": (6, lambda a, *_: a),
 }
 BINARY, UNARY = ("add", "mul", "fma"), ("exp", "recip", "rsqrt")
 N_FAMILY, N_RANDOM = 2_000, 20_000  # per rounding family, random bits: fast run
@@ -144,6 +145,15 @@ def test_unary_specials_and_edges(op: str) -> None:
 
 
 @rtl.needs_verilator
+def test_pass_keeps_every_bit() -> None:
+    """pass gives a unchanged: NaN payloads, signs, subnormals."""
+    rng = np.random.default_rng(SEED)
+    check(
+        "pass", unary(np.concatenate([special_tuples(1).ravel(), random_bits(rng, N_RANDOM)])), SEED
+    )
+
+
+@rtl.needs_verilator
 @pytest.mark.parametrize("pipeline", [None, *PIPELINES])
 def test_operations_interleave(pipeline: str | None) -> None:
     """Every operation in a random order, one per cycle, at every FMA
@@ -169,7 +179,7 @@ def test_operations_interleave(pipeline: str | None) -> None:
 
 @pytest.mark.slow
 @rtl.needs_verilator
-@pytest.mark.parametrize("op", list(OPS))
+@pytest.mark.parametrize("op", BINARY + UNARY)
 def test_random_slow(op: str) -> None:
     """10⁸ inputs in chunks, each with its own seed (printed on failure),
     bulk.WORKERS at a time: rounding families and random bits for add, mul
