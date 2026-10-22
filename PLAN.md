@@ -440,6 +440,30 @@ shape, not the engine: `down` reaches 0.845 of the bound as written and every
 large matrix at least 0.929 of the restated one (reports/M5.md). Using the
 idle ports is Q-28.
 
+**D-047 (2026-10-22) — M6's speed criterion: each vector-unit command
+within 10% of the perf model, and < 10% of token time at position 0**
+(owner, 2026-10-22, at M6's start). The report gives the share at 0, 1023
+and the full window. *Why:* the perf model already puts the vector unit at
+6.7% of SmolLM2's token at position 0 and 42.6% at 8191 (in order,
+estimate): softmax's passes over the scores grow with the position, and no
+option without a numerics change brings 8191 below about 18%. The long
+positions are Q-29.
+
+**D-048 (2026-10-22) — The vector unit's slots are one chain of 7 FP
+stages** (owner, 2026-10-22). Every operation flows through the chain:
+`exp` uses 7 stages, `rsqrt` 6, `recip` 5, plain `ADD`, `MUL`, `FMA` and
+`MAX` one; integer logic between the stages does the bit tricks (first
+guesses, rounding to an integer, exponent edits, clamps), and the opcode
+picks each stage's use. A scaling numerics.md writes as a multiply by a
+power of two becomes an exponent edit when the result is exact (same bits,
+tested); multiplies that can round stay multiplies. *Why:* every operation
+at 16 elements per cycle for about 112 FP units (about 140 k LUTs and 224
+DSPs from M3's per-unit numbers, estimate), against about 300 for a
+pipeline per function, and one pipeline to verify; looping through one FP
+unit per slot would make softmax about 2.2× slower at long positions. Cost:
+about 45-50 cycles of latency on every command (measured in M6). The chain's
+length is set by `exp`, so one Newton step fewer saves no area.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1257,12 +1281,97 @@ step and drain, so a sequencing fix is made once); checkpoint report.
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
 KV cache writes.
-**Done when:** each operation is bit-exact on random and real activations,
-and the perf model shows the vector unit at < 10% of token time.
+**Done when:** each operation is bit-exact on random and real activations.
+Every vector-unit command of the real-data test takes within 10% of the
+perf model's cycles, and the perf model shows the vector unit at < 10% of
+token time at position 0 for SmolLM2 and Qwen2.5-0.5B (D-047; the criterion
+first read "< 10% of token time" at every position).
 **Check:** the area of the D-020 function units (rsqrt, recip, exp); fewer
 Newton steps or a lower exp degree only through a numerics change (was Q-08).
 **Possible optimization:** online softmax (D-022), only if score storage or
 the extra pass shows up as a bottleneck. It needs a spec change.
+
+**Answers to the start-of-milestone questions (owner, 2026-10-22):**
+- Scope: the vector unit (`ADD`, `MUL`, `FMA`, `EXP`, `RECIP`, `RSQRT`,
+  `SUM`, `SUMSQ`, `MAX`, `ROTATE_HALF`, with their flags; a BF16
+  destination rounds on write), `KV_STORE` (the core's first AXI write
+  port) and `LOAD` (embedding row, RoPE rows, norm weights). `OUTPUT` waits
+  for M8: the host address exists only on F2, and M7's runtime reads
+  `LOGITS` from the simulation. The testbench stands in for the controller
+  (one command at a time) and the engine (its results from the golden
+  model).
+- Criterion: restated (D-047). The perf model puts the vector unit at 6.7%
+  of token time at position 0 and 42.6% at 8191 for SmolLM2 (in order:
+  memory and engine overlapped, vector and commands after them; estimate),
+  because softmax's five passes over the scores grow with the position.
+  The report gives the share at 0, 1023 and the full window; the long
+  positions are Q-29.
+- Function units: one chain of 7 FP stages per slot that every operation
+  flows through (D-048).
+- Buffers: one memory per buffer, one read and one write port of 16
+  elements per cycle each, the format fixed per buffer (a BF16 read converts
+  up exactly, a write rounds). No vector command reads two operands from
+  the same buffer (checked on both ladder models' lists). Sizes are
+  parameters; the vector unit generates the addresses (rows of `m`, or of
+  `t` at stride `cap` with `LEN_T`; `B_PER_ROW`, `B_ROW`). A port is muxed
+  to the command that owns it; `commands.hazards()` gains a check that no
+  two running commands use the same port of a buffer, so the hardware needs
+  no arbitration. The engine's ports (x read, result write) are added in M7
+  with the top level; M5's engine tests keep their testbench memories.
+- S and P at stride `cap`: the golden command list moves to rows of `t` at
+  `h·cap` (the first PR after these answers), for any `cap`; the engine's
+  need for `cap` a multiple of `L` stays checked in its tests.
+  `real_attention` drops its padding and re-striding. Layout only, not a
+  numerics change. *Why stride `cap`:* a head's row starts at a fixed,
+  aligned address whatever the position; with packed rows it moves every
+  token and is misaligned for `VALUES`' 4-wide and the vector unit's
+  16-wide reads. The buffer is sized `heads × cap` anyway.
+- Tests: a C++ Verilator bulk driver per level. One slot's chain per
+  operation against the golden functions: special values, the edges of
+  each bit trick and random inputs in CI; 10^8 random inputs per operation
+  and the M1 golden model's exhaustive ranges (one bit-trick period for
+  rsqrt and recip, every exp input with a normal result) in `slow`.
+  Exhaustive (owner, 2026-10-22): `EXP`, `RECIP` and `RSQRT` on all 2³²
+  inputs, split into chunks run in parallel on the CPU cores (a GPU cannot
+  run Verilator); on demand, never in CI. Its wall time is measured on a
+  chunk first, and the run is started only with the owner's OK (possibly
+  overnight). Whole
+  commands with M5's AXI memory model, which gains a write side that checks
+  itself (every write answered once, the right bytes and strobes): random
+  commands and random dependent sequences against `commands.run()`;
+  summation-order inputs with large cancellations, lengths 1, 15, 16, 17,
+  127, 128, 129 and a long row; `m` = 1, `t` < 16, `t` not a multiple of
+  16, `t` = 1; `B_PER_ROW`/`B_ROW` with `NEG_A`/`NEG_B`; `cap` > `t` (stale
+  data past a row stays unread and unwritten); random pauses on every AXI
+  channel and long latencies (`KV_STORE` done only after every write
+  response, D-044). A whole decode step's vector, `LOAD` and `KV_STORE`
+  commands on the tiny config in CI. Real data (`slow`): SmolLM2's first
+  and last layers and the final norm at positions 0, 63, 1023 and 8191,
+  every command bit-exact with its cycles next to the perf model's. Hand
+  mutations as in M5, one of them the final tree's order. The vector unit
+  beside the engine on shared buffers is M7's.
+- Latency in the perf model: a measured `vector_startup_cycles` (and a
+  reduction tail if it differs) per vector command that waits for its input,
+  almost all of them under D-045; `command_cycles` stays the controller's
+  guess until M7. About 936 vector commands per SmolLM2 token × ~65 cycles
+  ≈ 0.24 ms (estimate), so position 0 may land above 10%. If so, the report
+  says so with the options (a short path for plain `ADD`/`MUL`/`FMA`,
+  fused RMSNorm scalars, D-031); no tuning to pass. The vector unit takes
+  the next command while the previous drains; the controller decides when
+  that is safe (D-045).
+- Area: Yosys cells for one slot and the whole unit, and an estimate in
+  LUTs and DSPs from M3's Vivado numbers per unit; Vivado's numbers come
+  with M8's build. No AWS in M6.
+
+**Steps (one branch and PR each):** these answers; S and P at stride `cap`
+and the buffer-port check in `commands.hazards()`; one slot's FP chain
+(every operation) with its bulk tests and area; the vector unit with its
+buffers (whole commands, sequences, the tiny step); `LOAD` and `KV_STORE`
+with the memory model's write side; real data, speed and
+`vector_startup_cycles`; checkpoint report.
+
+**Progress:**
+- [ ] Answers above.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
@@ -1349,3 +1458,4 @@ New ones are added as a table:
 |------|----------|----------------|
 | Q-27 | Share K and V tiles between the query heads of a GQA group (q·K: one tile for the group's heads in turn; p·V: lanes that save and resume their partial sums, or a chunked summation order, a numerics change)? Today each query head reads K and V. | Only if M8's HBM rate leaves attention memory-bound by much more than the ~8% estimated. |
 | Q-28 | Use the ports a partial last pass leaves idle (rows not a multiple of `L`: SmolLM2's `q`, `o`, `down`, `k`, `v` at 128 lanes)? Either split the last pass's dot products across lanes and add the halves (a numerics change), or start the next command's first pass on the idle ports (controller and engine redesign). | After M7/M8 measure a whole token at F2's HBM rate; only if the idle ports show up there. |
+| Q-29 | Bring the vector unit below 10% of token time at long positions (42.6% at SmolLM2's 8191 in order, estimate)? Options without a numerics change: fused softmax commands (`ADD`+`EXP`+`SUM` in one pass, 5 passes over the scores become 3, D-031), 32 elements per cycle (D-030), softmax of head h beside the engine's scores of head h+1 (controller). With one: online softmax (D-022). Even fused and 32 wide leave SmolLM2 at about 18% at 8191 (estimate). | After M7/M8 measure a whole token. |
