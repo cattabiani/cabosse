@@ -171,7 +171,7 @@
  },
  "real": {
   "provenance": {
-   "commit": "74308d21e82d8529c4e3c46fd5f0bc39971ce188",
+   "commit": "ed25eee4b9df1f3ab29fdcd42bec464918155f4c",
    "dirty": false,
    "date": "2026-10-22",
    "machine": "Linux x86_64"
