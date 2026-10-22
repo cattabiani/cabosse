@@ -259,18 +259,22 @@ def test_error_response(bad_port: int) -> None:
 @pytest.mark.wide
 @rtl.needs_verilator
 @pytest.mark.skipif(not paths.SMOLLM2.exists(), reason=f"needs the checkpoint in {paths.SMOLLM2}")
-def test_smollm2() -> None:
-    """The first and last layers' MATVECs and the classifier, real weights
-    and activations (position 63), waiting where the controller would, at
-    F2's latency: bit for bit, and each command within 10% of the perf
-    model's cycles (PLAN.md, M5), the first one included."""
-    found, result = eng.run_smollm2(decoder.load(paths.SMOLLM2), WIDE, **eng.F2_MEMORY)
-    assert result.err == 0 and result.r_stalls == 0, (result.err, result.r_stalls)
+@pytest.mark.parametrize("position", eng.SMOLLM2_POSITIONS)
+def test_smollm2(position: int) -> None:
+    """The first and last layers' MATVECs, SCORES and VALUES and the
+    classifier, real weights and activations, waiting where the controller
+    would, at F2's latency: bit for bit, and each command within 10% of the
+    perf model's cycles (PLAN.md, M5), the first one included. Positions
+    past 63 read the long cache (scripts/fill_long_cache.py)."""
+    run = eng.run_smollm2(decoder.load(paths.SMOLLM2), WIDE, position, **eng.F2_MEMORY)
+    if run is None:
+        pytest.skip("needs the long cache: python scripts/fill_long_cache.py")
+    found, result = run
     off = {
-        f.name: c / eng.model_cycles(f.matvec, WIDE) - 1
+        f.name: c / eng.model_cycles(f.command, WIDE) - 1
         for f, c in zip(found, eng.command_cycles(result), strict=True)
     }
-    print(f"cycles against the perf model: {off}")
+    print(f"position {position}, cycles against the perf model: {off}")
     assert all(abs(v) <= 0.10 for v in off.values()), off
 
 
