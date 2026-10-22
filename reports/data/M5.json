@@ -1,0 +1,12 @@
+{
+ "provenance": {
+  "commit": "875ff1894febbb99e272f1e46641a38a2df20ad0",
+  "dirty": false,
+  "date": "2026-10-22",
+  "machine": "Linux x86_64"
+ },
+ "tests": {
+  "fast": "595 passed, 24 deselected in 232.62s (0:03:52)",
+  "slow": "23 passed, 596 deselected in 1295.45s (0:21:35)"
+ }
+}
