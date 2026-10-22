@@ -1174,8 +1174,10 @@ step and drain, so a sequencing fix is made once); checkpoint report.
   cells, 14 of them carry blocks, the same as `fp32_fma` alone (the scale's
   unit, +0.514 ns at 250 MHz in M3's Vivado run); with the FMA stubbed, the
   engine's own deepest path (next-cycle state into an address adder) is 23,
-  12 carry blocks; `main`'s engine 20, 8 carry blocks. A first reading of
-  31 was the measure walking through RAMs, which `logic_depth` now cuts.
+  12 carry blocks; `main`'s engine 20, 10 carry blocks. A first reading of
+  31 was the measure walking through clocked cells (RAMs, shift-register
+  LUTs); `logic_depth` now builds small memories from flip-flops and cuts
+  block RAMs.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
