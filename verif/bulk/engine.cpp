@@ -9,9 +9,10 @@
 /// Input (little-endian uint32 on stdin): the words per channel, then each
 /// port's channel image; the number of x buffers, then per buffer its id,
 /// its BF16 elements and the elements two per word (low half first); the
-/// number of commands, then per command rows, cols, address (low word, high
-/// word), a, dst, bf16 and wait. Commands are offered in order, each held
-/// until taken. A command with wait gets its go_i as the controller may give
+/// number of commands, then per command op (0 MATVEC, 1 SCORES, 2 VALUES),
+/// rows, cols, address (low word, high word), a, dst, bf16, wait, heads,
+/// group, t, cap and scale (FP32 bits). Commands are offered in order, each
+/// held until taken. A command with wait gets its go_i as the controller may give
 /// it (D-042), in order, once it is taken: after every earlier command is
 /// done (its dependency is the one before), or at once (an earlier one, done
 /// already), then after a random delay. Until then its x buffer reads as NaN,
@@ -25,12 +26,13 @@
 /// +go_delay (a go comes 0 to go_delay cycles late, uniformly), +seed (port p's memory draws
 /// with (seed << 16) + p, so no two runs or ports share a stream).
 /// Output: per command its rows' results in order (FP32, or BF16 in the low
-/// half), the cycle it was taken and the cycle of its done_o; then the
+/// half): rows for a MATVEC, heads * cap for SCORES (0 where i >= t), heads
+/// * cols for VALUES; the cycle it was taken and the cycle of its done_o; then the
 /// cycles, the cycles any memory waited on RREADY, the ports with err_o, and
 /// the run's wall time in microseconds (reset to the last drain cycle).
 /// Checks, each ending the run with a message: writes go to the oldest
-/// command not done, to its dst, inside its rows, each row once, with its
-/// bf16; done_o comes after all of its rows; nothing is written and every
+/// command not done, to its dst, to its rows (for SCORES, h * cap + i with
+/// i < t), each row once, with its bf16; done_o comes after all of its rows; nothing is written and every
 /// memory is idle for kDrainCycles cycles after the last done_o.
 
 #include <algorithm>
@@ -48,22 +50,34 @@ using Params = Vengine___024root;  // the build's parameters (verif/bulk.py: --p
 constexpr size_t kBeatWords = Params::engine__DOT__DataWidth / 32;
 constexpr size_t kAddrBits = Params::engine__DOT__AddrWidth;
 constexpr size_t kXValues = Params::engine__DOT__E;     ///< BF16 values per read
+constexpr size_t kXReads = Params::engine__DOT__Heads;  ///< x read ports
+constexpr size_t kXAddrBits = Params::engine__DOT__RowWidth;
 constexpr size_t kWrites = Params::engine__DOT__Writes;  ///< the write port's slots
 constexpr size_t kBufs = size_t{1} << Params::engine__DOT__BufWidth;
-constexpr size_t kCmdWords = 8;  ///< rows, cols, addr lo, addr hi, a, dst, bf16, wait
+constexpr size_t kCmdWords = 14;  ///< op, rows, cols, addr lo, addr hi, a, dst, bf16, wait, heads, group, t, cap, scale
+constexpr uint32_t kOpScores = Params::engine__DOT__OpScores, kOpValues = Params::engine__DOT__OpValues;
 constexpr uint16_t kNan = 0x7FC0;  ///< what a waiting command's x holds before its go
 constexpr int kExitBadInput = 2, kExitHang = 3, kExitBadWrite = 4, kExitAxi = 5;
 
 /// @brief One engine command and what it wrote.
 struct Command {
-  uint32_t rows, cols;
+  uint32_t op, rows, cols;
   uint64_t addr;
   uint32_t a, dst;
   bool bf16;
   bool wait;                      ///< steps only after its go
+  uint32_t heads, group, t, cap;  ///< attention
+  uint32_t scale;                 ///< SCORES, FP32 bits
   std::vector<uint32_t> out;      ///< results by row
   std::vector<bool> written;      ///< rows written
   uint64_t taken = 0, done = 0;   ///< cycles
+
+  /// @brief The rows of dst the command's output spans.
+  size_t n_rows() const {
+    return op == kOpScores ? size_t{heads} * cap : op == kOpValues ? size_t{heads} * cols : rows;
+  }
+  /// @brief Whether the command writes this row of dst.
+  bool writes(size_t row) const { return row < n_rows() && (op != kOpScores || row % cap < t); }
 };
 
 /// @brief A write the engine must not make, with what it did.
@@ -92,7 +106,7 @@ struct Bench {
   std::optional<GoDraw> go_draw;
   size_t oldest = 0;              ///< the first command not yet done
   bool offering = false;          ///< a command is on the port, waiting to be taken
-  std::array<uint16_t, kXValues> x_q{};  ///< the RAM's output register
+  std::array<std::array<uint16_t, kXValues>, kXReads> x_q{};  ///< the RAM's output registers
   uint64_t cycles = 0, writes = 0;
 
   /// @brief The x RAM's read: E values of a group, zeros past the buffer.
@@ -131,7 +145,7 @@ struct Bench {
     for (size_t s = 0; s < kWrites; ++s) {
       if (!get_bits(dut.w_mask_o, s, 1)) continue;
       const uint64_t row = dut.w_row_o + s;
-      if (row >= c.rows) throw WriteError(std::format("row {} of a {}-row command", row, c.rows));
+      if (!c.writes(row)) throw WriteError(std::format("row {}, not one of the command's", row));
       if (c.written[row]) throw WriteError(std::format("row {} written twice", row));
       c.written[row] = true;
       c.out[row] = static_cast<uint32_t>(get_bits(dut.w_data_o, 32 * s, 32));
@@ -144,7 +158,9 @@ struct Bench {
   void done() {
     if (oldest >= commands.size()) throw WriteError("done_o with no command left");
     Command& c = commands[oldest];
-    if (!std::ranges::all_of(c.written, std::identity{})) throw WriteError("done_o before every row");
+    for (size_t row = 0; row < c.written.size(); ++row) {
+      if (c.writes(row) && !c.written[row]) throw WriteError(std::format("done_o before row {}", row));
+    }
     c.done = cycles;
     ++oldest;
   }
@@ -164,12 +180,20 @@ struct Bench {
         std::ranges::copy(data, std::as_writable_bytes(std::span(dut.r_data_i.data() + kBeatWords * p, kBeatWords)).begin());
       }
     }
-    for (size_t e = 0; e < kXValues; ++e) set_bits(dut.x_data_i, 16 * e, 16, x_q[e]);
+    for (size_t r = 0; r < kXReads; ++r) {
+      for (size_t e = 0; e < kXValues; ++e) set_bits(dut.x_data_i, 16 * (kXValues * r + e), 16, x_q[r][e]);
+    }
     if (run && !offering && next_cmd < commands.size()) offering = rng() % 1000 < offer_permille;
     dut.go_i = run && go();
     dut.cmd_valid_i = offering;
     if (offering) {
       const Command& c = commands[next_cmd];
+      dut.cmd_op_i = c.op;
+      dut.cmd_heads_i = c.heads;
+      dut.cmd_group_i = c.group;
+      dut.cmd_t_i = c.t;
+      dut.cmd_cap_i = c.cap;
+      dut.cmd_scale_i = c.scale;
       dut.cmd_rows_i = c.rows;
       dut.cmd_cols_i = c.cols;
       dut.cmd_addr_i = c.addr;
@@ -195,7 +219,8 @@ struct Bench {
                       get_bits(dut.r_ready_o, p, 1));
       }
     }
-    const auto x_next = read_x(dut.x_buf_o, dut.x_addr_o);
+    std::array<std::array<uint16_t, kXValues>, kXReads> x_next;
+    for (size_t r = 0; r < kXReads; ++r) x_next[r] = read_x(dut.x_buf_o, get_bits(dut.x_addr_o, kXAddrBits * r, kXAddrBits));
     dut.clk_i = 1;
     dut.eval();
     x_q = x_next;
@@ -247,10 +272,13 @@ int main(int argc, char** argv) {
     }
     for (uint32_t i = 0, n = in.next(); i < n; ++i) {
       const auto f = in.take(kCmdWords);
-      commands.push_back({.rows = f[0], .cols = f[1], .addr = f[2] | uint64_t{f[3]} << 32, .a = f[4],
-                          .dst = f[5], .bf16 = f[6] != 0, .wait = f[7] != 0, .out = std::vector<uint32_t>(f[0]),
-                          .written = std::vector<bool>(f[0])});
-      if (f[4] >= kBufs) throw std::out_of_range("a past BufWidth");
+      Command c{.op = f[0], .rows = f[1], .cols = f[2], .addr = f[3] | uint64_t{f[4]} << 32, .a = f[5],
+                .dst = f[6], .bf16 = f[7] != 0, .wait = f[8] != 0, .heads = f[9], .group = f[10], .t = f[11],
+                .cap = f[12], .scale = f[13]};
+      c.out.resize(c.n_rows());
+      c.written.resize(c.n_rows());
+      commands.push_back(std::move(c));
+      if (f[5] >= kBufs) throw std::out_of_range("a past BufWidth");
     }
     std::vector<bool> read(kBufs);
     for (const Command& c : commands) {

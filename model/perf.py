@@ -66,6 +66,7 @@ UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 ATTENTION_KINDS = ("scores", "values")
 # Design values that are counts: whole numbers (Design checks).
 ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
+VALUES_HEADS = 2  # heads per p.V pass, at most (rtl/engine.sv's Heads)
 
 
 @dataclass(frozen=True)
@@ -82,9 +83,10 @@ class Step:
     kv_read_bytes: int = 0
     kv_write_bytes: int = 0
     vector_elems: int = 0  # elements on the vector unit (one pass)
-    # (rows, cols) on the engine: a row per lane, cols multiply-adds per row;
-    # None off the engine.
-    engine_shape: tuple[int, int] | None = None
+    # (rows, cols) of each block on the engine: a row per lane, cols
+    # multiply-adds per row, rows in passes of the lanes within a block;
+    # empty off the engine.
+    engine_shapes: tuple[tuple[int, int], ...] = ()
     waits: bool = False  # on the engine, steps only after an earlier result (D-042)
 
 
@@ -216,34 +218,45 @@ def load_config(name: str) -> LlamaConfig:
     return LlamaConfig.from_json_file(paths.CONFIGS / f"{name}.json")
 
 
-def attention(cmd: commands.Command, positions: int) -> Step:
-    """q.K (SCORES) or p.V (VALUES) over `positions` cache rows: reads K (or V)
-    once per KV head, shared by its query heads. On the engine, scores have a
-    row per head and position, p.V a row per head and output dimension."""
+def attention(cmd: commands.Command, positions: int, lanes: int) -> Step:
+    """q.K (SCORES) or p.V (VALUES) over `positions` cache rows, as the engine
+    runs it (architecture.md, KV cache layout): K or V read in whole tiles of
+    `lanes` positions, once per query head (no tile shared between heads;
+    Q-27). Scores have a row per position, a pass per head and tile; p.V a
+    row per head and output dimension, in passes of up to VALUES_HEADS heads
+    (one if two do not fit the lanes)."""
     heads, d = cmd.n, cmd.m
-    rows = (heads * positions, d) if cmd.op == commands.Op.SCORES else (heads * d, positions)
+    tiles = math.ceil(positions / lanes)
+    if cmd.op == commands.Op.SCORES:
+        shapes = ((positions, d),) * heads
+    else:
+        per_pass = max(1, min(VALUES_HEADS, lanes // d))
+        shapes = tuple((min(per_pass, heads - h) * d, positions) for h in range(0, heads, per_pass))
     return Step(
         cmd.op.name.lower(),
         (heads, positions, d),
         heads * positions * d,
-        kv_read_bytes=cmd.kv_heads * positions * d * BF16_BYTES,
-        engine_shape=rows,
+        kv_read_bytes=heads * tiles * lanes * d * BF16_BYTES,
+        engine_shapes=shapes,
     )
 
 
-def step(cmd: commands.Command, t: int) -> Step:
-    """The work of one command when attention reads t positions."""
+def step(cmd: commands.Command, t: int, lanes: int) -> Step:
+    """The work of one command when attention reads t positions, on an
+    engine of `lanes` lanes."""
     match cmd.op:
         case commands.Op.MATVEC:
             n = cmd.n * cmd.m
-            return Step("matvec", (cmd.n, cmd.m), n, n * BF16_BYTES, engine_shape=(cmd.n, cmd.m))
+            return Step(
+                "matvec", (cmd.n, cmd.m), n, n * BF16_BYTES, engine_shapes=((cmd.n, cmd.m),)
+            )
         case commands.Op.LOAD:
             dtype = commands.BF16 if cmd.flags & commands.Flag.SRC_BF16 else commands.F32
             return Step("load", (cmd.m,), weight_bytes=commands.n_bytes(cmd.m, dtype))
         case commands.Op.KV_STORE:
             return Step("kv_store", (cmd.n, cmd.m), kv_write_bytes=cmd.n * cmd.m * BF16_BYTES)
         case commands.Op.SCORES | commands.Op.VALUES:
-            return attention(cmd, t)
+            return attention(cmd, t, lanes)
         case commands.Op.OUTPUT | commands.Op.END:  # OUTPUT goes over PCIe, not HBM
             return Step(cmd.op.name.lower(), ())
         case _:  # the vector unit
@@ -251,13 +264,14 @@ def step(cmd: commands.Command, t: int) -> Step:
             return Step(cmd.op.name.lower(), (cmd.n, length), vector_elems=cmd.n * length)
 
 
-def ops(config: LlamaConfig, position: int) -> list[Step]:
+def ops(config: LlamaConfig, position: int, lanes: int) -> list[Step]:
     """The work of one decode step at `position` (0-based: it attends to
-    position + 1 cache rows), one entry per command."""
+    position + 1 cache rows), one entry per command, on an engine of
+    `lanes` lanes (attention reads whole tiles of that many positions)."""
     layout = commands.Layout.of(config, cap=position + 1)
     cmds = commands.build(layout)
     return [
-        dataclasses.replace(step(cmd, position + 1), waits=w)
+        dataclasses.replace(step(cmd, position + 1, lanes), waits=w)
         for cmd, w in zip(cmds, commands.engine_waits(cmds), strict=True)
     ]
 
@@ -309,7 +323,7 @@ class Work:
             attention_macs=total("macs", lambda o: o.kind in ATTENTION_KINDS),
             vector_elems=total("vector_elems"),
             commands=len(op_list),
-            engine_shapes=tuple(o.engine_shape for o in op_list if o.engine_shape is not None),
+            engine_shapes=tuple(shape for o in op_list for shape in o.engine_shapes),
             engine_waits=total("waits"),
         )
 
@@ -374,4 +388,5 @@ class Prediction:
 def predict(
     config: LlamaConfig, platform: dict[str, float], design: dict[str, float], position: int
 ) -> Prediction:
-    return Prediction(seconds(Work.of(ops(config, position)), platform, design))
+    work = Work.of(ops(config, position, int(design["lanes"])))
+    return Prediction(seconds(work, platform, design))

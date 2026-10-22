@@ -280,6 +280,75 @@ def test_engine_waits_for_every_unwaited_write() -> None:
     assert commands.engine_waits([norm, other, q, k]) == [False, False, True, False]
 
 
+def hazard_lists() -> list[tuple[str, list[commands.Command]]]:
+    """Tiny models with grouped and plain attention, and the real models'
+    lists (the configs are in the repo; no weights needed)."""
+    tiny_lists = [
+        (f"tiny, {kv} KV heads", tiny.tiny_config(n_kv_heads=kv, tied=True)) for kv in (1, 2, 4)
+    ]
+    real = [(p.stem, perf.load_config(p.stem)) for p in sorted(paths.CONFIGS.glob("*.json"))]
+    return [(name, commands.build(commands.Layout.of(c, cap=16))) for name, c in tiny_lists + real]
+
+
+@pytest.mark.parametrize("write_after_reads", [True, False])
+def test_command_list_has_no_hazards(write_after_reads: bool) -> None:
+    """Under the ordering rules (D-041, D-042, D-044) no command reads a
+    buffer or a cache row before its last write is done, or overwrites one
+    an earlier command may still read; the current lists need no
+    write-after-read rule for that (D-044's claim)."""
+    for name, cmds in hazard_lists():
+        assert commands.hazards(cmds, write_after_reads=write_after_reads) == [], name
+
+
+def test_hazards_found_without_a_rule() -> None:
+    """Each rule is needed: SCORES given without wait (D-044's first draft)
+    reads q before RoPE writes it; without the KV_STORE handover, SCORES and
+    VALUES read the newest cache row before it is written."""
+    for name, cmds in hazard_lists():
+        layers = sum(cmd.op == commands.Op.SCORES for cmd in cmds)
+        no_scores_go = [
+            w and cmd.op != commands.Op.SCORES
+            for cmd, w in zip(cmds, commands.engine_waits(cmds), strict=True)
+        ]
+        found = commands.hazards(cmds, waits=no_scores_go)
+        assert {(h.kind, h.resource) for h in found} == {("read after write", commands.Buf.QR)}
+        assert len(found) == 2 * layers, name  # every layer of both tokens
+        found = commands.hazards(cmds, kv_after=[None] * len(cmds))
+        readers = {cmds[h.cmd[1]].op for h in found}
+        assert readers == {commands.Op.SCORES, commands.Op.VALUES}, name
+        assert all(cmds[h.earlier[1]].op == commands.Op.KV_STORE for h in found), name
+        assert len(found) == 2 * 2 * layers, name
+
+
+def test_write_after_read_hazard() -> None:
+    """A vector command overwriting the engine's input while the engine may
+    still read it (and while the first write may still land) is a hazard
+    unless writes wait for earlier readers and writers."""
+    op, buf = commands.Op, commands.Buf
+    norm = commands.Command(op.ADD, buf.X, buf.H, buf.H, n=1, m=8)
+    q = commands.Command(op.MATVEC, buf.Q, buf.X, n=8, m=8)
+    overwrite = commands.Command(op.MUL, buf.X, buf.H, buf.H, n=1, m=8)
+    cmds = [norm, q, overwrite, commands.Command(op.END)]
+    found = commands.hazards(cmds, write_after_reads=False)
+    assert sorted((h.cmd, h.earlier, h.kind) for h in found) == [
+        ((token, 2), (token, earlier), kind)
+        for token in (0, 1)
+        for earlier, kind in ((0, "write after write"), (1, "write after read"))
+    ]
+    assert commands.hazards(cmds) == []
+
+
+def test_kv_waits() -> None:
+    """SCORES and VALUES are given after the KV_STORE of the cache they read."""
+    layout = commands.Layout.of(tiny.tiny_config(), cap=8)
+    cmds = commands.build(layout)
+    for cmd, after in zip(cmds, commands.kv_waits(cmds), strict=True):
+        if cmd.op in (commands.Op.SCORES, commands.Op.VALUES):
+            assert cmds[after].op == commands.Op.KV_STORE and cmds[after].addr == cmd.addr
+        else:
+            assert after is None
+
+
 def lane_order_restated(w: torch.Tensor, lanes: int) -> list[list[list[int]]]:
     """docs/architecture.md's weight layout, element by element: each port's
     beats as BF16 bit patterns, zeros where no weight is."""

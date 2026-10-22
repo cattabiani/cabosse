@@ -384,6 +384,53 @@ dependent command: 118 cycles at F2's latency, 16% of SmolLM2's q and o
 remain (the lanes' pipeline, the final sum and the last pass's drain;
 reports/data/M5-engine.json).
 
+**D-043 (2026-10-13) — KV cache positions are contiguous within a
+channel** (refines D-040 for the KV cache; owner, 2026-10-13). Position
+`p` of a KV head goes on channel `p mod Ports`, as row `p div Ports` of
+that head's region; the region sits at the same offset in every channel
+and reserves `ceil(cap / Ports)` rows. A tile of `L` = 4 × `Ports`
+positions is then 4 adjacent rows in every channel: one read of
+`4 × head_dim × 2 / 32` beats per port (16 for SmolLM2). `KV_STORE` writes
+one row to one channel either way. *Why:* architecture.md spread the
+positions over the channels but left their place within a channel open;
+with rows at their flat addresses a tile is 4 separate short reads per
+port, and short DMA commands run below full rate (M5, memory model and
+DMA: a 1-beat command at half rate).
+
+**D-044 (2026-10-14) — An engine command reads the KV cache only after
+the KV_STORE that writes it is done** (refines D-041 and D-042; owner,
+2026-10-14). The controller gives the engine a `SCORES` or `VALUES` only
+once every `KV_STORE` writing rows it reads is done: every write response
+received, since the write path and the 32 read ports are separate AXI
+ports with no order between them. Both come with `wait` and read the cache
+ahead as D-042 allows: `SCORES` after `KV_STORE` K, its go once q after
+RoPE is written (in the command list RoPE of q follows `KV_STORE`, so its
+K reads overlap it); `VALUES` after `KV_STORE` V, its go once P is
+written. Besides the read-after-write rule of D-041, a command that writes
+an on-chip buffer is started only after every earlier command that reads
+that buffer is done (the current command list already orders every such
+case through its data; M7's controller must not rely on that). *Why:*
+read ahead, the engine could read the newest K or V row before
+`KV_STORE` writes it. The first draft of this entry gave `SCORES` without
+`wait` and claimed q was ready after `KV_STORE`; it is not (review of the
+command list, 2026-10-14).
+
+**D-045 (2026-10-22) — The controller hands commands over in order and
+stops at a non-engine command until the buffers it reads are written**
+(refines D-041; owner, 2026-10-22). A vector-unit (or other non-engine)
+command whose input is still being written holds every later command back;
+engine commands are handed over at once and wait inside the engine
+(D-042). Under this rule the current command lists order every overwrite
+after the reads it would clobber through their data (D-044's remark), and
+`commands.hazards()` finds none with or without the write-after-read rule;
+D-044's rule stays. *Why:* the simplest controller. Handing over past a
+waiting command (the vector unit waiting by itself) would let the next
+engine command read its weights earlier: at most about 70 cycles for each
+of SmolLM2's 181 waiting engine commands, up to 1.8% of a token at
+position 63 and 0.6% at 8191 (estimate, from M5's start-up with and
+without read-ahead), for a controller that tracks each buffer's readers.
+Premature (owner). M7 measures the loss.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -931,7 +978,9 @@ with `L` = 128), a single row. Idle lanes must not write results.
 **Steps (one branch and PR each):** these answers; command-list recording
 and weight layout; memory model and DMA; engine `MATVEC` (two PRs, owner
 2026-10-11: the engine with small configurations, then real data and speed
-at 128 lanes); engine attention; checkpoint report.
+at 128 lanes); engine attention (two PRs, then a small one, owner
+2026-10-22: one walker for `MATVEC` passes and attention units in issue,
+step and drain, so a sequencing fix is made once); checkpoint report.
 
 **Progress:**
 - [x] Answers above (PR #50).
@@ -1034,7 +1083,7 @@ at 128 lanes); engine attention; checkpoint report.
   for only with room for it). 64 stays the default until the 32-port run
   of the second PR. (These seeds overlapped: port p drew with seed + 1 + p,
   so seeds 1 to 5 shared most ports' streams; fixed in the second PR.)
-- [ ] Engine `MATVEC`, second PR: real data and speed at 128 lanes.
+- [x] Engine `MATVEC`, second PR (#54): real data and speed at 128 lanes.
   Weights read ahead of a go (D-042, owner): `cmd_wait_i` and `go_i`
   credits; issue reads a waiting command's weights at once, step holds it
   until its go. `commands.engine_waits` marks the waiting commands (q,
@@ -1089,6 +1138,62 @@ at 128 lanes); engine attention; checkpoint report.
     and 310 s of wall time per simulated token (estimate; the full design
     will simulate slower). CI builds and runs the 128-lane tests (marked
     `wide`) in a job of its own, beside the RTL job.
+- [ ] Engine attention. Owner, 2026-10-13: the KV layout is D-043. A long
+  position's KV cache is computed once by the golden model and saved under
+  the git-ignored `weights/`, named by a hash of the weights, the prompt
+  and its length; the test recomputes a 64-position prefix and checks it
+  bit for bit, so a file older than a numerics change fails. The prompt is
+  our own docs (Apache-2.0), tokenized and cut to length. The fill computes
+  the classifier for the last position only.
+  Owner, 2026-10-14: `VALUES` reads the tile through a crossbar
+  (4 consecutive positions per cycle sit on 4 channels, D-043; numerics
+  and layout unchanged); a banked tile buffer serves it, `SCORES` and the
+  fill (architecture.md, "Tile buffer banks"). Simplest first (owner): a
+  tile serves one query head and is used once, so K and V are read once
+  per query head; free while the memory keeps up with the engine, at most
+  the engine's rate ÷ the memory's rate on attention otherwise (about 8%
+  on F2 at 250 MHz, estimate); reuse across a GQA group is Q-27. The engine
+  requires `cap` a multiple of `L` (whole tiles) and a power-of-two head
+  dimension from 16 to 128. Owner, 2026-10-15 (after `/simplify`): attention
+  needs the port count a multiple of 4 and `VALUES` `d ≤ L`; a second bank
+  mapping with a quarter-rate fill and `VALUES` passes split by dimension,
+  for test engines only, are dropped (this narrows the M5 answer "the
+  attention mapping works for any `L`" to the engines the chip can be).
+  Owner, 2026-10-15 (after reviewing that): the whole engine needs the
+  port count a multiple of 4, checked at elaboration, so `MATVEC` and
+  attention test on the same engines: 4, 8 and 20 ports (L = 80 divides
+  no SmolLM2 size, as 20 did) in CI, 32 in the wide job (this replaces
+  the M5 answer's 1 / 4, 2 / 8 and 5 / 20). A pass is then whole write
+  groups, so the drain's padding lanes are gone. `SCORES` and `VALUES` wait for the `KV_STORE`
+  that writes what they read (D-044). The engine leaves positions at or
+  past t out of a row (not a zero product: the cache and P hold stale
+  data there, maybe NaN; tested with NaN); a tile slot is refilled only
+  after its pass is done, and no tile is kept from one command to the
+  next (hand mutations). Two PRs, as for `MATVEC`: small configurations,
+  then real data and speed at 128 lanes.
+  First PR: the engine with small configurations. `rtl/engine.sv` gains a
+  fill stage and attention units (one head and a tile for `SCORES`; up to
+  2 heads and a tile for `VALUES`), `rtl/tile_buffer.sv` (`L` banks, rotations by
+  `rtl/rotate.sv`) and the scale's `mul` on the write path (6 cycles more
+  for every command: `engine_startup_cycles` is re-measured in the second
+  PR). `commands.hazards()` checks the ordering rules (D-041, D-042,
+  D-044) on the command lists. Tests (`test_engine.py`, at 4, 8 and 20
+  ports in CI, 32 in the wide job): every op × d of 16, 64, 128
+  (`VALUES` up to `L`) × groups of 1, 2, 3 and SmolLM2's 9 / 3 ×
+  positions around a tile and `t = cap`, with NaN in the cache and p past
+  t, between MATVECs; the 6 memory behaviours; gos; fill running ahead
+  past MATVECs; back to back, each command takes its perf-model cycles
+  plus 1 (289 for 288 at 32 ports, measured). The bank mapping is checked
+  exhaustively (`test_tile_banks.py`). Hand mutations (listed in the PR),
+  all caught.
+  Logic depth (`rtl.logic_depth`, 8 ports, scratch logs, not saved): 27
+  cells, 14 of them carry blocks, the same as `fp32_fma` alone (the scale's
+  unit, +0.514 ns at 250 MHz in M3's Vivado run); with the FMA stubbed, the
+  engine's own deepest path (next-cycle state into an address adder) is 23,
+  12 carry blocks; `main`'s engine 20, 10 carry blocks. A first reading of
+  31 was the measure walking through clocked cells (RAMs, shift-register
+  LUTs); `logic_depth` now builds small memories from flip-flops and cuts
+  block RAMs.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
@@ -1116,6 +1221,17 @@ makes one). The model's `Layout` moves to channel offsets (D-040). The
 controller sets `wait` on the commands `commands.engine_waits` marks and
 pulses `go` once the command each depends on is done; a go never waits for
 the engine to take a later command (D-042).
+The controller stops at a non-engine command until its inputs are written
+(D-045); the perf model's start-up (`engine_startup_cycles`) was measured
+with weights read ahead at once, so compare the engine commands after such
+a stop with it and report the loss.
+Attention (M5): `SCORES` writes head h's scores at `S[h·cap + i]` and
+`VALUES` reads head h's probabilities at `P[h·cap + i]` (rows at stride
+`cap`, so `VALUES` reads them aligned to E); the softmax commands
+(`LEN_T`) must read and write rows of t at that stride, not packed. The
+engine needs `cap` a multiple of L, a power-of-two head dimension from
+16 to 128 (`VALUES`: at most L), and does not check them; `SCORES` and `VALUES` are given after the `KV_STORE` they
+depend on (D-044).
 
 ### M8 — F2 bring-up (no model)
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
@@ -1130,6 +1246,12 @@ slack at 250 MHz (4 ns) is ≥ 0, and its script fails otherwise; the slack
 goes into the report next to the perf numbers (owner, 2026-10-08).
 **From M5:** the engine's out-of-context Vivado run (128 lanes with DMA and
 buffers: area and timing at 250 MHz) moved here (owner, 2026-10-09).
+Its Yosys proxy (M5, attention) puts the deepest path in the scale's
+`fp32_fma` and the engine's own control 4 cells shallower; if Vivado finds
+the control path (unit end into the RAMs' next addresses) failing, register
+the addresses a cycle earlier. The engine's four stage queues each hold the
+whole command (about 178 bits); check in the utilization report that
+synthesis drops the fields a stage never reads, or narrow them.
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
@@ -1139,7 +1261,11 @@ Compared with the Gemmini baseline (a different model) using normalized
 figures: weight bytes/s and MACs/s.
 **From M5:** with HBM at 450 MHz a port delivers about 1.8 beats per core
 cycle, so lanes per port becomes 8 (256 lanes on 32 ports), with a clock
-crossing on the memory side.
+crossing on the memory side. `VALUES` runs at most 2 heads a pass (the
+engine's `Heads`; the perf model follows it since M5, attention): at 256
+lanes that leaves half the lanes idle on p.V, and docs/perf.md's 256-lane
+row is limited by the engine at position 1023. Raise `Heads` to L / d
+there.
 
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
@@ -1155,7 +1281,8 @@ gate-level simulation bit-exact; then, perhaps, a shuttle run.
 
 ## Open questions
 
-None open. New ones are added as a table:
+New ones are added as a table:
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
+| Q-27 | Share K and V tiles between the query heads of a GQA group (q·K: one tile for the group's heads in turn; p·V: lanes that save and resume their partial sums, or a chunked summation order, a numerics change)? Today each query head reads K and V. | Only if M8's HBM rate leaves attention memory-bound by much more than the ~8% estimated. |

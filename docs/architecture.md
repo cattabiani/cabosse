@@ -165,22 +165,47 @@ at load time (it is a reordering, not a conversion: D-015).
 
 **KV cache layout.** K and V are stored as written: one row per position,
 `head_dim` BF16 values per KV head and layer, spread over the ports by
-position. A token writes one row of K and one of V per KV head and layer.
-For attention, the memory front end loads a tile of 128 positions (128 × 64
-× 2 B = 16 KiB for SmolLM2) into an on-chip buffer, and the engine reads
+position: position `p` is row `p div 32` of its head's region in channel
+`p mod 32`, the region at the same offset in every channel (D-043). A
+128-position tile is then 4 adjacent rows, one 16-beat read, per port. A
+token writes one row of K and one of V per KV head and layer.
+For attention, the engine loads a tile of `L` positions of one KV head
+(128 × 64 × 2 B = 16 KiB for SmolLM2) into an on-chip tile buffer and reads
 it from there:
-- q·K: one lane per position, 4 elements of that position's K per cycle.
-- p·V: one lane per output dimension, 4 positions of that dimension per
-  cycle: the buffer is read across positions, so V needs no transposed
-  copy in HBM (Q-11).
-- The tile is loaded once per KV head and used by all of its query heads
-  (3 for SmolLM2), as the perf model assumes.
-- A p·V pass covers 2 query heads (128 lanes = 2 × 64 dimensions), and the
-  two can belong to different KV heads (SmolLM2's heads 2 and 3 use KV heads
-  0 and 1), so the buffer holds the tiles of two KV heads at once.
+- q·K (`SCORES`): lane `q` takes position `q` of the tile, 4 elements of
+  its K row per cycle; x is the query head's q. A pass is one head and one
+  tile; the result is multiplied by `scale` on its way out.
+- p·V (`VALUES`): one lane per output dimension, 4 positions of that
+  dimension per cycle, with x the head's probabilities: the buffer is read
+  across positions, so V needs no transposed copy in HBM (Q-11). A pass is
+  `min(2, L / d)` heads (2 for SmolLM2: 128 lanes = 2 × 64; `d ≤ L`); a
+  lane's row runs over all positions, through every tile.
+- Every tile is loaded for one query head and used once: no tile is shared
+  by the heads of a group, so a GQA model reads K and V once per query
+  head (Q-27). Simple, and free while the memory keeps up with the engine.
+- The engine reads the cache, ahead of its go, only after the `KV_STORE`
+  that writes it is done (D-044).
+- Positions at or past the position count are left out of a row, not
+  multiplied by zero: the cache and P hold stale data there.
+- The cache's `cap` is a multiple of `L`, so every tile is 4 whole rows in
+  every channel; the head dimension is a power of two from 16 to 128. The
+  whole engine needs the port count a multiple of 4 (the banks' mapping,
+  below), checked at elaboration.
+- Scores and probabilities: head h's row at `h·cap` in S and P (stride
+  `cap`, aligned to E for p·V's reads), so softmax reads rows of t at that
+  stride (M6, M7).
 
-The buffer must serve both access patterns at 512 values per cycle; its
-banking is designed with the engine (M5).
+**Tile buffer banks.** `L` banks, each 4 BF16 values wide, one write and
+one read per cycle. The 4 values `u` (elements `4u` to `4u+3`) of position
+`q` sit in bank `(q + 4·α(u)) mod L`, at address `u` (plus the tile slot and
+the head slot), `α(u) = (P/4)·(u mod 4) + u div 4` (mod `P`, the port
+count). Each access is then a rotation of an `L`-wide vector: q·K reads
+one `u` from every bank; p·V reads 4 positions × the pass's `u`s; a fill
+writes one beat (4 entries) from every port. The three patterns are
+conflict-free for port counts that are multiples of 4 from 4 to 68, head dimensions 16 to 256 and up to 4
+heads per pass (checked exhaustively: `verif/tests/test_tile_banks.py`).
+Two tile slots: the next tile fills while the engine reads the current
+one.
 
 ## Clocks (D-028)
 

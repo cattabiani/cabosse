@@ -10,6 +10,7 @@ import shutil
 from itertools import product
 from pathlib import Path
 
+import commands
 import paths
 import perf
 import pytest
@@ -35,6 +36,7 @@ DESIGN = {
     "command_cycles": 5,
     "engine_startup_cycles": 25,
 }
+LANES = 128  # the engine the work tests count on
 # One of our measurements, as a measurement script would write it.
 MEASUREMENT = {
     "value": 401.2e9,
@@ -56,20 +58,42 @@ def test_a_token_reads_every_weight_once(tied: bool) -> None:
     """All weights, plus the one embedding row and the position's FP32 RoPE
     rows; untied, minus the embedding table (only its row is read)."""
     c = tiny.tiny_config(tied=tied)
-    read = perf.Work.of(perf.ops(c, 0)).weight_bytes
+    read = perf.Work.of(perf.ops(c, 0, LANES)).weight_bytes
     table = 0 if tied else c.vocab_size * c.hidden_size * perf.BF16_BYTES
     rope = 2 * c.head_dim * 4  # FP32 cos and sin
     assert read == perf.parameter_bytes(c) + c.hidden_size * perf.BF16_BYTES + rope - table
 
 
-def test_kv_traffic_grows_with_the_position() -> None:
-    """Each position adds one row of K and one of V per KV head and layer to
-    what a token reads; the write is the new row."""
+@pytest.mark.parametrize(("position", "tiles"), [(0, 1), (7, 1), (8, 2), (20, 3)])
+def test_kv_traffic_in_whole_tiles(position: int, tiles: int) -> None:
+    """A token reads K and V in whole tiles of 8 positions on 8 lanes, per
+    query head and layer (no tile shared between heads); it writes one row
+    of K and one of V per KV head and layer."""
     c = tiny.tiny_config(n_kv_heads=2)
-    row = c.num_hidden_layers * c.num_key_value_heads * c.head_dim * perf.BF16_BYTES
-    a, b = (perf.Work.of(perf.ops(c, p)) for p in (3, 4))
-    assert b.kv_read_bytes - a.kv_read_bytes == 2 * row
-    assert a.kv_write_bytes == 2 * row
+    row = c.num_hidden_layers * c.head_dim * perf.BF16_BYTES
+    work = perf.Work.of(perf.ops(c, position, 8))
+    assert work.kv_read_bytes == 2 * c.num_attention_heads * tiles * 8 * row
+    assert work.kv_write_bytes == 2 * c.num_key_value_heads * row
+
+
+def test_scores_pass_per_head_and_tile() -> None:
+    """SCORES' engine cycles: a pass per head and tile, not packed across
+    heads (5 positions, 4 heads on 8 lanes: 4 passes, not 3)."""
+    design = {"lanes": 8, "macs_per_lane": 4, "accumulators": 16, "engine_startup_cycles": 0}
+    cmd = commands.Command(commands.Op.SCORES, n=4, m=64, kv_heads=2)
+    shapes = perf.attention(cmd, 5, 8).engine_shapes
+    assert perf.engine_cycles(shapes, design) == 4 * 16
+
+
+def test_values_passes_of_two_heads() -> None:
+    """p.V's engine cycles: passes of at most 2 heads, as the engine runs
+    them, even when the lanes would hold more (SmolLM2's 9 heads of 64 on
+    256 lanes: 5 passes, not 3); one head a pass when two do not fit."""
+    design = {"lanes": 256, "macs_per_lane": 4, "accumulators": 16, "engine_startup_cycles": 0}
+    cmd = commands.Command(commands.Op.VALUES, n=9, m=64, kv_heads=3)
+    one_pass = perf.engine_cycles(((128, 100),), design)
+    assert perf.engine_cycles(perf.attention(cmd, 100, 256).engine_shapes, design) == 5 * one_pass
+    assert len(perf.attention(cmd, 100, 64).engine_shapes) == 9
 
 
 def test_seconds_by_hand() -> None:
@@ -122,11 +146,11 @@ def test_engine_cycles_add_up_over_ops() -> None:
 def test_engine_shapes_cover_every_multiply_add(position: int) -> None:
     """The engine's rows times cols are exactly the ops' multiply-adds."""
     c = tiny.tiny_config(n_kv_heads=2)
-    op_list = perf.ops(c, position)
-    on_engine = [o for o in op_list if o.engine_shape is not None]
-    assert all(math.prod(o.engine_shape) == o.macs for o in on_engine)
+    op_list = perf.ops(c, position, LANES)
+    on_engine = [o for o in op_list if o.engine_shapes]
+    assert all(sum(map(math.prod, o.engine_shapes)) == o.macs for o in on_engine)
     assert {o.kind for o in on_engine} == {"matvec", *perf.ATTENTION_KINDS}
-    assert all(o.macs == 0 for o in op_list if o.engine_shape is None)
+    assert all(o.macs == 0 for o in op_list if not o.engine_shapes)
 
 
 def test_engine_use() -> None:
