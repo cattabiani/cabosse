@@ -583,9 +583,11 @@ def hazards(
     D-044), as the controller and the engine keep them:
 
     - the controller gives commands to their units in list order (handover);
-    - a command that is not the engine's starts only after the last writes
-      of the buffers it reads are done, and with `write_after_reads` after
-      the earlier readers and the last writer of its dst are done;
+    - a command that is not the engine's is handed over only after the
+      last writes of the buffers it reads are done, and with
+      `write_after_reads` after the earlier readers and the last writer of
+      its dst are done: the controller stops there, holding every later
+      command (D-045);
     - an engine command steps after the engine command before it, and a
       waiting one (`waits`) after the last write of its input is done; it
       drains in order; it reads HBM (weights, the KV cache) from its

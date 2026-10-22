@@ -415,6 +415,22 @@ read ahead, the engine could read the newest K or V row before
 `wait` and claimed q was ready after `KV_STORE`; it is not (review of the
 command list, 2026-10-14).
 
+**D-045 (2026-10-22) — The controller hands commands over in order and
+stops at a non-engine command until the buffers it reads are written**
+(refines D-041; owner, 2026-10-22). A vector-unit (or other non-engine)
+command whose input is still being written holds every later command back;
+engine commands are handed over at once and wait inside the engine
+(D-042). Under this rule the current command lists order every overwrite
+after the reads it would clobber through their data (D-044's remark), and
+`commands.hazards()` finds none with or without the write-after-read rule;
+D-044's rule stays. *Why:* the simplest controller. Handing over past a
+waiting command (the vector unit waiting by itself) would let the next
+engine command read its weights earlier: at most about 70 cycles for each
+of SmolLM2's 181 waiting engine commands, up to 1.8% of a token at
+position 63 and 0.6% at 8191 (estimate, from M5's start-up with and
+without read-ahead), for a controller that tracks each buffer's readers.
+Premature (owner). M7 measures the loss.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1205,6 +1221,10 @@ makes one). The model's `Layout` moves to channel offsets (D-040). The
 controller sets `wait` on the commands `commands.engine_waits` marks and
 pulses `go` once the command each depends on is done; a go never waits for
 the engine to take a later command (D-042).
+The controller stops at a non-engine command until its inputs are written
+(D-045); the perf model's start-up (`engine_startup_cycles`) was measured
+with weights read ahead at once, so compare the engine commands after such
+a stop with it and report the loss.
 Attention (M5): `SCORES` writes head h's scores at `S[h·cap + i]` and
 `VALUES` reads head h's probabilities at `P[h·cap + i]` (rows at stride
 `cap`, so `VALUES` reads them aligned to E); the softmax commands
