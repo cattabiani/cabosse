@@ -18,7 +18,8 @@
 //   head and output dimension); a unit is a pass and a tile, and a lane's
 //   row runs through all tiles.
 // Ports is a multiple of 4 (the tile buffer's mapping), so a pass is whole
-// write groups. The attention commands need d a power of two from 16 to
+// write groups. Commands need rows >= 1 and cols >= 1 (cols = 0 hangs
+// step). The attention commands need d a power of two from 16 to
 // MaxD (VALUES: d <= L), cap a multiple of L, 1 <= t <= cap, group
 // dividing heads.
 //
@@ -131,8 +132,11 @@ module engine
   localparam int unsigned CW        = $clog2(CmdDepth + 2);  // go credits: 0 .. CmdDepth + 1
   localparam int unsigned LW        = $clog2(L + 1);         // a count of lanes
   localparam int unsigned SW        = $clog2(L);             // a tile buffer rotation
-  // The tile buffer: per slot, Heads heads of MaxD / E entries of E values.
-  localparam int unsigned SlotDepth = Heads * MaxD / E;
+  // The tile buffer: per slot, the entries of E values a unit fills: d / E
+  // for one head, d <= MaxD; 2 * d / E for a VALUES pass of Heads heads,
+  // which needs Heads * d <= L.
+  localparam int unsigned SlotWidest = Heads * MaxD < L ? Heads * MaxD : L;
+  localparam int unsigned SlotDepth = (MaxD > SlotWidest ? MaxD : SlotWidest) / E;
   localparam int unsigned TW        = $clog2(2 * SlotDepth);  // a tile buffer address
   localparam int unsigned EntryBits = E * 16;
   localparam int unsigned BeatValues = DataWidth / 16;     // BF16 values per beat
@@ -149,6 +153,9 @@ module engine
   end
   if (Ports % 4 != 0) begin : gen_bad_ports
     $error("engine: Ports must be a multiple of 4");
+  end
+  if (MaxD < 16 || MaxD > 128 || (MaxD & (MaxD - 1)) != 0) begin : gen_bad_maxd
+    $error("engine: MaxD must be a power of two from 16 to 128 (unit_t.dlog)");
   end
   if (E != 4 || LanesPerPort != 4) begin : gen_bad_tile
     $error("engine: the tile buffer's mapping assumes 4 lanes per port and E = 4");
@@ -612,7 +619,7 @@ module engine
       step_unit_q <= unit_n;
       step_cyc_q  <= cyc_n;
       // The slot read next cycle was full this one, so the RAM's read sees it.
-      tile_ok_q   <= tile_full_q[slot_n] && !(tile_free[slot_n]);
+      tile_ok_q   <= tile_full_q[slot_n];
       credits_q   <= credits_q + CW'(go_i) - CW'(step_load && q_head[2].wait_go);
       if (step_load) begin
         step_busy_q   <= 1'b1;
