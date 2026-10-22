@@ -36,7 +36,11 @@ Assumptions, to revisit in `docs/architecture.md`:
   group (Q-27). This costs no engine time while the memory keeps up with
   the engine (a pass reads no faster than the lanes consume), and at most
   the engine's rate ÷ the memory's rate on attention otherwise (1024 ÷ 947
-  B/cycle on F2 at 250 MHz, about 8%, estimate).
+  B/cycle on F2 at 250 MHz, about 8%, estimate). A p.V tile fills its
+  heads' d values per position and steps its positions, so a partly filled
+  last tile can wait for its fill (`perf.tile_wait_cols`: two slots, the
+  first two read ahead: 32 cycles at position 63, the excess measured
+  over the model before it, with a 55-cycle start-up).
 - Activations stay on chip, and cost no HBM traffic.
 - Attention's multiply-adds (q·K and p·V) run on the matrix-vector engine.
 - The HBM read rate scales with the memory clock from AWS's measured rate at
@@ -80,7 +84,7 @@ v0: first-order design choices (M2), from `model/designs/v0.json`:
 | `accumulators` | 16 partial sums | choice | docs/architecture.md, engine: 4 multiply-adds x a 4-cycle loop (D-027) |
 | `vector_elems_per_cycle` | 16 elements/cycle | choice | docs/architecture.md, vector unit (D-030) |
 | `command_cycles` | 64 cycles/command | guess | none yet (the controller is designed in M2/M7) |
-| `engine_startup_cycles` | 55 cycles/command | measured by us | per engine command that waits for an earlier result (D-042), weights read ahead: the most a SmolLM2 MATVEC after the first took over its engine cycles, 128-lane RTL in simulation (reports/data/M5-engine.json, real); scenarios with other lanes or accumulators reuse it (estimate: its drain and final sum change with them) |
+| `engine_startup_cycles` | 64 cycles/command | measured by us | per engine command that waits for an earlier result (D-042), weights or KV read ahead: the most a SmolLM2 engine command after the first took over its engine cycles (SCORES at positions 1023 and 8191; MATVECs 61), 128-lane RTL in simulation (reports/data/M5-engine.json, real); scenarios with other lanes or accumulators reuse it (estimate: its drain and final sum change with them) |
 
 | scenario | changes |
 |---|---|
@@ -119,11 +123,11 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: engine -->
 | scenario, engine use at position | 0 | 1023 | 8191 |
 |---|---|---|---|
-| as planned | 92.6% | 94.8% | 94.8% |
-| 64 lanes x 8, A = 32 | 94.0% | 77.0% | 50.6% |
-| 512 lanes x 1, A = 4 | 70.5% | 61.1% | 43.8% |
-| core at 125 MHz | 92.6% | 94.8% | 94.8% |
-| 256 lanes, HBM at 450 MHz | 84.7% | 81.2% | 68.6% |
+| as planned | 91.9% | 94.8% | 94.8% |
+| 64 lanes x 8, A = 32 | 93.5% | 77.0% | 50.6% |
+| 512 lanes x 1, A = 4 | 68.8% | 61.1% | 43.8% |
+| core at 125 MHz | 91.9% | 94.8% | 94.8% |
+| 256 lanes, HBM at 450 MHz | 83.4% | 81.2% | 68.6% |
 <!-- end: engine -->
 
 ## Predictions
@@ -131,21 +135,21 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: predictions -->
 | scenario | position | tokens/s | limited by | memory (ms) | engine (ms) | vector (ms) | commands (ms) |
 |---|---|---|---|---|---|---|---|
-| as planned | 0 | 357–852 | engine | 1.173 | 1.174 | 0.110 | 0.341 |
-| as planned | 1023 | 272–695 | engine | 1.435 | 1.440 | 0.456 | 0.341 |
-| as planned | 8191 | 98–284 | memory | 3.527 | 3.483 | 2.875 | 0.341 |
-| 64 lanes x 8, A = 32 | 0 | 362–864 | engine | 1.155 | 1.157 | 0.110 | 0.341 |
-| 64 lanes x 8, A = 32 | 1023 | 250–567 | engine | 1.435 | 1.764 | 0.456 | 0.341 |
-| 64 lanes x 8, A = 32 | 8191 | 76–154 | engine | 3.527 | 6.482 | 2.875 | 0.341 |
-| 512 lanes x 1, A = 4 | 0 | 306–654 | engine | 1.286 | 1.530 | 0.110 | 0.341 |
-| 512 lanes x 1, A = 4 | 1023 | 225–452 | engine | 1.435 | 2.212 | 0.456 | 0.341 |
-| 512 lanes x 1, A = 4 | 8191 | 70–134 | engine | 3.527 | 7.480 | 2.875 | 0.341 |
-| core at 125 MHz | 0 | 226–426 | engine | 1.173 | 2.349 | 0.221 | 0.682 |
-| core at 125 MHz | 1023 | 169–347 | engine | 1.435 | 2.880 | 0.911 | 0.682 |
-| core at 125 MHz | 8191 | 59–144 | engine | 3.527 | 6.966 | 5.750 | 0.682 |
-| 256 lanes, HBM at 450 MHz | 0 | 560–1487 | memory | 0.673 | 0.661 | 0.110 | 0.341 |
-| 256 lanes, HBM at 450 MHz | 1023 | 408–1167 | engine | 0.797 | 0.857 | 0.456 | 0.341 |
-| 256 lanes, HBM at 450 MHz | 8191 | 132–348 | vector | 1.959 | 2.416 | 2.875 | 0.341 |
+| as planned | 0 | 355–840 | engine | 1.173 | 1.190 | 0.110 | 0.341 |
+| as planned | 1023 | 272–691 | engine | 1.435 | 1.446 | 0.456 | 0.341 |
+| as planned | 8191 | 98–284 | memory | 3.527 | 3.489 | 2.875 | 0.341 |
+| 64 lanes x 8, A = 32 | 0 | 360–854 | engine | 1.155 | 1.171 | 0.110 | 0.341 |
+| 64 lanes x 8, A = 32 | 1023 | 250–565 | engine | 1.435 | 1.771 | 0.456 | 0.341 |
+| 64 lanes x 8, A = 32 | 8191 | 76–154 | engine | 3.527 | 6.488 | 2.875 | 0.341 |
+| 512 lanes x 1, A = 4 | 0 | 302–635 | engine | 1.286 | 1.575 | 0.110 | 0.341 |
+| 512 lanes x 1, A = 4 | 1023 | 225–451 | engine | 1.435 | 2.218 | 0.456 | 0.341 |
+| 512 lanes x 1, A = 4 | 8191 | 70–134 | engine | 3.527 | 7.487 | 2.875 | 0.341 |
+| core at 125 MHz | 0 | 224–420 | engine | 1.173 | 2.381 | 0.221 | 0.682 |
+| core at 125 MHz | 1023 | 169–346 | engine | 1.435 | 2.893 | 0.911 | 0.682 |
+| core at 125 MHz | 8191 | 59–143 | engine | 3.527 | 6.979 | 5.750 | 0.682 |
+| 256 lanes, HBM at 450 MHz | 0 | 555–1478 | engine | 0.673 | 0.677 | 0.110 | 0.341 |
+| 256 lanes, HBM at 450 MHz | 1023 | 407–1158 | engine | 0.797 | 0.863 | 0.456 | 0.341 |
+| 256 lanes, HBM at 450 MHz | 8191 | 132–348 | vector | 1.959 | 2.423 | 2.875 | 0.341 |
 <!-- end: predictions -->
 
 ## Sensitivity
@@ -157,7 +161,7 @@ Tokens/s (overlapped) at position 1023, with the input scaled ×0.5 / ×1 / ×2:
 
 | input | as planned | 64 lanes x 8, A = 32 | 512 lanes x 1, A = 4 | core at 125 MHz | 256 lanes, HBM at 450 MHz |
 |---|---|---|---|---|---|
-| `hbm_port_bytes` (to verify) | 377 / 695 / 695 | 377 / 567 / 567 | 377 / 452 / 452 | 347 / 347 / 347 | 678 / 1167 / 1167 |
-| `hbm_read_bytes_per_s` (measured by AWS) | 348 / 695 / 695 | 348 / 567 / 567 | 348 / 452 / 452 | 347 / 347 / 347 | 627 / 1167 / 1167 |
-| `command_cycles` (guess) | 695 / 695 / 695 | 567 / 567 / 567 | 452 / 452 / 452 | 347 / 347 / 347 | 1167 / 1167 / 1167 |
+| `hbm_port_bytes` (to verify) | 377 / 691 / 691 | 377 / 565 / 565 | 377 / 451 / 451 | 346 / 346 / 346 | 678 / 1158 / 1158 |
+| `hbm_read_bytes_per_s` (measured by AWS) | 348 / 691 / 691 | 348 / 565 / 565 | 348 / 451 / 451 | 346 / 346 / 346 | 627 / 1158 / 1158 |
+| `command_cycles` (guess) | 691 / 691 / 691 | 565 / 565 / 565 | 451 / 451 / 451 | 346 / 346 / 346 | 1158 / 1158 / 1158 |
 <!-- end: sensitivity -->

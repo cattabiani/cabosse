@@ -1194,6 +1194,34 @@ step and drain, so a sequencing fix is made once); checkpoint report.
   31 was the measure walking through clocked cells (RAMs, shift-register
   LUTs); `logic_depth` now builds small memories from flip-flops and cuts
   block RAMs.
+  Second PR: real data at 128 lanes. `test_smollm2` runs the first and
+  last layers' `MATVEC`s, `SCORES` and `VALUES` and the classifier at
+  positions 63, 1023 and 8191 (the latter two from the long cache, cut back
+  to the position; `record_step` takes a given cache, tested): bit-exact,
+  every command within 10% of the perf model
+  (`scripts/measure_m5_engine.py real`, `reports/data/M5-engine.json`).
+  `SCORES` and `VALUES` are within 0.8% at 1023 and 8191, so the engine
+  use criterion holds there. At 63, `VALUES` first took 23.7% more than
+  the model: a p.V unit fills its two heads' tile (32 cycles) but steps
+  only 64 positions (16), so later units wait. The model was wrong, not
+  the hardware (whole tiles are the owner's simplest tile use):
+  `perf.tile_wait_cols` adds the wait (two slots, the first two read
+  ahead). `engine_startup_cycles`
+  re-measured with the scale's 6 cycles: 61 for `MATVEC`s, 64 for `SCORES`
+  at 1023 and 8191; design v0 takes 64. Together they change only
+  position 0 of docs/perf.md by more than 1%: 852 -> 840 tokens/s at the
+  top of the planned design's range (-1.4%), 654 -> 635 at 512 lanes, and
+  256 lanes at 450 MHz turns from limited by memory to by the engine there.
+  With it, at every position: the
+  first `q` +7.7% (nothing before it to read behind), `VALUES` at 63 -5.1%,
+  `SCORES` at 63 -3.8%, the other `MATVEC`s -1.4% to 0.0%. `long_cache`
+  has tests on a tiny model (two hand mutations caught).
+  Verilator (16 cores, quiet machine, three runs): build 261-275 s (was
+  155-165 s before attention); 6,688-6,698 simulated cycles/s (was
+  6,970-7,199). With the perf model's serial cycles per token (707,894 at
+  position 63, 2,558,093 at 8191), M7 would need about 106 s and 382 s of
+  wall time per simulated token (estimate; the full design will simulate
+  slower).
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
@@ -1231,7 +1259,10 @@ Attention (M5): `SCORES` writes head h's scores at `S[h·cap + i]` and
 (`LEN_T`) must read and write rows of t at that stride, not packed. The
 engine needs `cap` a multiple of L, a power-of-two head dimension from
 16 to 128 (`VALUES`: at most L), and does not check them; `SCORES` and `VALUES` are given after the `KV_STORE` they
-depend on (D-044).
+depend on (D-044). The golden command list still writes S and P packed (rows
+of t, `cap` = positions + 1); once it moves them to stride `cap` with `cap`
+a multiple of L, `verif/engine.py`'s `real_attention` drops its padding and
+re-striding and passes the recorded commands through.
 
 ### M8 — F2 bring-up (no model)
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and

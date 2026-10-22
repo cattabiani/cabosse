@@ -797,15 +797,20 @@ def run(
 
 
 def record_step(
-    model: decoder.Model, prompt: list[int], token: int
+    model: decoder.Model,
+    prompt: list[int],
+    token: int,
+    cache: decoder.KVCache | None = None,
 ) -> tuple[torch.Tensor, list[EngineCall]]:
     """One decode step of `token` at position len(prompt), after `prompt`
-    (run by decoder.step, its KV cache copied into HBM): the logits and the
-    step's engine commands as run() executed them."""
+    (run by decoder.step, or given as `cache`, its KV cache copied into HBM):
+    the logits and the step's engine commands as run() executed them."""
     layout = Layout.of(model.config, cap=len(prompt) + 1)
-    cache = decoder.KVCache.empty(model, layout.cap)
-    if prompt:
-        decoder.step(model, cache, prompt)
+    if cache is None:
+        cache = decoder.KVCache.empty(model, layout.cap)
+        if prompt:
+            decoder.step(model, cache, prompt)
+    assert cache.length == len(prompt), (cache.length, len(prompt))
     hbm, calls = load(model, layout, cache), []
     logits = run(build(layout), layout, hbm, token, len(prompt), calls.append)
     assert logits is not None

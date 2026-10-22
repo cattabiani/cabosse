@@ -4,15 +4,16 @@
 reports/data/M5-engine.json, each part replacing its own key:
 
     python scripts/measure_m5_engine.py depth   # the ports' FIFO depth against pauses
-    python scripts/measure_m5_engine.py real    # SmolLM2's MATVECs: cycles against the perf model
+    python scripts/measure_m5_engine.py real    # SmolLM2's engine commands against the perf model
     python scripts/measure_m5_engine.py bandwidth  # bytes per cycle on large matrices
     python scripts/measure_m5_engine.py speed   # Verilator: build time and cycles per second
     python scripts/measure_m5_engine.py show    # print the tables from the saved data
 
 The memory has F2's read latency (verif/engine.py, F2_LATENCY_CYCLES). `real`
-and `speed` need the SmolLM2 checkpoint. `speed` rebuilds the model three
-times (about 2.5 minutes each on 16 cores); run it on a quiet machine. Run
-everything under the memory cap; commit first, the data records the commit.
+and `speed` need the SmolLM2 checkpoint, `real` the long cache too
+(scripts/fill_long_cache.py). `speed` rebuilds the model three times (about
+2.5 minutes each on 16 cores); run it on a quiet machine. Run everything
+under the memory cap; commit first, the data records the commit.
 """
 
 import argparse
@@ -28,11 +29,9 @@ for sub in ("model", "verif"):
 import bulk  # noqa: E402
 import engine as eng  # noqa: E402
 import numpy as np  # noqa: E402
-import paths  # noqa: E402
 import perf  # noqa: E402
 import torch  # noqa: E402
 from engine import LANES_PER_PORT, Matvec  # noqa: E402
-from golden import decoder  # noqa: E402
 from reporting import blocks, measure  # noqa: E402
 
 DATA = REPO / "reports" / "data" / "M5-engine.json"
@@ -84,27 +83,46 @@ def depth() -> dict:
 
 
 def real() -> dict:
-    """SmolLM2's MATVECs, bit-exact, with the controller's waits: each
-    command's cycles next to the perf model's (with the start-up of a
-    waiting command, design v0's engine_startup_cycles, which comes from the
-    first run of this measurement: the most a waiting command after the
-    first took over its engine cycles)."""
-    found, result = eng.run_smollm2(decoder.load(paths.SMOLLM2), PORTS, **MEMORY)
-    return {
-        "ports": PORTS,
-        "memory": MEMORY,
-        "position": len(eng.SMOLLM2_PROMPT),
-        "commands": [
+    """SmolLM2's engine commands (the first and last layers' and the
+    classifier), bit-exact, with the controller's waits, at each of
+    eng.SMOLLM2_POSITIONS: each command's cycles next to the perf model's,
+    with and without the start-up of a waiting command (design v0's
+    engine_startup_cycles: the most a waiting command after the first takes
+    over its engine cycles, from this measurement)."""
+    model = eng.smollm2()
+    positions = {}
+    for position in eng.SMOLLM2_POSITIONS:
+        found, result = eng.run_smollm2(model, PORTS, position, **MEMORY)
+        positions[str(position)] = [
             {
                 "name": f.name,
-                "shape": list(f.matvec.w.shape),
-                "wait": f.matvec.wait,
+                "op": op(f.command),
+                "shape": shape(f.command),
+                "wait": f.command.wait,
                 "cycles": c,
-                "model": eng.model_cycles(f.matvec, PORTS),
+                "model": eng.model_cycles(f.command, PORTS),
+                "engine": eng.model_cycles(f.command, PORTS, startup=False),
             }
             for f, c in zip(found, eng.command_cycles(result), strict=True)
-        ],
-    }
+        ]
+    return {"ports": PORTS, "memory": MEMORY, "positions": positions}
+
+
+def op(m: eng.Command) -> str:
+    return "matvec" if isinstance(m, Matvec) else eng.attention_command(m).op.name.lower()
+
+
+def shape(m: eng.Command) -> list[int]:
+    """rows × cols for a MATVEC; heads, positions and d for attention."""
+    if isinstance(m, Matvec):
+        return list(m.w.shape)
+    return [m.heads, m.t, m.cache.shape[2]]
+
+
+def startup(commands: list[dict]) -> int:
+    """The most a waiting command after the first took over its engine
+    cycles: the first has nothing before it to read its weights behind."""
+    return max(c["cycles"] - c["engine"] for c in commands[1:] if c["wait"])
 
 
 def bandwidth() -> dict:
@@ -136,8 +154,8 @@ def speed() -> dict:
         start = time.monotonic()
         bulk.build("engine", params)
         build_s.append(time.monotonic() - start)
-    found, xs = eng.smollm2_matvecs(decoder.load(paths.SMOLLM2))
-    runs = [eng.fetch([f.matvec for f in found], xs, PORTS, **MEMORY) for _ in range(SPEED_RUNS)]
+    found, xs = eng.smollm2_commands(eng.smollm2(), PORTS)
+    runs = [eng.fetch([f.command for f in found], xs, PORTS, **MEMORY) for _ in range(SPEED_RUNS)]
     config, design = perf.load_config("SmolLM2-135M-Instruct"), eng.DESIGN
     platform = perf.load_platform("f2").values()
     token_cycles = {
@@ -177,14 +195,16 @@ def show(data: dict) -> None:
             print(f"{p}: {REFERENCE_DEPTH}-beat FIFO, {span(ref[p])} beats/cycle")
     if "real" in data:
         r = data["real"]
-        print(f"\nSmolLM2 MATVECs, position {r['position']}, {r['memory']}")
-        rows = [
-            [c["name"], f"{c['shape'][0]} × {c['shape'][1]}", "yes" if c["wait"] else ""]
-            + [c["cycles"], c["model"], f"{(c['cycles'] - c['model']) / c['model']:+.1%}"]
-            for c in r["commands"]
-        ]
-        header = ["command", "rows × cols", "waits", "cycles", "perf model", "difference"]
-        print(blocks.table(header, rows))
+        for position, cmds in r["positions"].items():
+            print(f"\nSmolLM2, position {position}, {r['memory']}")
+            rows = [
+                [c["name"], c["op"], " × ".join(map(str, c["shape"])), "yes" if c["wait"] else ""]
+                + [c["cycles"], c["model"], f"{(c['cycles'] - c['model']) / c['model']:+.1%}"]
+                for c in cmds
+            ]
+            header = ["command", "op", "shape", "waits", "cycles", "perf model", "difference"]
+            print(blocks.table(header, rows))
+            print(f"start-up (the most over the engine cycles, after the first): {startup(cmds)}")
         print("The first command has nothing before it to hide its weights' reads behind.")
     if "bandwidth" in data:
         rows = [
