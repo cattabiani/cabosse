@@ -962,7 +962,9 @@ with `L` = 128), a single row. Idle lanes must not write results.
 **Steps (one branch and PR each):** these answers; command-list recording
 and weight layout; memory model and DMA; engine `MATVEC` (two PRs, owner
 2026-10-11: the engine with small configurations, then real data and speed
-at 128 lanes); engine attention; checkpoint report.
+at 128 lanes); engine attention (two PRs, then a small one, owner
+2026-10-22: one walker for `MATVEC` passes and attention units in issue,
+step and drain, so a sequencing fix is made once); checkpoint report.
 
 **Progress:**
 - [x] Answers above (PR #50).
@@ -1168,6 +1170,12 @@ at 128 lanes); engine attention; checkpoint report.
   plus 1 (289 for 288 at 32 ports, measured). The bank mapping is checked
   exhaustively (`test_tile_banks.py`). Hand mutations (listed in the PR),
   all caught.
+  Logic depth (`rtl.logic_depth`, 8 ports, scratch logs, not saved): 27
+  cells, 14 of them carry blocks, the same as `fp32_fma` alone (the scale's
+  unit, +0.514 ns at 250 MHz in M3's Vivado run); with the FMA stubbed, the
+  engine's own deepest path (next-cycle state into an address adder) is 23,
+  12 carry blocks; `main`'s engine 20, 8 carry blocks. A first reading of
+  31 was the measure walking through RAMs, which `logic_depth` now cuts.
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
@@ -1216,6 +1224,10 @@ slack at 250 MHz (4 ns) is ≥ 0, and its script fails otherwise; the slack
 goes into the report next to the perf numbers (owner, 2026-10-08).
 **From M5:** the engine's out-of-context Vivado run (128 lanes with DMA and
 buffers: area and timing at 250 MHz) moved here (owner, 2026-10-09).
+Its Yosys proxy (M5, attention) puts the deepest path in the scale's
+`fp32_fma` and the engine's own control 4 cells shallower; if Vivado finds
+the control path (unit end into the RAMs' next addresses) failing, register
+the addresses a cycle earlier.
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over

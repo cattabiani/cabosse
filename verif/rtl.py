@@ -108,14 +108,17 @@ def logic_depth(
 ) -> int:
     """The longest register-to-register path of `top`, in cells (LUTs, carry
     chains, muxes), after Yosys's synthesis for UltraScale+ (F2's family): a
-    proxy for timing, not a timing analysis. Flip-flops are deleted, so every
-    path ends at one."""
+    proxy for timing, not a timing analysis. Flip-flops and RAMs are deleted,
+    so every path ends at one: a RAM is not logic between its ports (ltp
+    would walk through it, from a write input to the read data). Each carry
+    block (CARRY4, 4 bits of an add) counts as one cell, though it is much
+    faster than a LUT."""
     files = " ".join(str(p) for p in extra)
     overrides = " ".join(f"-G {name}={value}" for name, value in params)
     script = (
         f"read_slang -F {SOURCES} {files} --top {top} {overrides}; "
         f"synth_xilinx -family xcup -flatten -noiopad -noclkbuf -top {top}; "
-        "delete t:FD*; ltp -noff"
+        "delete t:FD* t:RAM*; ltp -noff"
     )
     result = subprocess.run(["yosys", "-m", "slang", "-p", script], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout[-2000:] + result.stderr
