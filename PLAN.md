@@ -1255,7 +1255,10 @@ Attention (M5): `SCORES` writes head h's scores at `S[h·cap + i]` and
 (`LEN_T`) must read and write rows of t at that stride, not packed. The
 engine needs `cap` a multiple of L, a power-of-two head dimension from
 16 to 128 (`VALUES`: at most L), and does not check them; `SCORES` and `VALUES` are given after the `KV_STORE` they
-depend on (D-044).
+depend on (D-044). The golden command list still writes S and P packed (rows
+of t, `cap` = positions + 1); once it moves them to stride `cap` with `cap`
+a multiple of L, `verif/engine.py`'s `real_attention` drops its padding and
+re-striding and passes the recorded commands through.
 
 ### M8 — F2 bring-up (no model)
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and

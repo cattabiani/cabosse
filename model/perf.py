@@ -246,7 +246,6 @@ def attention(cmd: commands.Command, positions: int, lanes: int) -> Step:
     (one if two do not fit the lanes)."""
     heads, d = cmd.n, cmd.m
     tiles = math.ceil(positions / lanes)
-    in_tile = [min(lanes, positions - j * lanes) for j in range(tiles)]
     if cmd.op == commands.Op.SCORES:  # a unit fills d cols and steps d
         shapes = ((positions, d),) * heads
         units = [(d, d)] * heads * tiles
@@ -254,6 +253,7 @@ def attention(cmd: commands.Command, positions: int, lanes: int) -> Step:
         per_pass = max(1, min(VALUES_HEADS, lanes // d))
         passes = [min(per_pass, heads - h) for h in range(0, heads, per_pass)]
         shapes = tuple((n * d, positions) for n in passes)
+        in_tile = [min(lanes, positions - j * lanes) for j in range(tiles)]
         units = [(n * d, p) for n in passes for p in in_tile]
     return Step(
         cmd.op.name.lower(),

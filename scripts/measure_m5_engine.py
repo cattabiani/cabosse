@@ -32,7 +32,7 @@ import numpy as np  # noqa: E402
 import paths  # noqa: E402
 import perf  # noqa: E402
 import torch  # noqa: E402
-from engine import LANES_PER_PORT, Attention, Matvec  # noqa: E402
+from engine import LANES_PER_PORT, Matvec  # noqa: E402
 from golden import decoder  # noqa: E402
 from reporting import blocks, measure  # noqa: E402
 
@@ -94,14 +94,11 @@ def real() -> dict:
     model = decoder.load(paths.SMOLLM2)
     positions = {}
     for position in eng.SMOLLM2_POSITIONS:
-        run = eng.run_smollm2(model, PORTS, position, **MEMORY)
-        if run is None:
-            sys.exit("needs the long cache: python scripts/fill_long_cache.py")
-        found, result = run
+        found, result = eng.run_smollm2(model, PORTS, position, **MEMORY)
         positions[str(position)] = [
             {
                 "name": f.name,
-                "op": "matvec" if isinstance(f.command, Matvec) else describe_op(f.command),
+                "op": op(f.command),
                 "shape": shape(f.command),
                 "wait": f.command.wait,
                 "cycles": c,
@@ -113,8 +110,8 @@ def real() -> dict:
     return {"ports": PORTS, "memory": MEMORY, "positions": positions}
 
 
-def describe_op(m: Attention) -> str:
-    return "values" if m.values else "scores"
+def op(m: eng.Command) -> str:
+    return "matvec" if isinstance(m, Matvec) else eng.attention_command(m).op.name.lower()
 
 
 def shape(m: eng.Command) -> list[int]:

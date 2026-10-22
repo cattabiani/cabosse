@@ -206,6 +206,17 @@ def same_bits(x: torch.Tensor, y: torch.Tensor) -> bool:
     return x.dtype == y.dtype and x.shape == y.shape and torch.equal(bits(x), bits(y))
 
 
+def assert_same_step(
+    got: tuple[torch.Tensor, list[commands.EngineCall]],
+    want: tuple[torch.Tensor, list[commands.EngineCall]],
+) -> None:
+    """Two recorded steps: the same logits and engine commands, bit for bit."""
+    assert same_bits(got[0], want[0])
+    for g, w in zip(got[1], want[1], strict=True):
+        assert (g.index, g.name, g.cmd) == (w.index, w.name, w.cmd)
+        assert all(same_bits(getattr(g, f), getattr(w, f)) for f in ("a", "mem", "out")), g.name
+
+
 @pytest.mark.parametrize("n_kv_heads", [1, 2])
 @pytest.mark.parametrize("n_prompt", [0, 1, 4])
 def test_record_step_matches_running_token_by_token(n_kv_heads: int, n_prompt: int) -> None:
@@ -221,12 +232,7 @@ def test_record_step_matches_running_token_by_token(n_kv_heads: int, n_prompt: i
         commands.run(cmds, layout, hbm, t, position)
     expected: list[commands.EngineCall] = []
     logits = commands.run(cmds, layout, hbm, token, n_prompt, expected.append)
-    got_logits, got = commands.record_step(model, prompt, token)
-    assert same_bits(got_logits, logits)
-    assert len(got) == len(expected)
-    for g, e in zip(got, expected, strict=True):
-        assert (g.index, g.name, g.cmd) == (e.index, e.name, e.cmd)
-        assert all(same_bits(getattr(g, f), getattr(e, f)) for f in ("a", "mem", "out")), g.name
+    assert_same_step(commands.record_step(model, prompt, token), (logits, expected))
 
 
 def test_record_step_from_a_longer_cache() -> None:
@@ -239,12 +245,10 @@ def test_record_step_from_a_longer_cache() -> None:
     cache = decoder.KVCache.empty(model, 16)
     decoder.step(model, cache, TOKENS)  # position 4 too, which the step rewrites
     cache.length = len(prompt)
-    got_logits, got = commands.record_step(model, prompt, token, cache)
-    want_logits, want = commands.record_step(model, prompt, token)
-    assert same_bits(got_logits, want_logits)
-    for g, w in zip(got, want, strict=True):
-        assert (g.index, g.name, g.cmd) == (w.index, w.name, w.cmd)
-        assert all(same_bits(getattr(g, f), getattr(w, f)) for f in ("a", "mem", "out")), g.name
+    assert_same_step(
+        commands.record_step(model, prompt, token, cache),
+        commands.record_step(model, prompt, token),
+    )
 
 
 @pytest.mark.parametrize("tied", [True, False])

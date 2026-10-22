@@ -5,6 +5,8 @@ port's channel (the same offset in each, docs/architecture.md, "Weight
 layout" and "KV cache layout"), the driver verif/bulk/engine.cpp run on
 them, and the golden results."""
 
+import dataclasses
+import functools
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -228,8 +230,20 @@ def expected(m: Command, x: torch.Tensor) -> np.ndarray:
     row with x (or golden_attention), FP32 bits, or BF16 bits in the low
     half."""
     y = golden_attention(m, x) if isinstance(m, Attention) else dot.dot(m.w, x[: m.w.shape[1]])
-    bits = arith.bits_bf16(arith.bf16(y)) if m.bf16 else arith.bits_f32(y)
-    return bits.numpy().astype(np.uint32) & (0xFFFF if m.bf16 else 0xFFFFFFFF)
+    return port_bits(arith.bf16(y) if m.bf16 else y)
+
+
+def port_bits(y: torch.Tensor) -> np.ndarray:
+    """y as the write port gives it: FP32 bits, or BF16 bits in the low half."""
+    bits = arith.bits_bf16(y) if y.dtype == torch.bfloat16 else arith.bits_f32(y)
+    return bits.numpy().astype(np.uint32)
+
+
+def attention_command(m: Attention) -> commands.Command:
+    """The command-list form of an engine attention command (perf.attention
+    takes it)."""
+    op = commands.Op.VALUES if m.values else commands.Op.SCORES
+    return commands.Command(op, n=m.heads, m=m.cache.shape[2], kv_heads=m.cache.shape[0])
 
 
 @dataclass
@@ -241,21 +255,34 @@ class RealCommand:
     want: np.ndarray  # its output as the write port gives it (expected()'s format)
 
 
+@functools.cache
+def smollm2() -> decoder.Model:
+    """The SmolLM2 checkpoint, loaded once."""
+    return decoder.load(paths.SMOLLM2)
+
+
+@functools.cache
+def saved_cache() -> tuple[list[int], decoder.KVCache]:
+    """The long cache of smollm2() (model/long_cache.py), loaded and checked
+    once; FileNotFoundError if it was not computed."""
+    saved = long_cache.load(smollm2(), paths.SMOLLM2)
+    if saved is None:
+        raise FileNotFoundError("no long cache: python scripts/fill_long_cache.py")
+    return saved
+
+
 def smollm2_step(
     model: decoder.Model, position: int = len(SMOLLM2_PROMPT)
-) -> list[commands.EngineCall] | None:
+) -> list[commands.EngineCall]:
     """The engine commands of one SmolLM2 decode step at `position`
     (commands.record_step): after SMOLLM2_PROMPT at 63, else after the long
-    cache's first `position` tokens (model/long_cache.py; None if it was not
-    computed). The step's token is the prompt's last plus one."""
+    cache's first `position` tokens (saved_cache(), cut back to them). The
+    step's token is the prompt's last plus one."""
     if position == len(SMOLLM2_PROMPT):
         prompt, cache = SMOLLM2_PROMPT, None
     else:
-        saved = long_cache.load(model, paths.SMOLLM2)
-        if saved is None:
-            return None
-        tokens, cache = saved
-        prompt, cache.length = tokens[:position], position
+        tokens, saved = saved_cache()
+        prompt, cache = tokens[:position], dataclasses.replace(saved, length=position)
     return commands.record_step(model, prompt, prompt[-1] + 1, cache)[1]
 
 
@@ -285,23 +312,19 @@ def real_attention(
     bf16 = out.dtype == torch.bfloat16
     scale = 1.0 if values else float(commands.f32_value(c.cmd.scalar))
     m = Attention(values, cache, heads, t, a=a, dst=dst, scale=scale, bf16=bf16, wait=c.wait)
-    bits = arith.bits_bf16(out) if bf16 else arith.bits_f32(out)
-    want = bits.numpy().astype(np.uint32) & (0xFFFF if bf16 else 0xFFFFFFFF)
-    return RealCommand(c.name, m, want), x
+    return RealCommand(c.name, m, port_bits(out)), x
 
 
 def smollm2_commands(
     model: decoder.Model, ports: int, position: int = len(SMOLLM2_PROMPT)
-) -> tuple[list[RealCommand], dict[int, torch.Tensor]] | None:
-    """The engine commands of one decode step at `position` (smollm2_step;
-    None without the long cache): the first and last layers' MATVECs,
+) -> tuple[list[RealCommand], dict[int, torch.Tensor]]:
+    """The engine commands of one decode step at `position` (smollm2_step):
+    the first and last layers' MATVECs,
     SCORES and VALUES and the classifier, in command-list order, waiting
     where the controller would (commands.engine_waits), and their x buffers:
     a waiting command opens one, the commands after it that read the same
     buffer share it (k and v with q, up with gate)."""
     step = smollm2_step(model, position)
-    if step is None:
-        return None
     last = f"layers.{len(model.layers) - 1}."
     found, xs, x_of = [], {}, {}  # x_of: a command buffer -> its current x buffer
     for c in step:
@@ -320,19 +343,15 @@ def smollm2_commands(
         a = x_of[c.cmd.a]
         assert torch.equal(xs[a], c.a), c.name  # shared, so the same bits
         m = Matvec(c.mem, a=a, dst=len(found), wait=c.wait)
-        found.append(RealCommand(c.name, m, arith.bits_f32(c.out).numpy().astype(np.uint32)))
+        found.append(RealCommand(c.name, m, port_bits(c.out)))
     return found, xs
 
 
 def run_smollm2(
     model: decoder.Model, ports: int, position: int = len(SMOLLM2_PROMPT), **plusargs: int
-) -> tuple[list[RealCommand], Result] | None:
-    """smollm2_commands on the engine, checked bit for bit (None without
-    the long cache)."""
-    got = smollm2_commands(model, ports, position)
-    if got is None:
-        return None
-    found, xs = got
+) -> tuple[list[RealCommand], Result]:
+    """smollm2_commands on the engine, checked bit for bit."""
+    found, xs = smollm2_commands(model, ports, position)
     result = fetch([f.command for f in found], xs, ports, **plusargs)
     for f, got in zip(found, result.out, strict=True):
         assert_bits(got, f.want, f.name)
@@ -367,10 +386,7 @@ def model_cycles(m: Command, ports: int, startup: bool = True) -> float:
     (engine_startup_cycles, measured at 128 lanes) if startup."""
     fill_cols = 0
     if isinstance(m, Attention):
-        kv_heads, _, d = m.cache.shape
-        op = commands.Op.VALUES if m.values else commands.Op.SCORES
-        cmd = commands.Command(op, n=m.heads, m=d, kv_heads=kv_heads)
-        step = perf.attention(cmd, m.t, ports * LANES_PER_PORT)
+        step = perf.attention(attention_command(m), m.t, ports * LANES_PER_PORT)
         shapes, fill_cols = step.engine_shapes, step.fill_cols
     else:
         shapes = (tuple(m.w.shape),)

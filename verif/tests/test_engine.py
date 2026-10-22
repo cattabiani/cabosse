@@ -33,7 +33,6 @@ import paths
 import pytest
 import torch
 from engine import LANES_PER_PORT, Attention, Matvec
-from golden import decoder
 from lane import FULL_RATE_LEN
 
 import rtl
@@ -266,10 +265,10 @@ def test_smollm2(position: int) -> None:
     would, at F2's latency: bit for bit, and each command within 10% of the
     perf model's cycles (PLAN.md, M5), the first one included. Positions
     past 63 read the long cache (scripts/fill_long_cache.py)."""
-    run = eng.run_smollm2(decoder.load(paths.SMOLLM2), WIDE, position, **eng.F2_MEMORY)
-    if run is None:
-        pytest.skip("needs the long cache: python scripts/fill_long_cache.py")
-    found, result = run
+    try:
+        found, result = eng.run_smollm2(eng.smollm2(), WIDE, position, **eng.F2_MEMORY)
+    except FileNotFoundError as e:
+        pytest.skip(str(e))
     off = {
         f.name: c / eng.model_cycles(f.command, WIDE) - 1
         for f, c in zip(found, eng.command_cycles(result), strict=True)

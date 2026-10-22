@@ -9,7 +9,9 @@ import long_cache
 import paths
 import pytest
 import torch
-from golden import arith, decoder, tiny
+from golden import decoder, tiny
+from test_commands import same_bits
+from test_decoder import random_tokens
 
 N_TOKENS = 40  # 3 chunks of 16 (the last one short)
 CHUNK = 16
@@ -22,9 +24,7 @@ def small(monkeypatch: pytest.MonkeyPatch) -> tuple[decoder.Model, list[int]]:
     monkeypatch.setattr(long_cache, "CHECK_POSITIONS", CHECK)
     c = tiny.tiny_config()
     model = decoder.from_state_dict(c, tiny.random_weights(c, seed=3))
-    gen = torch.Generator().manual_seed(3)
-    tokens = torch.randint(c.vocab_size, (N_TOKENS,), generator=gen).tolist()
-    return model, tokens
+    return model, random_tokens(N_TOKENS, c.vocab_size, seed=3)
 
 
 def one_run(model: decoder.Model, tokens: list[int]) -> decoder.KVCache:
@@ -34,11 +34,7 @@ def one_run(model: decoder.Model, tokens: list[int]) -> decoder.KVCache:
 
 
 def same_cache(a: decoder.KVCache, b: decoder.KVCache) -> bool:
-    return (
-        a.length == b.length
-        and torch.equal(arith.bits_bf16(a.k), arith.bits_bf16(b.k))
-        and torch.equal(arith.bits_bf16(a.v), arith.bits_bf16(b.v))
-    )
+    return a.length == b.length and same_bits(a.k, b.k) and same_bits(a.v, b.v)
 
 
 def test_fill_in_chunks_is_one_run(small, tmp_path) -> None:
