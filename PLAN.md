@@ -1382,8 +1382,9 @@ with the memory model's write side; real data, speed and
   edges (exp's ties and integers of t, clamp, subnormal results; the
   inputs recip and rsqrt scale) and random bits, operations interleaved;
   slow: 10^8 per operation and the M1 exhaustive ranges (87 s on 16
-  cores). Every input of exp, recip and rsqrt: `CABOSSE_SWEEP=1`, on
-  request, about 30 minutes (estimate from the slow run's rate). Hand
+  cores). Every input of exp, recip and rsqrt (`CABOSSE_SWEEP=1`, on
+  request): all 2^32 bit-exact for each, 21 min 26 s on 16 cores (exp
+  457 s, recip 440 s, rsqrt 389 s; 2026-10-23, commit 05519c1). Hand
   mutations: 8 caught; one (exp's clamp at 151) gives the same bits (past
   ±150 the result is +inf or rounds to +0 either way). MAX is not in the
   chain: it is only a reduction (`MAX` per row), so it goes with the
