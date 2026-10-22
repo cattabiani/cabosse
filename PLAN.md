@@ -464,6 +464,22 @@ unit per slot would make softmax about 2.2× slower at long positions. Cost:
 about 45-50 cycles of latency on every command (measured in M6). The chain's
 length is set by `exp`, so one Newton step fewer saves no area.
 
+**D-049 (2026-10-22) — S and P's row stride is a register, STRIDE,
+independent of `cap`** (owner, 2026-10-22). Head h's scores and
+probabilities sit at `h·stride` in S and P; `SCORES` writes there, `VALUES`
+and the `LEN_T` vector commands read there. The host writes STRIDE once
+with the command list; the controller passes it to the engine and the
+vector unit. It needs `t` ≤ stride and a multiple of 16, the vector
+unit's width (so every row starts on one of its 16-element groups; the
+engine alone needs a multiple of E).
+Tests use strides different from `cap`. *Why:* the two mean different
+things (the KV cache's rows per head; the on-chip buffers' layout), and a
+valid image may differ (S and P sized for the full context, the host
+running a shorter cache). An equality built in would hide a mix-up of the
+two. The 32-byte commands have no room for a second per-command field
+(`SCORES` uses all but 2 bytes), and the stride is one value for the whole
+list.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1313,7 +1329,8 @@ the extra pass shows up as a bottleneck. It needs a spec change.
   up exactly, a write rounds). No vector command reads two operands from
   the same buffer (checked on both ladder models' lists). Sizes are
   parameters; the vector unit generates the addresses (rows of `m`, or of
-  `t` at stride `cap` with `LEN_T`; `B_PER_ROW`, `B_ROW`). A port is muxed
+  `t` at stride `cap` with `LEN_T`, now the STRIDE register, D-049;
+  `B_PER_ROW`, `B_ROW`). A port is muxed
   to the command that owns it; `commands.hazards()` gains a check that no
   two running commands use the same port of a buffer, so the hardware needs
   no arbitration. The engine's ports (x read, result write) are added in M7
@@ -1325,7 +1342,8 @@ the extra pass shows up as a bottleneck. It needs a spec change.
   numerics change. *Why stride `cap`:* a head's row starts at a fixed,
   aligned address whatever the position; with packed rows it moves every
   token and is misaligned for `VALUES`' 4-wide and the vector unit's
-  16-wide reads. The buffer is sized `heads × cap` anyway.
+  16-wide reads. The buffer is sized `heads × cap` anyway. (Superseded
+  the same day by D-049: the stride is the STRIDE register, not `cap`.)
 - Tests: a C++ Verilator bulk driver per level. One slot's chain per
   operation against the golden functions: special values, the edges of
   each bit trick and random inputs in CI; 10^8 random inputs per operation
@@ -1371,7 +1389,26 @@ with the memory model's write side; real data, speed and
 `vector_startup_cycles`; checkpoint report.
 
 **Progress:**
-- [ ] Answers above.
+- [x] Answers above (PR #59).
+- [x] S and P at the STRIDE register's stride, and the buffer-port check
+  (PR #60). Owner, 2026-10-22: the stride is not `cap` (D-049). `run()`
+  keeps every buffer at its full size, starting as NaN (stale data), and
+  every command reads and writes only its span: a read of an element no
+  command wrote gives NaN and fails the bit-exact tests. The KV cache's
+  unwritten rows are NaN too. `Layout.stride` is the register's value
+  (`cap` by default); the decode-step tests use strides above and below
+  `cap`. `EngineCall` records the span an engine command reads and
+  writes, the whole cache, `t` and the stride; `record_step` takes a
+  `cap` and a stride, and `verif/engine.py`'s `real_attention` passes the
+  recorded command through (a cap of whole tiles, the stride cap + 16).
+  The engine takes `cmd_stride_i` (queued with each command) in place of
+  `cap` for S and P; its tests draw the stride at random above and below
+  `cap`, and a hand mutation (the stride from `cap`, as before) fails
+  them. The engine tests compare only the rows a command writes
+  (`written()`: scores past t stay stale, and the C++ driver rejects a
+  write there). `commands.hazards()` finds a "read port" hazard: two
+  commands of different units (the engine, the vector unit) reading one
+  buffer at once; none in the ladder lists, two hand-made lists have them.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
@@ -1393,16 +1430,14 @@ The controller stops at a non-engine command until its inputs are written
 (D-045); the perf model's start-up (`engine_startup_cycles`) was measured
 with weights read ahead at once, so compare the engine commands after such
 a stop with it and report the loss.
-Attention (M5): `SCORES` writes head h's scores at `S[h·cap + i]` and
-`VALUES` reads head h's probabilities at `P[h·cap + i]` (rows at stride
-`cap`, so `VALUES` reads them aligned to E); the softmax commands
-(`LEN_T`) must read and write rows of t at that stride, not packed. The
-engine needs `cap` a multiple of L, a power-of-two head dimension from
-16 to 128 (`VALUES`: at most L), and does not check them; `SCORES` and `VALUES` are given after the `KV_STORE` they
-depend on (D-044). The golden command list still writes S and P packed (rows
-of t, `cap` = positions + 1); once it moves them to stride `cap` with `cap`
-a multiple of L, `verif/engine.py`'s `real_attention` drops its padding and
-re-striding and passes the recorded commands through.
+Attention: `SCORES` writes head h's scores at `S[h·stride + i]` and
+`VALUES` reads head h's probabilities at `P[h·stride + i]`, the STRIDE
+register (D-049), which the controller passes to the engine
+(`cmd_stride_i`) and the vector unit (`LEN_T` rows); never `cap`. The
+engine needs `cap` a multiple of L, the stride a multiple of 16, a
+power-of-two head dimension from 16 to 128 (`VALUES`: at most L), and
+does not check them; `SCORES` and `VALUES` are given after the
+`KV_STORE` they depend on (D-044).
 
 ### M8 — F2 bring-up (no model)
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and

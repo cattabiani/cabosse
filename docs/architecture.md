@@ -191,9 +191,15 @@ it from there:
   every channel; the head dimension is a power of two from 16 to 128. The
   whole engine needs the port count a multiple of 4 (the banks' mapping,
   below), checked at elaboration.
-- Scores and probabilities: head h's row at `h·cap` in S and P (stride
-  `cap`, aligned to E for p·V's reads), so softmax reads rows of t at that
-  stride (M6, M7).
+- Scores and probabilities: head h's row at `h·stride` in S and P, the
+  STRIDE register (D-049): `SCORES` writes there, `VALUES` reads there,
+  and softmax's commands (`LEN_T`) read and write rows of t there. A row
+  starts at the same address at every position. The stride is a property
+  of the on-chip buffers, not of the KV cache: it needs `t` ≤ stride and
+  a multiple of 16, so every row starts on one of the vector unit's
+  16-element groups (and on p·V's groups of E), and is independent of
+  `cap` (the host may run a shorter cache with S and P sized for the
+  full context).
 
 **Tile buffer banks.** `L` banks, each 4 BF16 values wide, one write and
 one read per cycle. The 4 values `u` (elements `4u` to `4u+3`) of position
@@ -253,8 +259,8 @@ mid-token.
 | 1 | `LOAD` | dst = up(tensor at addr), m elements | BY_TOKEN BY_POSITION SRC_BF16 |
 | 2 | `MATVEC` | dst = W·a, W at addr: n rows × m columns |  |
 | 3 | `KV_STORE` | cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head |  |
-| 4 | `SCORES` | dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t |  |
-| 5 | `VALUES` | dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t |  |
+| 4 | `SCORES` | dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t (rows at STRIDE) |  |
+| 5 | `VALUES` | dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t (rows of a at STRIDE) |  |
 | 6 | `OUTPUT` | a (n FP32) to host memory at LOGITS_HI:LOGITS_LO |  |
 | 7 | `ADD` | dst = add(a, b) | NEG_A NEG_B B_PER_ROW B_ROW LEN_T |
 | 8 | `MUL` | dst = mul(a, b) | NEG_A NEG_B B_PER_ROW B_ROW LEN_T |
@@ -275,7 +281,7 @@ chain gives the golden function's bits, and a model with a different step
 (a bias, a norm on q and k) needs a new list, not new hardware. A
 vector-unit command works on `n` rows of `m` elements; flags pick the
 variants (negated operands, a value per row, a row for every row, rows `t`
-long, a constant from `scalar`):
+long at the STRIDE register's stride, a constant from `scalar`):
 
 <!-- begin: flags -->
 | bit | flag | meaning |
@@ -284,7 +290,7 @@ long, a constant from `scalar`):
 | 1 | `NEG_B` | use -b |
 | 2 | `B_PER_ROW` | b holds one value per row, used for the whole row |
 | 3 | `B_ROW` | b holds one row, used for every row |
-| 4 | `LEN_T` | rows are t long (the positions attention reads), not m |
+| 4 | `LEN_T` | rows are t long (the positions attention reads), at stride STRIDE, not m |
 | 5 | `BY_TOKEN` | LOAD row `token` of the tensor at addr |
 | 6 | `BY_POSITION` | LOAD row `position` of the tensor at addr |
 | 7 | `SRC_BF16` | LOAD from BF16 (else FP32); converted to FP32 exactly |
@@ -372,7 +378,7 @@ Command buffer: 64 KiB, 2,048 commands.
 ## Registers (D-029)
 
 On the shell's OCL port (AXI-Lite, 32-bit). The host writes the command list
-once, then per token: TOKEN, POSITION, CONTROL start; it waits for STATUS
+and STRIDE once, then per token: TOKEN, POSITION, CONTROL start; it waits for STATUS
 done (or the interrupt) and finds the logits at the host address it set.
 
 <!-- begin: registers -->
@@ -390,6 +396,7 @@ done (or the interrupt) and finds the logits at the host address it set.
 | `0x24` | `LOGITS_HI` | RW | host address for OUTPUT, high 32 bits |
 | `0x28` | `CYCLES_LO` | R | cycles of the last token, low 32 bits |
 | `0x2C` | `CYCLES_HI` | R | cycles of the last token, high 32 bits |
+| `0x30` | `STRIDE` | RW | row stride of S and P, in elements (SCORES, VALUES, LEN_T) |
 | `0x10000` | `COMMAND_BUFFER` | W | the command list: 64 KiB, up to 2,048 commands |
 <!-- end: registers -->
 

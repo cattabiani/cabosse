@@ -67,7 +67,7 @@ def depth() -> dict:
         params = (("Depth", d),)
         r = eng.fetch(mats, xs, PORTS, params=params, seed=seed, **MEMORY, **PAUSES[pauses])
         for m, got in zip(mats, r.out, strict=True):
-            eng.assert_bits(got, eng.expected(m, xs[0]), str(job))
+            eng.assert_bits(m, got, eng.expected(m, xs[0]), str(job))
         rate[job] = beats / int(r.done[-1] - r.taken[0])
 
     bulk.in_parallel(one, [(p, d, s) for p in PAUSES for d in DEPTHS for s in SEEDS])
