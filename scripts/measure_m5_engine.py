@@ -32,7 +32,7 @@ import numpy as np  # noqa: E402
 import perf  # noqa: E402
 import torch  # noqa: E402
 from engine import LANES_PER_PORT, Matvec  # noqa: E402
-from reporting import blocks, measure  # noqa: E402
+from reporting import blocks, m5, measure  # noqa: E402
 
 DATA = REPO / "reports" / "data" / "M5-engine.json"
 PORTS = 32
@@ -105,7 +105,13 @@ def real() -> dict:
             }
             for f, c in zip(found, eng.command_cycles(result), strict=True)
         ]
-    return {"ports": PORTS, "memory": MEMORY, "positions": positions}
+    return {
+        "ports": PORTS,
+        "depth_beats": m5.constant(m5.ENGINE_RTL, "Depth"),
+        "writes": m5.constant(m5.ENGINE_RTL, "Writes"),
+        "memory": MEMORY,
+        "positions": positions,
+    }
 
 
 def op(m: eng.Command) -> str:
@@ -140,7 +146,8 @@ def bandwidth() -> dict:
 
     bulk.in_parallel(one, jobs)
     matrices = [found[job] for job in jobs]
-    return {"ports": PORTS, "memory": MEMORY, "matrices": matrices}
+    bound = 2 * eng.E * PORTS * LANES_PER_PORT  # bytes per cycle the lanes take at most
+    return {"ports": PORTS, "memory": MEMORY, "bound": bound, "matrices": matrices}
 
 
 def speed() -> dict:

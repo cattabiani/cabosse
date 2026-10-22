@@ -10,7 +10,7 @@ scripts/measure_m5_engine.py.
 
 `measure-tests` runs the fast suite (the 128-lane tests included) and the
 slow one (it needs the SmolLM2 checkpoint, the long cache and the RTL
-tools); about 35 minutes on 16 cores. Run it under the memory cap. Commit
+tools); about 25 minutes on 16 cores. Run it under the memory cap. Commit
 first: the data records the commit it was measured on.
 """
 

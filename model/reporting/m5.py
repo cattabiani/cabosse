@@ -8,6 +8,7 @@ scripts/report_m5.py; needs no weights and no RTL tools."""
 
 import json
 import re
+from pathlib import Path
 
 import paths
 
@@ -19,7 +20,6 @@ ENGINE = paths.REPORTS / "data" / "M5-engine.json"
 RTL_CHECKS = paths.REPO / "verif" / "tests" / "test_rtl_checks.py"
 ENGINE_RTL = paths.REPO / "rtl" / "engine.sv"
 CRITERION = 0.9  # PLAN.md, M5: 90% of the bandwidth, and of the perf model on attention
-LONG = ("1023", "8191")  # the long positions of the attention criterion
 
 
 def span(values: list[float], fmt: str = ".3f") -> str:
@@ -27,7 +27,7 @@ def span(values: list[float], fmt: str = ".3f") -> str:
     return f"{lo:{fmt}}" if f"{lo:{fmt}}" == f"{hi:{fmt}}" else f"{lo:{fmt}}-{hi:{fmt}}"
 
 
-def constant(path, name: str) -> int:
+def constant(path: Path, name: str) -> int:
     """An integer constant or a SystemVerilog parameter's default, read from
     its file."""
     m = re.search(
@@ -63,10 +63,15 @@ def real_table(real: dict) -> str:
     return blocks.table(header, rows)
 
 
+def long_positions(real: dict) -> list[str]:
+    """The positions of the attention criterion: all but the shortest."""
+    return sorted(real["positions"], key=int)[1:]
+
+
 def attention_use(real: dict) -> float:
     """The least share of the perf model's speed SCORES and VALUES reach at
     the long positions: model cycles over measured cycles."""
-    att = [c for p in LONG for c in real["positions"][p] if c["op"] != "matvec"]
+    att = [c for p in long_positions(real) for c in real["positions"][p] if c["op"] != "matvec"]
     return min(c["model"] / c["cycles"] for c in att)
 
 
@@ -85,20 +90,33 @@ def bandwidth_table(bandwidth: dict) -> str:
     return blocks.table(header, rows)
 
 
+def depths(depth: dict) -> list[str]:
+    """The FIFO depths measured, shallowest first; the last is the reference,
+    deep enough that only the pauses limit."""
+    return sorted(next(iter(depth["rates"].values())), key=int)
+
+
+def depth_setup(depth: dict, default: int) -> str:
+    seeds = depth["seeds"]
+    return (
+        f"Rate as a share of a {depths(depth)[-1]}-beat FIFO's, {depth['ports']} ports, "
+        f"F2's latency, memory seeds {seeds[0]} to {seeds[-1]}. The default is {default} beats."
+    )
+
+
 def depth_table(depth: dict) -> str:
-    """Rate by FIFO depth, as a share of the deepest FIFO's (deep enough that
-    only the pauses limit), per pause setting (a range over the memory
-    seeds)."""
+    """Rate by FIFO depth, as a share of the reference's, per pause setting (a
+    range over the memory seeds)."""
     rates = depth["rates"]
     pauses = list(rates)
-    *depths, reference = sorted(rates[pauses[0]], key=int)
+    *shallow, reference = depths(depth)
     rows = [
         [d]
         + [
             span([r / ref for r, ref in zip(rates[p][d], rates[p][reference], strict=True)])
             for p in pauses
         ]
-        for d in depths
+        for d in shallow
     ]
     return blocks.table(["depth (beats)", *(f"pauses: {p}" for p in pauses)], rows)
 
@@ -122,7 +140,7 @@ def speed_text(speed: dict) -> str:
         for p, terms in speed["token_cycles"].items()
     ]
     return (
-        f"{speed_measured(speed).capitalize()} "
+        f"{speed_measured(speed)[:1].upper()}{speed_measured(speed)[1:]} "
         f"({speed['ports']} ports, three runs). In M7 at that speed (estimate; the full "
         f"design will simulate slower): {'; '.join(tokens)}."
     )
@@ -157,15 +175,16 @@ def generated() -> dict[str, str]:
         [
             f"Bytes/cycle ≥ {CRITERION:.0%} of min(BW, 2·E·L) on large matrices",
             f"{span(full)} of it; below: {'; '.join(short) or 'none'} (a partial last "
-            "pass leaves ports idle: share ÷ engine use is at least "
-            f"{min(m['share'] / m['engine_use'] for m in bandwidth['matrices']):.3f})",
+            "pass leaves ports idle); every matrix reaches at least "
+            f"{min(m['share'] / m['engine_use'] for m in bandwidth['matrices']):.3f} of the "
+            "bound times its engine use",
             blocks.met(not short),
         ],
         [
             f"SCORES and VALUES at long positions: engine use ≥ {CRITERION:.0%} of the "
             "perf model's",
             f"{use:.1%} of the perf model's speed or more, at positions "
-            f"{' and '.join(LONG)} (slow suite)",
+            f"{' and '.join(long_positions(real))} (slow suite)",
             blocks.met(use >= CRITERION and slow_ok),
         ],
         [
@@ -190,8 +209,8 @@ def generated() -> dict[str, str]:
     ]
     shape = (
         f"{real['ports']} ports, {4 * real['ports']} lanes, a "
-        f"{constant(ENGINE_RTL, 'Depth')}-beat FIFO per port, "
-        f"{constant(ENGINE_RTL, 'Writes')} results per cycle on the write port; the "
+        f"{real['depth_beats']}-beat FIFO per port, "
+        f"{real['writes']} results per cycle on the write port; the "
         f"memory model at F2's read latency, {real['memory']['latency']} cycles, with "
         f"{real['memory']['outstanding']} bursts in flight per port."
     )
@@ -206,8 +225,11 @@ def generated() -> dict[str, str]:
         "shape": shape,
         "real": real_table(real),
         "real-provenance": blocks.provenance_text(real["provenance"]),
+        "bandwidth-bound": f"At {4 * bandwidth['ports']} lanes, 2·E·L is "
+        f"{bandwidth['bound']} bytes per cycle.",
         "bandwidth": bandwidth_table(bandwidth),
         "bandwidth-provenance": blocks.provenance_text(bandwidth["provenance"]),
+        "depth-setup": depth_setup(engine["depth"], real["depth_beats"]),
         "depth": depth_table(engine["depth"]),
         "depth-provenance": blocks.provenance_text(engine["depth"]["provenance"]),
         "speed": speed_text(speed),
