@@ -59,13 +59,15 @@ class Matvec:
 class Attention:
     """SCORES (values=False) or VALUES on a KV cache of kv_heads × cap
     positions × d (positions past t may hold anything): x[a] is q (heads × d)
-    or p (heads rows of cap, past t anything). SCORES writes dst[h * cap +
-    i] for i < t, VALUES dst[h * d + c]. wait as for Matvec."""
+    or p (heads rows at `stride`, past t anything). SCORES writes
+    dst[h * stride + i] for i < t, VALUES dst[h * d + c]. wait as for
+    Matvec."""
 
     values: bool
     cache: torch.Tensor  # BF16 [kv_heads, cap, d]
     heads: int
     t: int
+    stride: int  # S and P's rows (the STRIDE register)
     a: int = 0
     dst: int = 1
     scale: float = 0.125  # SCORES; rounded to FP32
@@ -84,8 +86,7 @@ def n_rows(c: Command) -> int:
     """The rows of dst the command's output spans (the driver's output)."""
     if isinstance(c, Matvec):
         return c.w.shape[0]
-    _, cap, d = c.cache.shape
-    return c.heads * (d if c.values else cap)
+    return c.heads * (c.cache.shape[2] if c.values else c.stride)
 
 
 def written(c: Command) -> np.ndarray:
@@ -93,20 +94,20 @@ def written(c: Command) -> np.ndarray:
     row past t as it was (the driver checks it, Command::writes)."""
     rows = np.arange(n_rows(c))
     if isinstance(c, Attention) and not c.values:
-        return rows % c.cache.shape[1] < c.t
+        return rows % c.stride < c.t
     return np.ones(len(rows), dtype=bool)
 
 
 def fields(c: Command, addr: int) -> tuple[int, ...]:
     """The driver's command words: op, rows, cols, address (low, high), a,
-    dst, bf16, wait, heads, group, t, cap, scale."""
+    dst, bf16, wait, heads, group, t, cap, stride, scale."""
     common = (addr & 0xFFFFFFFF, addr >> 32, c.a, c.dst, int(c.bf16), int(c.wait))
     if isinstance(c, Matvec):
-        return (OP_MATVEC, *c.w.shape, *common, 0, 0, 0, 0, 0)
+        return (OP_MATVEC, *c.w.shape, *common, 0, 0, 0, 0, 0, 0)
     _, cap, d = c.cache.shape
     scale = commands.f32_bits(c.scale)
     op = OP_VALUES if c.values else OP_SCORES
-    return (op, 0, d, *common, c.heads, c.group, c.t, cap, scale)
+    return (op, 0, d, *common, c.heads, c.group, c.t, cap, c.stride, scale)
 
 
 @dataclass
@@ -143,6 +144,8 @@ def check_attention(c: Attention, lanes: int) -> None:
     assert not c.values or d <= lanes, f"VALUES needs d <= L: d = {d}, L = {lanes}"
     assert cap % lanes == 0, f"cap a multiple of L: cap = {cap}, L = {lanes}"
     assert 1 <= c.t <= cap, f"1 <= t <= cap: t = {c.t}, cap = {cap}"
+    assert c.stride % E == 0, f"stride a multiple of E: stride = {c.stride}"
+    assert c.t <= c.stride, f"t <= stride: t = {c.t}, stride = {c.stride}"
     assert c.heads % kv_heads == 0, f"group dividing heads: {c.heads} heads, {kv_heads} KV"
 
 
@@ -222,14 +225,14 @@ def fetch(
 def golden_attention(c: Attention, x: torch.Tensor) -> torch.Tensor:
     """FP32 [n_rows(c)]: the golden SCORES (0 at positions past t) or VALUES
     (docs/numerics.md, attention), head h on KV head h // group."""
-    kv_heads, cap, d = c.cache.shape
+    d = c.cache.shape[2]
     kv = c.cache[torch.arange(c.heads) // c.group, : c.t]  # [heads, t, d]
     if c.values:
-        p = x[: c.heads * cap].reshape(c.heads, cap)[:, : c.t]
+        p = x[: c.heads * c.stride].reshape(c.heads, c.stride)[:, : c.t]
         return decoder.attention_values(p, kv).reshape(-1)
     q = x[: c.heads * d].reshape(c.heads, d)
     scores = decoder.attention_scores(q, kv, torch.tensor(c.scale, dtype=torch.float32))
-    out = torch.zeros(c.heads, cap, dtype=torch.float32)
+    out = torch.zeros(c.heads, c.stride, dtype=torch.float32)
     out[:, : c.t] = scores
     return out.reshape(-1)
 
@@ -288,10 +291,14 @@ def saved_cache() -> tuple[list[int], decoder.KVCache]:
 
 
 def smollm2_step(
-    model: decoder.Model, position: int = len(SMOLLM2_PROMPT), cap: int | None = None
+    model: decoder.Model,
+    position: int = len(SMOLLM2_PROMPT),
+    cap: int | None = None,
+    stride: int | None = None,
 ) -> list[commands.EngineCall]:
     """The engine commands of one SmolLM2 decode step at `position`
-    (commands.record_step, a KV cache of `cap` positions): of
+    (commands.record_step, a KV cache of `cap` positions, S and P's rows at
+    `stride`): of
     SMOLLM2_PROMPT[-1] + 1 after SMOLLM2_PROMPT at 63, else of the text's
     next token after the long cache's first `position` tokens
     (saved_cache(), cut back to them)."""
@@ -301,17 +308,19 @@ def smollm2_step(
         tokens, saved = saved_cache()
         prompt, token = tokens[:position], tokens[position]
         cache = dataclasses.replace(saved, length=position)
-    return commands.record_step(model, prompt, token, cache, cap)[1]
+    return commands.record_step(model, prompt, token, cache, cap, stride)[1]
 
 
 def real_attention(c: commands.EngineCall, a: int, dst: int) -> tuple[RealCommand, torch.Tensor]:
     """A recorded SCORES or VALUES as the engine takes it (the command
-    list's layout: rows of t at stride cap in S and P, past t stale), and
+    list's layout: rows of t at the stride in S and P, past t stale), and
     its x buffer."""
     values = c.cmd.op == commands.Op.VALUES
     bf16 = c.out.dtype == torch.bfloat16
     scale = 1.0 if values else float(commands.f32_value(c.cmd.scalar))
-    m = Attention(values, c.mem, c.cmd.n, c.t, a=a, dst=dst, scale=scale, bf16=bf16, wait=c.wait)
+    m = Attention(
+        values, c.mem, c.cmd.n, c.t, c.stride, a=a, dst=dst, scale=scale, bf16=bf16, wait=c.wait
+    )
     return RealCommand(c.name, m, port_bits(c.out)), c.a
 
 
@@ -324,9 +333,11 @@ def smollm2_commands(
     where the controller would (commands.engine_waits), and their x buffers:
     a waiting command opens one, the commands after it that read the same
     buffer share it (k and v with q, up with gate). The KV cache holds
-    whole tiles: `cap` is position + 1 rounded up to the lanes."""
+    whole tiles: `cap` is position + 1 rounded up to the lanes; S and P's
+    stride is another value (cap + 16), so a mix-up of the two shows."""
     lanes = ports * LANES_PER_PORT
-    step = smollm2_step(model, position, cap=-(-(position + 1) // lanes) * lanes)
+    cap = -(-(position + 1) // lanes) * lanes
+    step = smollm2_step(model, position, cap=cap, stride=cap + commands.STRIDE_ALIGN)
     last = f"layers.{len(model.layers) - 1}."
     found, xs, x_of = [], {}, {}  # x_of: a command buffer -> its current x buffer
     for c in step:

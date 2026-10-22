@@ -18,13 +18,20 @@ TOKENS = [3, 17, 200, 5, 99]  # one decode step each, at positions 0, 1, ...
 LAYER_READS = ("q", "k", "v", "k_cache", "v_cache", "o", "gate", "up", "down")  # engine order
 
 
-@pytest.mark.parametrize(("n_kv_heads", "tied"), [(1, False), (2, True), (4, True)])
-def test_commands_give_the_golden_decode_step(n_kv_heads: int, tied: bool) -> None:
+# (KV heads, tied, cap, S and P's stride): grouped and plain attention, the
+# stride above and below the cache's cap.
+DECODE_CASES = [(1, False, 7, 16), (2, True, 20, 16), (4, True, 5, 32)]
+
+
+@pytest.mark.parametrize(("n_kv_heads", "tied", "cap", "stride"), DECODE_CASES)
+def test_commands_give_the_golden_decode_step(
+    n_kv_heads: int, tied: bool, cap: int, stride: int
+) -> None:
     """Logits and KV cache bit-exact against decoder.decode_step, token by
     token, with grouped (1, 2 KV heads) and plain (4) attention."""
     c = tiny.tiny_config(n_kv_heads=n_kv_heads, tied=tied)
     model = decoder.from_state_dict(c, tiny.random_weights(c, seed=1))
-    layout = commands.Layout.of(c, cap=len(TOKENS) + 2)
+    layout = commands.Layout.of(c, cap=cap, stride=stride)
     hbm, cmds = commands.load(model, layout), commands.build(layout)
     cache = decoder.KVCache.empty(model, layout.cap)
     for position, token in enumerate(TOKENS):
@@ -45,7 +52,7 @@ def test_commands_give_the_golden_decode_step_on_smollm2() -> None:
     """The same check on the real model, 7 tokens (about 20 s)."""
     model = decoder.load(paths.SMOLLM2)
     tokens = [1, 9690, 314, 253, 1789, 28, 2]
-    layout = commands.Layout.of(model.config, cap=len(tokens))
+    layout = commands.Layout.of(model.config, cap=len(tokens), stride=16)
     hbm, cmds = commands.load(model, layout), commands.build(layout)
     cache = decoder.KVCache.empty(model, layout.cap)
     for position, token in enumerate(tokens):
@@ -137,7 +144,7 @@ def test_ladder_command_lists_fit_the_command_buffer(name: str) -> None:
 def test_buffer_capacities_cover_every_ladder_model() -> None:
     caps = arch_doc.capacities()
     for layout in arch_doc.ladder_layouts().values():
-        for b, (dtype, n) in commands.buffers(layout.config, layout.cap).items():
+        for b, (dtype, n) in commands.buffers(layout.config, layout.stride).items():
             assert caps[b][0] == dtype and n <= caps[b][1], (b, layout.config)
 
 
@@ -274,27 +281,39 @@ def test_recorded_calls_are_the_engine_commands(tied: bool) -> None:
             assert x.t == t and x.mem.shape == (c.num_key_value_heads, t, c.head_dim), x.name
 
 
-def test_record_step_with_a_larger_cap() -> None:
-    """A cache of more positions than the step reads gives the same step:
-    S and P hold the same rows of t at stride cap, and the cache's rows past
+def test_stride_is_a_multiple_of_the_vector_unit_s_width() -> None:
+    """S and P's stride (the STRIDE register) is cap rounded up to 16 by
+    default; one that is not a multiple of 16 is refused."""
+    c = tiny.tiny_config()
+    assert commands.Layout.of(c, cap=20).stride == 32
+    assert commands.Layout.of(c, cap=20, stride=16).stride == 16
+    for bad in (0, 8, 20):
+        with pytest.raises(AssertionError):
+            commands.Layout.of(c, cap=20, stride=bad)
+
+
+@pytest.mark.parametrize(("cap", "stride"), [(8, 16), (20, 16), (4, 32)])
+def test_record_step_with_other_cap_and_stride(cap: int, stride: int) -> None:
+    """A cache of more positions than the step reads, and S and P at another
+    stride than the default (cap rounded up to 16), give the same step: S
+    and P hold the same rows of t at the stride, and the cache's rows past
     t are stale (NaN)."""
     c = tiny.tiny_config(n_kv_heads=2)
     model = decoder.from_state_dict(c, tiny.random_weights(c, seed=2))
-    prompt, token, cap = TOKENS[:3], TOKENS[3], 8
+    prompt, token = TOKENS[:3], TOKENS[3]
     got, want = (
-        commands.record_step(model, prompt, token, cap=cap),
+        commands.record_step(model, prompt, token, cap=cap, stride=stride),
         commands.record_step(model, prompt, token),
     )
     assert same_bits(got[0], want[0])
     t = len(prompt) + 1
     for g, w in zip(got[1], want[1], strict=True):
         assert (g.index, g.name, g.t, g.cmd.op) == (w.index, w.name, w.t, w.cmd.op), g.name
-        a, out = g.a, g.out  # P (VALUES' a) and S (SCORES' out) at stride cap
-        if g.cmd.op == commands.Op.VALUES:
-            a = g.rows(a).reshape(-1)
-        if g.cmd.op == commands.Op.SCORES:
-            out = g.rows(out).reshape(-1)
-        assert same_bits(a, w.a) and same_bits(out, w.out), g.name
+        assert g.stride == stride, g.name
+        # P (VALUES' a) and S (SCORES' out) as rows of t, each at its stride
+        a = (g.rows(g.a), w.rows(w.a)) if g.cmd.op == commands.Op.VALUES else (g.a, w.a)
+        out = (g.rows(g.out), w.rows(w.out)) if g.cmd.op == commands.Op.SCORES else (g.out, w.out)
+        assert same_bits(*a) and same_bits(*out), g.name
         if g.cmd.op == commands.Op.MATVEC:
             assert same_bits(g.mem, w.mem), g.name
         else:

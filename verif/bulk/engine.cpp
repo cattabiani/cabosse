@@ -11,7 +11,7 @@
 /// its BF16 elements and the elements two per word (low half first); the
 /// number of commands, then per command op (0 MATVEC, 1 SCORES, 2 VALUES),
 /// rows, cols, address (low word, high word), a, dst, bf16, wait, heads,
-/// group, t, cap and scale (FP32 bits). Commands are offered in order, each
+/// group, t, cap, stride and scale (FP32 bits). Commands are offered in order, each
 /// held until taken. A command with wait gets its go_i as the controller may give
 /// it (D-042), in order, once it is taken: after every earlier command is
 /// done (its dependency is the one before), or at once (an earlier one, done
@@ -26,12 +26,12 @@
 /// +go_delay (a go comes 0 to go_delay cycles late, uniformly), +seed (port p's memory draws
 /// with (seed << 16) + p, so no two runs or ports share a stream).
 /// Output: per command its rows' results in order (FP32, or BF16 in the low
-/// half): rows for a MATVEC, heads * cap for SCORES (0 where i >= t), heads
+/// half): rows for a MATVEC, heads * stride for SCORES (0 where i >= t), heads
 /// * cols for VALUES; the cycle it was taken and the cycle of its done_o; then the
 /// cycles, the cycles any memory waited on RREADY, the ports with err_o, and
 /// the run's wall time in microseconds (reset to the last drain cycle).
 /// Checks, each ending the run with a message: writes go to the oldest
-/// command not done, to its dst, to its rows (for SCORES, h * cap + i with
+/// command not done, to its dst, to its rows (for SCORES, h * stride + i with
 /// i < t), each row once, with its bf16; done_o comes after all of its rows; nothing is written and every
 /// memory is idle for kDrainCycles cycles after the last done_o.
 
@@ -54,7 +54,7 @@ constexpr size_t kXReads = Params::engine__DOT__Heads;  ///< x read ports
 constexpr size_t kXAddrBits = Params::engine__DOT__RowWidth;
 constexpr size_t kWrites = Params::engine__DOT__Writes;  ///< the write port's slots
 constexpr size_t kBufs = size_t{1} << Params::engine__DOT__BufWidth;
-constexpr size_t kCmdWords = 14;  ///< op, rows, cols, addr lo, addr hi, a, dst, bf16, wait, heads, group, t, cap, scale
+constexpr size_t kCmdWords = 15;  ///< op, rows, cols, addr lo, addr hi, a, dst, bf16, wait, heads, group, t, cap, stride, scale
 constexpr uint32_t kOpScores = Params::engine__DOT__OpScores, kOpValues = Params::engine__DOT__OpValues;
 constexpr uint16_t kNan = 0x7FC0;  ///< what a waiting command's x holds before its go
 constexpr int kExitBadInput = 2, kExitHang = 3, kExitBadWrite = 4, kExitAxi = 5;
@@ -66,7 +66,7 @@ struct Command {
   uint32_t a, dst;
   bool bf16;
   bool wait;                      ///< steps only after its go
-  uint32_t heads, group, t, cap;  ///< attention
+  uint32_t heads, group, t, cap, stride;  ///< attention; stride: S and P's rows
   uint32_t scale;                 ///< SCORES, FP32 bits
   std::vector<uint32_t> out;      ///< results by row
   std::vector<bool> written;      ///< rows written
@@ -74,10 +74,10 @@ struct Command {
 
   /// @brief The rows of dst the command's output spans.
   size_t n_rows() const {
-    return op == kOpScores ? size_t{heads} * cap : op == kOpValues ? size_t{heads} * cols : rows;
+    return op == kOpScores ? size_t{heads} * stride : op == kOpValues ? size_t{heads} * cols : rows;
   }
   /// @brief Whether the command writes this row of dst.
-  bool writes(size_t row) const { return row < n_rows() && (op != kOpScores || row % cap < t); }
+  bool writes(size_t row) const { return row < n_rows() && (op != kOpScores || row % stride < t); }
 };
 
 /// @brief A write the engine must not make, with what it did.
@@ -193,6 +193,7 @@ struct Bench {
       dut.cmd_group_i = c.group;
       dut.cmd_t_i = c.t;
       dut.cmd_cap_i = c.cap;
+      dut.cmd_stride_i = c.stride;
       dut.cmd_scale_i = c.scale;
       dut.cmd_rows_i = c.rows;
       dut.cmd_cols_i = c.cols;
@@ -274,11 +275,13 @@ int main(int argc, char** argv) {
       const auto f = in.take(kCmdWords);
       Command c{.op = f[0], .rows = f[1], .cols = f[2], .addr = f[3] | uint64_t{f[4]} << 32, .a = f[5],
                 .dst = f[6], .bf16 = f[7] != 0, .wait = f[8] != 0, .heads = f[9], .group = f[10], .t = f[11],
-                .cap = f[12], .scale = f[13]};
+                .cap = f[12], .stride = f[13], .scale = f[14]};
       c.out.resize(c.n_rows());
       c.written.resize(c.n_rows());
       commands.push_back(std::move(c));
       if (f[5] >= kBufs) throw std::out_of_range("a past BufWidth");
+      if ((f[0] == kOpScores || f[0] == kOpValues) && (f[12] == 0 || f[13] == 0))
+        throw std::out_of_range("attention with cap or stride 0");
     }
     std::vector<bool> read(kBufs);
     for (const Command& c : commands) {

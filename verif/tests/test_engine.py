@@ -32,7 +32,7 @@ import numpy as np
 import paths
 import pytest
 import torch
-from engine import LANES_PER_PORT, Attention, Matvec
+from engine import LANES_PER_PORT, Attention, E, Matvec
 from lane import FULL_RATE_LEN
 
 import rtl
@@ -316,18 +316,24 @@ def stale_attention(
     **kw,
 ) -> tuple[Attention, torch.Tensor]:
     """A command and its x buffer, with NaN in the cache past t, in p past
-    t, and cap the whole tiles holding t (so t = cap when t is a whole
-    number of tiles) plus one more, at random."""
-    cap = lanes * (-(-t // lanes) + int(torch.randint(2, (1,), generator=gen)))
+    t, cap the whole tiles holding t (so t = cap when t is a whole number
+    of tiles) plus one more, at random, and S and P's stride any multiple
+    of E from t up to two tiles more, at random (above or below cap)."""
+
+    def draw(n: int) -> int:
+        return int(torch.randint(n, (1,), generator=gen))
+
+    cap = lanes * (-(-t // lanes) + draw(2))
+    stride = E * (-(-t // E) + draw(2 * lanes // E + 1))
     cache = random_bf16(gen, kv_heads, cap, d)
     cache[:, t:] = float("nan")
     if values:
-        x = random_bf16(gen, heads, cap)
+        x = random_bf16(gen, heads, stride)
         x[:, t:] = float("nan")
         x = x.reshape(-1)
     else:
         x = random_bf16(gen, heads * d)
-    return Attention(values, cache, heads, t, **kw), x
+    return Attention(values, cache, heads, t, stride, **kw), x
 
 
 def attention_batch(ports: int, seed: int) -> tuple[list[eng.Command], dict, list[int]]:
@@ -422,10 +428,10 @@ def test_attention_back_to_back(ports: int) -> None:
     lanes = ports * LANES_PER_PORT
     d_scores, d_values = BALANCED[ports]
     cmds = [
-        Attention(v, random_bf16(gen, 3, 4 * lanes, d), 6, 3 * lanes)
+        Attention(v, random_bf16(gen, 3, 4 * lanes, d), 6, 3 * lanes, 4 * lanes + E)
         for v, d in [(False, d_scores)] * 3 + [(True, d_values)] * 3
     ]
-    xs = {0: random_bf16(gen, 6 * 4 * lanes)}
+    xs = {0: random_bf16(gen, 6 * (4 * lanes + E))}
     result = eng.fetch(cmds, xs, ports, latency=40, outstanding=32)
     check_bits(cmds, xs, result, f"back to back, seed {SEED}")
     took = np.diff(result.done).tolist()
@@ -442,6 +448,8 @@ BAD_ATTENTION = [
     ("d below 16", dict(d=8), "power of two"),
     ("cap not whole tiles", dict(cap=True), "cap a multiple of L"),
     ("t = 0", dict(t=0), "t <= cap"),
+    ("stride not a multiple of E", dict(stride=18), "stride a multiple of E"),
+    ("stride below t", dict(stride=12), "t <= stride"),
     ("group not dividing heads", dict(heads=3), "dividing heads"),
 ]
 
@@ -459,6 +467,8 @@ def test_attention_outside_the_engine_s_shapes(change: dict, message: str) -> No
         c = dataclasses.replace(c, cache=torch.cat([c.cache, c.cache[:, :4]], dim=1))
     if "t" in change:
         c = dataclasses.replace(c, t=change["t"])
+    if "stride" in change:
+        c = dataclasses.replace(c, stride=change["stride"])
     with pytest.raises(AssertionError, match=message):
         eng.fetch([c], {0: x}, 4)
 

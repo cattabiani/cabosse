@@ -337,7 +337,7 @@ def lane_rows(call: commands.EngineCall) -> Rows:
     cmd, a, mem = call.cmd, call.a, call.mem
     if cmd.op == commands.Op.MATVEC:
         w, x = mem, a[None, :]
-    else:  # query head h reads KV head h // group; p's rows are t at stride cap
+    else:  # query head h reads KV head h // group; p's rows are t at the stride
         kv_heads, mem = mem.shape[0], mem[:, : call.t]
         if cmd.op == commands.Op.VALUES:
             a = call.rows(a)
@@ -375,7 +375,7 @@ def reproduces(call: commands.EngineCall, rows: Rows) -> bool:
         torch.from_numpy(golden_dot(rows.w, rows.x, rows.valid).astype(np.int64))
     )
     out = call.out
-    if call.cmd.op == commands.Op.SCORES:  # rows of t at stride cap
+    if call.cmd.op == commands.Op.SCORES:  # rows of t at the stride
         y = arith.mul(y, commands.f32_value(call.cmd.scalar))
         out = call.rows(out).reshape(-1)
     if out.dtype == torch.bfloat16:
