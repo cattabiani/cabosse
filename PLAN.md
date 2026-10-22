@@ -1222,14 +1222,15 @@ step and drain, so a sequencing fix is made once); checkpoint report.
   position 63, 2,558,093 at 8191), M7 would need about 106 s and 382 s of
   wall time per simulated token (estimate; the full design will simulate
   slower).
-  Walker PR: a `MATVEC` pass is a unit like an attention one (`unit_t`'s
-  `matvec`, `rows`, `beats`), so issue, step and drain each walk one
-  sequence (`unit_init`, `unit_next`, `last_unit`); the per-stage pass
-  counters, the drain's row mask and `last_pass` are gone, and lanes past a
-  `MATVEC`'s rows take no beat (as attention's already did). Step registers
-  the unit's cycle count. Logic depth with the FMA stubbed (8 ports): 23
-  cells, 11 of them carry blocks (before: 23, 12; without the registered
-  count: 25, 12). New check: `ColWidth` at most `RowWidth`. All engine tests
+  Walker PR: a `MATVEC` pass is a `SCORES` unit of one head whose
+  positions are rows (`unit_t`'s `matvec` and `beats`; t = rows), so issue,
+  step and drain each walk one sequence (`unit_init`, `unit_next`,
+  `last_unit`); the per-stage pass counters, the drain's row mask and
+  `last_pass` are gone, and lanes past a `MATVEC`'s rows take no beat (as
+  attention's already did). Step registers the unit's cycle count. Logic
+  depth with the FMA stubbed (8 ports): 22 cells, 11 of them carry blocks
+  (before the PR: 23, 12; the first version, before the registered count
+  and `/simplify`: 25, 12). New check: `ColWidth` at most `RowWidth`. All engine tests
   pass unchanged, cycle counts included; 7 hand mutations: 5 caught, 2
   harmless (a `MATVEC` reading every port: the extra beats are popped and
   ignored, only memory traffic grows; a `MATVEC` unit freeing a tile slot:

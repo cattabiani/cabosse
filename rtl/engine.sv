@@ -41,9 +41,9 @@
 //   no gap. A unit's slot is freed when its last cycle steps.
 // - Drain: the lanes' results, Writes lanes at a time, to the write port,
 //   multiplied by scale (SCORES) or 1 (exact), then rounded to BF16 for a
-//   BF16 destination. Lanes past the last row are popped and not written;
-//   lanes with no row (no rows in the pass, past t, past the heads) have no
-//   result. done_o marks a command's last write.
+//   BF16 destination. Lanes with no row (past the rows, past t, past the
+//   heads) take no beat and have no result. done_o marks a command's last
+//   write.
 // The engine does not order a command after an earlier one whose output it
 // reads; the controller does (D-041, D-042, D-044): it gives such a command
 // `wait` and pulses go_i once its x is ready, so issue and fill read the
@@ -183,18 +183,9 @@ module engine
 
   // --- MATVEC helpers ----------------------------------------------------------
 
-  // Groups of LanesPerPort rows; beats per row.
-  function automatic logic [RowWidth-1:0] n_groups(logic [RowWidth-1:0] rows);
-    return rows / RowWidth'(LanesPerPort) + RowWidth'(rows % RowWidth'(LanesPerPort) != '0);
-  endfunction
+  // Beats per row.
   function automatic logic [ColWidth-1:0] n_beats(logic [ColWidth-1:0] cols);
     return cols / ColWidth'(E) + ColWidth'(cols % ColWidth'(E) != '0);
-  endfunction
-  // With `groups` groups left, this pass's ports with rows in it.
-  function automatic logic [Ports-1:0] pass_mask(logic [RowWidth-1:0] groups);
-    logic [Ports-1:0] mask;
-    for (int unsigned p = 0; p < Ports; p++) mask[p] = RowWidth'(p) < groups;
-    return mask;
   endfunction
 
   // --- Units -------------------------------------------------------------------
@@ -204,21 +195,22 @@ module engine
   // tile, VALUES for each pass of Heads heads (one when 2d > L), for each
   // tile. Every stage walks the same sequence with unit_init and unit_next.
 
+  // A MATVEC pass is a SCORES unit of one head whose positions are rows:
+  // t is the rows, a tile a pass of L of them.
   typedef struct packed {
-    logic                  matvec;                   // a MATVEC pass, not attention
-    logic [RowWidth-1:0]   rows;                     // MATVEC: the command's rows
-    logic [ColWidth-1:0]   beats;                    // MATVEC: a row's beats
+    logic                  matvec;                   // a MATVEC, not attention
+    logic [ColWidth-1:0]   beats;                    // each port's per unit and head
     logic                  values, heads2;           // VALUES; Heads heads a pass
     logic [HeadWidth-1:0]  n, g;                     // heads, group
     logic [2:0]            dlog;                     // log2(d)
-    logic [RowWidth-1:0]   t, cap;
+    logic [RowWidth-1:0]   t, cap;                   // positions (MATVEC: rows); cap
     logic [AddrWidth-1:0]  region;    // bytes of a KV head's region per channel
     logic [HeadWidth-1:0]  h, r;      // the unit's first head; h mod g
     logic [AddrWidth-1:0]  kv_off;    // (h div g) * region
     logic [RowWidth-1:0]   head_row;  // SCORES: h * cap; VALUES: h * d
     logic [RowWidth-1:0]   xh;        // head h's x group: SCORES h * d / E; VALUES h * cap / E
-    logic [RowWidth-1:0]   pos;       // the tile's first position (MATVEC: row), j * L
-    logic [AddrWidth-1:0]  tile_off;  // j * 4 rows * d * 2 bytes (MATVEC: j * beats * 32)
+    logic [RowWidth-1:0]   pos;       // the tile's first position, j * L
+    logic [AddrWidth-1:0]  unit_off;  // j * beats * BeatBytes (attention: 4 rows of d)
   } unit_t;
 
   // The helpers take a whole unit or command and read the fields they need.
@@ -235,11 +227,7 @@ module engine
   function automatic logic [1:0] unit_heads(unit_t u);
     return u.heads2 && 32'(u.h) + 1 < 32'(u.n) ? 2'd2 : 2'd1;
   endfunction
-  function automatic logic [RowWidth-1:0] rows_left(unit_t u);  // MATVEC: from the pass on
-    return u.rows - u.pos;
-  endfunction
   function automatic logic last_unit(unit_t u);
-    if (u.matvec) return rows_left(u) <= RowWidth'(L);
     if (!last_tile(u)) return 1'b0;
     if (!u.values) return 32'(u.h) + 1 == 32'(u.n);
     return 32'(u.h) + (u.heads2 ? 2 : 1) >= 32'(u.n);
@@ -248,43 +236,38 @@ module engine
   function automatic logic [AddrWidth-1:0] kv_offset(unit_t u, logic a);
     return a && u.r + 1'b1 == u.g ? u.kv_off + u.region : u.kv_off;
   endfunction
-  // Step cycles: MATVEC a row's beats; SCORES d / E; VALUES L / E
+  // Step cycles: MATVEC and SCORES a row's beats (d / E); VALUES L / E
   // positions' groups, fewer in the last tile.
   function automatic logic [RowWidth-1:0] unit_cycles(unit_t u);
-    if (u.matvec) return RowWidth'(u.beats);
-    if (!u.values) return RowWidth'(dim(u)) / RowWidth'(E);
+    if (!u.values) return RowWidth'(u.beats);
     return last_tile(u) ? (rem(u) + RowWidth'(E - 1)) / RowWidth'(E) : RowWidth'(Ports);
   endfunction
   // A unit's results (drain): how many lanes, from lane 0, and lane 0's row.
   function automatic logic [LW-1:0] res_lanes(unit_t u);
-    if (u.matvec) return last_unit(u) ? LW'(rows_left(u)) : LW'(L);
     if (!u.values) return last_tile(u) ? LW'(rem(u)) : LW'(L);
     return LW'(unit_heads(u)) << u.dlog;
   endfunction
   function automatic logic [RowWidth-1:0] res_row(unit_t u);
     return u.values ? u.head_row : u.head_row + u.pos;
   endfunction
-  // Issue: the ports a unit's DMA command goes to (MATVEC: those with rows
-  // in the pass), and each port's beats.
+  // The ports a unit reads (MATVEC: those with rows in the pass).
   function automatic logic [Ports-1:0] unit_ports(unit_t u);
-    return u.matvec ? pass_mask(n_groups(rows_left(u))) : '1;
-  endfunction
-  function automatic logic [ColWidth-1:0] unit_beats(unit_t u);
-    return u.matvec ? u.beats : ColWidth'(TileRows) * ColWidth'(dim(u)) / ColWidth'(BeatValues);
+    logic [Ports-1:0] ports;
+    for (int unsigned p = 0; p < Ports; p++) ports[p] = !u.matvec || p * LanesPerPort < 32'(rem(u));
+    return ports;
   endfunction
 
   function automatic unit_t unit_init(cmd_t c);
     unit_t u;
     u = '0;
     u.matvec  = c.op == OpMatvec;
-    u.rows    = c.rows;
-    u.beats   = n_beats(c.cols);
+    u.beats   = n_beats(c.cols);  // attention: TileRows * d / BeatValues = d / E
     for (int unsigned i = 0; i < ColWidth; i++) if (c.cols[i]) u.dlog = 3'(i);  // d = 2^dlog
     u.values  = c.op == OpValues;
     u.heads2  = u.values && 2 * 32'(c.cols) <= L;
-    u.n       = c.heads;
+    u.n       = u.matvec ? HeadWidth'(1) : c.heads;
     u.g       = c.group;
-    u.t       = c.t;
+    u.t       = u.matvec ? c.rows : c.t;
     u.cap     = c.cap;
     u.region  = AddrWidth'(c.cap / RowWidth'(Ports)) << (32'(u.dlog) + 1);  // * d * 2 bytes
     return u;
@@ -301,14 +284,13 @@ module engine
     return u;
   endfunction
   function automatic unit_t unit_next(unit_t u);
-    if (u.matvec || !last_tile(u)) begin  // the next pass or tile
+    if (!last_tile(u)) begin
       u.pos      = u.pos + RowWidth'(L);
-      u.tile_off = u.tile_off + (u.matvec ? AddrWidth'(u.beats) * AddrWidth'(BeatBytes)
-                                          : AddrWidth'(dim(u)) << 3);
+      u.unit_off = u.unit_off + AddrWidth'(u.beats) * AddrWidth'(BeatBytes);
       return u;
     end
     u.pos      = '0;
-    u.tile_off = '0;
+    u.unit_off = '0;
     if (!u.values) begin
       u          = next_head(u);
       u.head_row = u.head_row + u.cap;
@@ -413,16 +395,15 @@ module engine
 
   logic                 iss_busy_q, iss_head_q;  // iss_head_q: the unit's head
   logic [AddrWidth-1:0] iss_addr_q;   // the matrix's or the cache's
-  logic [ColWidth-1:0]  iss_beats_q;  // each DMA command's, per port
   logic [Ports-1:0]     iss_taken_q;  // this DMA command's ports already taken
-  logic [Ports-1:0]     iss_active_q; // the ports it goes to: unit_ports(iss_unit_q)
+  logic [Ports-1:0]     iss_active_q; // unit_ports(iss_unit_q), registered for timing
   unit_t                iss_unit_q;
   logic [Ports-1:0]     iss_taken;
   logic                 iss_done, iss_last_head;
 
   assign dma_cmd_valid = {Ports{iss_busy_q}} & iss_active_q & ~iss_taken_q;
-  assign dma_addr      = iss_addr_q + kv_offset(iss_unit_q, iss_head_q) + iss_unit_q.tile_off;
-  assign dma_beats     = iss_beats_q;
+  assign dma_addr      = iss_addr_q + kv_offset(iss_unit_q, iss_head_q) + iss_unit_q.unit_off;
+  assign dma_beats     = iss_unit_q.beats;
   assign iss_taken     = iss_taken_q | dma_cmd_ready;
   assign iss_done      = iss_busy_q && &(iss_taken | ~iss_active_q);  // this DMA command's
   assign iss_last_head = 2'(iss_head_q) + 2'd1 == unit_heads(iss_unit_q);
@@ -438,7 +419,6 @@ module engine
       iss_head_q   <= 1'b0;
       iss_unit_q   <= unit_init(q_head[0]);
       iss_active_q <= unit_ports(unit_init(q_head[0]));
-      iss_beats_q  <= unit_beats(unit_init(q_head[0]));
     end else if (iss_done) begin
       iss_taken_q <= '0;
       if (!iss_last_head) begin
@@ -531,46 +511,45 @@ module engine
 
   // --- Step: one beat to every lane --------------------------------------------
 
-  logic                step_busy_q, step_attn_q;
+  logic                step_busy_q;
   logic [E-1:0]        step_mask_q;    // MATVEC: the last beat's elements
   logic [BufWidth-1:0] step_buf_q;
-  logic [Ports-1:0]    step_active_q;  // MATVEC: the ports with rows in this pass
+  logic [Ports-1:0]    step_active_q;  // MATVEC: unit_ports(step_unit_q), registered for timing
   unit_t               step_unit_q;    // the unit stepped
   logic [RowWidth-1:0] step_cyc_q;     // the unit's cycle (MATVEC: the row's beat)
-  logic [RowWidth-1:0] step_cycles_q;  // unit_cycles(step_unit_q), registered
+  logic [RowWidth-1:0] step_cycles_q;  // unit_cycles(step_unit_q), registered for timing
   logic                step_slot_q, tile_ok_q;
   logic [L-1:0]        lane_in_ready;
   logic                fire, step_end, step_go, unit_last_cyc, unit_end;
   logic [CW-1:0]       credits_q;      // go_i pulses not yet spent
   // The next cycle's state: the RAMs' addresses come from it.
-  logic                attn_n, slot_n;
+  logic                slot_n;
   unit_t               unit_n;
   logic [RowWidth-1:0] cyc_n;
   logic [L-1:0][TW-1:0] tile_addr;
   logic [SW-1:0]       tile_rot;
   logic [L-1:0][EntryBits-1:0] tile_data;
 
-  assign dma_out_ready = ({Ports{fire && !step_attn_q}} & step_active_q)
+  assign dma_out_ready = ({Ports{fire && step_unit_q.matvec}} & step_active_q)
                        | {Ports{fill_fire}};
   assign unit_last_cyc = step_cyc_q + 1'b1 == step_cycles_q;
   assign fire          = step_busy_q && &lane_in_ready
-                         && (step_attn_q ? tile_ok_q : &(dma_out_valid | ~step_active_q));
+                         && (step_unit_q.matvec ? &(dma_out_valid | ~step_active_q) : tile_ok_q);
   assign unit_end      = fire && unit_last_cyc;
   assign step_end      = unit_end && last_unit(step_unit_q);
-  assign step_mv_end   = step_end && !step_attn_q;
+  assign step_mv_end   = step_end && step_unit_q.matvec;
   assign step_go       = !q_head[2].wait_go || credits_q != '0;
   assign step_load     = q_valid[2] && (!step_busy_q || step_end) && step_go;
   assign q_pop[2]      = step_load;
-  assign tile_free     = unit_end && step_attn_q ? 2'(1) << step_slot_q : 2'b00;
+  assign tile_free     = unit_end && !step_unit_q.matvec ? 2'(1) << step_slot_q : 2'b00;
   assign x_buf_o       = step_load ? q_head[2].a : step_buf_q;
 
   always_comb begin
-    attn_n = step_load ? q_head[2].op != OpMatvec : step_attn_q;
-    slot_n = step_slot_q ^ (unit_end && step_attn_q);
+    slot_n = step_slot_q ^ (unit_end && !step_unit_q.matvec);
     unit_n = step_load ? unit_init(q_head[2]) : unit_end ? unit_next(step_unit_q) : step_unit_q;
     cyc_n  = step_load || unit_end ? '0 : fire ? step_cyc_q + 1'b1 : step_cyc_q;
     // The RAM's address is the next cycle's, so x_data_i is this one's.
-    if (!attn_n) begin
+    if (unit_n.matvec) begin
       x_addr_o[0] = cyc_n;
     end else if (!unit_n.values) begin
       x_addr_o[0] = unit_n.xh + cyc_n;
@@ -606,12 +585,10 @@ module engine
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       step_busy_q <= 1'b0;
-      step_attn_q <= 1'b0;
       step_slot_q <= 1'b0;
       tile_ok_q   <= 1'b0;
       credits_q   <= '0;
     end else begin
-      step_attn_q <= attn_n;
       step_slot_q <= slot_n;
       step_unit_q <= unit_n;
       step_cyc_q  <= cyc_n;
@@ -654,24 +631,20 @@ module engine
     end
     always_comb begin
       second = (l >> step_unit_q.dlog) == 1;  // VALUES: the pass's second head
-      if (!step_attn_q) begin
+      valid = fire && l < 32'(res_lanes(step_unit_q));
+      x     = x_data_i[0];
+      last  = unit_last_cyc;
+      if (step_unit_q.matvec) begin
         w     = dma_out_data[P][I*E*16 +: E*16];
-        x     = x_data_i[0];
         mask  = unit_last_cyc ? step_mask_q : '1;
-        last  = unit_last_cyc;
-        valid = fire && l < 32'(res_lanes(step_unit_q));
       end else if (!step_unit_q.values) begin
         w     = tile_data[l];
-        x     = x_data_i[0];
         mask  = '1;
-        last  = unit_last_cyc;
-        valid = fire && l < 32'(res_lanes(step_unit_q));
       end else begin
         w     = vw;
         x     = x_data_i[second];
         mask  = values_mask;
         last  = unit_last_cyc && last_tile(step_unit_q);
-        valid = fire && l < 32'(res_lanes(step_unit_q));
       end
     end
     dot_lane #(
@@ -700,7 +673,7 @@ module engine
   logic [GW-1:0]            drain_grp_q;  // the write group
   unit_t                    drain_unit_q; // the unit whose results drain
   logic [RowWidth-1:0]      lanes_with_result, pass_row;
-  logic [Writes-1:0]        has, slot_valid, w_mask;
+  logic [Writes-1:0]        has, slot_valid;
   logic [Writes-1:0][31:0]  slot_out;
   logic                     go, pass_end, drain_end, drain_load;
 
@@ -714,7 +687,6 @@ module engine
     assign slot_valid[s] = lane_out_valid[drain_grp_q*Writes+s];
   end
   assign go     = drain_busy_q && &(slot_valid | ~has);
-  assign w_mask = has;
   always_comb begin
     lane_out_ready = '0;
     for (int unsigned s = 0; s < Writes; s++) begin
@@ -788,10 +760,10 @@ module engine
       w_valid_o <= 1'b0;
       done_o    <= 1'b0;
     end else begin
-      wr_q[0] <= '{valid: go && |w_mask, done: drain_end, bf16: drain_bf16_q,
+      wr_q[0] <= '{valid: go && |has, done: drain_end, bf16: drain_bf16_q,
                    buf_id: drain_buf_q,
                    row: pass_row + RowWidth'(drain_grp_q) * RowWidth'(Writes),
-                   mask: w_mask};
+                   mask: has};
       for (int unsigned i = 1; i < DrainLat; i++) wr_q[i] <= wr_q[i-1];
       w_valid_o <= wr_q[DrainLat-1].valid;
       done_o    <= wr_q[DrainLat-1].done;
