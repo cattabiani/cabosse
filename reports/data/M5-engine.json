@@ -171,9 +171,9 @@
  },
  "real": {
   "provenance": {
-   "commit": "0d6f3f915ee5eed5bbb857b8bfe9581abc18059a",
+   "commit": "74308d21e82d8529c4e3c46fd5f0bc39971ce188",
    "dirty": false,
-   "date": "2026-10-11",
+   "date": "2026-10-22",
    "machine": "Linux x86_64"
   },
   "ports": 32,
@@ -181,159 +181,710 @@
    "latency": 70,
    "outstanding": 8
   },
-  "position": 63,
-  "commands": [
-   {
-    "name": "layers.0.q",
-    "shape": [
-     576,
-     576
-    ],
-    "wait": true,
-    "cycles": 838,
-    "model": 775.0
-   },
-   {
-    "name": "layers.0.k",
-    "shape": [
-     192,
-     576
-    ],
-    "wait": false,
-    "cycles": 288,
-    "model": 288.0
-   },
-   {
-    "name": "layers.0.v",
-    "shape": [
-     192,
-     576
-    ],
-    "wait": false,
-    "cycles": 288,
-    "model": 288.0
-   },
-   {
-    "name": "layers.0.o",
-    "shape": [
-     576,
-     576
-    ],
-    "wait": true,
-    "cycles": 767,
-    "model": 775.0
-   },
-   {
-    "name": "layers.0.gate",
-    "shape": [
-     1536,
-     576
-    ],
-    "wait": true,
-    "cycles": 1783,
-    "model": 1783.0
-   },
-   {
-    "name": "layers.0.up",
-    "shape": [
-     1536,
-     576
-    ],
-    "wait": false,
-    "cycles": 1728,
-    "model": 1728.0
-   },
-   {
-    "name": "layers.0.down",
-    "shape": [
-     576,
-     1536
-    ],
-    "wait": true,
-    "cycles": 1967,
-    "model": 1975.0
-   },
-   {
-    "name": "layers.29.q",
-    "shape": [
-     576,
-     576
-    ],
-    "wait": true,
-    "cycles": 767,
-    "model": 775.0
-   },
-   {
-    "name": "layers.29.k",
-    "shape": [
-     192,
-     576
-    ],
-    "wait": false,
-    "cycles": 288,
-    "model": 288.0
-   },
-   {
-    "name": "layers.29.v",
-    "shape": [
-     192,
-     576
-    ],
-    "wait": false,
-    "cycles": 288,
-    "model": 288.0
-   },
-   {
-    "name": "layers.29.o",
-    "shape": [
-     576,
-     576
-    ],
-    "wait": true,
-    "cycles": 767,
-    "model": 775.0
-   },
-   {
-    "name": "layers.29.gate",
-    "shape": [
-     1536,
-     576
-    ],
-    "wait": true,
-    "cycles": 1783,
-    "model": 1783.0
-   },
-   {
-    "name": "layers.29.up",
-    "shape": [
-     1536,
-     576
-    ],
-    "wait": false,
-    "cycles": 1728,
-    "model": 1728.0
-   },
-   {
-    "name": "layers.29.down",
-    "shape": [
-     576,
-     1536
-    ],
-    "wait": true,
-    "cycles": 1967,
-    "model": 1975.0
-   },
-   {
-    "name": "lm_head",
-    "shape": [
-     49152,
-     576
-    ],
-    "wait": true,
-    "cycles": 55351,
-    "model": 55351.0
-   }
-  ]
+  "positions": {
+   "63": [
+    {
+     "name": "layers.0.q",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 844,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.0.k",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.0.v",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.0.k_cache",
+     "op": "scores",
+     "shape": [
+      9,
+      64,
+      64
+     ],
+     "wait": true,
+     "cycles": 200,
+     "model": 208.0,
+     "engine": 144.0
+    },
+    {
+     "name": "layers.0.v_cache",
+     "op": "values",
+     "shape": [
+      9,
+      64,
+      64
+     ],
+     "wait": true,
+     "cycles": 167,
+     "model": 176.0,
+     "engine": 112.0
+    },
+    {
+     "name": "layers.0.o",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 773,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.0.gate",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": true,
+     "cycles": 1789,
+     "model": 1792.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.0.up",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": false,
+     "cycles": 1728,
+     "model": 1728.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.0.down",
+     "op": "matvec",
+     "shape": [
+      576,
+      1536
+     ],
+     "wait": true,
+     "cycles": 1973,
+     "model": 1984.0,
+     "engine": 1920.0
+    },
+    {
+     "name": "layers.29.q",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 773,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.29.k",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.29.v",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.29.k_cache",
+     "op": "scores",
+     "shape": [
+      9,
+      64,
+      64
+     ],
+     "wait": true,
+     "cycles": 200,
+     "model": 208.0,
+     "engine": 144.0
+    },
+    {
+     "name": "layers.29.v_cache",
+     "op": "values",
+     "shape": [
+      9,
+      64,
+      64
+     ],
+     "wait": true,
+     "cycles": 167,
+     "model": 176.0,
+     "engine": 112.0
+    },
+    {
+     "name": "layers.29.o",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 773,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.29.gate",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": true,
+     "cycles": 1789,
+     "model": 1792.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.29.up",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": false,
+     "cycles": 1728,
+     "model": 1728.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.29.down",
+     "op": "matvec",
+     "shape": [
+      576,
+      1536
+     ],
+     "wait": true,
+     "cycles": 1973,
+     "model": 1984.0,
+     "engine": 1920.0
+    },
+    {
+     "name": "lm_head",
+     "op": "matvec",
+     "shape": [
+      49152,
+      576
+     ],
+     "wait": true,
+     "cycles": 55357,
+     "model": 55360.0,
+     "engine": 55296.0
+    }
+   ],
+   "1023": [
+    {
+     "name": "layers.0.q",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 844,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.0.k",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.0.v",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.0.k_cache",
+     "op": "scores",
+     "shape": [
+      9,
+      1024,
+      64
+     ],
+     "wait": true,
+     "cycles": 1216,
+     "model": 1216.0,
+     "engine": 1152.0
+    },
+    {
+     "name": "layers.0.v_cache",
+     "op": "values",
+     "shape": [
+      9,
+      1024,
+      64
+     ],
+     "wait": true,
+     "cycles": 1333,
+     "model": 1344.0,
+     "engine": 1280.0
+    },
+    {
+     "name": "layers.0.o",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 773,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.0.gate",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": true,
+     "cycles": 1789,
+     "model": 1792.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.0.up",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": false,
+     "cycles": 1728,
+     "model": 1728.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.0.down",
+     "op": "matvec",
+     "shape": [
+      576,
+      1536
+     ],
+     "wait": true,
+     "cycles": 1973,
+     "model": 1984.0,
+     "engine": 1920.0
+    },
+    {
+     "name": "layers.29.q",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 773,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.29.k",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.29.v",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.29.k_cache",
+     "op": "scores",
+     "shape": [
+      9,
+      1024,
+      64
+     ],
+     "wait": true,
+     "cycles": 1216,
+     "model": 1216.0,
+     "engine": 1152.0
+    },
+    {
+     "name": "layers.29.v_cache",
+     "op": "values",
+     "shape": [
+      9,
+      1024,
+      64
+     ],
+     "wait": true,
+     "cycles": 1333,
+     "model": 1344.0,
+     "engine": 1280.0
+    },
+    {
+     "name": "layers.29.o",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 773,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.29.gate",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": true,
+     "cycles": 1789,
+     "model": 1792.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.29.up",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": false,
+     "cycles": 1728,
+     "model": 1728.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.29.down",
+     "op": "matvec",
+     "shape": [
+      576,
+      1536
+     ],
+     "wait": true,
+     "cycles": 1973,
+     "model": 1984.0,
+     "engine": 1920.0
+    },
+    {
+     "name": "lm_head",
+     "op": "matvec",
+     "shape": [
+      49152,
+      576
+     ],
+     "wait": true,
+     "cycles": 55357,
+     "model": 55360.0,
+     "engine": 55296.0
+    }
+   ],
+   "8191": [
+    {
+     "name": "layers.0.q",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 844,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.0.k",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.0.v",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.0.k_cache",
+     "op": "scores",
+     "shape": [
+      9,
+      8192,
+      64
+     ],
+     "wait": true,
+     "cycles": 9280,
+     "model": 9280.0,
+     "engine": 9216.0
+    },
+    {
+     "name": "layers.0.v_cache",
+     "op": "values",
+     "shape": [
+      9,
+      8192,
+      64
+     ],
+     "wait": true,
+     "cycles": 10293,
+     "model": 10304.0,
+     "engine": 10240.0
+    },
+    {
+     "name": "layers.0.o",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 773,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.0.gate",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": true,
+     "cycles": 1789,
+     "model": 1792.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.0.up",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": false,
+     "cycles": 1728,
+     "model": 1728.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.0.down",
+     "op": "matvec",
+     "shape": [
+      576,
+      1536
+     ],
+     "wait": true,
+     "cycles": 1973,
+     "model": 1984.0,
+     "engine": 1920.0
+    },
+    {
+     "name": "layers.29.q",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 773,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.29.k",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.29.v",
+     "op": "matvec",
+     "shape": [
+      192,
+      576
+     ],
+     "wait": false,
+     "cycles": 288,
+     "model": 288.0,
+     "engine": 288.0
+    },
+    {
+     "name": "layers.29.k_cache",
+     "op": "scores",
+     "shape": [
+      9,
+      8192,
+      64
+     ],
+     "wait": true,
+     "cycles": 9280,
+     "model": 9280.0,
+     "engine": 9216.0
+    },
+    {
+     "name": "layers.29.v_cache",
+     "op": "values",
+     "shape": [
+      9,
+      8192,
+      64
+     ],
+     "wait": true,
+     "cycles": 10293,
+     "model": 10304.0,
+     "engine": 10240.0
+    },
+    {
+     "name": "layers.29.o",
+     "op": "matvec",
+     "shape": [
+      576,
+      576
+     ],
+     "wait": true,
+     "cycles": 773,
+     "model": 784.0,
+     "engine": 720.0
+    },
+    {
+     "name": "layers.29.gate",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": true,
+     "cycles": 1789,
+     "model": 1792.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.29.up",
+     "op": "matvec",
+     "shape": [
+      1536,
+      576
+     ],
+     "wait": false,
+     "cycles": 1728,
+     "model": 1728.0,
+     "engine": 1728.0
+    },
+    {
+     "name": "layers.29.down",
+     "op": "matvec",
+     "shape": [
+      576,
+      1536
+     ],
+     "wait": true,
+     "cycles": 1973,
+     "model": 1984.0,
+     "engine": 1920.0
+    },
+    {
+     "name": "lm_head",
+     "op": "matvec",
+     "shape": [
+      49152,
+      576
+     ],
+     "wait": true,
+     "cycles": 55357,
+     "model": 55360.0,
+     "engine": 55296.0
+    }
+   ]
+  }
  },
  "speed": {
   "provenance": {
