@@ -480,6 +480,19 @@ two. The 32-byte commands have no room for a second per-command field
 (`SCORES` uses all but 2 bytes), and the stride is one value for the whole
 list.
 
+**D-050 (2026-10-23) — A reduction's final tree runs in a separate tree
+unit** (owner, 2026-10-23). Each slot keeps 8 of a row's 128 partial sums
+and accumulates them with its chain's first FMA (a 7-cycle loop for 8
+partials). At the end of a row, a small tree unit (`TreeAdders` FP adders
+and a max, 1 for now) takes its 128 partials and adds them in the spec's
+fixed tree while the slots accumulate the next row; only the last row's
+tree is exposed (about 170 cycles with one adder, estimate). *Why:* the
+alternative, the slots doing the tree through a routing network, costs
+about 55 cycles a row that never overlap, about 500 for softmax's 9 rows
+(estimate). The tree unit is simpler, hides the trees at long positions
+(where the vector unit is the limit, Q-29), and can take more adders for
+a model with many heads at short positions without touching the slots.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1384,7 +1397,9 @@ the extra pass shows up as a bottleneck. It needs a spec change.
 **Steps (one branch and PR each):** these answers; S and P at stride `cap`
 and the buffer-port check in `commands.hazards()`; one slot's FP chain
 (every operation) with its bulk tests and area; the vector unit with its
-buffers (whole commands, sequences, the tiny step); `LOAD` and `KV_STORE`
+buffers (whole commands, sequences, the tiny step; two PRs, owner
+2026-10-23: the buffers and the elementwise commands, then the reductions,
+D-050); `LOAD` and `KV_STORE`
 with the memory model's write side; real data, speed and
 `vector_startup_cycles`; checkpoint report.
 
