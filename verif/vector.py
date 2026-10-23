@@ -11,24 +11,22 @@ import commands
 import numpy as np
 import torch
 from commands import Buf, Command
-from golden import arith
+from engine import port_bits as bits  # a buffer's raw bits: the engine's write port's
+from fp_inputs import random_bits, with_exponents
+from golden import arith, tiny
 
 LANES = 16  # rtl/vec_unit.sv's default
-BUFS = len(Buf)  # ids 0 (NONE) to 21
-CMD_FIELDS = 12  # the driver's words per command
-# Each buffer's format (commands.buffers; the RTL's default Bf16Mask).
-BF16_BUFS = frozenset({Buf.X, Buf.QR, Buf.P, Buf.ATT, Buf.M})
+# Each buffer's format, from the command list's (any model: formats do not
+# depend on it); the RTL takes them as Bf16Mask.
+BF16_BUFS = frozenset(
+    b for b, (dt, _) in commands.buffers(tiny.tiny_config(), 16).items() if dt == commands.BF16
+)
 FP32_BUFS = tuple(b for b in Buf if b != Buf.NONE and b not in BF16_BUFS)
+BF16_MASK = sum(1 << b for b in BF16_BUFS)
 
 
 def dtype(b: Buf) -> torch.dtype:
     return torch.bfloat16 if b in BF16_BUFS else torch.float32
-
-
-def bits(x: torch.Tensor) -> np.ndarray:
-    """A buffer's raw bits, uint32 (BF16 in the low half)."""
-    raw = arith.bits_bf16(x) if x.dtype == torch.bfloat16 else arith.bits_f32(x)
-    return raw.numpy().astype(np.uint32)
 
 
 def from_bits(raw: np.ndarray, b: Buf) -> torch.Tensor:
@@ -45,16 +43,11 @@ def random_buffers(rng: np.random.Generator, length: int) -> dict[Buf, torch.Ten
         if b == Buf.NONE:
             continue
         width = 16 if dtype(b) == torch.bfloat16 else 32
-        raw = rng.integers(0, 2**width, length, dtype=np.uint64)
+        raw = random_bits(rng, length) >> (32 - width)
         # Most values moderate: an exponent near the middle of the range.
-        frac = 7 if width == 16 else 23
         moderate = rng.random(length) < 0.95
-        exp = rng.integers(127 - 20, 127 + 20, length, dtype=np.uint64)
-        sign = rng.integers(0, 2, length, dtype=np.uint64)
-        mant = rng.integers(0, 2**frac, length, dtype=np.uint64)
-        nice = (sign << (width - 1)) | (exp << frac) | mant
-        raw = np.where(moderate, nice, raw)
-        out[b] = from_bits(raw.astype(np.uint32), b)
+        raw = np.where(moderate, with_exponents(rng, length, 127 - 20, 126 + 20, width), raw)
+        out[b] = from_bits(raw, b)
     return out
 
 
@@ -106,7 +99,7 @@ def words(steps: list[Step], start: dict[Buf, torch.Tensor], length: int) -> np.
 
 
 def params(length: int) -> tuple[tuple[str, int], ...]:
-    return (("Len", length),)
+    return (("Len", length), ("Bf16Mask", BF16_MASK))
 
 
 def run(steps: list[Step], start: dict[Buf, torch.Tensor], length: int, **plusargs: int) -> Result:

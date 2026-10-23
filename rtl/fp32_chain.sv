@@ -48,7 +48,7 @@ module fp32_chain
   output logic [31:0] y_o
 );
 
-  localparam int unsigned Stages = 7;
+  localparam int unsigned Stages = ChainStages;
   localparam int unsigned FmaLatency = mul_add_latency(MulRegs);
 
   // FP32 bits (docs/numerics.md, section 5; golden.funcs).

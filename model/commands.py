@@ -844,6 +844,7 @@ def run(
     for i, cmd in enumerate(commands):
         assert cmd.op in OPS, f"unknown command {cmd.op!r}"  # stops, as case _ below
         assert flags_ok(cmd), f"command {i}: flags {cmd.flags!r} not accepted by {cmd.op!r}"
+        assert overlap_ok(cmd), f"command {i}: dst {cmd.dst!r} overlaps a source it reads again"
         a, mem = buf.get(cmd.a), hbm.get(cmd.addr)
         match cmd.op:
             case Op.LOAD:

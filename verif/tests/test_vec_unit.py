@@ -10,6 +10,9 @@ and longer than the lanes), random sequences of commands back to back and
 with dependencies (a command that shares a buffer with an earlier one waits
 for it, as the controller does), and the speed of back-to-back commands."""
 
+import dataclasses
+
+import commands
 import numpy as np
 import pytest
 import vector
@@ -59,11 +62,7 @@ def random_command(rng: np.random.Generator, length: int) -> Step:
         if op == Op.ROTATE_HALF:
             m = 2 * max(1, m // 2)
         n = min(n, length // m)
-    dst = Buf(rng.choice([b2 for b2 in Buf if b2 != Buf.NONE]))
-    if rng.random() < 0.3:
-        dst = a if op != Op.ROTATE_HALF else dst
-    if dst == a and op == Op.ROTATE_HALF or dst == b and b_mode in ("per_row", "row"):
-        dst = Buf(next(x for x in SOURCES if x not in (a, b, c)))
+    dst = a if rng.random() < 0.3 else Buf(rng.choice([b2 for b2 in Buf if b2 != Buf.NONE]))
     cmd = Command(
         op,
         dst,
@@ -75,6 +74,8 @@ def random_command(rng: np.random.Generator, length: int) -> Step:
         m=m,
         scalar=scalar(rng) if b_mode == "scalar" else 0,
     )
+    if not commands.overlap_ok(cmd):  # a dst the unit may not write: a free buffer
+        cmd = dataclasses.replace(cmd, dst=next(x for x in SOURCES if x not in (a, b, c)))
     return Step(cmd, t=t, stride=stride)
 
 

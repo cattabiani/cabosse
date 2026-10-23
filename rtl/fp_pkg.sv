@@ -36,10 +36,11 @@ package fp_pkg;
     ChainPass  = 3'd6   // a, unchanged (a NaN too)
   } chain_op_e;
 
-  // fp32_chain's latency: its entry register, then 7 stages of an fp32_fma
-  // and a register.
+  // fp32_chain's stages (D-048), and its latency: its entry register, then
+  // the stages, each an fp32_fma and a register.
+  localparam int unsigned ChainStages = 7;
   function automatic int unsigned chain_latency(int unsigned mul_regs);
-    return 1 + 7 * (mul_add_latency(mul_regs) + 1);
+    return 1 + ChainStages * (mul_add_latency(mul_regs) + 1);
   endfunction
 
   // An operand: (-1)^sign * sig * 2^(exp - 126 - W) for a significand of W

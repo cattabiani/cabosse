@@ -30,6 +30,8 @@
 constexpr int kResetCycles = 2;   ///< cycles in reset before the first input
 constexpr int kDrainCycles = 64;  ///< after the last result: more than any pipeline depth we use
 constexpr uint64_t kMaxIdleCycles = 100'000;  ///< handshake drivers: cycles with no progress before calling it a hang
+constexpr int kExitBadInput = 2;  ///< exit code: the input is malformed
+constexpr int kExitHang = 3;      ///< exit code: the block hangs, or a result is missing
 
 /// @brief One record: the words of one input, in the driver's field order.
 using Record = std::span<const uint32_t>;
@@ -59,6 +61,21 @@ void cycle(Top& dut, Output& output, std::vector<uint32_t>& results) {
   dut.clk_i = 1;
   dut.eval();
 }
+
+/// @brief Reads the input words of a driver's protocol (its file header) in order.
+struct Reader {
+  std::span<const uint32_t> words;
+  size_t at = 0;
+
+  /// @brief The next n words.
+  /// @throws std::out_of_range if the input ends first.
+  std::span<const uint32_t> take(size_t n) {
+    if (n > words.size() - at) throw std::out_of_range("input too short");
+    at += n;
+    return words.subspan(at - n, n);
+  }
+  uint32_t next() { return take(1)[0]; }
+};
 
 /// @brief Read every little-endian uint32 in a file, in order.
 /// @param file an open binary stream, read to its end.
@@ -106,7 +123,7 @@ int stream(int argc, char** argv, size_t fields, SetInputs set_inputs, Output ou
   const std::vector<uint32_t> words = read_words(stdin);
   if (words.size() % fields != 0) {
     std::println(stderr, "{} words is not a whole number of {}-word records", words.size(), fields);
-    return 2;
+    return kExitBadInput;
   }
   const size_t n = words.size() / fields;
 
@@ -132,7 +149,7 @@ int stream(int argc, char** argv, size_t fields, SetInputs set_inputs, Output ou
 
   if (results.size() != n) {
     std::println(stderr, "got {} results for {} records", results.size(), n);
-    return 3;
+    return kExitHang;
   }
   std::fwrite(results.data(), sizeof(uint32_t), results.size(), stdout);
   dut->final();

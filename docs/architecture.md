@@ -307,7 +307,11 @@ long at the STRIDE register's stride, a constant from `scalar`):
 <!-- end: flags -->
 
 Every command names its buffers (`dst`, `a`, `b`, `c`) and, where it reads or
-writes HBM, an address. Results are FP32; writing to a BF16 buffer or to
+writes HBM, an address. A vector-unit command's `dst` may be one of its sources
+only where each element is read once, before its own write (the unit
+writes a group about 50 cycles after reading it): not ROTATE_HALF's `a`,
+nor a `b` read for every row (`B_ROW`) or by row (`B_PER_ROW`)
+(`commands.overlap_ok`, checked by `run()`). Results are FP32; writing to a BF16 buffer or to
 the KV cache rounds them (round to nearest even). The BF16 rounding points
 of D-011 are exactly the BF16 destinations, so no command rounds on its own
 and every MATVEC input is already BF16.

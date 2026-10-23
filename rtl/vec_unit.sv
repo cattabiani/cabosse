@@ -25,8 +25,9 @@
 //
 // The ext port reads and writes any buffer's raw bits (BF16 in the low
 // half): the testbench now, LOAD and the engine later. It must not use a
-// buffer's read or write port in a cycle the unit uses it (the controller's
-// ordering, commands.hazards).
+// buffer's read or write port in a cycle the unit uses it: the unit's access
+// wins and nothing flags it. Nothing enforces this yet; LOAD and the engine's
+// ports settle how (M6's LOAD step, M7).
 
 module vec_unit
   import fp_pkg::*;
@@ -34,7 +35,7 @@ module vec_unit
   parameter  int unsigned     Lanes    = 16,
   parameter  int unsigned     Bufs     = 22,
   parameter  int unsigned     Len      = 1024,
-  parameter  logic [Bufs-1:0] Bf16Mask = Bufs'('h4644),  // X, QR, P, ATT, M (commands.buffers)
+  parameter  logic [31:0]     Bf16Mask = 32'h4644,  // bit per id: X, QR, P, ATT, M (commands.buffers)
   parameter  int unsigned     AddrW    = 20,
   parameter  int unsigned     MulRegs  = 2,
   localparam int unsigned     BufW     = $clog2(Bufs),
@@ -80,6 +81,9 @@ module vec_unit
   if (Lanes != 2 ** LW) begin : gen_lanes_check
     $error("Lanes must be a power of two");
   end
+  if (Bufs > 32) begin : gen_bufs_check
+    $error("Bufs must fit Bf16Mask's 32 bits");
+  end
 
   // --- Walk: a command's groups ---------------------------------------------
 
@@ -92,13 +96,22 @@ module vec_unit
     logic [AddrW-1:0] rows, len, row_stride;
   } walk_t;
 
+  // What a group's operands, the slots and the write need of it, from its
+  // reads on.
+  typedef struct packed {
+    logic [4:0]       op;
+    logic [BufW-1:0]  dst, a, b, c;
+    logic             neg_a, neg_b, b_per_row;
+    logic [31:0]      scalar;
+    logic [AddrW-1:0] addr;  // dst's and c's element (and a's but in ROTATE_HALF)
+    logic [Lanes-1:0] mask;
+    logic             last;  // the command's last group
+  } issued_t;
+
   // One group: Lanes elements at most, within a row.
   typedef struct packed {
-    logic [Lanes-1:0] mask;
-    logic [AddrW-1:0] a_addr, b_addr, c_addr, dst_addr;
-    logic             neg_a;
-    walk_t            w;
-    logic             last;  // the command's last group
+    issued_t          is;
+    logic [AddrW-1:0] a_addr, b_addr;
   } group_t;
 
   function automatic logic elementwise(logic [4:0] op);
@@ -123,32 +136,29 @@ module vec_unit
   logic [AddrW-1:0] row_q, base_q, g_q;  // row, its first element, the group's offset in it
   group_t           grp;
   logic             grp_fire, row_end;
-  logic [AddrW-1:0] half, seg_end, count, g_next;
+  logic [AddrW-1:0] half, seg_end, count, g_next, addr;
+  logic             rotate, first_half;
 
   always_comb begin
-    half    = cur_q.len >> 1;
-    seg_end = cur_q.op == OpRotateHalf && g_q < half ? half : cur_q.len;
-    count   = seg_end - g_q > AddrW'(Lanes) ? AddrW'(Lanes) : seg_end - g_q;
-    g_next  = g_q + count;
-    row_end = g_next == cur_q.len;
+    half       = cur_q.len >> 1;
+    rotate     = cur_q.op == OpRotateHalf;
+    first_half = g_q < half;
+    seg_end    = rotate && first_half ? half : cur_q.len;
+    count      = seg_end - g_q > AddrW'(Lanes) ? AddrW'(Lanes) : seg_end - g_q;
+    g_next     = g_q + count;
+    row_end    = g_next == cur_q.len;
+    addr       = base_q + g_q;
 
-    grp          = '0;
-    grp.w        = cur_q;
-    grp.mask     = Lanes'((1 << count) - 1);
-    grp.dst_addr = base_q + g_q;
-    grp.c_addr   = base_q + g_q;
-    grp.a_addr   = base_q + g_q;
-    grp.neg_a    = cur_q.flags[NegA];
-    if (cur_q.op == OpRotateHalf) begin
-      grp.a_addr = g_q < half ? base_q + g_q + half : base_q + g_q - half;
-      grp.neg_a  = g_q < half;
-    end
-    grp.b_addr = cur_q.flags[BPerRow] ? row_q : cur_q.flags[BRow] ? g_q : base_q + g_q;
-    grp.last   = row_end && row_q + 1'b1 == cur_q.rows;
+    grp.is = '{op: cur_q.op, dst: cur_q.dst, a: cur_q.a, b: cur_q.b, c: cur_q.c,
+               neg_a: rotate ? first_half : cur_q.flags[NegA], neg_b: cur_q.flags[NegB],
+               b_per_row: cur_q.flags[BPerRow], scalar: cur_q.scalar, addr: addr,
+               mask: Lanes'((1 << count) - 1), last: row_end && row_q + 1'b1 == cur_q.rows};
+    grp.a_addr = !rotate ? addr : first_half ? addr + half : addr - half;
+    grp.b_addr = cur_q.flags[BPerRow] ? row_q : cur_q.flags[BRow] ? g_q : addr;
   end
 
   assign grp_fire    = active_q;
-  assign cmd_ready_o = !active_q || grp.last;
+  assign cmd_ready_o = !active_q || grp.is.last;
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -159,7 +169,7 @@ module vec_unit
                        cmd_m_i, cmd_scalar_i, t_i, stride_i);
       {row_q, base_q, g_q} <= '0;
     end else if (grp_fire) begin
-      if (grp.last) begin
+      if (grp.is.last) begin
         active_q <= 1'b0;
       end else if (row_end) begin
         row_q  <= row_q + 1'b1;
@@ -173,7 +183,13 @@ module vec_unit
 
   // --- Buffers ----------------------------------------------------------------
 
-  logic [Bufs-1:0]                   rd_en, wr_en;
+  // The bank entry of element e + l: e's entry, or the next one where e's
+  // place in its entry plus l passes the lanes ((e + l) >> LW without an
+  // adder per lane).
+  function automatic logic [DW-1:0] bank_addr(logic [AddrW-1:0] e, int unsigned l);
+    return DW'(e >> LW) + DW'(32'(e[LW-1:0]) + l >= Lanes);
+  endfunction
+
   logic [Bufs-1:0][AddrW-1:0]        rd_addr, wr_addr;
   logic [Bufs-1:0][Lanes-1:0]        wr_mask;
   logic [Bufs-1:0][Lanes-1:0][31:0]  wr_data, rd_data;
@@ -185,19 +201,20 @@ module vec_unit
   logic [Lanes-1:0]        u_w_mask;
   logic [Lanes-1:0][31:0]  u_w_data;
 
+  // A buffer's read address is the group's where it is a source, else ext's
+  // (the banks read every cycle; an unused read is harmless). Its write
+  // mask is zero unless this cycle writes it.
   always_comb begin
     for (int unsigned i = 0; i < Bufs; i++) begin
-      rd_en[i]   = ext_r_valid_i && ext_r_buf_i == BufW'(i);
       rd_addr[i] = ext_r_addr_i;
-      if (grp_fire && grp.w.c == BufW'(i)) {rd_en[i], rd_addr[i]} = {1'b1, grp.c_addr};
-      if (grp_fire && grp.w.b == BufW'(i)) {rd_en[i], rd_addr[i]} = {1'b1, grp.b_addr};
-      if (grp_fire && grp.w.a == BufW'(i)) {rd_en[i], rd_addr[i]} = {1'b1, grp.a_addr};
-      wr_en[i]   = ext_w_valid_i && ext_w_buf_i == BufW'(i);
+      if (grp_fire && grp.is.c == BufW'(i)) rd_addr[i] = grp.is.addr;
+      if (grp_fire && grp.is.b == BufW'(i)) rd_addr[i] = grp.b_addr;
+      if (grp_fire && grp.is.a == BufW'(i)) rd_addr[i] = grp.a_addr;
       wr_addr[i] = ext_w_addr_i;
-      wr_mask[i] = ext_w_mask_i;
+      wr_mask[i] = ext_w_valid_i && ext_w_buf_i == BufW'(i) ? ext_w_mask_i : '0;
       wr_data[i] = ext_w_data_i;
       if (u_w_valid && u_w_buf == BufW'(i)) begin
-        {wr_en[i], wr_addr[i], wr_mask[i], wr_data[i]} = {1'b1, u_w_addr, u_w_mask, u_w_data};
+        {wr_addr[i], wr_mask[i], wr_data[i]} = {u_w_addr, u_w_mask, u_w_data};
       end
     end
   end
@@ -207,22 +224,18 @@ module vec_unit
     logic [Lanes-1:0][DW-1:0] wa, ra;
     logic [Lanes-1:0][W-1:0]  wd, rd;
     for (genvar l = 0; l < Lanes; l++) begin : gen_lane
-      assign wa[l] = DW'((wr_addr[i] + AddrW'(l)) >> LW);
-      assign ra[l] = DW'((rd_addr[i] + AddrW'(l)) >> LW);
+      assign wa[l] = bank_addr(wr_addr[i], l);
+      assign ra[l] = bank_addr(rd_addr[i], l);
       assign wd[l] = W'(wr_data[i][l]);
       assign rd_data[i][l] = 32'(rd[l]);
     end
-    // verilator lint_off UNUSEDSIGNAL
-    logic unused_rd_en;  // a read with no consumer is harmless
-    assign unused_rd_en = rd_en[i];
-    // verilator lint_on UNUSEDSIGNAL
     tile_buffer #(
       .N    (Lanes),
       .Depth(Depth),
       .W    (W)
     ) u_banks (
       .clk_i,
-      .wr_valid_i(wr_en[i] ? wr_mask[i] : '0),
+      .wr_valid_i(wr_mask[i]),
       .wr_addr_i (wa),
       .wr_data_i (wd),
       .wr_rot_i  (LW'(wr_addr[i])),
@@ -239,24 +252,11 @@ module vec_unit
 
   // --- Operands, the slots, the write -----------------------------------------
 
-  // The group whose reads come back this cycle: what the slots and the
-  // write need of it.
-  typedef struct packed {
-    logic [4:0]       op;
-    logic [BufW-1:0]  dst, a, b, c;
-    logic             neg_a, neg_b, b_per_row;
-    logic [31:0]      scalar;
-    logic [AddrW-1:0] dst_addr;
-    logic [Lanes-1:0] mask;
-    logic             last;
-  } issued_t;
-
+  // The group whose reads come back this cycle.
   issued_t grp_q;
   logic    grp_valid_q;
   always_ff @(posedge clk_i) begin
-    grp_q <= '{op: grp.w.op, dst: grp.w.dst, a: grp.w.a, b: grp.w.b, c: grp.w.c,
-               neg_a: grp.neg_a, neg_b: grp.w.flags[NegB], b_per_row: grp.w.flags[BPerRow],
-               scalar: grp.w.scalar, dst_addr: grp.dst_addr, mask: grp.mask, last: grp.last};
+    grp_q       <= grp.is;
     grp_valid_q <= rst_ni && grp_fire;
   end
 
@@ -310,7 +310,7 @@ module vec_unit
   end
 
   always_ff @(posedge clk_i) begin
-    dest_q[0] <= '{dst: grp_q.dst, addr: grp_q.dst_addr, mask: grp_q.mask, last: grp_q.last};
+    dest_q[0] <= '{dst: grp_q.dst, addr: grp_q.addr, mask: grp_q.mask, last: grp_q.last};
     for (int unsigned j = 1; j < ChainLat; j++) dest_q[j] <= dest_q[j-1];
   end
 
@@ -333,7 +333,8 @@ module vec_unit
 
   // verilator lint_off UNUSEDSIGNAL
   logic unused;
-  assign unused = ^{slot_valid[Lanes-1:1], rd_en[0], rd_addr[0], wr_en[0], wr_addr[0], wr_mask[0],
+  // ext_r_valid_i: the banks read every cycle, so a read needs no enable.
+  assign unused = ^{slot_valid[Lanes-1:1], ext_r_valid_i, rd_addr[0], wr_addr[0], wr_mask[0],
                     wr_data[0]};
   // verilator lint_on UNUSEDSIGNAL
 

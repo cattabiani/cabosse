@@ -32,7 +32,7 @@ namespace {
 using Params = Vvec_unit___024root;  // the build's parameters (verif/bulk.py: --public-params)
 constexpr size_t kLanes = Params::vec_unit__DOT__Lanes;
 constexpr size_t kCmdWords = 12;  ///< op, dst, a, b, c, flags, n, m, scalar, t, stride, wait
-constexpr int kExitBadInput = 2, kExitHang = 3, kExitBadDone = 4;
+constexpr int kExitBadDone = 4;
 
 /// @brief One ext write: raw bits into a buffer.
 struct Write {
@@ -133,21 +133,6 @@ struct Bench {
     for (size_t l = 0; l < kLanes; ++l) out[l] = static_cast<uint32_t>(get_bits(dut.ext_r_data_o, 32 * l, 32));
     return out;
   }
-};
-
-/// @brief Reads the input words of this file's header in order.
-struct Reader {
-  std::span<const uint32_t> words;
-  size_t at = 0;
-
-  /// @brief The next n words.
-  /// @throws std::out_of_range if the input ends first.
-  std::span<const uint32_t> take(size_t n) {
-    if (n > words.size() - at) throw std::out_of_range("input too short");
-    at += n;
-    return words.subspan(at - n, n);
-  }
-  uint32_t next() { return take(1)[0]; }
 };
 
 }  // namespace
