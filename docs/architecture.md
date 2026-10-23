@@ -102,6 +102,11 @@ after the controller's `go`, sent when the command it depends on is done.
 Only the lanes' pipeline remains between the go and the results (about 50
 cycles at 128 lanes), not the memory's latency.
 
+**Step control (D-051, to build in M6).** The lanes do not push back, and
+the stall and the x broadcast go through register stages, so no
+one-cycle signal spans the 128 lanes. The drain keeps each `SCORES` row's
+max and writes it to R (D-054), so softmax has no `MAX` command.
+
 **Left for later:** concatenating matrices that share an input (q, k and v;
 gate and up) into one, to fill the last pass; a small gain for SmolLM2.
 
@@ -128,6 +133,10 @@ slot, 152,000 LUTs and 224 DSPs for 16 (`scripts/measure_m6.py`).
   4-cycle add loop has slack. The 128 sums then go through the fixed tree of
   section 3: 7 levels, about 30 cycles once per sum.
 - `max` is exact, so its order is free.
+- Softmax's subtraction, `exp` and sum run as one fused pass (D-054, to
+  build in M6): an FP32 adder before each slot's chain and one after it.
+  With the max from the engine's drain, softmax reads the scores twice,
+  not five times.
 
 **Why this width.** At short positions the vector unit is a few percent of
 the memory time. At long ones softmax's passes over the scores grow with

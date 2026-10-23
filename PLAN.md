@@ -4,7 +4,7 @@ A living document: what we are going to do and why. Details belong in `docs/`
 once they exist. IDs: **M** = milestone, **D** = decision, **Q** = open
 question.
 
-Last updated: 2026-10-08.
+Last updated: 2026-10-23.
 
 ## Goal
 
@@ -479,6 +479,95 @@ running a shorter cache). An equality built in would hide a mix-up of the
 two. The 32-byte commands have no room for a second per-command field
 (`SCORES` uses all but 2 bytes), and the stride is one value for the whole
 list.
+
+**D-050 (2026-10-23) — A reduction's final tree runs in a separate tree
+unit** (owner, 2026-10-23). Each slot keeps 8 of a row's 128 partial sums
+and accumulates them with its chain's first FMA (a 7-cycle loop for 8
+partials). At the end of a row, a small tree unit (`TreeAdders` FP adders
+and a max, 1 for now) takes its 128 partials and adds them in the spec's
+fixed tree while the slots accumulate the next row; only the last row's
+tree is exposed (about 170 cycles with one adder, estimate). *Why:* the
+alternative, the slots doing the tree through a routing network, costs
+about 55 cycles a row that never overlap, about 500 for softmax's 9 rows
+(estimate). The tree unit is simpler, hides the trees at long positions
+(where the vector unit is the limit, Q-29), and can take more adders for
+a model with many heads at short positions without touching the slots.
+
+**D-051 (2026-10-23) — The engine's step control is pipelined, and a
+placed build of the engine comes before M6 ends** (owner, 2026-10-23,
+design review). Today `fire` (`rtl/engine.sv`) is one cycle's AND of the
+128 lanes' ready and the 32 ports' valid, fanned out to every lane and
+port FIFO, and x reaches all 128 lanes in the same cycle. The lanes stop
+pushing back (a lane's ready drops only for rows below 60 elements, which
+a command's shape tells in advance), and the stall and the x broadcast go
+through register stages with a small skid buffer per group of lanes: same
+bits, cycle counts re-measured. Then one placed-and-routed Vivado build of
+the 128-lane engine (moved from M8), its launch with the owner's OK and a
+time limit. Max in the drain (D-054) is done in the same work. *Why:* the
+engine is about 480k LUTs (M4's lane × 128, estimate), more than one of
+the VU47P's SLRs (the dies it is built from; 3, to verify) holds, and a
+crossing costs about 1 ns of the 4. M3 and M4 timed one lane out of
+context, which says nothing about wires across the chip; a global path
+found failing at the first full build would reopen a closed milestone.
+
+**D-052 (2026-10-23) — F2 bring-up runs beside M6 and M7** (owner,
+2026-10-23, design review; changes when D-026's measurements happen, not
+what they are). M8's skeleton (the wrapper, registers, host DMA, HBM
+bandwidth per port and in total) starts now instead of after M7; the RTL
+work does not wait for it. Every launch needs the owner's OK with a time
+limit. *Why:* all 7 platform values of the perf model are still
+documented ones, the FIFO depth of 128 rests on an assumed 70-cycle
+latency, and problems with the shell, the HBM IP, the AFI flow or the
+clocks are cheaper found early and apart from design bugs.
+
+**D-053 (2026-10-23) — The perf model counts each dependent command's
+latency** (owner, 2026-10-23, design review). A vector command that waits
+for an earlier result adds a measured `vector_startup_cycles` (the chain:
+50 cycles at `MulRegs` = 2), a reduction its exposed tree (D-050; about
+170 cycles, estimate), and `command_cycles` splits into the controller's
+issue cost and its stops (D-045). Done in M6's real-data step; M6's speed
+criterion (D-047) is judged on that model. *Why:* at SmolLM2's width a
+vector pass is 36 cycles, less than the chain's latency, and most vector
+commands wait for the one before: about 2,000-3,000 cycles a layer that
+the model leaves out (estimate). `command_cycles`, still a guess, is
+0.341 ms of a 1.642 ms token at position 0 (docs/perf.md, in order). The
+fixes that latency points to are Q-30.
+
+**D-054 (2026-10-23) — Softmax keeps D-022's order, with a fused pass and
+the max from the engine** (owner, 2026-10-23, design review; amends D-031
+and D-048). A new vector command computes `exp(a - b)` per row (b one
+value per row) and the row's sum of the results, the operations and order
+of numerics.md section 4, so the same bits; each slot gets an FP32 adder
+before its chain and one after it (D-048's 7 stages unchanged; about
+30-45k LUTs, and 14 cycles of latency more for two FMA stages' 7, estimate). It is built in M6
+with the reductions. The engine's drain keeps the max of each `SCORES`
+row as it writes it (`max` is exact, so its order is free) and writes it
+to R, so softmax has no `MAX` command; built with D-051. Softmax then
+reads the scores twice instead of 5 times. Perf model (docs/perf.md,
+"fused softmax, max in drain", in order, estimate): SmolLM2 148 → 198
+tokens/s at position 8191, 446 → 497 at 1023, 609 → 618 at 0; on M9's
+256 lanes with HBM at 450 MHz, 177 → 253 at 8191. Each assumes the fused
+pass and the max cost no cycles. *Why:* S and P fit on chip at the full
+context, so online softmax's main gain (no stored scores) does not apply
+here; its other gain, fewer passes, comes without a numerics change,
+while online softmax would rescale the engine's partial sums in the middle
+of a `VALUES` row (an engine redesign) and add commands per tile.
+
+**D-055 (2026-10-23) — M9's engine keeps a margin over memory** (owner,
+2026-10-23, design review). M9 sizes the engine with 10-25% more
+multiply-adds per cycle than the memory delivers weights. *Why:* v0
+matches them exactly (512 multiply-adds, 1024 B per cycle at 250 MHz), so
+a design meant to be memory-bound is engine-bound at position 0 (1.190 ms
+engine, 1.173 ms memory): idle lanes, start-ups and final sums all cost
+tokens/s.
+
+**D-056 (2026-10-23) — The baseline includes the F2 host's own CPU**
+(owner, 2026-10-23, design review; extends D-008). M9 measures llama.cpp
+decoding SmolLM2-135M-Instruct in BF16 on the f2.6xlarge's host CPU, at
+the same positions as the accelerator, next to the Gemmini figures. It
+runs in the same AWS session as an F2 measurement. *Why:* the same
+instance at the same price is the comparison a reader asks for first;
+Gemmini ran a model 500 times smaller on a 29.8 MHz soft core.
 
 ## Milestones
 
@@ -1384,9 +1473,14 @@ the extra pass shows up as a bottleneck. It needs a spec change.
 **Steps (one branch and PR each):** these answers; S and P at stride `cap`
 and the buffer-port check in `commands.hazards()`; one slot's FP chain
 (every operation) with its bulk tests and area; the vector unit with its
-buffers (whole commands, sequences, the tiny step); `LOAD` and `KV_STORE`
+buffers (whole commands, sequences, the tiny step; two PRs, owner
+2026-10-23: the buffers and the elementwise commands, then the reductions,
+D-050, with the fused softmax command, D-054, which also replaces the
+perf model's softmax filter with a `commands.build()` option); `LOAD` and `KV_STORE`
 with the memory model's write side; real data, speed and
-`vector_startup_cycles`; checkpoint report.
+`vector_startup_cycles`, with the perf model's latencies (D-053); the
+engine's pipelined step control and max in the drain, then its placed
+Vivado build (D-051); checkpoint report.
 
 **Progress:**
 - [x] Answers above (PR #59).
@@ -1466,7 +1560,7 @@ does not check them; `SCORES` and `VALUES` are given after the
 
 ### M8 — F2 bring-up (no model)
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
-device memory bandwidth.
+device memory bandwidth. Runs beside M6 and M7 (D-052).
 **Why:** keeps platform problems apart from design problems. Cloud time costs
 money.
 **Done when:** register access and DMA work, and HBM bandwidth per port and
@@ -1476,7 +1570,8 @@ Every Vivado run (timing harnesses, full builds) checks that the worst
 slack at 250 MHz (4 ns) is ≥ 0, and its script fails otherwise; the slack
 goes into the report next to the perf numbers (owner, 2026-10-08).
 **From M5:** the engine's out-of-context Vivado run (128 lanes with DMA and
-buffers: area and timing at 250 MHz) moved here (owner, 2026-10-09).
+buffers: area and timing at 250 MHz) moved here (owner, 2026-10-09), and
+back to the end of M6 as a placed build (D-051).
 Its Yosys proxy (M5, attention) puts the deepest path in the scale's
 `fp32_fma` and the engine's own control 4 cells shallower; if Vivado finds
 the control path (unit end into the RAMs' next addresses) failing, register
@@ -1489,7 +1584,9 @@ synthesis drops the fields a stage never reads, or narrow them.
 ≥ 1000 tokens and compared with the perf model and the bandwidth bound
 (provisional floor: ≥ 50% of it). Clock and resource use are reported.
 Compared with the Gemmini baseline (a different model) using normalized
-figures: weight bytes/s and MACs/s.
+figures: weight bytes/s and MACs/s, and with llama.cpp on the F2 host's
+CPU at the same positions (D-056). The engine keeps a margin of 10-25% over
+the memory (D-055).
 **From M5:** with HBM at 450 MHz a port delivers about 1.8 beats per core
 cycle, so lanes per port becomes 8 (256 lanes on 32 ports), with a clock
 crossing on the memory side. `VALUES` runs at most 2 heads a pass (the
@@ -1516,6 +1613,7 @@ New ones are added as a table:
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-27 | Share K and V tiles between the query heads of a GQA group (q·K: one tile for the group's heads in turn; p·V: lanes that save and resume their partial sums, or a chunked summation order, a numerics change)? Today each query head reads K and V. | Only if M8's HBM rate leaves attention memory-bound by much more than the ~8% estimated. |
+| Q-27 | Share K and V tiles between the query heads of a GQA group (q·K: one tile for the group's heads in turn; p·V: lanes that save and resume their partial sums, or a chunked summation order, a numerics change)? Today each query head reads K and V. | Only once the engine outruns the memory on attention. Perf model (docs/perf.md, "KV tiles shared", in order, the best case): sharing cuts SmolLM2's memory time at 8191 from 3.527 to 1.933 ms but gains under 1% (148 → 149 tokens/s), because attention's multiply-adds keep the engine as slow as the memory. |
 | Q-28 | Use the ports a partial last pass leaves idle (rows not a multiple of `L`: SmolLM2's `q`, `o`, `down`, `k`, `v` at 128 lanes)? Either split the last pass's dot products across lanes and add the halves (a numerics change), or start the next command's first pass on the idle ports (controller and engine redesign). | After M7/M8 measure a whole token at F2's HBM rate; only if the idle ports show up there. |
-| Q-29 | Bring the vector unit below 10% of token time at long positions (42.6% at SmolLM2's 8191 in order, estimate)? Options without a numerics change: fused softmax commands (`ADD`+`EXP`+`SUM` in one pass, 5 passes over the scores become 3, D-031), 32 elements per cycle (D-030), softmax of head h beside the engine's scores of head h+1 (controller). With one: online softmax (D-022). Even fused and 32 wide leave SmolLM2 at about 18% at 8191 (estimate). | After M7/M8 measure a whole token. |
+| Q-29 | Bring the vector unit below 10% of token time at long positions? With D-054's fused pass and max in the drain, SmolLM2 at 8191 goes from 42.6% to 24.0% (in order, estimate). Left without a numerics change: 32 elements per cycle (D-030), softmax of head h beside the engine's scores of head h+1 (controller). With one: online softmax (D-022), which D-054 argues against. | After M7/M8 measure a whole token. |
+| Q-30 | Cut the latency of dependent vector commands (D-053)? Options: residual adds and scalings on the engine's drain, as it already multiplies by `scale` (epilogue fusion); a short path through the chain for `ADD`, `MUL` and `FMA`; RMSNorm's three one-element commands on a small scalar unit. All keep the bits. | Once the perf model counts latency (M6, D-053). |
