@@ -4,18 +4,18 @@
 // The vector unit's tree unit (D-050): a reduction row's Width partial sums
 // (or maxima) to one value, in docs/numerics.md section 3's fixed tree:
 // neighbours paired level by level (golden: dot.tree_sum). Sums go through
-// one fp32_fma's add, maxima through fp_pkg::max_f32 (exact, so any order
-// gives the golden reduce_max's bits). start_i takes a row's partials; each
-// of the log2(Width) levels issues a pair a cycle and waits for its last
-// result; done_o gives the row's value. About Width + log2(Width) * (MulRegs
-// + 4) cycles a row. busy_o from start_i to done_o; start_i only when idle.
+// one fp_add, as the lanes' tree (dot_lane), maxima through fp_pkg::max_f32
+// (exact, so any order gives the golden reduce_max's bits). start_i takes a
+// row's partials; each of the log2(Width) levels issues a pair a cycle and
+// waits for its last result; done_o then gives the row's value, held in y_o
+// until the next start_i. About Width + 3 * log2(Width) cycles a row.
+// busy_o from start_i to done_o; start_i only when idle.
 
 module vec_tree
   import fp_pkg::*;
 #(
-  parameter  int unsigned Width   = 128,
-  parameter  int unsigned MulRegs = 2,
-  localparam int unsigned IW      = $clog2(Width)
+  parameter  int unsigned Width = 128,
+  localparam int unsigned IW    = $clog2(Width)
 ) (
   input  logic                   clk_i,
   input  logic                   rst_ni,
@@ -27,8 +27,7 @@ module vec_tree
   output logic [31:0]            y_o
 );
 
-  localparam int unsigned Lat = mul_add_latency(MulRegs);
-  localparam int unsigned OW = $clog2(Lat + 2);
+  localparam int unsigned Lat = 3;  // fp_add's registers
 
   if (Width < 2 || Width != 2 ** IW) begin : gen_width_check
     $error("Width must be a power of two, at least 2");
@@ -36,14 +35,13 @@ module vec_tree
 
   // v_q: the level's values, each pair's result written over the first of
   // the pairs still to come (index i < 2i, so no value is overwritten before
-  // it is read). pairs_q: the level's pairs; next_q: the next pair to issue.
+  // it is read). pairs_q: the level's pairs - 1; next_q: the next to issue.
   logic [Width-1:0][31:0] v_q;
   logic                   busy_q, max_q;
   logic [IW-1:0]          pairs_q, next_q;
-  logic [OW-1:0]          out_q;  // pairs issued, result not yet back
 
   // A result on its way back: its index, and a maximum's value (a sum's
-  // comes from the fma).
+  // comes from the adder).
   typedef struct packed {
     logic          valid;
     logic [IW-1:0] idx;
@@ -53,31 +51,30 @@ module vec_tree
 
   // A level ends once every pair is issued and back; the next one reads the
   // values from the cycle after.
-  logic        all_issued, issue, level_end, back_valid, sum_valid;
+  logic        all_issued, issue, in_flight, level_end, sum_valid;
   logic [31:0] a, b, sum;
+  always_comb begin
+    in_flight = 1'b0;
+    for (int unsigned j = 0; j < Lat; j++) in_flight |= back_q[j].valid;
+  end
   assign all_issued = {1'b0, next_q} == {1'b0, pairs_q} + 1'b1;
   assign issue      = busy_q && !all_issued;
-  assign level_end  = busy_q && all_issued && out_q == '0;
+  assign level_end  = busy_q && all_issued && !in_flight;
   assign a          = v_q[2*next_q];
   assign b          = v_q[2*next_q+1];
-  assign back_valid = back_q[Lat-1].valid;
 
-  fp32_fma #(
-    .MulRegs(MulRegs)
-  ) u_add (
+  fp_add u_add (
     .clk_i,
     .rst_ni,
     .valid_i(issue && !max_q),
-    .op_i   (Fp32Add),
-    .a_i    (a),
+    .a_i    (decode_f32(a)),
     .b_i    (b),
-    .c_i    ('0),
     .valid_o(sum_valid),
     .y_o    (sum)
   );
 
   // verilator lint_off UNUSEDSIGNAL
-  logic unused_sum_valid;  // back_q's valid marks the fma's result too
+  logic unused_sum_valid;  // back_q's valid marks the adder's result too
   assign unused_sum_valid = sum_valid;
   // verilator lint_on UNUSEDSIGNAL
 
@@ -95,11 +92,9 @@ module vec_tree
       v_q     <= parts_i;
       pairs_q <= IW'(Width / 2 - 1);
       next_q  <= '0;
-      out_q   <= '0;
     end else if (busy_q) begin
-      out_q <= out_q + OW'(issue) - OW'(back_valid);
       if (issue) next_q <= next_q + 1'b1;
-      if (back_valid) v_q[back_q[Lat-1].idx] <= max_q ? back_q[Lat-1].max : sum;
+      if (back_q[Lat-1].valid) v_q[back_q[Lat-1].idx] <= max_q ? back_q[Lat-1].max : sum;
       if (level_end) begin
         if (pairs_q == '0) begin
           busy_q <= 1'b0;

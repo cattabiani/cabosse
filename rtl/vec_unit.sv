@@ -130,10 +130,10 @@ module vec_unit
     logic [AddrW-1:0] addr;  // dst's and c's element (and a's but in ROTATE_HALF)
     logic [Lanes-1:0] mask;
     logic             last;  // the command's last group
-    // A reduction's: the group's partial in each slot, whether it is in the
-    // row's first Parts (the partials start), the row's last, and whether the
-    // row reached every partial (else those past part stay as they start).
-    logic             reduce, rmax, sumsq, first, row_last, all_parts;
+    // A reduction's: the group's partial in each slot, whether it is the
+    // row's first group, in its first Parts (which read no partial), or its
+    // last, and the row.
+    logic             row_first, first, row_last;
     logic [PW-1:0]    part;
     logic [AddrW-1:0] row;
   } issued_t;
@@ -150,6 +150,12 @@ module vec_unit
 
   function automatic logic reduction(logic [4:0] op);
     return op inside {OpSum, OpSumsq, OpMax};
+  endfunction
+
+  // A partial before the row's first element reaches it: +0 for a sum, the
+  // canonical NaN for a maximum (max_f32 leaves it to any other value).
+  function automatic logic [31:0] red_start(logic rmax);
+    return rmax ? CanonicalNaN : '0;
   endfunction
 
   function automatic walk_t take(logic [4:0] op, logic [BufW-1:0] dst, a, b, c, logic [7:0] flags,
@@ -191,15 +197,14 @@ module vec_unit
                neg_a: rotate ? first_half : cur_q.flags[NegA], neg_b: cur_q.flags[NegB],
                b_per_row: cur_q.flags[BPerRow], scalar: cur_q.scalar, addr: addr,
                mask: Lanes'((1 << count) - 1), last: row_end && row_q + 1'b1 == cur_q.rows,
-               reduce: reduction(cur_q.op), rmax: cur_q.op == OpMax, sumsq: cur_q.op == OpSumsq,
-               first: gi < AddrW'(Parts), row_last: row_end, all_parts: gi >= AddrW'(Parts - 1),
+               row_first: gi == '0, first: gi < AddrW'(Parts), row_last: row_end,
                part: gi[PW-1:0], row: row_q};
     grp.a_addr = !rotate ? addr : first_half ? addr + half : addr - half;
     grp.b_addr = cur_q.flags[BPerRow] ? row_q : cur_q.flags[BRow] ? g_q : addr;
   end
 
   // A reduction row's last group waits for the tree.
-  assign stall       = grp.is.reduce && row_end && (pend_q || tree_busy);
+  assign stall       = reduction(grp.is.op) && row_end && (pend_q || tree_busy);
   assign grp_fire    = active_q && !stall;
   assign cmd_ready_o = !red_q && (!active_q || grp.is.last && grp_fire);
 
@@ -262,9 +267,7 @@ module vec_unit
       wr_addr[i] = ext_w_addr_i;
       wr_mask[i] = ext_w_valid_i && ext_w_buf_i == BufW'(i) ? ext_w_mask_i : '0;
       wr_data[i] = ext_w_data_i;
-      // Never at once with the slots' write: a reduction's groups write
-      // nothing there, its first row ends a tree later than any earlier
-      // command's writes, and the next command is taken after its last.
+      // The tree's write waits for a cycle the slots leave dst free.
       if (t_w_valid && t_w_buf == BufW'(i)) begin
         {wr_addr[i], wr_mask[i], wr_data[i]} = {t_w_addr, Lanes'(1), (Lanes * 32)'(t_w_data)};
       end
@@ -318,12 +321,11 @@ module vec_unit
   function automatic chain_op_e chain_op(logic [4:0] op);
     case (op)
       OpMul:   return ChainMul;
-      OpFma:   return ChainFma;
+      OpFma, OpSumsq: return ChainFma;
       OpExp:   return ChainExp;
       OpRecip: return ChainRecip;
       OpRsqrt: return ChainRsqrt;
       OpRotateHalf: return ChainPass;
-      OpSumsq: return ChainFma;
       default: return ChainAdd;  // ADD; SUM; MAX's x through add(x, -0)
     endcase
   endfunction
@@ -340,14 +342,24 @@ module vec_unit
   logic [Lanes-1:0]       slot_valid;
   logic [Lanes-1:0][31:0] y, s1_y;
 
-  // The slots' partials, and a reduction group on its way to them: its
-  // fields from the chain's input to its first FMA's result.
-  logic [Lanes-1:0][Parts-1:0][31:0] part_q;
-  issued_t                           acc_q[AccLat];
+  // A reduction group on its way to the partials, from the chain's input to
+  // its first FMA's result: what the write-back and the tree need of it.
+  typedef struct packed {
+    logic             valid, rmax, row_first, row_last, last;
+    logic [PW-1:0]    part;
+    logic [Lanes-1:0] mask;
+    logic [BufW-1:0]  dst;
+    logic [AddrW-1:0] row;
+  } acc_t;
+
+  logic [Lanes-1:0][Parts-1:0][31:0] part_q;  // the slots' partials
+  acc_t                              acc_q[AccLat], ad;
+  logic [31:0]                       start;
+  assign ad    = acc_q[AccLat-1];
+  assign start = red_start(ad.rmax);
 
   for (genvar l = 0; l < Lanes; l++) begin : gen_slot
     logic [31:0] a, b, c, p;
-    logic        s1_valid;
     always_comb begin
       a = rd_data[grp_q.a][l];
       b = grp_q.b_per_row ? rd_data[grp_q.b][0] : rd_data[grp_q.b][l];
@@ -355,9 +367,9 @@ module vec_unit
       c = rd_data[grp_q.c][l];
       a[31] = a[31] ^ grp_q.neg_a;  // exact sign flips
       b[31] = b[31] ^ grp_q.neg_b;
-      p = !grp_q.first ? part_q[l][grp_q.part] : grp_q.rmax ? CanonicalNaN : '0;
-      if (grp_q.reduce) begin  // SUM: add(x, p); SUMSQ: fma(x, x, p); MAX: add(x, -0)
-        b = grp_q.rmax ? NegZero : grp_q.sumsq ? a : p;
+      p = grp_q.first ? '0 : part_q[l][grp_q.part];  // a sum's
+      if (reduction(grp_q.op)) begin  // SUM: add(x, p); SUMSQ: fma(x, x, p); MAX: add(x, -0)
+        b = grp_q.op == OpMax ? NegZero : grp_q.op == OpSumsq ? a : p;
         c = p;
       end
     end
@@ -371,37 +383,31 @@ module vec_unit
       .a_i    (a),
       .b_i    (b),
       .c_i    (c),
-      .valid_o   (slot_valid[l]),
-      .y_o       (y[l]),
-      .s1_valid_o(s1_valid),
-      .s1_y_o    (s1_y[l])
+      .valid_o(slot_valid[l]),
+      .y_o    (y[l]),
+      .s1_y_o (s1_y[l])
     );
 
-    // verilator lint_off UNUSEDSIGNAL
-    logic unused_s1_valid;  // acc_q's valid marks it
-    assign unused_s1_valid = s1_valid;
-    // verilator lint_on UNUSEDSIGNAL
-
-    // A reduction group's result into its partial: a sum's is the FMA's,
-    // a maximum max_f32(p, x); a missing element leaves its partial, or
-    // starts it in the row's first Parts groups.
-    // verilator lint_off UNUSEDSIGNAL
-    issued_t ad;  // a group's reduction fields; the others are the write's
-    // verilator lint_on UNUSEDSIGNAL
-    assign ad = acc_q[AccLat-1];
+    // A reduction group's result into its partial: a sum's is the FMA's, a
+    // maximum max_f32(p, x); a missing element leaves its partial. A row's
+    // first group starts every partial of its slot: the last cycle the tree
+    // takes the row before it, so a partial the row never reaches stays as
+    // it starts.
     always_ff @(posedge clk_i) begin
-      if (ad.reduce && ad.mask[l]) begin
+      if (ad.valid && ad.row_first) begin
+        for (int unsigned j = 0; j < Parts; j++) part_q[l][j] <= start;
+      end
+      if (ad.valid && ad.mask[l]) begin
         part_q[l][ad.part] <= !ad.rmax ? s1_y[l]
-                            : max_f32(ad.first ? CanonicalNaN : part_q[l][ad.part], s1_y[l]);
-      end else if (ad.reduce && ad.first) begin
-        part_q[l][ad.part] <= ad.rmax ? CanonicalNaN : '0;
+                            : max_f32(ad.row_first ? start : part_q[l][ad.part], s1_y[l]);
       end
     end
   end
 
   always_ff @(posedge clk_i) begin
-    acc_q[0] <= grp_q;
-    acc_q[0].reduce <= rst_ni && grp_valid_q && grp_q.reduce;
+    acc_q[0] <= '{valid: rst_ni && grp_valid_q && reduction(grp_q.op), rmax: grp_q.op == OpMax,
+                  row_first: grp_q.row_first, row_last: grp_q.row_last, last: grp_q.last,
+                  part: grp_q.part, mask: grp_q.mask, dst: grp_q.dst, row: grp_q.row};
     for (int unsigned j = 1; j < AccLat; j++) acc_q[j] <= acc_q[j-1];
   end
 
@@ -409,67 +415,73 @@ module vec_unit
 
   // cap_q: the row's last result landed last cycle, so its partials are all
   // in; the next row's first lands this cycle, after the tree takes them.
-  issued_t                     cap_q;  // the row being captured
-  // verilator lint_off UNUSEDSIGNAL
-  issued_t                     tree_q;  // the row being reduced: its dst, row and last
-  // verilator lint_on UNUSEDSIGNAL
-  logic                        cap_valid_q, tree_done;
-  logic [Partials-1:0][31:0]   parts;
-  logic [31:0]                 tree_y;
+  // tree_q: the row being reduced; its value waits in the tree (t_pend_q)
+  // for a cycle the slots leave dst's write port free.
+  typedef struct packed {
+    logic [BufW-1:0]  dst;
+    logic [AddrW-1:0] row;
+    logic             last;
+  } tree_t;
 
-  always_comb begin
-    for (int unsigned j = 0; j < Parts; j++) begin
-      for (int unsigned l = 0; l < Lanes; l++) begin
-        parts[j*Lanes+l] = cap_q.all_parts || PW'(j) <= cap_q.part ? part_q[l][j]
-                         : cap_q.rmax ? CanonicalNaN : '0;
-      end
+  logic                      cap_valid_q, t_pend_q, tree_run, tree_done;
+  logic                      cap_rmax_q;
+  tree_t                     cap_q, tree_q;
+  logic [Partials-1:0][31:0] parts;
+  logic [31:0]               tree_y;
+
+  for (genvar j = 0; j < Parts; j++) begin : gen_parts
+    for (genvar l = 0; l < Lanes; l++) begin : gen_lane
+      assign parts[j*Lanes+l] = part_q[l][j];
     end
   end
 
   always_ff @(posedge clk_i) begin
-    cap_valid_q <= rst_ni && acc_q[AccLat-1].reduce && acc_q[AccLat-1].row_last;
-    cap_q       <= acc_q[AccLat-1];
+    cap_valid_q <= rst_ni && ad.valid && ad.row_last;
+    cap_q       <= '{dst: ad.dst, row: ad.row, last: ad.last};
+    cap_rmax_q  <= ad.rmax;
     if (cap_valid_q) tree_q <= cap_q;
   end
 
   vec_tree #(
-    .Width  (Partials),
-    .MulRegs(MulRegs)
+    .Width(Partials)
   ) u_tree (
     .clk_i,
     .rst_ni,
     .start_i(cap_valid_q),
-    .max_i  (cap_q.rmax),
+    .max_i  (cap_rmax_q),
     .parts_i(parts),
-    .busy_o (tree_busy),
+    .busy_o (tree_run),
     .done_o (tree_done),
     .y_o    (tree_y)
   );
+  assign tree_busy = tree_run || t_pend_q;  // its value is not written yet
 
   logic [15:0] tree_r;
   fp32_to_bf16 u_tree_round (
     .a_i(tree_y),
     .y_o(tree_r)
   );
-  assign t_w_valid = tree_done;
+  assign t_w_valid = t_pend_q && !(u_w_valid && u_w_buf == tree_q.dst);
   assign t_w_buf   = tree_q.dst;
   assign t_w_addr  = tree_q.row;
   assign t_w_data  = Bf16Mask[tree_q.dst] ? {16'h0, tree_r} : tree_y;
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
-      {red_q, pend_q} <= '0;
+      {red_q, pend_q, t_pend_q} <= '0;
     end else begin
       if (cmd_valid_i && cmd_ready_o) red_q <= reduction(cmd_op_i);
-      else if (tree_done && tree_q.last) red_q <= 1'b0;
-      if (grp_fire && grp.is.reduce && row_end) pend_q <= 1'b1;
+      else if (t_w_valid && tree_q.last) red_q <= 1'b0;
+      if (grp_fire && reduction(grp.is.op) && row_end) pend_q <= 1'b1;
       else if (cap_valid_q) pend_q <= 1'b0;
+      if (tree_done) t_pend_q <= 1'b1;
+      else if (t_w_valid) t_pend_q <= 1'b0;
     end
   end
 
   always_ff @(posedge clk_i) begin
-    dest_q[0] <= '{dst: grp_q.dst, addr: grp_q.addr, mask: grp_q.reduce ? '0 : grp_q.mask,
-                   last: !grp_q.reduce && grp_q.last};
+    dest_q[0] <= '{dst: grp_q.dst, addr: grp_q.addr,
+                   mask: reduction(grp_q.op) ? '0 : grp_q.mask, last: grp_q.last};
     for (int unsigned j = 1; j < ChainLat; j++) dest_q[j] <= dest_q[j-1];
   end
 
@@ -480,7 +492,7 @@ module vec_unit
   assign u_w_buf   = d.dst;
   assign u_w_addr  = d.addr;
   assign u_w_mask  = d.mask;
-  assign done_o    = u_w_valid && d.last || tree_done && tree_q.last;
+  assign done_o    = u_w_valid && d.last || t_w_valid && tree_q.last;
   for (genvar l = 0; l < Lanes; l++) begin : gen_round
     logic [15:0] r;
     fp32_to_bf16 u_round (

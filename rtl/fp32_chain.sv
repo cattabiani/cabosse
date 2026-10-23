@@ -48,7 +48,6 @@ module fp32_chain
   output logic [31:0] y_o,
   // The first stage's FMA result, MulRegs + 5 cycles after its operands
   // enter: the vector unit's reductions accumulate with it (D-050)
-  output logic        s1_valid_o,
   output logic [31:0] s1_y_o
 );
 
@@ -292,14 +291,13 @@ module fp32_chain
     valid_q[0] <= rst_ni && valid_i;
   end
 
-  logic [Stages-1:0][31:0] fma_y;
-  logic [Stages-1:0]       fma_valid;
   for (genvar s = 0; s < Stages; s++) begin : gen_stage
     fma_in_t     f;
     logic [31:0] r;
     logic        r_valid;
-    assign fma_y[s]     = r;
-    assign fma_valid[s] = r_valid;
+    if (s == 0) begin : gen_s1
+      assign s1_y_o = r;
+    end
     state_t      d_q[FmaLatency];  // the state, delayed to meet r
     assign f = operands(s + 1, st_q[s]);
     fp32_fma #(
@@ -323,14 +321,7 @@ module fp32_chain
     end
   end
 
-  assign valid_o    = valid_q[Stages];
-  assign y_o        = exit_value(st_q[Stages]);
-  assign s1_valid_o = fma_valid[0];
-  assign s1_y_o     = fma_y[0];
-
-  // verilator lint_off UNUSEDSIGNAL
-  logic unused_fma;  // the later stages' results go on in the state
-  assign unused_fma = ^{fma_y[Stages-1:1], fma_valid[Stages-1:1]};
-  // verilator lint_on UNUSEDSIGNAL
+  assign valid_o = valid_q[Stages];
+  assign y_o     = exit_value(st_q[Stages]);
 
 endmodule

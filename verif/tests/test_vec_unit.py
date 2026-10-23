@@ -18,6 +18,8 @@ import pytest
 import torch
 import vector
 from commands import Buf, Command, Flag, Op, f32_bits
+from fp_inputs import F32_SPECIAL_BITS, with_exponents
+from golden import arith
 from vector import Step
 
 import rtl
@@ -120,16 +122,23 @@ def test_one_reduction(op: Op, m: int) -> None:
     vector.check([Step(cmd)], vector.random_buffers(rng, LENGTH), LENGTH, f"{op.name}, m {m}")
 
 
-def special_rows(m: int) -> torch.Tensor:
-    """Rows of m FP32 values that test a reduction's order and rules: a large
-    cancellation, signed zeros, infinities and NaN, subnormals, all NaN."""
+def special_rows(rng: np.random.Generator, m: int) -> torch.Tensor:
+    """Rows of m FP32 values that test a reduction's order and rules: the
+    shared special values (fp_inputs: zeros, subnormal edges, the largest
+    value, infinities, NaNs) mixed into moderate values at two densities, a
+    large cancellation, all -0 and all NaN."""
+    specials = np.array(F32_SPECIAL_BITS, dtype=np.uint32)
+    mixed = []
+    for density in (0.05, 0.5):
+        row = with_exponents(rng, m, 117, 137, 32)
+        pick = rng.random(m) < density
+        row[pick] = rng.choice(specials, int(pick.sum()))
+        mixed.append(arith.f32_from_bits(torch.from_numpy(row.astype(np.int64))))
     big = torch.tensor([2.0**100, 1.0, -(2.0**100), 3.0])
     rows = [
+        *mixed,
         big.repeat(m // 4 + 1)[:m],  # sums depend on the order
         torch.full((m,), -0.0),  # -0 sums: +0 partials count
-        torch.where(torch.arange(m) % 5 == 2, torch.inf, -torch.arange(m, dtype=torch.float32)),
-        torch.where(torch.arange(m) % 7 == 3, torch.nan, torch.ones(m)),
-        torch.full((m,), 2.0**-140) * torch.arange(1, m + 1),  # subnormals
         torch.full((m,), torch.nan),
     ]
     return torch.stack(rows).to(torch.float32)
@@ -139,7 +148,7 @@ def special_rows(m: int) -> torch.Tensor:
 @pytest.mark.parametrize("op", REDUCTIONS)
 @pytest.mark.parametrize("m", (1, 16, 37, 128, 200))
 def test_reduction_special_values(op: Op, m: int) -> None:
-    rows = special_rows(m)
+    rows = special_rows(np.random.default_rng(SEED + m), m)
     length = max(LENGTH, -(-rows.numel() // 16) * 16)
     start = vector.random_buffers(np.random.default_rng(SEED), length)
     start[Buf.G][: rows.numel()] = rows.flatten()
