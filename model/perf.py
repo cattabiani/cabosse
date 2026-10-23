@@ -29,6 +29,12 @@ and adds them on its own adder while it runs the next row (engine_cycles).
 Back-to-back engine commands leave no gap (D-041); one that steps only after
 an earlier command's result (D-042) adds `engine_startup_cycles`, its
 pipeline's fill and drain (its weights were read ahead).
+
+Three design flags change the work, not the bits (D-054, Q-27):
+`softmax_fused` runs softmax's subtraction, exp and sum in one vector pass,
+`max_in_drain` has the engine keep each score row's max as it writes it (no
+MAX pass), and `kv_tiles_shared` reads a K or V tile once per KV head
+instead of once per query head. Each is assumed to cost no cycles.
 """
 
 import dataclasses
@@ -66,6 +72,8 @@ UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 ATTENTION_KINDS = ("scores", "values")
 # Design values that are counts: whole numbers (Design checks).
 ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
+# Design values that are on (1) or off (0); see ops().
+FLAGS = ("softmax_fused", "max_in_drain", "kv_tiles_shared")
 VALUES_HEADS = 2  # heads per p.V pass, at most (rtl/engine.sv's Heads)
 
 
@@ -166,6 +174,9 @@ class Design(Inputs):
     vector_elems_per_cycle: Param
     command_cycles: Param
     engine_startup_cycles: Param
+    softmax_fused: Param
+    max_in_drain: Param
+    kv_tiles_shared: Param
     scenarios: dict[str, dict[str, float]] = {}
 
     @model_validator(mode="after")
@@ -185,6 +196,8 @@ class Design(Inputs):
                 assert v[k] >= 1 and v[k] == int(v[k]), f"{scenario or 'base'}: {k} = {v[k]}"
             a = int(v["accumulators"])
             assert a & (a - 1) == 0, f"{scenario or 'base'}: accumulators = {a}, not a power of 2"
+            for k in FLAGS:
+                assert v[k] in (0, 1), f"{scenario or 'base'}: {k} = {v[k]}, not 0 or 1"
         return self
 
     def values(self, scenario: str | None = None) -> dict[str, float]:
@@ -237,11 +250,14 @@ def tile_wait_cols(units: list[tuple[int, int]]) -> int:
     return step_end - sum(step for _, step in units)
 
 
-def attention(cmd: commands.Command, positions: int, lanes: int) -> Step:
+def attention(
+    cmd: commands.Command, positions: int, lanes: int, tiles_shared: bool = False
+) -> Step:
     """q.K (SCORES) or p.V (VALUES) over `positions` cache rows, as the engine
     runs it (architecture.md, KV cache layout): K or V read in whole tiles of
     `lanes` positions, once per query head (no tile shared between heads;
-    Q-27). Scores have a row per position, a pass per head and tile; p.V a
+    Q-27), or once per KV head with `tiles_shared` (the tile waits are kept
+    as unshared, an upper bound). Scores have a row per position, a pass per head and tile; p.V a
     row per head and output dimension, in passes of up to VALUES_HEADS heads
     (one if two do not fit the lanes)."""
     heads, d = cmd.n, cmd.m
@@ -255,19 +271,20 @@ def attention(cmd: commands.Command, positions: int, lanes: int) -> Step:
         shapes = tuple((n * d, positions) for n in passes)
         in_tile = [min(lanes, positions - j * lanes) for j in range(tiles)]
         units = [(n * d, p) for n in passes for p in in_tile]
+    readers = cmd.kv_heads if tiles_shared else heads
     return Step(
         cmd.op.name.lower(),
         (heads, positions, d),
         heads * positions * d,
-        kv_read_bytes=heads * tiles * lanes * d * BF16_BYTES,
+        kv_read_bytes=readers * tiles * lanes * d * BF16_BYTES,
         engine_shapes=shapes,
         fill_cols=tile_wait_cols(units),
     )
 
 
-def step(cmd: commands.Command, t: int, lanes: int) -> Step:
+def step(cmd: commands.Command, t: int, lanes: int, tiles_shared: bool = False) -> Step:
     """The work of one command when attention reads t positions, on an
-    engine of `lanes` lanes."""
+    engine of `lanes` lanes (tiles_shared: attention())."""
     match cmd.op:
         case commands.Op.MATVEC:
             n = cmd.n * cmd.m
@@ -280,7 +297,7 @@ def step(cmd: commands.Command, t: int, lanes: int) -> Step:
         case commands.Op.KV_STORE:
             return Step("kv_store", (cmd.n, cmd.m), kv_write_bytes=cmd.n * cmd.m * BF16_BYTES)
         case commands.Op.SCORES | commands.Op.VALUES:
-            return attention(cmd, t, lanes)
+            return attention(cmd, t, lanes, tiles_shared)
         case commands.Op.OUTPUT | commands.Op.END:  # OUTPUT goes over PCIe, not HBM
             return Step(cmd.op.name.lower(), ())
         case _:  # the vector unit
@@ -288,16 +305,37 @@ def step(cmd: commands.Command, t: int, lanes: int) -> Step:
             return Step(cmd.op.name.lower(), (cmd.n, length), vector_elems=cmd.n * length)
 
 
-def ops(config: LlamaConfig, position: int, lanes: int) -> list[Step]:
+def ops(
+    config: LlamaConfig,
+    position: int,
+    lanes: int,
+    softmax_fused: bool = False,
+    max_in_drain: bool = False,
+    kv_tiles_shared: bool = False,
+) -> list[Step]:
     """The work of one decode step at `position` (0-based: it attends to
     position + 1 cache rows), one entry per command, on an engine of
-    `lanes` lanes (attention reads whole tiles of that many positions)."""
+    `lanes` lanes (attention reads whole tiles of that many positions).
+    With the design flags (module docstring), softmax's EXP and SUM ride
+    on its subtraction's pass, its MAX is the engine's, and attention reads
+    a tile per KV head."""
     layout = commands.Layout.of(config, cap=position + 1)
     cmds = commands.build(layout)
-    return [
-        dataclasses.replace(step(cmd, position + 1, lanes), waits=w)
-        for cmd, w in zip(cmds, commands.engine_waits(cmds), strict=True)
-    ]
+    out = []
+    for cmd, w in zip(cmds, commands.engine_waits(cmds), strict=True):
+        softmax = bool(cmd.flags & commands.Flag.LEN_T)
+        if softmax and (
+            (max_in_drain and cmd.op == commands.Op.MAX)
+            or (softmax_fused and cmd.op in (commands.Op.EXP, commands.Op.SUM))
+        ):
+            continue
+        out.append(dataclasses.replace(step(cmd, position + 1, lanes, kv_tiles_shared), waits=w))
+    return out
+
+
+def design_ops(config: LlamaConfig, position: int, design: dict[str, float]) -> list[Step]:
+    """ops() on the design's engine, with its flags."""
+    return ops(config, position, int(design["lanes"]), **{k: bool(design[k]) for k in FLAGS})
 
 
 def parameter_bytes(config: LlamaConfig) -> int:
@@ -424,9 +462,16 @@ class Prediction:
     def tokens_per_s_serial(self) -> float:
         return 1 / sum(self.terms.values())
 
+    @property
+    def tokens_per_s_in_order(self) -> float:
+        """Memory and engine overlapped, the vector unit and commands after
+        them: a decode step's operations depend on each other (D-047)."""
+        t = self.terms
+        return 1 / (max(t["memory"], t["engine"]) + t["vector"] + t["commands"])
+
 
 def predict(
     config: LlamaConfig, platform: dict[str, float], design: dict[str, float], position: int
 ) -> Prediction:
-    work = Work.of(ops(config, position, int(design["lanes"])))
+    work = Work.of(design_ops(config, position, design))
     return Prediction(seconds(work, platform, design))

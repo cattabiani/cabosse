@@ -4,6 +4,7 @@
 golden model's decode step, its byte counts are the checkpoint's, and its
 times scale as they should."""
 
+import dataclasses
 import json
 import math
 import shutil
@@ -35,6 +36,9 @@ DESIGN = {
     "vector_elems_per_cycle": 4,
     "command_cycles": 5,
     "engine_startup_cycles": 25,
+    "softmax_fused": 0,
+    "max_in_drain": 0,
+    "kv_tiles_shared": 0,
 }
 LANES = 128  # the engine the work tests count on
 # One of our measurements, as a measurement script would write it.
@@ -74,6 +78,40 @@ def test_kv_traffic_in_whole_tiles(position: int, tiles: int) -> None:
     work = perf.Work.of(perf.ops(c, position, 8))
     assert work.kv_read_bytes == 2 * c.num_attention_heads * tiles * 8 * row
     assert work.kv_write_bytes == 2 * c.num_key_value_heads * row
+
+
+def test_shared_tiles_are_read_once_per_kv_head() -> None:
+    """With kv_tiles_shared (Q-27), K and V tiles are read per KV head, not
+    per query head; nothing else changes."""
+    c = tiny.tiny_config(n_kv_heads=2)
+    row = c.num_hidden_layers * c.head_dim * perf.BF16_BYTES
+    alone = perf.Work.of(perf.ops(c, 20, 8))
+    shared = perf.Work.of(perf.ops(c, 20, 8, kv_tiles_shared=True))
+    assert shared.kv_read_bytes == 2 * c.num_key_value_heads * 3 * 8 * row
+    assert dataclasses.replace(shared, kv_read_bytes=alone.kv_read_bytes) == alone
+
+
+@pytest.mark.parametrize(
+    ("flags", "passes"),
+    [
+        ({}, 5),
+        ({"softmax_fused": True}, 3),
+        ({"max_in_drain": True}, 4),
+        ({"softmax_fused": True, "max_in_drain": True}, 2),
+    ],
+)
+def test_softmax_flags_remove_passes(flags: dict[str, bool], passes: int) -> None:
+    """Softmax makes 5 passes over each head's t scores (MAX, ADD, EXP,
+    SUM, MUL); fusing ADD, EXP and SUM leaves 3, the engine's max 4, both 2.
+    Each pass removed is one command per layer; the engine's work stays."""
+    c, position = tiny.tiny_config(n_kv_heads=2), 20
+    t, layers, heads = position + 1, c.num_hidden_layers, c.num_attention_heads
+    base = perf.Work.of(perf.ops(c, position, 8))
+    work = perf.Work.of(perf.ops(c, position, 8, **flags))
+    removed = 5 - passes
+    assert base.vector_elems - work.vector_elems == removed * layers * heads * t
+    assert base.commands - work.commands == removed * layers
+    assert (work.engine_shapes, work.engine_waits) == (base.engine_shapes, base.engine_waits)
 
 
 def test_scores_pass_per_head_and_tile() -> None:
@@ -135,6 +173,7 @@ def test_seconds_by_hand() -> None:
     assert p.bound == "memory"
     assert p.tokens_per_s_overlapped == 0.5
     assert p.tokens_per_s_serial == pytest.approx(1 / 4.2)
+    assert p.tokens_per_s_in_order == pytest.approx(1 / 2.7)  # max(2, 1.5) + 0.5 + 0.2
 
 
 # (rows, cols) -> engine cycles with ENGINE_DESIGN.
@@ -254,7 +293,7 @@ def test_bad_design_inputs_are_rejected() -> None:
             perf.Design(**raw | {"clock_hz": bad})
     with pytest.raises(ValidationError, match="unknown"):
         perf.Design(**raw | {"scenarios": {"x": {"clock_mhz": 1}}})
-    for bad in ({"lanes": 2.5}, {"macs_per_lane": 0}, {"accumulators": 12}):
+    for bad in ({"lanes": 2.5}, {"macs_per_lane": 0}, {"accumulators": 12}, {"max_in_drain": 2}):
         with pytest.raises(ValidationError, match="x: "):
             perf.Design(**raw | {"scenarios": {"x": bad}})
 
