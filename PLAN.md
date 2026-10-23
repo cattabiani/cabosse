@@ -964,6 +964,23 @@ Vivado build (D-051); checkpoint report.
   exp's). Not done (simplify review): the delay lines carry every state
   field (about 1-2% of the LUTs could go, at some readability), and the
   register after each FMA (latency 50 -> 43) waits for Vivado's timing.
+- [x] The vector unit's buffers and elementwise commands (step 4a):
+  `rtl/vec_unit.sv`, every buffer as `Lanes` banks (`tile_buffer`, one read
+  and one write of 16 elements a cycle, BF16 writes rounded), a walker over
+  a command's groups (rows of `m`, rows of t at the stride, ROTATE_HALF's
+  halves; packed rows as one), 16 `fp32_chain` slots, and an ext port for
+  the testbench, LOAD and the engine later. The next command is taken while
+  earlier ones drain (D-045). `commands.vector_command` is `run()`'s
+  vector step, and `commands.overlap_ok` its buffer rules: distinct
+  sources (one read port a buffer), and dst over a source only where each
+  element is read once. Tests (`verif/tests/test_vec_unit.py`, 77, through
+  `verif/bulk/vec_unit.cpp`): every buffer bit for bit after each command
+  alone in every walk shape and row lengths around the lanes, softmax's
+  rows of t at the stride, random sequences of 60 commands (12-16 of them
+  waiting to read what a running command writes, the rest back to back,
+  offered at random cycles in half), and back-to-back speed (a group a
+  cycle). 10 hand mutations, all caught. Yosys synthesizes the unit at 2
+  lanes (at 16 it passes 8 GB).
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
@@ -1055,4 +1072,4 @@ New ones are added as a table:
 | Q-27 | Share K and V tiles between the query heads of a GQA group (q·K: one tile for the group's heads in turn; p·V: lanes that save and resume their partial sums, or a chunked summation order, a numerics change)? Today each query head reads K and V. | Only once the engine outruns the memory on attention. Perf model (docs/perf.md, "KV tiles shared", in order, the best case): sharing cuts SmolLM2's memory time at 8191 from 3.527 to 1.933 ms but gains under 1% (148 → 149 tokens/s), because attention's multiply-adds keep the engine as slow as the memory. |
 | Q-28 | Use the ports a partial last pass leaves idle (rows not a multiple of `L`: SmolLM2's `q`, `o`, `down`, `k`, `v` at 128 lanes)? Either split the last pass's dot products across lanes and add the halves (a numerics change), or start the next command's first pass on the idle ports (controller and engine redesign). | After M7/M8 measure a whole token at F2's HBM rate; only if the idle ports show up there. |
 | Q-29 | Bring the vector unit below 10% of token time at long positions? With D-054's fused pass and max in the drain, SmolLM2 at 8191 goes from 42.6% to 24.0% (in order, estimate). Left without a numerics change: 32 elements per cycle (D-030), softmax of head h beside the engine's scores of head h+1 (controller). With one: online softmax (D-022), which D-054 argues against. | After M7/M8 measure a whole token. |
-| Q-30 | Cut the latency of dependent vector commands (D-053)? Options: residual adds and scalings on the engine's drain, as it already multiplies by `scale` (epilogue fusion); a short path through the chain for `ADD`, `MUL` and `FMA`; RMSNorm's three one-element commands on a small scalar unit. All keep the bits. | Once the perf model counts latency (M6, D-053). |
+| Q-30 | Cut the latency of dependent vector commands (D-053)? Options: residual adds and scalings on the engine's drain, as it already multiplies by `scale` (epilogue fusion); a short path through the chain for `ADD`, `MUL` and `FMA`; RMSNorm's three one-element commands on a small scalar unit; ROTATE_HALF as an addressing flag on `MUL` (today it goes through the 50-cycle chain), which saves RoPE one dependent command per rotation. All keep the bits. | Once the perf model counts latency (M6, D-053). |

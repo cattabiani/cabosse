@@ -57,7 +57,7 @@ constexpr size_t kBufs = size_t{1} << Params::engine__DOT__BufWidth;
 constexpr size_t kCmdWords = 15;  ///< op, rows, cols, addr lo, addr hi, a, dst, bf16, wait, heads, group, t, cap, stride, scale
 constexpr uint32_t kOpScores = Params::engine__DOT__OpScores, kOpValues = Params::engine__DOT__OpValues;
 constexpr uint16_t kNan = 0x7FC0;  ///< what a waiting command's x holds before its go
-constexpr int kExitBadInput = 2, kExitHang = 3, kExitBadWrite = 4, kExitAxi = 5;
+constexpr int kExitBadWrite = 4, kExitAxi = 5;
 
 /// @brief One engine command and what it wrote.
 struct Command {
@@ -227,21 +227,6 @@ struct Bench {
     x_q = x_next;
     if (run) ++cycles;
   }
-};
-
-/// @brief Reads the input words of this file's header in order.
-struct Reader {
-  std::span<const uint32_t> words;
-  size_t at = 0;
-
-  /// @brief The next n words.
-  /// @throws std::out_of_range if the input ends first.
-  std::span<const uint32_t> take(size_t n) {
-    if (n > words.size() - at) throw std::out_of_range("input too short");
-    at += n;
-    return words.subspan(at - n, n);
-  }
-  uint32_t next() { return take(1)[0]; }
 };
 
 }  // namespace

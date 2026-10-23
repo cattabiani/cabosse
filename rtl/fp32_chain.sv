@@ -4,7 +4,8 @@
 // One vector-unit slot's arithmetic (D-048; docs/numerics.md, sections 2 and
 // 5): a chain of 7 stages, each one fp32_fma and the integer steps around
 // it, that every operation flows through. add, mul and fma use the first
-// stage and pass the others; exp and rsqrt use all seven, recip six. Golden
+// stage and pass the others; exp and rsqrt use all seven, recip six; pass
+// (the vector unit's ROTATE_HALF) gives a unchanged, bit for bit. Golden
 // model: golden.arith.add, mul, fma and golden.funcs.exp, recip, rsqrt, bit
 // for bit.
 //
@@ -47,7 +48,7 @@ module fp32_chain
   output logic [31:0] y_o
 );
 
-  localparam int unsigned Stages = 7;
+  localparam int unsigned Stages = ChainStages;
   localparam int unsigned FmaLatency = mul_add_latency(MulRegs);
 
   // FP32 bits (docs/numerics.md, section 5; golden.funcs).
@@ -101,7 +102,8 @@ module fp32_chain
     state_t     s;
     logic [7:0] e;
     logic       nan, zero;
-    s = '{op: op, u: a, v: b, w: c, sign: a[31], special: Computed, default: '0};
+    s = '{op: op, u: a, v: op == ChainPass ? a : b, w: c, sign: a[31], special: Computed,
+          default: '0};
     e = a[30:23];
     nan = is_nan_f32(a[30:0]);
     zero = a[30:0] == '0;
