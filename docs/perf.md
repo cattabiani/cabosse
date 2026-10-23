@@ -29,8 +29,8 @@ the golden model's decode step). Four times follow from the work:
 A token takes at least the largest time, if the four overlap perfectly, and
 at most their sum. The tokens/s column gives that range (sum first). The
 "in order" column overlaps memory and the engine only, with the vector unit
-and the commands after them, since a decode step's operations depend on
-each other (D-047). The
+and the commands after them, since the controller stops at each command
+until its inputs are written (D-045). The
 largest term is what limits the design.
 
 Assumptions, to revisit in `docs/architecture.md`:
@@ -137,8 +137,6 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 | 512 lanes x 1, A = 4 | 68.8% | 61.1% | 43.8% |
 | core at 125 MHz | 91.9% | 94.8% | 94.8% |
 | 256 lanes, HBM at 450 MHz | 83.4% | 81.2% | 68.6% |
-| fused softmax, max in drain | 91.9% | 94.8% | 94.8% |
-| KV tiles shared | 91.9% | 94.8% | 94.8% |
 | 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 83.4% | 81.2% | 68.6% |
 <!-- end: engine -->
 

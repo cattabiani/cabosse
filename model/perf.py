@@ -262,8 +262,9 @@ def attention(
     """q.K (SCORES) or p.V (VALUES) over `positions` cache rows, as the engine
     runs it (architecture.md, KV cache layout): K or V read in whole tiles of
     `lanes` positions, once per query head (no tile shared between heads;
-    Q-27), or once per KV head with `tiles_shared` (the tile waits are kept
-    as unshared, an upper bound). Scores have a row per position, a pass
+    Q-27), or once per KV head with `tiles_shared`: the best case, as p.V's
+    passes of two heads cross groups of an odd size, and the tile waits
+    are kept as unshared. Scores have a row per position, a pass
     per head and tile; p.V a row per head and output dimension, in passes
     of up to VALUES_HEADS heads (one if two do not fit the lanes)."""
     heads, d = cmd.n, cmd.m
@@ -468,7 +469,8 @@ class Prediction:
     @property
     def tokens_per_s_in_order(self) -> float:
         """Memory and engine overlapped, the vector unit and commands after
-        them: a decode step's operations depend on each other (D-047)."""
+        them: the controller stops at each command until its inputs are
+        written (D-045), and a decode step's commands depend on each other."""
         t = self.terms
         return 1 / (max(t["memory"], t["engine"]) + t["vector"] + t["commands"])
 

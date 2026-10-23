@@ -94,10 +94,13 @@ def predictions_table(config, platform: perf.Inputs, design: perf.Inputs) -> str
 
 
 def engine_table(config, design: perf.Inputs) -> str:
-    """Share of the engine's multiply-add slots that do work, per scenario."""
+    """Share of the engine's multiply-add slots that do work, per scenario
+    (not those that change only flags, which leave the engine's work as is)."""
     cols = positions(config)
     rows = []
-    for scenario in design.scenarios:
+    for scenario, overrides in design.scenarios.items():
+        if overrides and set(overrides) <= set(perf.FLAGS):
+            continue
         values = design.values(scenario)
         work = [perf.Work.of(perf.design_ops(config, p, values)) for p in cols]
         rows.append(
