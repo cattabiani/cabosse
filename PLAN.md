@@ -1449,6 +1449,25 @@ with the memory model's write side; real data, speed and
   exp's). Not done (simplify review): the delay lines carry every state
   field (about 1-2% of the LUTs could go, at some readability), and the
   register after each FMA (latency 50 -> 43) waits for Vivado's timing.
+- [x] The vector unit's buffers and elementwise commands (step 4a):
+  `rtl/vec_unit.sv`, every buffer as `Lanes` banks (`tile_buffer`, one read
+  and one write of 16 elements a cycle, BF16 writes rounded), a walker over
+  a command's groups (rows of `m`, rows of t at the stride, ROTATE_HALF's
+  halves; packed rows as one), 16 `fp32_chain` slots, and an ext port for
+  the testbench, LOAD and the engine later. The next command is taken while
+  earlier ones drain (D-045). `commands.vector_command` is `run()`'s
+  vector step, and `commands.overlap_ok` its buffer rules: distinct
+  sources (one read port a buffer), and dst over a source only where each
+  element is read once. Tests (`verif/tests/test_vec_unit.py`, 77, through
+  `verif/bulk/vec_unit.cpp`): every buffer bit for bit after each command
+  alone in every walk shape and row lengths around the lanes, softmax's
+  rows of t at the stride, random sequences of 60 commands (12-16 of them
+  waiting to read what a running command writes, the rest back to back,
+  offered at random cycles in half), and back-to-back speed (a group a
+  cycle). 10 hand mutations, all caught. Yosys synthesizes the unit at 2
+  lanes (at 16 it passes 8 GB). For Q-30: ROTATE_HALF goes through the
+  50-cycle chain; as an addressing flag on MUL it would save RoPE one
+  dependent command per rotation.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
