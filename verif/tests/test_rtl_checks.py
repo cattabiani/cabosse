@@ -56,6 +56,8 @@ BAD_SHAPES = [
     ("engine", (("Ports", 4), ("MaxD", 256)), "MaxD"),
     ("engine", (("Ports", 4), ("MaxD", 96)), "MaxD"),
     ("engine", (("Ports", 4), ("ColWidth", 24)), "ColWidth"),
+    # vec_unit: 32 lanes leave 4 partials a slot, fewer than its 7-cycle loop
+    ("vec_unit", (("Lanes", 32),), "Partials"),
 ]
 
 

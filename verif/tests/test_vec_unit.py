@@ -15,6 +15,7 @@ import dataclasses
 import commands
 import numpy as np
 import pytest
+import torch
 import vector
 from commands import Buf, Command, Flag, Op, f32_bits
 from vector import Step
@@ -24,10 +25,13 @@ import rtl
 SEED = 20261023
 LENGTH = 256  # elements of every buffer in the fast tests
 ELEMENTWISE = (Op.ADD, Op.MUL, Op.FMA, Op.EXP, Op.RECIP, Op.RSQRT)
+REDUCTIONS = (Op.SUM, Op.SUMSQ, Op.MAX)
 BINARY = (Op.ADD, Op.MUL, Op.FMA)
 SOURCES = vector.FP32_BUFS
 # Row lengths around the lanes, and the shapes of the walk.
 LENGTHS = (1, 3, 15, 16, 17, 31, 32, 33, 64)
+# A reduction's rows also around its partials (128) and their groups (8).
+REDUCE_LENGTHS = (*LENGTHS, 113, 127, 128, 129, 255)
 
 
 def scalar(rng: np.random.Generator) -> int:
@@ -35,12 +39,12 @@ def scalar(rng: np.random.Generator) -> int:
 
 
 def random_command(rng: np.random.Generator, length: int) -> Step:
-    """A random elementwise command or ROTATE_HALF, its buffers, flags and
-    shape within `length` elements."""
-    op = Op(rng.choice([*ELEMENTWISE, Op.ROTATE_HALF]))
+    """A random vector-unit command, its buffers, flags and shape within
+    `length` elements."""
+    op = Op(rng.choice([*ELEMENTWISE, *REDUCTIONS, Op.ROTATE_HALF]))
     a, b, c = (Buf(x) for x in rng.choice(SOURCES, 3, replace=False))
     flags = Flag.NONE
-    if op != Op.ROTATE_HALF and rng.random() < 0.5:
+    if op in ELEMENTWISE and rng.random() < 0.5:
         flags |= Flag.NEG_A
     b_mode = "none"
     if op in BINARY:
@@ -58,7 +62,7 @@ def random_command(rng: np.random.Generator, length: int) -> Step:
         n = min(n, length // stride)
         m = 0
     else:
-        m = int(rng.choice(LENGTHS))
+        m = int(rng.choice(REDUCE_LENGTHS if op in REDUCTIONS else LENGTHS))
         if op == Op.ROTATE_HALF:
             m = 2 * max(1, m // 2)
         n = min(n, length // m)
@@ -106,20 +110,64 @@ def test_one_command(op: Op, m: int) -> None:
 
 
 @rtl.needs_verilator
+@pytest.mark.parametrize("op", REDUCTIONS)
+@pytest.mark.parametrize("m", REDUCE_LENGTHS)
+def test_one_reduction(op: Op, m: int) -> None:
+    """Up to 3 packed rows of m: partials reached or not, a partial last
+    group, rows past the partials (128) and their groups (8)."""
+    rng = np.random.default_rng(SEED + m)
+    cmd = Command(op, Buf.R, Buf.G, n=max(1, min(3, LENGTH // m)), m=m)
+    vector.check([Step(cmd)], vector.random_buffers(rng, LENGTH), LENGTH, f"{op.name}, m {m}")
+
+
+def special_rows(m: int) -> torch.Tensor:
+    """Rows of m FP32 values that test a reduction's order and rules: a large
+    cancellation, signed zeros, infinities and NaN, subnormals, all NaN."""
+    big = torch.tensor([2.0**100, 1.0, -(2.0**100), 3.0])
+    rows = [
+        big.repeat(m // 4 + 1)[:m],  # sums depend on the order
+        torch.full((m,), -0.0),  # -0 sums: +0 partials count
+        torch.where(torch.arange(m) % 5 == 2, torch.inf, -torch.arange(m, dtype=torch.float32)),
+        torch.where(torch.arange(m) % 7 == 3, torch.nan, torch.ones(m)),
+        torch.full((m,), 2.0**-140) * torch.arange(1, m + 1),  # subnormals
+        torch.full((m,), torch.nan),
+    ]
+    return torch.stack(rows).to(torch.float32)
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize("op", REDUCTIONS)
+@pytest.mark.parametrize("m", (1, 16, 37, 128, 200))
+def test_reduction_special_values(op: Op, m: int) -> None:
+    rows = special_rows(m)
+    length = max(LENGTH, -(-rows.numel() // 16) * 16)
+    start = vector.random_buffers(np.random.default_rng(SEED), length)
+    start[Buf.G][: rows.numel()] = rows.flatten()
+    cmd = Command(op, Buf.R, Buf.G, n=rows.shape[0], m=m)
+    vector.check([Step(cmd)], start, length, f"{op.name}, m {m}")
+
+
+@rtl.needs_verilator
 @pytest.mark.parametrize("t", LENGTHS)
-def test_rows_of_t_at_the_stride(t: int) -> None:
-    """Softmax's commands: rows of t at the stride, b one value per row."""
+def test_softmax_at_the_stride(t: int) -> None:
+    """Softmax as the command list writes it: rows of t at the stride, b one
+    value per row, each command waiting for the one before."""
     rng = np.random.default_rng(SEED + t)
     stride = 16 * (-(-t // 16) + 1)
+    rows = Flag.LEN_T
     steps = [
+        Step(Command(Op.MAX, Buf.R, Buf.S, flags=rows, n=3), t, stride),
         Step(
             Command(
                 Op.ADD, Buf.S, Buf.S, Buf.R, flags=Flag.LEN_T | Flag.B_PER_ROW | Flag.NEG_B, n=3
             ),
             t,
             stride,
+            wait=True,
         ),
         Step(Command(Op.EXP, Buf.S, Buf.S, flags=Flag.LEN_T, n=3), t, stride, wait=True),
+        Step(Command(Op.SUM, Buf.W, Buf.S, flags=rows, n=3), t, stride, wait=True),
+        Step(Command(Op.RECIP, Buf.R, Buf.W, n=3, m=1), wait=True),
         Step(
             Command(Op.MUL, Buf.P, Buf.S, Buf.R, flags=Flag.LEN_T | Flag.B_PER_ROW, n=3),
             t,
@@ -162,3 +210,19 @@ def test_back_to_back_speed() -> None:
     result = vector.check(steps, vector.random_buffers(rng, length), length, "speed")
     took = np.diff(result.done).tolist()
     assert took == [length // vector.LANES] * 2, took
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize("op", REDUCTIONS)
+def test_reduction_trees_overlap_the_rows(op: Op) -> None:
+    """Rows of 4096 elements (256 groups) are longer than a row's tree, so
+    each row after the first costs its groups alone: the tree of a row runs
+    while the slots take the next (D-050)."""
+    length = 1 << 14
+    rng = np.random.default_rng(SEED)
+    steps = [Step(Command(op, Buf.R, Buf.G, n=n, m=4096)) for n in (1, 4)]
+    steps[1].wait = True
+    result = vector.check(steps, vector.random_buffers(rng, length), length, op.name)
+    one = result.done[0] - result.taken[0]
+    four = result.done[1] - result.taken[1]
+    assert four - one == 3 * 4096 // vector.LANES, (one, four)

@@ -69,6 +69,29 @@ package fp_pkg;
     return (f[30:23] == 8'hFF) && (f[22:0] != 0);
   endfunction
 
+  // FP32 max(a, b), IEEE 754-2019 maximumNumber (D-037): a NaN operand gives
+  // the other, two NaNs the canonical NaN, max(-0, +0) = +0. Exact: one of
+  // the operands, bit for bit (golden.arith.maximum). Signed order of the
+  // bit patterns: positives by magnitude above negatives in reverse, +0
+  // above -0; one magnitude compare serves both signs.
+  function automatic logic [31:0] max_f32(logic [31:0] a, logic [31:0] b);
+    logic a_nan, b_nan, mag_gt, mag_eq, a_bigger;
+    a_nan  = is_nan_f32(a[30:0]);
+    b_nan  = is_nan_f32(b[30:0]);
+    mag_gt = a[30:0] > b[30:0];
+    mag_eq = a[30:0] == b[30:0];
+    unique case ({a[31], b[31]})
+      2'b00:   a_bigger = mag_gt;
+      2'b11:   a_bigger = !mag_gt && !mag_eq;
+      2'b01:   a_bigger = 1'b1;
+      default: a_bigger = 1'b0;
+    endcase
+    if (a_nan && b_nan) return CanonicalNaN;
+    if (a_nan) return b;
+    if (b_nan) return a;
+    return a_bigger ? a : b;
+  endfunction
+
   // FP32 bits, with a subnormal flushed to the zero of its sign if en: the
   // units' flush-to-zero variant (Ftz = 1), golden settings.ftz. Not the
   // spec: subnormals are kept (D-016); the variant measures what that costs.
