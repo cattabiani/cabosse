@@ -70,8 +70,7 @@ def positions(config) -> list[int]:
 def work_table(config, design: perf.Inputs) -> str:
     """The work of a token on the planned design's engine."""
     cols = positions(config)
-    lanes = int(design.values()["lanes"])
-    work = [perf.Work.of(perf.ops(config, p, lanes)) for p in cols]
+    work = [perf.Work.of(perf.design_ops(config, p, design.values())) for p in cols]
     return blocks.table(
         ["per token, at position"] + [str(p) for p in cols],
         [
@@ -88,19 +87,22 @@ def predictions_table(config, platform: perf.Inputs, design: perf.Inputs) -> str
             pred = perf.predict(config, platform.values(), design.values(scenario), p)
             rate = f"{pred.tokens_per_s_serial:.0f}–{pred.tokens_per_s_overlapped:.0f}"
             ms = [f"{pred.terms[t] * 1e3:.3f}" for t in perf.TERMS]
-            rows.append([scenario, str(p), rate, pred.bound, *ms])
-    return blocks.table(
-        ["scenario", "position", "tokens/s", "limited by"] + [f"{t} (ms)" for t in perf.TERMS], rows
-    )
+            order = f"{pred.tokens_per_s_in_order:.0f}"
+            rows.append([scenario, str(p), rate, order, pred.bound, *ms])
+    header = ["scenario", "position", "tokens/s", "in order", "limited by"]
+    return blocks.table(header + [f"{t} (ms)" for t in perf.TERMS], rows)
 
 
 def engine_table(config, design: perf.Inputs) -> str:
-    """Share of the engine's multiply-add slots that do work, per scenario."""
+    """Share of the engine's multiply-add slots that do work, per scenario
+    (not those that change only flags, which leave the engine's work as is)."""
     cols = positions(config)
     rows = []
-    for scenario in design.scenarios:
+    for scenario, overrides in design.scenarios.items():
+        if overrides and set(overrides) <= set(perf.FLAGS):
+            continue
         values = design.values(scenario)
-        work = [perf.Work.of(perf.ops(config, p, int(values["lanes"]))) for p in cols]
+        work = [perf.Work.of(perf.design_ops(config, p, values)) for p in cols]
         rows.append(
             [scenario]
             + [f"{perf.engine_use(w.engine_shapes, values, w.engine_fill_cols):.1%}" for w in work]

@@ -4,7 +4,7 @@ A living document: what we are going to do and why. Details belong in `docs/`
 once they exist. IDs: **M** = milestone, **D** = decision, **Q** = open
 question.
 
-Last updated: 2026-10-08.
+Last updated: 2026-10-23.
 
 ## Goal
 
@@ -493,6 +493,82 @@ about 55 cycles a row that never overlap, about 500 for softmax's 9 rows
 (where the vector unit is the limit, Q-29), and can take more adders for
 a model with many heads at short positions without touching the slots.
 
+**D-051 (2026-10-23) — The engine's step control is pipelined, and a
+placed build of the engine comes before M6 ends** (owner, 2026-10-23,
+design review). Today `fire` (`rtl/engine.sv`) is one cycle's AND of the
+128 lanes' ready and the 32 ports' valid, fanned out to every lane and
+port FIFO, and x reaches all 128 lanes in the same cycle. The lanes stop
+pushing back (a lane's ready drops only for rows below 60 elements, which
+a command's shape tells in advance), and the stall and the x broadcast go
+through register stages with a small skid buffer per group of lanes: same
+bits, cycle counts re-measured. Then one placed-and-routed Vivado build of
+the 128-lane engine (moved from M8), its launch with the owner's OK and a
+time limit. Max in the drain (D-054) is done in the same work. *Why:* the
+engine is about 480k LUTs (M4's lane × 128, estimate), more than one of
+the VU47P's SLRs (the dies it is built from; 3, to verify) holds, and a
+crossing costs about 1 ns of the 4. M3 and M4 timed one lane out of
+context, which says nothing about wires across the chip; a global path
+found failing at the first full build would reopen a closed milestone.
+
+**D-052 (2026-10-23) — F2 bring-up runs beside M6 and M7** (owner,
+2026-10-23, design review; changes when D-026's measurements happen, not
+what they are). M8's skeleton (the wrapper, registers, host DMA, HBM
+bandwidth per port and in total) starts now instead of after M7; the RTL
+work does not wait for it. Every launch needs the owner's OK with a time
+limit. *Why:* all 7 platform values of the perf model are still
+documented ones, the FIFO depth of 128 rests on an assumed 70-cycle
+latency, and problems with the shell, the HBM IP, the AFI flow or the
+clocks are cheaper found early and apart from design bugs.
+
+**D-053 (2026-10-23) — The perf model counts each dependent command's
+latency** (owner, 2026-10-23, design review). A vector command that waits
+for an earlier result adds a measured `vector_startup_cycles` (the chain:
+50 cycles at `MulRegs` = 2), a reduction its exposed tree (D-050; about
+170 cycles, estimate), and `command_cycles` splits into the controller's
+issue cost and its stops (D-045). Done in M6's real-data step; M6's speed
+criterion (D-047) is judged on that model. *Why:* at SmolLM2's width a
+vector pass is 36 cycles, less than the chain's latency, and most vector
+commands wait for the one before: about 2,000-3,000 cycles a layer that
+the model leaves out (estimate). `command_cycles`, still a guess, is
+0.341 ms of a 1.642 ms token at position 0 (docs/perf.md, in order). The
+fixes that latency points to are Q-30.
+
+**D-054 (2026-10-23) — Softmax keeps D-022's order, with a fused pass and
+the max from the engine** (owner, 2026-10-23, design review; amends D-031
+and D-048). A new vector command computes `exp(a - b)` per row (b one
+value per row) and the row's sum of the results, the operations and order
+of numerics.md section 4, so the same bits; each slot gets an FP32 adder
+before its chain and one after it (D-048's 7 stages unchanged; about
+30-45k LUTs, and 14 cycles of latency more for two FMA stages' 7, estimate). It is built in M6
+with the reductions. The engine's drain keeps the max of each `SCORES`
+row as it writes it (`max` is exact, so its order is free) and writes it
+to R, so softmax has no `MAX` command; built with D-051. Softmax then
+reads the scores twice instead of 5 times. Perf model (docs/perf.md,
+"fused softmax, max in drain", in order, estimate): SmolLM2 148 → 198
+tokens/s at position 8191, 446 → 497 at 1023, 609 → 618 at 0; on M9's
+256 lanes with HBM at 450 MHz, 177 → 253 at 8191. Each assumes the fused
+pass and the max cost no cycles. *Why:* S and P fit on chip at the full
+context, so online softmax's main gain (no stored scores) does not apply
+here; its other gain, fewer passes, comes without a numerics change,
+while online softmax would rescale the engine's partial sums in the middle
+of a `VALUES` row (an engine redesign) and add commands per tile.
+
+**D-055 (2026-10-23) — M9's engine keeps a margin over memory** (owner,
+2026-10-23, design review). M9 sizes the engine with 10-25% more
+multiply-adds per cycle than the memory delivers weights. *Why:* v0
+matches them exactly (512 multiply-adds, 1024 B per cycle at 250 MHz), so
+a design meant to be memory-bound is engine-bound at position 0 (1.190 ms
+engine, 1.173 ms memory): idle lanes, start-ups and final sums all cost
+tokens/s.
+
+**D-056 (2026-10-23) — The baseline includes the F2 host's own CPU**
+(owner, 2026-10-23, design review; extends D-008). M9 measures llama.cpp
+decoding SmolLM2-135M-Instruct in BF16 on the f2.6xlarge's host CPU, at
+the same positions as the accelerator, next to the Gemmini figures. It
+runs in the same AWS session as an F2 measurement. *Why:* the same
+instance at the same price is the comparison a reader asks for first;
+Gemmini ran a model 500 times smaller on a 29.8 MHz soft core.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -515,61 +591,17 @@ order depends on the lane design (M2), so it is a parameter here.
 - Greedy decode text is saved as a regression fixture.
 - The model is deterministic. One SmolLM2 token takes ≤ 10 s.
 
-**Progress:**
-- [x] Model runs as published: `scripts/run_smollm.py` (chat, streaming).
-- [x] Day-one check: torch's FP32→BF16 conversion matches round-to-nearest-even
-  on all 2³² inputs, subnormals included. NaNs come out as `0xFFFF`, not
-  `0x7FC0`, so tests compare NaNs by class.
-- [x] `docs/numerics.md` v0 draft, with D-019 (FMA) and D-020 (function
-  approximations).
-- [x] Arithmetic primitives (`bf16`, `up`, `add`, `mul`, `fma`, `mac`) with
-  exact-oracle tests, and CI on x86 Linux, ARM Linux, and ARM macOS
-  (PR #1). The exhaustive `bf16` test passes on all three.
-- [x] Function approximations (rsqrt, recip, exp), parameters chosen by
-  measurement (Q-08): 2 Newton steps each, exp degree 4. Errors below 2⁻¹⁷
-  (exp: 2⁻¹⁶·⁶ for subnormal results, which are now kept as in IEEE). Tests:
-  exhaustive accuracy, flush-to-zero behaviour, and bit-exact agreement with
-  an independent restatement of the spec (PR #2).
-- Golden model of SmolLM2 decode, in steps (one PR each):
-  - [x] Dot product (section 3): `A` accumulators + pairwise tree, fast exact
-    `mac`. About 3 s of matrix-vector work per SmolLM2 token (measured on the
-    dev machine, Ryzen 7 7800X3D, 8 threads; machine-dependent).
-  - [x] Reductions (sum, sum of squares, max), RMSNorm, softmax (section 4):
-    one `interleaved_sum` shared with the dot product, `S` provisional 8.
-    Bit-exact on edge-case inputs (overflow, subnormal variance and `exp`
-    results, ties); errors against float64 2⁻¹⁷·⁷ (RMSNorm) and 2⁻¹⁶·³
-    (softmax). Softmax without online rescaling (D-022). Review checklist
-    for agents in `REVIEW.md` (PRs #4, #5).
-  - [x] RoPE, SiLU/SwiGLU, residual add (`arith.add`). RoPE tables come from
-    `transformers`' own rotary embedding, in FP32; they are within 1 ulp of
-    correct rounding on every platform, and pinned by hash on the reference
-    platform (D-023). Errors against float64: RoPE 2⁻²³·¹ (relative to
-    |xC| + |rS|), SiLU 2⁻¹⁶·⁴ (PR #6).
-  - [x] Decoder: weights (checkpoint BF16 tensors, `transformers` names), flat
-    KV cache (D-024), decode step (spec section 4), tiny random-weight configs
-    (`golden/tiny.py`). Bit-exact against a per-head restatement; within 1%
-    of `transformers` FP32 as a wiring check. SmolLM2: 3 s per token on the
-    dev machine, same greedy tokens as `transformers` on a short prompt
-    (PR #7).
-- Comparison against `transformers`:
-  - [x] Harness and error report (`model/compare.py`,
-    `scripts/compare_transformers.py`). **Exit criterion met:** teacher-forced
-    on 10 chat prompts × 256 positions against FP32 `transformers`, the
-    golden model has top-1 agreement 99.30% (BF16 `transformers`: 98.75%),
-    mean relative logit error 6.3e-3 (1.5e-2), mean KL 1.2e-4 nats (8.6e-4).
-    Golden is no worse on every metric. Speed: see `reports/M1.md`
-    (measured, with the machine it ran on) (PR #8).
-  - [x] Greedy-decode fixtures (`decoder.generate`, `model/fixtures.py`,
-    `scripts/make_fixtures.py`): tiny untied config, 3 prompts × 64 tokens
-    with logit hashes (fast suite); SmolLM2, 3 chat prompts × 64 tokens with
-    FP32 `transformers`' greedy tokens alongside (slow test). Golden and FP32
-    `transformers` agree on all 64 tokens for two prompts; the third differs
-    at token 62, a near-tie (29.883 vs 29.869). The fixtures do not catch a
-    change of `S` (BF16 outputs absorb it); per-op tests do (PR #9).
-- [x] M1 checkpoint (2026-10-04): all exit criteria met; report in
-  `reports/M1.md`, numbers generated by `scripts/report_m1.py` (PRs #10,
-  #11). Resolves Q-08: the D-020 parameters hold end to end (the comparison
-  uses them); their area is checked in M6.
+**Progress** (full notes: [PLAN.md at 008a76c](https://github.com/cattabiani/cabosse/blob/008a76ce2cacc93815b940d3ea27d359325c9c78/PLAN.md)):
+- [x] Spec and primitives: `docs/numerics.md` v0 (D-019, D-020); `bf16`,
+  `add`, `mul`, `fma`, `mac` with exact-oracle tests; rsqrt, recip, exp with
+  parameters chosen by measurement (Q-08: 2 Newton steps, exp degree 4)
+  (PRs #1, #2).
+- [x] Golden decode step of SmolLM2: dot product, reductions, RMSNorm,
+  softmax (D-022), RoPE, SwiGLU, flat KV cache (D-024), tiny configs
+  (PRs #4-#7).
+- [x] Against `transformers` (PR #8) and greedy fixtures (PR #9): top-1
+  99.30% against FP32, where BF16 `transformers` gets 98.75%.
+- [x] Checkpoint, 2026-10-04: [reports/M1.md](reports/M1.md) (PRs #10, #11).
 
 ### M2 — Architecture spec and performance model ✅
 **What:** `docs/architecture.md` (block diagram, register map, memory map,
@@ -595,87 +627,19 @@ golden model still passes M1.
   lane (0% overhead), or reuse the lane's adder (about 2%). The bits are the
   same either way.
 
-**Progress:**
-- [x] F2 platform facts (`docs/f2.md`), from public AWS and AMD docs; resolves
-  Q-13. HBM: 32 AXI3 ports up to 450 MHz, any port reaches any address;
-  shell interfaces run at 250 MHz, so full HBM bandwidth needs a faster
-  memory-side clock. DDR4 runs at 2133 MT/s, 17.1 GB/s peak (from AWS's
-  controller configuration). Still to verify: two AMD values read only from
-  search excerpts.
-- [x] First-order performance model (`model/perf.py`, `docs/perf.md`):
-  generic over model config, platform file (`model/platforms/f2.json`, each
-  value with a status and a source) and design file with scenarios
-  (`model/designs/v0.json`). Its work list is checked against the golden
-  decode step, its byte count against the checkpoint. SmolLM2 on F2, position
-  0: 64 MAC/cycle at 250 MHz is engine-bound at 119 tokens/s; with HBM at
-  450 MHz and 1024 MAC/cycle it becomes memory-bound at 1584 (751 with no
-  overlap). At the full 8192-token window, attention's multiply-adds exceed
-  the weights' and the vector unit becomes the limit. All numbers in
-  `docs/perf.md`; they change with the inputs.
-- [x] Inputs validated with pydantic; our measurements
-  (`model/platforms/measured/f2.json`) replace documented values entry by
-  entry, with the documented value kept alongside. The
-  report says "provisional" until every platform value is measured by us or
-  marked not measurable.
-- [x] `docs/architecture.md`, draft: how a token runs, the blocks, the
-  engine, memory and clocks. Decided: the engine, 128 lanes × 4 multiply-adds,
-  `A` = 16 (D-027; resolves Q-25 and Q-22); memory and clocks (D-028;
-  resolves Q-10 and Q-11). The perf model now counts idle lanes and the final sum of short
-  rows. Vector unit: 16 FP32 elements per cycle, `S` = 128 (D-030).
-- [x] Controller, commands and registers, D-029 (`docs/architecture.md`,
-  tables generated from `model/commands.py`): a fixed-function sequencer
-  (Q-12) running one unrolled command list per model; token and position in
-  registers; 12 commands of 32 bytes; 575 commands for SmolLM2. A reference
-  controller (`commands.run()`) on the golden functions gives the golden
-  decode step's logits and KV cache bit for bit (tiny configs, 5 tokens):
-  every operation maps to a command, with no host work mid-token (M2 exit
-  criterion).
-- [x] Primitive vector-unit commands (D-031): 17 commands, 44 per layer,
-  1333 for SmolLM2 (42 KB of the 64 KiB buffer); RMSNorm, RoPE, softmax and
-  SwiGLU are chains of primitives in the spec's order, still bit-exact
-  against the golden decode step. The perf model now takes its work from
-  the command list (one entry per command, one vector pass each), so its
-  command count is the real one. Against the fused commands: vector-unit
-  passes ×1.7 (softmax: five passes over the scores instead of three) and
-  commands ×2.6. In v0 neither limits the token (SmolLM2 at position 0:
-  880 tokens/s overlapped, unchanged; 369 with no overlap, was 411); at
-  Qwen2.5-0.5B's full window the vector unit reaches 95% of the engine's
-  time, and with M9's faster engine and memory it becomes the limit at
-  long positions (fused softmax, D-031, or a wider unit then).
-- [x] `A` = 16 (D-027) in `docs/numerics.md` and the golden model; greedy
-  fixtures regenerated. Teacher-forced comparison rerun on the M1 set (10
-  prompts × 256 positions, `reports/data/M2-accumulators-16-compare.json`):
-  still well ahead of BF16 `transformers` on every measure; against `A` = 8,
-  top-1 0.9965 vs 0.9930 and mean KL lower, mean logit error 1.6% higher.
-  `S` (vector-unit reductions) stays provisional 8 until the vector unit is
-  designed.
-- [x] `S` = 128 (D-030) in `docs/numerics.md` and the golden model; SmolLM2
-  greedy fixture regenerated (the tiny one keeps its bits: its 64-long sums
-  differ, but not after the BF16 roundings). Comparison rerun on the M1 set
-  (`reports/data/M2-reduce-width-128-compare.json`): against `S` = 8, top-1
-  (0.9965) and mean logit error unchanged; max logit error 1.91e-2 vs
-  2.20e-2, max KL 3.5e-3 vs 4.4e-3.
-- [x] Report-generation code in its own package, `model/reporting/`:
-  `blocks.py` (generated blocks), `m1.py` (`reports/M1.md`), `perf_doc.py`
-  (`docs/perf.md`), each with `PATH` and `render()`; scripts
-  `report_m1.py` and `report_perf.py`. Value formatting and the measured-vs-documented
-  comparison live on `perf.Param` (`str(p)`, `p.change_from(doc)`); the
-  table code only lays out rows. No change in output.
-- [x] Checkpoint report: [reports/M2.md](reports/M2.md), tables generated by
-  `scripts/report_m2.py` (exit criteria, predictions, the summation
-  comparisons, open issues).
-- [x] F2 platform check (D-025, D-026): account set up (`docs/aws-setup.md`,
-  profile `cabosse`, `eu-central-1`, budgets on, F quota 24 vCPUs). On
-  2026-10-05 one f2.6xlarge loaded AWS's public `cl_sde` image
-  (`scripts/f2/measure_sde.sh`; raw output in `reports/data/f2/`): PCIe link
-  16 GT/s x8; host-to-card streaming up to 10.55 GB/s and card-to-host up to
-  14.21 GB/s (64 KiB packets); FPGA core power (Vccint) 6–9 W; no clock
-  readout (the image has no clock generator). No perf-model value is
-  measured by us yet: HBM and DDR wait for M8 (D-026).
-  Resolves Q-16: a 30 USD monthly budget and a zero-spend alert; each
-  launch needs the owner's OK with a time limit; instances terminate
-  themselves at the limit, and every session ends with a check that
-  nothing is left.
+**Progress** (full notes: [PLAN.md at 008a76c](https://github.com/cattabiani/cabosse/blob/008a76ce2cacc93815b940d3ea27d359325c9c78/PLAN.md)):
+- [x] F2 platform facts (`docs/f2.md`, Q-13) and the perf model
+  (`model/perf.py`, `docs/perf.md`): inputs with status and source, our
+  measurements replacing documented values.
+- [x] `docs/architecture.md`: engine (D-027), memory and clocks (D-028),
+  controller, commands and registers (D-029), vector unit (D-030),
+  primitive vector commands (D-031); `commands.run()` gives the golden
+  decode step bit for bit.
+- [x] `A` = 16 and `S` = 128 in the spec and the golden model, comparison
+  rerun (`reports/data/M2-*-compare.json`).
+- [x] F2 check with AWS's `cl_sde` image (D-025, D-026): PCIe and
+  host-card rates in `reports/data/f2/`; the AWS budget (Q-16).
+- [x] Checkpoint: [reports/M2.md](reports/M2.md).
 
 ### M3 — Toolchain and FP units ✅
 **What:** in this order:
@@ -700,139 +664,16 @@ is clean, and the units synthesize in Yosys (a vendor-neutral check). The
 cost of subnormal support is reported in Yosys cells (D-016); its F2
 resource cost comes with the first build.
 
-**Progress:**
-- [x] CVFPU vendored (`rtl/vendor/`, D-033; pins and reasons in its
-  README; checksums tested). `rtl/sources.f` is the one compile list for
-  every tool. `rtl/fp32_fma.sv` wraps the FMA (fma, add, mul, round to
-  nearest even); smoke test bit-exact on every triple of 18 special values
-  and 3,000 random inputs per operation. The BF16 lane needs no
-  multi-format unit: BF16 inputs widen to FP32 exactly, and a BF16 × BF16
-  product is exact in FP32.
-- [x] Bulk harness (`verif/bulk.py`; drivers in `verif/bulk/` share
-  `stream.h`): Python makes inputs and expected bits with the golden model,
-  Verilator streams them one per cycle, Python compares whole arrays. One
-  driver runs about 7 million FMA inputs per second (measured; cocotb about
-  0.2 million), and the slow run checks 8 chunks at a time. FMA, add and mul
-  are bit-exact against the golden model on 10⁸ inputs each (the golden
-  tests' rounding families plus random bits, seeded per chunk of 10⁶;
-  `slow`, about 4 s per operation), and on every triple of the special
-  values, also with a 3-register pipeline.
-- [x] The lane's arithmetic on every BF16 pair: all 2³² products and all
-  2³² multiply-adds (a random accumulator per pair, against `mac_f32`) are
-  bit-exact (`slow`, about 4.5 minutes). The lane is `bf16_to_fp32` into
-  `fp32_fma`, each now checked over its whole input domain; M4 checks the
-  wiring.
-- [x] `max` (D-037): `rtl/fp32_max.sv` wraps CVFPU's `fpnew_noncomp`
-  (MINMAX, MAX). Bit-exact against the golden `max` on every pair of
-  special values and on 10⁸ inputs (`slow`).
-- [x] CI runs the RTL tests (lint, Yosys synthesis, simulation) on x86
-  Linux with the pinned suite (`scripts/get_rtl_tools.sh`), about 2
-  minutes; the slow RTL tests run locally.
-- Accumulate loop at 250 MHz, first Vivado run (2026-10-07, Vivado 2025.2,
-  `xcvu47p-fsvh2892-2-e`, out of context, no retiming;
-  `scripts/f2/time_loops.sh`, log in `reports/data/f2/`): CVFPU's FP32
-  FMA with BF16 inputs fails 4.0 ns at every loop length tried. Slack
-  (computed max clock): 2 cycles -1.115 ns (196 MHz), 3 cycles -0.777 ns
-  (213 MHz), 4 cycles -0.694 ns (213 MHz), 5 cycles -0.527 ns (222 MHz);
-  about 1,100 LUTs and 2 DSPs. The worst paths are inside the FMA's fixed
-  stages (operands to the 76-bit sum: up to 27 logic levels, 13 of them
-  carry chains; then normalize and round), so more registers barely help.
-  With retiming (`synth_design -global_retiming on`, `phys_opt_design
-  -retime`; second log): 4 cycles -0.639 ns (216 MHz), 5 cycles +0.300 ns,
-  6 cycles +0.183 ns, 8 cycles +0.340 ns. At 4 cycles the worst path is the
-  loop's own normalize and round: CVFPU's loop needs about 4.5 cycles at
-  250 MHz, so 8 with `A` a power of two. Options (perf model, SmolLM2,
-  estimates) for the owner: our own BF16 unit for a 4-cycle loop; CVFPU in
-  256 lanes x 2 with an 8-cycle loop, the same `A` = 16 and bits, 5-9%
-  fewer tokens/s; a 200 MHz core, 20% fewer.
-- [x] Our own BF16 multiply-add (D-038): `rtl/bf16_mul.sv` (the exact
-  product, outside the loop) and `rtl/mac_add.sv` (product + accumulator,
-  one rounding, 3 stages). Bit-exact against `mac_f32` on every BF16 pair,
-  every special-value combination, and cancelling, scaled and range-edge
-  accumulators (`slow`, 2 minutes). On F2's part at 250 MHz (third log,
-  `platforms/f2/timing/mac_loop.sv`): the 4-cycle loop closes with +0.146 ns
-  without retiming, a 3-cycle loop with +0.057 ns (retiming); the worst
-  path is the product, outside the loop. About 625 LUTs, 247 registers and
-  no DSPs per unit (CVFPU's FMA: about 1,100 LUTs and 2 DSPs). The
-  accumulate-loop exit criterion is met with `A` = 16 unchanged.
-- Done (D-039, branch `m3/own-fp`): our own FP units replace CVFPU.
-  `fp_add` (generic one-rounding adder, W-bit significands: 27 for the
-  lanes, 51 for FP32 fma), `fp_product` (exact product, M-bit significands:
-  8 for BF16, 24 for FP32; replaces `bf16_mul`), `fp32_fma` (add = fma(a,
-  1, b), mul = fma(a, b, -0)), `fp32_max`, `leading_zeros`, `sticky_shift`,
-  `fp_pkg`; `rtl/vendor/` and `scripts/vendor_rtl.sh` are gone, and the docs
-  no longer mention them. The old tests pass unchanged except for CVFPU's
-  pipeline parameter: fast and slow (10⁸ per op, all BF16 pairs). Mutation
-  check (19 hand mutations of the units, fast tests): 15 caught; the 4 left
-  give the same bits (two were redundant logic, now removed). Yosys
-  (generic `synth`, flattened): `bf16_mac` 2,513 cells, `fp32_fma` 7,798,
-  `fp_add` (W = 27) 1,509. On F2's part at 250 MHz (2026-10-07, fourth
-  log, `platforms/f2/timing/fma_path.sv`): `fp32_fma` with its product in
-  one cycle fails, -2.700 ns without retiming (about 149 MHz), -2.023 ns
-  with one more input register and retiming (166 MHz). The worst path was
-  op mux, the 24 x 24 multiply (2 DSPs), normalize and the shift below
-  exponent 1 (6.7 ns, 24 logic levels); retiming cannot split the DSP
-  multiply. So `fp_product` now splits multiply | normalize | shift below
-  exponent 1 with `Regs` registers, and `fp32_fma` has `MulRegs` (fifth log,
-  no retiming unless noted): 1 register +0.155 ns (+0.180 ns retimed), 2
-  registers +0.588 ns with 1,183 LUTs, 543 registers and 2 DSPs (1: 1,243
-  LUTs, 541 registers). `MulRegs` = 2 is the default: a 6-cycle fma, not
-  in a loop. The lanes' product (outside the loop) sat at the edge of
-  4 ns: the same function, written three ways in this branch, gave +0.146,
-  +0.016 and -0.053 ns, its worst path always the product (about 4.0 ns, 19
-  logic levels). Vivado repeats a result for the same RTL (the fma's
-  +0.588 ns twice), so the spread came from the rewrites. `bf16_mac` now
-  has one register inside the product too (`MulRegs` = 1, a 5-cycle unit;
-  `A` and the bits unchanged). With it (sixth log): the 4-cycle loop
-  +0.657 ns without retiming (596 LUTs, 275 registers, no DSPs), +0.770 ns
-  retimed; a 3-cycle loop +0.813 ns retimed. The worst path is now the
-  loop's own (accumulator to alignment, 3.3 ns). The fifth log's last run
-  was read from the live console, its replay being cut by the shutdown.
-  Review cleanup (PR #36): `fp_mul_add` (product, register, adder) is the
-  one body of `bf16_mac` and `fp32_fma`; `fp_add` takes its second operand
-  as FP32 bits; `fp_pkg` holds the canonical NaN, the NaN test and the
-  product's width; `fp_product` refuses `Regs` > 2 (it has places for two
-  registers only); the exponent order comes from the subtractions'
-  borrows; `fp32_max` uses one magnitude compare. Yosys: `bf16_mac` 2,565
-  → 2,569 cells, `fp32_fma` 7,976 → 7,919. Not done, no gain in Yosys
-  cells: the significand compare beside the alignment shifter instead of
-  in front of it (+142 cells; it shortens `fp_add`'s first stage, now the
-  lanes' worst path, so worth a Vivado run only if that path limits), and
-  the product's zero flag from the operands (same cells, one more flop per
-  register). Second review: `fp_product` and `fp_mul_add` take a and b in
-  an M + 8-bit format (BF16 for M = 8), so a BF16 product cannot drop
-  input bits; the timing harness's valid follows the product's registers;
-  register names follow `_q`; FP32's significand width is one constant
-  (`fp_pkg::F32SigW`); `bf16_mac` is tested with `MulRegs` = 2 too.
-  Fixed-latency arithmetic pipelines have `valid` only (AGENTS.md,
-  SystemVerilog conventions; approved by the owner). Yosys: `bf16_mac`
-  2,569 → 2,552 cells, `fp32_fma` 7,919 → 7,964 (no logic change for
-  M = 24: Yosys gives the same count on every run, but rewrites with the
-  same logic move it; see reports/M3.md).
-  Seventh log (2026-10-08, the same four runs on this RTL, commit
-  4897dad): the 4-cycle loop +0.877 ns without retiming (633 LUTs, 275
-  registers, no DSPs), +0.953 ns retimed; the 3-cycle loop +0.841 ns
-  retimed; `fp32_fma` +0.514 ns (1,262 LUTs, 535 registers, 2 DSPs). All
-  four pass. The loop's worst path is now inside `fp_add`'s round stage
-  (3.1 ns), the fma's still the product's normalize stage (3.4 ns).
-- [x] Cost of subnormal support (D-016). `Ftz` = 1 (default 0) builds
-  `bf16_mac`'s and `fp32_fma`'s flush-to-zero variant, bit-exact against
-  the golden model's ftz switch at every pipeline depth; the cost is the
-  Yosys cells between the two builds: a few percent of each unit, more for
-  the fma. Numbers, method and how far to trust them:
-  [reports/M3.md](reports/M3.md),
-  generated from Yosys's log by `scripts/report_m3.py`. D-016
-  stands unless the owner decides otherwise; the F2 resource cost comes
-  with the first build. `Ftz` stays in the RTL (owner, 2026-10-08), to
-  measure that cost and to re-measure later.
-- [x] Checkpoint report: [reports/M3.md](reports/M3.md), every number
-  generated by `scripts/report_m3.py` from the Vivado logs, the Yosys log
-  and the test runs; it replaces the two interim reports.
-- Later: the FMA's op codes (`OpAdd`, `OpMul`) move to a package when a
-  second module uses them. Synthesizing every module as its own top
-  repeats the FMA under each parent, but all 13 Yosys checks take 7.6 s
-  together (measured 2026-10-08, dev machine), so every module stays a
-  top; revisit only if a larger top (M5's engine) makes it slow.
+**Progress** (full notes: [PLAN.md at 008a76c](https://github.com/cattabiani/cabosse/blob/008a76ce2cacc93815b940d3ea27d359325c9c78/PLAN.md)):
+- [x] Toolchain, `rtl/sources.f`, the bulk harness (`verif/bulk.py`) and CI
+  for the RTL.
+- [x] FP units, first CVFPU, then our own (D-038, D-039): bit-exact on
+  10⁸ inputs per operation, every BF16 pair and every special-value
+  combination.
+- [x] The 4-cycle accumulate loop closes at 250 MHz on F2's part, and
+  `fp32_fma` too (Vivado logs in `reports/data/f2/`).
+- [x] Cost of subnormals in Yosys cells (D-016); `Ftz` kept.
+- [x] Checkpoint: [reports/M3.md](reports/M3.md).
 
 ### M4 — Dot-product lane ✅
 **What:** a lane that streams BF16 pairs into an FP32 dot product.
@@ -878,95 +719,16 @@ backpressure, for rows of 64 or more elements.
 **Steps (one branch and PR each):** lane RTL with cocotb tests; the
 Vivado run; bulk driver and slow tests; checkpoint report.
 
-**Progress:**
-- [x] Lane RTL, `rtl/dot_lane.sv`, with cocotb tests
-  (`verif/tests/test_dot_lane.py`, `MulRegs` 0, 1 and 2): every length 1
-  to 20, random lengths to 300, single bubbles at each beat of a row, runs
-  of 1 to 5 and 40, random gaps, random output ready, masks anywhere,
-  signed zeros, special values; bit-exact against `golden.dot.dot`. With
-  the output ready, rows of 60 or more ((`A` - 1) × `E`, the tree's adds) never see ready drop; rows of 56 do. Mutation check
-  (11 hand mutations): 10 caught; the one left (the root waiting for the
-  oldest context) gives the same order anyway, kept as a guarantee.
-  Changed from the answers above: 3 final-sum contexts, not 2 (since
-  replaced by the conveyor belt, below). A final
-  sum holds its context about 30 cycles from the row's last beat
-  (measured in simulation: with 2, 64-long rows stalled about once a
-  row); bypasses could save about 4 cycles and keep 2, with little margin.
-  A missing element also reads +0 where its slot has no sum yet in the
-  row (written flags), not only in the row's first round. Yosys depth
-  proxy (`test_lane_logic_depth`): 19 cells, `mac_loop` 17. Yosys's
-  UltraScale+ mapping, an estimate until the Vivado run: about 6,250
-  LUTs, 3,400 flip-flops and 4 DSPs per lane; ×128 it would be well above
-  the 25-30% guessed for Q6, so the Vivado run checks area as much as
-  timing. `leading_zeros` gets an `UNOPTFLAT` waiver: Verilator saw its
-  step array as a loop once the lane inlines four of them.
-- [x] Vivado run of the whole lane (2026-10-08, Vivado 2025.2,
-  `xcvu47p-fsvh2892-2-e`, out of context; harness
-  `platforms/f2/timing/lane_path.sv` registers every port; log
-  `reports/data/f2/2026-10-08-lane.txt`, cabosse 3347b22). All three runs
-  meet 250 MHz: `MulRegs` = 1 +0.173 ns, retimed +0.070 ns, `MulRegs` = 2
-  +0.166 ns. The worst paths are the final sum's scheduler (context state,
-  the choice of the next add, the operand multiplexer: 14 to 16 logic
-  levels), not the accumulate loop. A negative slack now fails the run
-  (`timing.tcl`). Area, `MulRegs` = 1: 5,191 LUTs, 3,395 flip-flops, no
-  DSPs per lane (Yosys estimated 6,250 LUTs). The four units take 2,790
-  LUTs (54%); the final sum the rest: its adder's instance shows 1,325
-  LUTs (a unit's adder about 470, so the operand multiplexers are likely
-  counted there) and the lane's own logic (contexts, copy, control) 1,077.
-  ×128 lanes: 664,448 LUTs, 51.0% of the part, and 434,560 flip-flops,
-  16.7% (Q6 guessed 25-30%).
-- [x] Final sum as a conveyor belt (owner, 2026-10-08), replacing the 3
-  contexts and their scheduler: at a row's end its sums go to one of 2
-  level-1 buffers, read pair by pair in order; levels 2 to 4 each have a
-  queue one row deep that the previous level's results enter in order; the
-  adder takes the deepest level with a pair and room for its result. The
-  adder's operands come from 4 places instead of 48; `log2(A)` levels for
-  any `A`. Same bits and interface: the step 1 tests pass unchanged, full
-  rate from 60 elements included. Mutation check of the new part plus the
-  old ones that still apply (13): 12 caught; shallowest-level-first is
-  harmless (same pairs, still full rate). Yosys (UltraScale+ mapping):
-  6,249 → 4,149 LUTs, 3,407 → 1,850 flip-flops per lane; depth proxy
-  unchanged at 19. Vivado (2026-10-08, same flow, cabosse b9bf959, log
-  `reports/data/f2/2026-10-08-lane-belt.txt`): all three runs meet
-  250 MHz, `MulRegs` = 1 +0.344 ns, retimed +0.279 ns, `MulRegs` = 2
-  +0.424 ns. Per lane (`MulRegs` = 1): 5,191 → 3,762 LUTs (140 of them
-  LUT memory), 3,395 → 2,810 flip-flops, no DSPs; the units 2,835 LUTs,
-  the final sum's adder 408 and the lane's own logic 519 (was 1,325 and
-  1,077). ×128 lanes: 36.9% of the part's LUTs (was 51.0%), 13.8% of its
-  flip-flops (was 16.7%). The worst path is now the accumulate loop's
-  read: the beat's slot through the accumulator file's selector into
-  `fp_add`'s alignment (12 logic levels).
-- [x] Bulk driver and slow tests (`verif/bulk/dot_lane.cpp`, its own loop
-  with the handshake: beats carry their idle cycles, the output ready is
-  drawn from a seed; `verif/tests/test_dot_lane_bulk.py`). Families:
-  model-like rows at SmolLM2's lengths (64, 576, 1536) and a p.V row of
-  8192, random bits (short rows), products near both ends of FP32's range,
-  cancelling rows (exactly for small integers), missing elements (carrying
-  random bits) and -0 rows; a fast test counts each family's result classes
-  (subnormal, ±0, Inf, NaN) against a minimum. The driver also checks that
-  every beat is taken and no result follows the last.
-  Fast (CI, about 15 s): about 300,000 pairs at output ready 100%, 50% and
-  5% with gaps; full rate with and without gaps (no stalls, and cycles =
-  beats + gaps + under 64 of latency); the `Ftz` = 1 build against the
-  golden ftz switch. Slow: 10^8 pairs in 50 chunks (143 to 171 s on the
-  dev machine over three runs), and one SmolLM2 decode step at position 63: every row of the
-  first and last layers' seven matrices, their attention scores and p.V
-  rows, and 4,096 classifier rows, 16,768 rows and 9.6 million pairs of
-  real weights and activations (10 s). All bit-exact. Mutations against
-  the bulk tests alone: 5 of 5 caught. The driver runs about 0.6 million
-  beats (2.3 million pairs) per second (one fast-test run).
-  Reviewed with `/code-review` and `/simplify` (owner's request): the
-  output-ready seed was the same for every chunk (fixed), the drain check
-  and the class-count test added, FP test helpers moved to
-  `model/tests/fp_inputs.py`, lane helpers to `verif/lane.py`, `plusarg`
-  to `verif/bulk/stream.h`. Left for later: a handshake loop in
-  `stream.h` (when a second handshake driver exists, M5).
-- [x] Checkpoint report: [reports/M4.md](reports/M4.md), tables generated
-  by `scripts/report_m4.py` from the lane's Vivado logs and the test runs
-  (`reports/data/M4.json`): exit criteria, the lane, timing and area,
-  tests, open issues.
+**Progress** (full notes: [PLAN.md at 008a76c](https://github.com/cattabiani/cabosse/blob/008a76ce2cacc93815b940d3ea27d359325c9c78/PLAN.md)):
+- [x] `rtl/dot_lane.sv` with cocotb tests; the final sum as a conveyor belt
+  (owner, 2026-10-08).
+- [x] Vivado: 250 MHz met, 3,762 LUTs and no DSPs a lane
+  (`reports/data/f2/2026-10-08-lane-belt.txt`).
+- [x] Bulk driver and slow tests: 10⁸ pairs and a SmolLM2 decode step's
+  rows, bit-exact.
+- [x] Checkpoint: [reports/M4.md](reports/M4.md).
 
-### M5 — Matrix-vector engine with simulated memory
+### M5 — Matrix-vector engine with simulated memory ✅
 **What:** `L` lanes, weight DMA over AXI, tiling, the KV tile buffer for
 attention, and an AXI memory model with configurable bandwidth.
 **Why:** this is where bandwidth is won or lost.
@@ -1044,268 +806,18 @@ at 128 lanes); engine attention (two PRs, then a small one, owner
 2026-10-22: one walker for `MATVEC` passes and attention units in issue,
 step and drain, so a sequencing fix is made once); checkpoint report.
 
-**Progress:**
-- [x] Answers above (PR #50).
-- [x] Command-list recording and weight layout (`model/commands.py`):
-  `run()` hands each `MATVEC`, `SCORES` and `VALUES` to a recorder as an
-  `EngineCall` (the command, the name of what it reads, its input buffer,
-  the matrix or the cache's first t positions, its output as written).
-  `record_step()` runs a prompt with `decoder.step`, copies its KV cache into
-  HBM (`load(..., cache)`) and records one decode step; a test checks it
-  against running every prompt token through `run()`, bit for bit, at
-  positions 0, 1 and 4. `lane_order()` gives a matrix in the ports' read
-  order for any `L` (zeros past the matrix, nothing for a port with no rows
-  in a pass), tested against an element-by-element restatement at 4, 8, 20
-  and 128 lanes. M4's real-data lane test now takes its rows from the
-  recording: the same 19 groups, 16,768 rows and 9.58 million pairs,
-  bit-exact, and checks that its rows reproduce each command's output.
-  For step 4: `decoder.step` computes the classifier for every prompt
-  position, which `record_step` throws away; at position 8191 that is
-  about 2.3·10¹¹ multiply-adds in the golden model, so a long position needs
-  the classifier for the last position only.
-- [x] Memory model and DMA. `rtl/port_dma.sv`: one port's reader; a
-  command (beat-aligned address, beats) becomes AXI read bursts of at most
-  16 beats, none crossing 4 KB, and its beats leave in order. Command
-  boundaries are not marked: the engine counts the beats it asked for. A
-  burst is requested only when the FIFO has room for it (credits), so the
-  memory never waits on the data channel; the next command is taken the
-  cycle after the current one's last burst request, so 1-beat commands run
-  at half rate. The burst length is computed on 5 bits (32 copies at 250
-  MHz); registering it a cycle ahead waits for M8's Vivado run.
-  `rtl/stream_fifo.sv`: a valid/ready FIFO. `verif/bulk/axi_mem.h`: the
-  memory model of the answers above (latency, bursts in flight, bandwidth,
-  pauses, an error response, per seed) with its own checks (burst type,
-  size and length, alignment, 4 KB, range, a request held until taken);
-  `port_dma.cpp` drives the DMA with it. Tests
-  (`verif/tests/test_port_dma.py`): commands around bursts and 4 KB
-  boundaries, zero-beat and random ones, under 7 memory behaviours × 3 DMA
-  shapes: every beat exact, bursts as long as allowed, no wait on the data
-  channel; full rate (cycles ≤ beats + latency + 8) up to a 40-cycle
-  latency with a 64-beat FIFO, and a 16-beat FIFO measurably slower there;
-  an error response kept; addresses across 4 GiB (34 bits). The FIFO alone
-  (`test_stream_fifo.py`, cocotb): against a Python queue cycle by cycle;
-  fill to full with refused pushes held, then drain; random traffic with
-  push and pop together both when full and when empty; push and pop every
-  cycle from empty and from full, counted by the FIFO's own handshakes (one
-  item per cycle from depth 2, every other cycle at depth 1); outputs
-  checked during reset, and reset with items inside; depths 1 to 5 and 64,
-  widths 1, 16 and 256. 9 hand mutations (listed in PR #52), all caught. The model alone (`axi_mem_test.cpp`, hand-made
-  requests): each check fires on the rule it guards and not otherwise, and
-  the first beat comes after exactly the latency. Mutations (9 hand
-  mutations of the DMA, listed in PR #52): all caught. Reviewed with `/code-review` and
-  `/simplify`; the drivers share their reset and drain constants
-  (`stream.h`), and `bulk.py` runs any driver with plusargs
-  (`run_driver`) and builds the model's test (`build_program`).
-  For step 3: the FIFO depth against pauses on many ports in lockstep, and
-  a loop shared by the handshake drivers once the engine's shows what is
-  common. For step 4: a KV row is 4 beats; if positions are spread over the
-  ports one by one, a tile load is many 4-beat commands per port, far below
-  full rate. A layout where each channel's positions of a head are
-  contiguous (position `p` on channel `p mod 32`) makes a 128-position tile
-  one 16-beat command per port; settle it before the tile buffer.
-- [x] Engine `MATVEC`, first PR (#53): the engine with small configurations.
-  `rtl/engine.sv`: `Ports` × 4 lanes in lockstep, a `port_dma` per port,
-  three stages with their own command queues (D-041): issue (per pass, one
-  DMA command of `ceil(m / 4)` beats to each port with rows in it, at
-  `addr` in every channel, D-040; no division by the port count), step (a
-  beat to every lane when every port with rows in the pass has one and every
-  lane is ready; x from a 1-cycle read port) and drain (8 results per cycle
-  to the write port, rounded by `rtl/fp32_to_bf16.sv` for a BF16
-  destination; lanes past the last row popped, not written). The engine
-  takes a reduced command (rows, cols, addr, a, dst, bf16); the controller
-  decodes the full one (M7). `verif/bulk/engine.cpp` drives it against one
-  memory model per port and checks every write as it comes (the oldest
-  command's dst, rows below its row count, each once). Tests
-  (`test_engine.py`, at 1, 2 and 5 ports): every row count around a group
-  and a pass × columns around a beat and a full-rate row, back to back with
-  FP32 and BF16 destinations, two x buffers and random 4 KB placements;
-  the same under 6 memory behaviours (latency 1; latency 80 with 2 bursts in
-  flight; 30% rate; pauses; one port at 15%; sparse commands); stale
-  infinities and NaN in x past the columns (masked); an error response on
-  its port. No gap between commands: 13 back-to-back commands take exactly
-  their perf-model cycles over the run (a command's last result comes 3
-  cycles later when the tree's adder is busy, after 64- or 60-column rows,
-  than when it is idle; measured; the run starts and ends idle). The rounder
-  (`test_fp32_to_bf16.py`): every high half × 6 low halves and the
-  specials. 13 hand mutations (listed in the PR), all caught; the unmasked
-  last beat only after the stale-x test was added. Lint at 32 ports;
-  synthesis at 5 (at 32, Yosys needed more than 8 GB and was killed at
-  that cap after 3 minutes; Vivado's run is M8's).
-  FIFO depth against pauses (5 ports, latency 20, 4 matrices of 160 × 512,
-  memory seeds 1 to 5, rate as a share of a 1024-beat FIFO's):
-
-  | depth | pauses 5‰, up to 20 cycles | pauses 20‰, up to 40 cycles |
-  |---|---|---|
-  | 16 | 0.404-0.414 | 0.350-0.367 |
-  | 32 | 0.779-0.792 | 0.645-0.664 |
-  | 64 | 0.988-0.993 | 0.900-0.907 |
-  | 128 | 1.000 | 0.978-0.988 |
-
-  At 16 the memory's latency limits more than the pauses (a burst is asked
-  for only with room for it). 64 stays the default until the 32-port run
-  of the second PR. (These seeds overlapped: port p drew with seed + 1 + p,
-  so seeds 1 to 5 shared most ports' streams; fixed in the second PR.)
-- [x] Engine `MATVEC`, second PR (#54): real data and speed at 128 lanes.
-  Weights read ahead of a go (D-042, owner): `cmd_wait_i` and `go_i`
-  credits; issue reads a waiting command's weights at once, step holds it
-  until its go. `commands.engine_waits` marks the waiting commands (q,
-  SCORES, VALUES, o, gate, down per layer, and the classifier: 181 per
-  SmolLM2 token), and the perf model adds `engine_startup_cycles` (55,
-  measured) for each; docs/perf.md and reports/M2.md re-rendered:
-  1-3% fewer tokens/s, and position 0 now limited by the engine (1.159 ms)
-  rather than memory (1.136 ms). The driver gives gos as the controller
-  may (after every earlier done or at once, optionally late) and reads a
-  waiting command's x as NaN until its go; port memories draw with
-  `(seed << 16) + p`. 5 hand mutations of the go logic (go ignored, credit
-  never spent, spent by every command, a 1-bit credit, issue waiting for
-  the go), all caught. Reviewed with `/code-review` and `/simplify`. The memory has F2's read latency, 70 cycles (AWS's
-  280 ns at 250 MHz; our path waits for M8). Measurements
-  (`scripts/measure_m5_engine.py`, `reports/data/M5-engine.json`):
-  - FIFO depth at 32 ports (latency 70, 4 matrices of 1024 × 512, memory
-    seeds 1 to 5, rate as a share of a 1024-beat FIFO's):
-
-    | depth | no pauses | pauses 5‰, up to 20 cycles | pauses 20‰, up to 40 cycles |
-    |---|---|---|---|
-    | 64 | 0.744 | 0.661-0.674 | 0.622-0.639 |
-    | 96 | 1.000 | 0.915-0.930 | 0.801-0.829 |
-    | 128 | 1.000 | 0.978-0.992 | 0.882-0.921 |
-    | 192 | 1.000 | 0.998-1.000 | 0.968-0.985 |
-    | 256 | 1.000 | 1.000 | 0.986-1.000 |
-
-    A 64-beat FIFO cannot cover the latency (a burst is asked for only with
-    room for it). The default is now 128, provisional until M8 measures
-    F2's HBM; 192 if its pauses turn out like the harsher column.
-  - SmolLM2 (first and last layers' MATVECs and the classifier, position
-    63, real data, waiting as the controller would): bit-exact; every
-    command within 1% of the perf model with the start-up, except the
-    first q, +8.1% (nothing runs before it to read its weights behind).
-    With read-ahead a waiting command takes 47-55 cycles over its engine
-    cycles; before it, 118 (an exploratory run, not saved).
-  - Bandwidth, each matrix alone with its start-up and F2's latency, as a
-    share of min(memory, 2·E·L) (1024 B/cycle at full rate, 512 at half):
-
-    | rows × cols | full rate | half rate | perf model's engine use |
-    |---|---|---|---|
-    | 1536 × 576 | 0.932 | 0.936 | 1.000 |
-    | 8192 × 576 | 0.987 | 0.977 | 1.000 |
-    | 576 × 1536 | 0.848 | 0.854 | 0.900 |
-
-    `down` (576 × 1536) misses the criterion's 90% as written: its 4.5
-    passes leave half the ports idle in the last one, so no read rate can
-    take it above 0.90. `test_bandwidth` holds each matrix to 90% of
-    min(memory, 2·E·L) times its engine use.
-  - Verilator (16 cores): build 155-165 s; 6,970-7,199 simulated cycles/s
-    on the 128-lane engine. With the perf model's serial cycles per token
-    (695,602 at position 63, 2,157,972 at 8191), M7 would need about 100 s
-    and 310 s of wall time per simulated token (estimate; the full design
-    will simulate slower). CI builds and runs the 128-lane tests (marked
-    `wide`) in a job of its own, beside the RTL job.
-- [x] Engine attention (PRs #55, #56 and the walker PR). Owner, 2026-10-13: the KV layout is D-043. A long
-  position's KV cache is computed once by the golden model and saved under
-  the git-ignored `weights/`, named by a hash of the weights, the prompt
-  and its length; the test recomputes a 64-position prefix and checks it
-  bit for bit, so a file older than a numerics change fails. The prompt is
-  our own docs (Apache-2.0), tokenized and cut to length. The fill computes
-  the classifier for the last position only.
-  Owner, 2026-10-14: `VALUES` reads the tile through a crossbar
-  (4 consecutive positions per cycle sit on 4 channels, D-043; numerics
-  and layout unchanged); a banked tile buffer serves it, `SCORES` and the
-  fill (architecture.md, "Tile buffer banks"). Simplest first (owner): a
-  tile serves one query head and is used once, so K and V are read once
-  per query head; free while the memory keeps up with the engine, at most
-  the engine's rate ÷ the memory's rate on attention otherwise (about 8%
-  on F2 at 250 MHz, estimate); reuse across a GQA group is Q-27. The engine
-  requires `cap` a multiple of `L` (whole tiles) and a power-of-two head
-  dimension from 16 to 128. Owner, 2026-10-15 (after `/simplify`): attention
-  needs the port count a multiple of 4 and `VALUES` `d ≤ L`; a second bank
-  mapping with a quarter-rate fill and `VALUES` passes split by dimension,
-  for test engines only, are dropped (this narrows the M5 answer "the
-  attention mapping works for any `L`" to the engines the chip can be).
-  Owner, 2026-10-15 (after reviewing that): the whole engine needs the
-  port count a multiple of 4, checked at elaboration, so `MATVEC` and
-  attention test on the same engines: 4, 8 and 20 ports (L = 80 divides
-  no SmolLM2 size, as 20 did) in CI, 32 in the wide job (this replaces
-  the M5 answer's 1 / 4, 2 / 8 and 5 / 20). A pass is then whole write
-  groups, so the drain's padding lanes are gone. `SCORES` and `VALUES` wait for the `KV_STORE`
-  that writes what they read (D-044). The engine leaves positions at or
-  past t out of a row (not a zero product: the cache and P hold stale
-  data there, maybe NaN; tested with NaN); a tile slot is refilled only
-  after its pass is done, and no tile is kept from one command to the
-  next (hand mutations). Two PRs, as for `MATVEC`: small configurations,
-  then real data and speed at 128 lanes.
-  First PR: the engine with small configurations. `rtl/engine.sv` gains a
-  fill stage and attention units (one head and a tile for `SCORES`; up to
-  2 heads and a tile for `VALUES`), `rtl/tile_buffer.sv` (`L` banks, rotations by
-  `rtl/rotate.sv`) and the scale's `mul` on the write path (6 cycles more
-  for every command: `engine_startup_cycles` is re-measured in the second
-  PR). `commands.hazards()` checks the ordering rules (D-041, D-042,
-  D-044) on the command lists. Tests (`test_engine.py`, at 4, 8 and 20
-  ports in CI, 32 in the wide job): every op × d of 16, 64, 128
-  (`VALUES` up to `L`) × groups of 1, 2, 3 and SmolLM2's 9 / 3 ×
-  positions around a tile and `t = cap`, with NaN in the cache and p past
-  t, between MATVECs; the 6 memory behaviours; gos; fill running ahead
-  past MATVECs; back to back, each command takes its perf-model cycles
-  plus 1 (289 for 288 at 32 ports, measured). The bank mapping is checked
-  exhaustively (`test_tile_banks.py`). Hand mutations (listed in the PR),
-  all caught.
-  Logic depth (`rtl.logic_depth`, 8 ports, scratch logs, not saved): 27
-  cells, 14 of them carry blocks, the same as `fp32_fma` alone (the scale's
-  unit, +0.514 ns at 250 MHz in M3's Vivado run); with the FMA stubbed, the
-  engine's own deepest path (next-cycle state into an address adder) is 23,
-  12 carry blocks; `main`'s engine 20, 10 carry blocks. A first reading of
-  31 was the measure walking through clocked cells (RAMs, shift-register
-  LUTs); `logic_depth` now builds small memories from flip-flops and cuts
-  block RAMs.
-  Second PR: real data at 128 lanes. `test_smollm2` runs the first and
-  last layers' `MATVEC`s, `SCORES` and `VALUES` and the classifier at
-  positions 63, 1023 and 8191 (the latter two from the long cache, cut back
-  to the position; `record_step` takes a given cache, tested): bit-exact,
-  every command within 10% of the perf model
-  (`scripts/measure_m5_engine.py real`, `reports/data/M5-engine.json`).
-  `SCORES` and `VALUES` are within 0.8% at 1023 and 8191, so the engine
-  use criterion holds there. At 63, `VALUES` first took 23.7% more than
-  the model: a p.V unit fills its two heads' tile (32 cycles) but steps
-  only 64 positions (16), so later units wait. The model was wrong, not
-  the hardware (whole tiles are the owner's simplest tile use):
-  `perf.tile_wait_cols` adds the wait (two slots, the first two read
-  ahead). `engine_startup_cycles`
-  re-measured with the scale's 6 cycles: 61 for `MATVEC`s, 64 for `SCORES`
-  at 1023 and 8191; design v0 takes 64. Together they change only
-  position 0 of docs/perf.md by more than 1%: 852 -> 840 tokens/s at the
-  top of the planned design's range (-1.4%), 654 -> 635 at 512 lanes, and
-  256 lanes at 450 MHz turns from limited by memory to by the engine there.
-  With it, at every position: the
-  first `q` +7.7% (nothing before it to read behind), `VALUES` at 63 -5.1%,
-  `SCORES` at 63 -3.8%, the other `MATVEC`s -1.4% to 0.0%. `long_cache`
-  has tests on a tiny model (two hand mutations caught).
-  Verilator (16 cores, quiet machine, three runs): build 261-275 s (was
-  155-165 s before attention); 6,688-6,698 simulated cycles/s (was
-  6,970-7,199). With the perf model's serial cycles per token (707,894 at
-  position 63, 2,558,093 at 8191), M7 would need about 106 s and 382 s of
-  wall time per simulated token (estimate; the full design will simulate
-  slower).
-  Walker PR: a `MATVEC` pass is a `SCORES` unit of one head whose
-  positions are rows (`unit_t`'s `matvec` and `beats`; t = rows), so issue,
-  step and drain each walk one sequence (`unit_init`, `unit_next`,
-  `last_unit`); the per-stage pass counters, the drain's row mask and
-  `last_pass` are gone, and lanes past a `MATVEC`'s rows take no beat (as
-  attention's already did). Step registers the unit's cycle count. Logic
-  depth with the FMA stubbed (8 ports): 22 cells, 11 of them carry blocks
-  (before the PR: 23, 12; the first version, before the registered count
-  and `/simplify`: 25, 12). New check: `ColWidth` at most `RowWidth`. All engine tests
-  pass unchanged, cycle counts included; 7 hand mutations: 5 caught, 2
-  harmless (a `MATVEC` reading every port: the extra beats are popped and
-  ignored, only memory traffic grows; a `MATVEC` unit freeing a tile slot:
-  both slots are empty while a `MATVEC` steps).
-- [x] Checkpoint report: [reports/M5.md](reports/M5.md), tables generated
-  by `scripts/report_m5.py` from the engine's measurements on the final
-  RTL (`reports/data/M5-engine.json`) and the test runs
-  (`reports/data/M5.json`): exit criteria, the engine, SmolLM2 with real
-  data, bandwidth, FIFO depth, Verilator speed, the timing proxy, tests,
-  open issues. The bandwidth criterion is not met as written: a matrix
-  whose rows are not a multiple of `L` leaves ports idle in its last pass
-  (Q-28); the restated one (90% of the perf model's engine use) is met and
-  the owner accepted it (D-046). M5 is done.
+**Progress** (full notes: [PLAN.md at 008a76c](https://github.com/cattabiani/cabosse/blob/008a76ce2cacc93815b940d3ea27d359325c9c78/PLAN.md)):
+- [x] Answers (PR #50); command-list recording and the lanes' weight
+  layout (`commands.record_step`, `lane_order`).
+- [x] Memory model and DMA: `rtl/port_dma.sv`, `rtl/stream_fifo.sv`,
+  `verif/bulk/axi_mem.h` (PR #52).
+- [x] `MATVEC` (PRs #53, #54): three stages (D-041), read-ahead (D-042),
+  FIFO depth 128.
+- [x] Attention (PRs #55, #56 and the walker PR): tile buffer, `SCORES`,
+  `VALUES` (D-043, D-044); real data at positions 63, 1023 and 8191
+  bit-exact and within 10% of the perf model.
+- [x] Checkpoint: [reports/M5.md](reports/M5.md); the bandwidth criterion
+  restated (D-046).
 
 ### M6 — Vector unit
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
@@ -1399,9 +911,12 @@ and the buffer-port check in `commands.hazards()`; one slot's FP chain
 (every operation) with its bulk tests and area; the vector unit with its
 buffers (whole commands, sequences, the tiny step; two PRs, owner
 2026-10-23: the buffers and the elementwise commands, then the reductions,
-D-050); `LOAD` and `KV_STORE`
+D-050, with the fused softmax command, D-054, which also replaces the
+perf model's softmax filter with a `commands.build()` option); `LOAD` and `KV_STORE`
 with the memory model's write side; real data, speed and
-`vector_startup_cycles`; checkpoint report.
+`vector_startup_cycles`, with the perf model's latencies (D-053); the
+engine's pipelined step control and max in the drain, then its placed
+Vivado build (D-051); checkpoint report.
 
 **Progress:**
 - [x] Answers above (PR #59).
@@ -1500,7 +1015,7 @@ does not check them; `SCORES` and `VALUES` are given after the
 
 ### M8 — F2 bring-up (no model)
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
-device memory bandwidth.
+device memory bandwidth. Runs beside M6 and M7 (D-052).
 **Why:** keeps platform problems apart from design problems. Cloud time costs
 money.
 **Done when:** register access and DMA work, and HBM bandwidth per port and
@@ -1510,20 +1025,26 @@ Every Vivado run (timing harnesses, full builds) checks that the worst
 slack at 250 MHz (4 ns) is ≥ 0, and its script fails otherwise; the slack
 goes into the report next to the perf numbers (owner, 2026-10-08).
 **From M5:** the engine's out-of-context Vivado run (128 lanes with DMA and
-buffers: area and timing at 250 MHz) moved here (owner, 2026-10-09).
+buffers: area and timing at 250 MHz) moved here (owner, 2026-10-09), and
+back to the end of M6 as a placed build (D-051).
 Its Yosys proxy (M5, attention) puts the deepest path in the scale's
 `fp32_fma` and the engine's own control 4 cells shallower; if Vivado finds
 the control path (unit end into the RAMs' next addresses) failing, register
 the addresses a cycle earlier. The engine's four stage queues each hold the
 whole command (about 178 bits); check in the utilization report that
-synthesis drops the fields a stage never reads, or narrow them.
+synthesis drops the fields a stage never reads, or narrow them. Two
+changes wait for that run: `port_dma`'s burst length registered a cycle
+ahead (M5), and `fp_add`'s significand compare beside the alignment
+shifter (M3; +142 Yosys cells), only if those paths limit.
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
 ≥ 1000 tokens and compared with the perf model and the bandwidth bound
 (provisional floor: ≥ 50% of it). Clock and resource use are reported.
 Compared with the Gemmini baseline (a different model) using normalized
-figures: weight bytes/s and MACs/s.
+figures: weight bytes/s and MACs/s, and with llama.cpp on the F2 host's
+CPU at the same positions (D-056). The engine keeps a margin of 10-25% over
+the memory (D-055).
 **From M5:** with HBM at 450 MHz a port delivers about 1.8 beats per core
 cycle, so lanes per port becomes 8 (256 lanes on 32 ports), with a clock
 crossing on the memory side. `VALUES` runs at most 2 heads a pass (the
@@ -1550,6 +1071,7 @@ New ones are added as a table:
 
 | ID   | Question | Leaning / when |
 |------|----------|----------------|
-| Q-27 | Share K and V tiles between the query heads of a GQA group (q·K: one tile for the group's heads in turn; p·V: lanes that save and resume their partial sums, or a chunked summation order, a numerics change)? Today each query head reads K and V. | Only if M8's HBM rate leaves attention memory-bound by much more than the ~8% estimated. |
+| Q-27 | Share K and V tiles between the query heads of a GQA group (q·K: one tile for the group's heads in turn; p·V: lanes that save and resume their partial sums, or a chunked summation order, a numerics change)? Today each query head reads K and V. | Only once the engine outruns the memory on attention. Perf model (docs/perf.md, "KV tiles shared", in order, the best case): sharing cuts SmolLM2's memory time at 8191 from 3.527 to 1.933 ms but gains under 1% (148 → 149 tokens/s), because attention's multiply-adds keep the engine as slow as the memory. |
 | Q-28 | Use the ports a partial last pass leaves idle (rows not a multiple of `L`: SmolLM2's `q`, `o`, `down`, `k`, `v` at 128 lanes)? Either split the last pass's dot products across lanes and add the halves (a numerics change), or start the next command's first pass on the idle ports (controller and engine redesign). | After M7/M8 measure a whole token at F2's HBM rate; only if the idle ports show up there. |
-| Q-29 | Bring the vector unit below 10% of token time at long positions (42.6% at SmolLM2's 8191 in order, estimate)? Options without a numerics change: fused softmax commands (`ADD`+`EXP`+`SUM` in one pass, 5 passes over the scores become 3, D-031), 32 elements per cycle (D-030), softmax of head h beside the engine's scores of head h+1 (controller). With one: online softmax (D-022). Even fused and 32 wide leave SmolLM2 at about 18% at 8191 (estimate). | After M7/M8 measure a whole token. |
+| Q-29 | Bring the vector unit below 10% of token time at long positions? With D-054's fused pass and max in the drain, SmolLM2 at 8191 goes from 42.6% to 24.0% (in order, estimate). Left without a numerics change: 32 elements per cycle (D-030), softmax of head h beside the engine's scores of head h+1 (controller). With one: online softmax (D-022), which D-054 argues against. | After M7/M8 measure a whole token. |
+| Q-30 | Cut the latency of dependent vector commands (D-053)? Options: residual adds and scalings on the engine's drain, as it already multiplies by `scale` (epilogue fusion); a short path through the chain for `ADD`, `MUL` and `FMA`; RMSNorm's three one-element commands on a small scalar unit. All keep the bits. | Once the perf model counts latency (M6, D-053). |
