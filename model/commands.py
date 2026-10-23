@@ -764,11 +764,16 @@ def store(dst: torch.Tensor, x: torch.Tensor) -> None:
 
 
 def overlap_ok(cmd: Command) -> bool:
-    """Whether a vector-unit command's dst may share a buffer with its
-    sources: the unit writes each group of elements about 50 cycles after
-    reading it, so dst may be a source only where an element is read once,
-    before its own write: not ROTATE_HALF's a, nor a b read for every row
-    (B_ROW) or by row (B_PER_ROW)."""
+    """Whether a command's buffers may be shared as it uses them. Its
+    sources are distinct buffers: a buffer has one read port, so two
+    operands of a group cannot read it at different elements. dst may be a
+    source only where an element is read once, before its own write (the
+    vector unit writes a group a pipeline's latency after reading it): not
+    ROTATE_HALF's a, nor a b read for every row (B_ROW) or by row
+    (B_PER_ROW)."""
+    sources = [x for x in (cmd.a, cmd.b, cmd.c) if x != Buf.NONE]
+    if len(set(sources)) < len(sources):
+        return False
     if cmd.op == Op.ROTATE_HALF and cmd.dst == cmd.a:
         return False
     return not (cmd.flags & (Flag.B_ROW | Flag.B_PER_ROW) and cmd.dst == cmd.b)
@@ -779,6 +784,9 @@ def vector_command(cmd: Command, buf: dict[Buf, torch.Tensor], t: int, stride: i
     is the positions attention reads, stride the STRIDE register. Its
     sources are FP32 buffers."""
     assert cmd.op in VECTOR_OPS and flags_ok(cmd) and overlap_ok(cmd), cmd
+    length = cmd.row_length(t)
+    assert cmd.n >= 1 and length >= 1, f"no rows or no elements: {cmd}"  # the unit needs both
+    assert cmd.op != Op.ROTATE_HALF or length % 2 == 0, f"odd rows to rotate: {cmd}"
     sources = [x for x in (cmd.a, cmd.b, cmd.c) if x != Buf.NONE]
     assert all(buf[x].dtype == F32 for x in sources), cmd
 

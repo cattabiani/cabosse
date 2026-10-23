@@ -35,7 +35,7 @@ module vec_unit
   parameter  int unsigned     Lanes    = 16,
   parameter  int unsigned     Bufs     = 22,
   parameter  int unsigned     Len      = 1024,
-  parameter  logic [31:0]     Bf16Mask = 32'h4644,  // bit per id: X, QR, P, ATT, M (commands.buffers)
+  parameter  logic [31:0]     Bf16Mask = 32'h4644,  // per id: X, QR, P, ATT, M (commands.buffers)
   parameter  int unsigned     AddrW    = 20,
   parameter  int unsigned     MulRegs  = 2,
   localparam int unsigned     BufW     = $clog2(Bufs),

@@ -122,6 +122,36 @@ def test_a_flag_the_command_does_not_accept_stops_the_run(op, flags) -> None:
         commands.run(cmds, layout, commands.load(model, layout), 3, 0)
 
 
+B, Op = commands.Buf, commands.Op
+# Commands the vector unit cannot run as the model would: two operands from
+# one buffer (one read port), dst over a source read again, no rows or no
+# elements, an odd row to rotate.
+BAD_VECTOR = [
+    commands.Command(Op.MUL, B.T, B.G, B.G, n=3, m=16, flags=F.B_ROW),
+    commands.Command(Op.MUL, B.T, B.G, B.G, n=3, m=16),
+    commands.Command(Op.FMA, B.T, B.G, B.U, B.U, n=1, m=16),
+    commands.Command(Op.MUL, B.U, B.G, B.U, n=3, m=16, flags=F.B_PER_ROW),
+    commands.Command(Op.ROTATE_HALF, B.Q, B.Q, n=1, m=16),
+    commands.Command(Op.MUL, B.T, B.H, B.R, n=0, m=16, flags=F.B_PER_ROW),
+    commands.Command(Op.ADD, B.T, B.H, B.U, n=1, m=0),
+    commands.Command(Op.ROTATE_HALF, B.QT, B.Q, n=1, m=5),
+]
+
+
+@pytest.mark.parametrize("cmd", BAD_VECTOR, ids=str)
+def test_a_command_the_vector_unit_cannot_run_is_rejected(cmd: commands.Command) -> None:
+    buf = commands.empty_buffers(commands.buffers(tiny.tiny_config(), 16))
+    with pytest.raises(AssertionError):
+        commands.vector_command(cmd, buf, 1, 16)
+
+
+def test_built_commands_have_distinct_sources() -> None:
+    """The ladder's lists already keep to overlap_ok (run() checks it too)."""
+    for name in ("SmolLM2-135M-Instruct", "Qwen2.5-0.5B-Instruct"):
+        layout = commands.Layout.of(perf.load_config(name), cap=16)
+        assert all(commands.overlap_ok(cmd) for cmd in commands.build(layout)), name
+
+
 def test_commands_set_only_the_fields_their_op_uses() -> None:
     """OPS lists each command's fields; the doc's tables rely on it."""
     for cmd in commands.build(commands.Layout.of(tiny.tiny_config(), cap=4)):

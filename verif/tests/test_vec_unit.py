@@ -80,13 +80,15 @@ def random_command(rng: np.random.Generator, length: int) -> Step:
 
 
 def with_waits(steps: list[Step]) -> list[Step]:
-    """Each command waits for the earlier ones when it shares a buffer with
-    one of them (the controller's stop, D-045, made conservative)."""
-    seen: set[Buf] = set()
+    """A command waits for every earlier one to be done when it reads a
+    buffer that one still running may write (the controller's stop, D-045);
+    after a wait nothing earlier runs. A write after a read or after a write
+    needs no wait: the unit reads a command's groups before the next one's,
+    and writes in order."""
+    written: set[Buf] = set()  # by the commands since the last wait
     for s in steps:
-        mine = {s.cmd.dst, s.cmd.a, s.cmd.b, s.cmd.c} - {Buf.NONE}
-        s.wait = bool(mine & seen)
-        seen |= mine
+        s.wait = bool({s.cmd.a, s.cmd.b, s.cmd.c} & written)
+        written = {s.cmd.dst} | (set() if s.wait else written)
     return steps
 
 

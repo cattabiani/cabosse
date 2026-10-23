@@ -102,7 +102,8 @@ module fp32_chain
     state_t     s;
     logic [7:0] e;
     logic       nan, zero;
-    s = '{op: op, u: a, v: op == ChainPass ? a : b, w: c, sign: a[31], special: Computed, default: '0};
+    s = '{op: op, u: a, v: op == ChainPass ? a : b, w: c, sign: a[31], special: Computed,
+          default: '0};
     e = a[30:23];
     nan = is_nan_f32(a[30:0]);
     zero = a[30:0] == '0;
