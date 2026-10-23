@@ -8,8 +8,9 @@
 // (exact, so any order gives the golden reduce_max's bits). start_i takes a
 // row's partials; each of the log2(Width) levels issues a pair a cycle and
 // waits for its last result; done_o then gives the row's value, held in y_o
-// until the next start_i. About Width + 3 * log2(Width) cycles a row.
-// busy_o from start_i to done_o; start_i only when idle.
+// until the next start_i. A level of P pairs takes P + AddLatency cycles, so
+// a row about Width + 3 * log2(Width). busy_o from start_i to done_o;
+// start_i only when idle.
 
 module vec_tree
   import fp_pkg::*;
@@ -27,7 +28,7 @@ module vec_tree
   output logic [31:0]            y_o
 );
 
-  localparam int unsigned Lat = 3;  // fp_add's registers
+  localparam int unsigned Lat = AddLatency;
 
   if (Width < 2 || Width != 2 ** IW) begin : gen_width_check
     $error("Width must be a power of two, at least 2");
@@ -49,19 +50,21 @@ module vec_tree
   } back_t;
   back_t back_q[Lat];
 
-  // A level ends once every pair is issued and back; the next one reads the
-  // values from the cycle after.
+  // A level ends once every pair is issued and its last result is written
+  // (this cycle at the latest); the next one reads the values from the cycle
+  // after. Past the level's pairs the index wraps, so no read is out of
+  // range (an unused read).
   logic        all_issued, issue, in_flight, level_end, sum_valid;
   logic [31:0] a, b, sum;
   always_comb begin
     in_flight = 1'b0;
-    for (int unsigned j = 0; j < Lat; j++) in_flight |= back_q[j].valid;
+    for (int unsigned j = 0; j + 1 < Lat; j++) in_flight |= back_q[j].valid;
   end
   assign all_issued = {1'b0, next_q} == {1'b0, pairs_q} + 1'b1;
   assign issue      = busy_q && !all_issued;
   assign level_end  = busy_q && all_issued && !in_flight;
-  assign a          = v_q[2*next_q];
-  assign b          = v_q[2*next_q+1];
+  assign a          = v_q[IW'(2*next_q)];
+  assign b          = v_q[IW'(2*next_q+1)];
 
   fp_add u_add (
     .clk_i,

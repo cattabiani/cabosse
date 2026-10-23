@@ -149,7 +149,7 @@ def special_rows(rng: np.random.Generator, m: int) -> torch.Tensor:
 @pytest.mark.parametrize("m", (1, 16, 37, 128, 200))
 def test_reduction_special_values(op: Op, m: int) -> None:
     rows = special_rows(np.random.default_rng(SEED + m), m)
-    length = max(LENGTH, -(-rows.numel() // 16) * 16)
+    length = max(LENGTH, -(-rows.numel() // vector.LANES) * vector.LANES)
     start = vector.random_buffers(np.random.default_rng(SEED), length)
     start[Buf.G][: rows.numel()] = rows.flatten()
     cmd = Command(op, Buf.R, Buf.G, n=rows.shape[0], m=m)

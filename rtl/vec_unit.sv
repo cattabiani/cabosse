@@ -30,7 +30,8 @@
 // result back in the file MulRegs + 5 cycles later, before the partial's next
 // group (Parts >= MulRegs + 6). A row's first Parts groups start from +0 and
 // a missing element keeps its partial, so a partial no element reaches stays
-// +0. MAX takes x through the same FMA (add(x, -0) = x, bit for bit) and keeps
+// +0. MAX takes x through the same FMA (add(x, -0) = x; a NaN as the
+// canonical NaN, which max_f32 drops as it does any NaN) and keeps
 // max_f32(p, x), from the canonical NaN, which max_f32 leaves to any other
 // value. At a row's end the tree unit (vec_tree) takes its partials, the
 // cycle before the next row's first result lands, and writes the row's value
@@ -267,8 +268,7 @@ module vec_unit
       wr_addr[i] = ext_w_addr_i;
       wr_mask[i] = ext_w_valid_i && ext_w_buf_i == BufW'(i) ? ext_w_mask_i : '0;
       wr_data[i] = ext_w_data_i;
-      // The tree's write waits for a cycle the slots leave dst free.
-      if (t_w_valid && t_w_buf == BufW'(i)) begin
+      if (t_w_valid && t_w_buf == BufW'(i)) begin  // never with the slots' (t_w_valid)
         {wr_addr[i], wr_mask[i], wr_data[i]} = {t_w_addr, Lanes'(1), (Lanes * 32)'(t_w_data)};
       end
       if (u_w_valid && u_w_buf == BufW'(i)) begin
@@ -416,7 +416,9 @@ module vec_unit
   // cap_q: the row's last result landed last cycle, so its partials are all
   // in; the next row's first lands this cycle, after the tree takes them.
   // tree_q: the row being reduced; its value waits in the tree (t_pend_q)
-  // for a cycle the slots leave dst's write port free.
+  // until no elementwise result is on its way: so its write never meets the
+  // slots' and its done_o comes after every earlier command's, whatever the
+  // parameters.
   typedef struct packed {
     logic [BufW-1:0]  dst;
     logic [AddrW-1:0] row;
@@ -424,6 +426,7 @@ module vec_unit
   } tree_t;
 
   logic                      cap_valid_q, t_pend_q, tree_run, tree_done;
+  logic [$clog2(ChainLat+2)-1:0] slot_groups_q;  // elementwise groups in the slots
   logic                      cap_rmax_q;
   tree_t                     cap_q, tree_q;
   logic [Partials-1:0][31:0] parts;
@@ -461,7 +464,7 @@ module vec_unit
     .a_i(tree_y),
     .y_o(tree_r)
   );
-  assign t_w_valid = t_pend_q && !(u_w_valid && u_w_buf == tree_q.dst);
+  assign t_w_valid = t_pend_q && slot_groups_q == '0;
   assign t_w_buf   = tree_q.dst;
   assign t_w_addr  = tree_q.row;
   assign t_w_data  = Bf16Mask[tree_q.dst] ? {16'h0, tree_r} : tree_y;
@@ -469,7 +472,10 @@ module vec_unit
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       {red_q, pend_q, t_pend_q} <= '0;
+      slot_groups_q <= '0;
     end else begin
+      slot_groups_q <= slot_groups_q + $bits(slot_groups_q)'(grp_fire && !reduction(grp.is.op))
+                     - $bits(slot_groups_q)'(u_w_valid);
       if (cmd_valid_i && cmd_ready_o) red_q <= reduction(cmd_op_i);
       else if (t_w_valid && tree_q.last) red_q <= 1'b0;
       if (grp_fire && reduction(grp.is.op) && row_end) pend_q <= 1'b1;

@@ -18,10 +18,12 @@ package fp_pkg;
   localparam logic [1:0]  Fp32Fma = 2'd0;  // or 3
   /* verilator lint_on UNUSEDPARAM */
 
+  localparam int unsigned AddLatency = 3;  // fp_add's registers (vec_tree's add)
+
   // fp_mul_add's latency (bf16_mac, fp32_fma): fp_product's mul_regs
-  // registers, one, then fp_add's three.
+  // registers, one, then fp_add's.
   function automatic int unsigned mul_add_latency(int unsigned mul_regs);
-    return mul_regs + 4;
+    return mul_regs + 1 + AddLatency;
   endfunction
 
   // fp32_chain's op_i (D-048): the vector unit's arithmetic, one result per
