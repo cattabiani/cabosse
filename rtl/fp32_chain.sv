@@ -45,7 +45,10 @@ module fp32_chain
   input  logic [31:0] b_i,
   input  logic [31:0] c_i,
   output logic        valid_o,
-  output logic [31:0] y_o
+  output logic [31:0] y_o,
+  // The first stage's FMA result, MulRegs + 5 cycles after its operands
+  // enter: the vector unit's reductions accumulate with it (D-050)
+  output logic [31:0] s1_y_o
 );
 
   localparam int unsigned Stages = ChainStages;
@@ -292,6 +295,9 @@ module fp32_chain
     fma_in_t     f;
     logic [31:0] r;
     logic        r_valid;
+    if (s == 0) begin : gen_s1
+      assign s1_y_o = r;
+    end
     state_t      d_q[FmaLatency];  // the state, delayed to meet r
     assign f = operands(s + 1, st_q[s]);
     fp32_fma #(

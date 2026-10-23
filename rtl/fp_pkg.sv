@@ -18,10 +18,12 @@ package fp_pkg;
   localparam logic [1:0]  Fp32Fma = 2'd0;  // or 3
   /* verilator lint_on UNUSEDPARAM */
 
+  localparam int unsigned AddLatency = 3;  // fp_add's registers (vec_tree's add)
+
   // fp_mul_add's latency (bf16_mac, fp32_fma): fp_product's mul_regs
-  // registers, one, then fp_add's three.
+  // registers, one, then fp_add's.
   function automatic int unsigned mul_add_latency(int unsigned mul_regs);
-    return mul_regs + 4;
+    return mul_regs + 1 + AddLatency;
   endfunction
 
   // fp32_chain's op_i (D-048): the vector unit's arithmetic, one result per
@@ -67,6 +69,29 @@ package fp_pkg;
   // Whether FP32 bits are a NaN, from all but the sign bit.
   function automatic logic is_nan_f32(logic [30:0] f);
     return (f[30:23] == 8'hFF) && (f[22:0] != 0);
+  endfunction
+
+  // FP32 max(a, b), IEEE 754-2019 maximumNumber (D-037): a NaN operand gives
+  // the other, two NaNs the canonical NaN, max(-0, +0) = +0. Exact: one of
+  // the operands, bit for bit (golden.arith.maximum). Signed order of the
+  // bit patterns: positives by magnitude above negatives in reverse, +0
+  // above -0; one magnitude compare serves both signs.
+  function automatic logic [31:0] max_f32(logic [31:0] a, logic [31:0] b);
+    logic a_nan, b_nan, mag_gt, mag_eq, a_bigger;
+    a_nan  = is_nan_f32(a[30:0]);
+    b_nan  = is_nan_f32(b[30:0]);
+    mag_gt = a[30:0] > b[30:0];
+    mag_eq = a[30:0] == b[30:0];
+    unique case ({a[31], b[31]})
+      2'b00:   a_bigger = mag_gt;
+      2'b11:   a_bigger = !mag_gt && !mag_eq;
+      2'b01:   a_bigger = 1'b1;
+      default: a_bigger = 1'b0;
+    endcase
+    if (a_nan && b_nan) return CanonicalNaN;
+    if (a_nan) return b;
+    if (b_nan) return a;
+    return a_bigger ? a : b;
   endfunction
 
   // FP32 bits, with a subnormal flushed to the zero of its sign if en: the

@@ -911,7 +911,7 @@ and the buffer-port check in `commands.hazards()`; one slot's FP chain
 (every operation) with its bulk tests and area; the vector unit with its
 buffers (whole commands, sequences, the tiny step; two PRs, owner
 2026-10-23: the buffers and the elementwise commands, then the reductions,
-D-050, with the fused softmax command, D-054, which also replaces the
+D-050; then the fused softmax command, D-054, which also replaces the
 perf model's softmax filter with a `commands.build()` option); `LOAD` and `KV_STORE`
 with the memory model's write side; real data, speed and
 `vector_startup_cycles`, with the perf model's latencies (D-053); the
@@ -981,6 +981,27 @@ Vivado build (D-051); checkpoint report.
   offered at random cycles in half), and back-to-back speed (a group a
   cycle). 10 hand mutations, all caught. Yosys synthesizes the unit at 2
   lanes (at 16 it passes 8 GB).
+- [x] Reductions `SUM`, `SUMSQ`, `MAX` (D-050, step 4b): each slot keeps
+  `Partials / Lanes` = 8 partials and accumulates with its chain's first
+  FMA, tapped out of `fp32_chain` (`MAX` takes x through `add(x, -0)` and
+  keeps `max_f32`, now in `fp_pkg`, from the canonical NaN). A row's first
+  group starts its partials when its result lands, the cycle the tree takes
+  the row before. `rtl/vec_tree.sv` runs the spec's tree on one `fp_add` (or
+  `max_f32`) level by level, a level of P pairs in P + 3 cycles, and writes
+  `dst[row]` once no elementwise result is on its way (so done_o stays in
+  order for any parameters). A row's last group waits for the tree; after a
+  reduction the next command waits for its last row. `TreeAdders` (D-050)
+  is not a parameter yet: one adder. Tests (137 in `test_vec_unit.py`):
+  each reduction on rows around the partials and their groups, the shared
+  special values, the whole softmax at the stride, reductions in the random
+  sequences, and the trees overlapping rows longer than a tree (each row
+  after the first costs its groups alone). 11 hand mutations, all caught.
+  Found on the way: a reduction's slots wrote with an empty mask over the
+  tree's write. Open for the fused command (D-054): its sum is exp's, after
+  the chain, so a second accumulation point beside the first FMA; or all
+  reductions after the chain, one path for about 50 cycles more a
+  reduction command (about 0.7% of a token at position 0, estimate). The
+  owner chooses in that PR.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register

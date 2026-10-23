@@ -20,4 +20,5 @@ port_dma.sv
 rotate.sv
 tile_buffer.sv
 engine.sv
+vec_tree.sv
 vec_unit.sv
