@@ -68,27 +68,21 @@ def test_a_token_reads_every_weight_once(tied: bool) -> None:
     assert read == perf.parameter_bytes(c) + c.hidden_size * perf.BF16_BYTES + rope - table
 
 
+@pytest.mark.parametrize("shared", [False, True])
 @pytest.mark.parametrize(("position", "tiles"), [(0, 1), (7, 1), (8, 2), (20, 3)])
-def test_kv_traffic_in_whole_tiles(position: int, tiles: int) -> None:
+def test_kv_traffic_in_whole_tiles(position: int, tiles: int, shared: bool) -> None:
     """A token reads K and V in whole tiles of 8 positions on 8 lanes, per
-    query head and layer (no tile shared between heads); it writes one row
-    of K and one of V per KV head and layer."""
+    query head and layer (no tile shared between heads), or per KV head with
+    kv_tiles_shared (Q-27), which changes nothing else; it writes one row of
+    K and one of V per KV head and layer."""
     c = tiny.tiny_config(n_kv_heads=2)
     row = c.num_hidden_layers * c.head_dim * perf.BF16_BYTES
-    work = perf.Work.of(perf.ops(c, position, 8))
-    assert work.kv_read_bytes == 2 * c.num_attention_heads * tiles * 8 * row
+    work = perf.Work.of(perf.ops(c, position, 8, kv_tiles_shared=shared))
+    readers = c.num_key_value_heads if shared else c.num_attention_heads
+    assert work.kv_read_bytes == 2 * readers * tiles * 8 * row
     assert work.kv_write_bytes == 2 * c.num_key_value_heads * row
-
-
-def test_shared_tiles_are_read_once_per_kv_head() -> None:
-    """With kv_tiles_shared (Q-27), K and V tiles are read per KV head, not
-    per query head; nothing else changes."""
-    c = tiny.tiny_config(n_kv_heads=2)
-    row = c.num_hidden_layers * c.head_dim * perf.BF16_BYTES
-    alone = perf.Work.of(perf.ops(c, 20, 8))
-    shared = perf.Work.of(perf.ops(c, 20, 8, kv_tiles_shared=True))
-    assert shared.kv_read_bytes == 2 * c.num_key_value_heads * 3 * 8 * row
-    assert dataclasses.replace(shared, kv_read_bytes=alone.kv_read_bytes) == alone
+    alone = perf.Work.of(perf.ops(c, position, 8))
+    assert dataclasses.replace(work, kv_read_bytes=alone.kv_read_bytes) == alone
 
 
 @pytest.mark.parametrize(

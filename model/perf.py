@@ -196,6 +196,12 @@ class Design(Inputs):
                 assert v[k] >= 1 and v[k] == int(v[k]), f"{scenario or 'base'}: {k} = {v[k]}"
             a = int(v["accumulators"])
             assert a & (a - 1) == 0, f"{scenario or 'base'}: accumulators = {a}, not a power of 2"
+        return self
+
+    @model_validator(mode="after")
+    def _flags_are_on_or_off(self) -> Design:
+        for scenario in [None, *self.scenarios]:
+            v = self.values(scenario)
             for k in FLAGS:
                 assert v[k] in (0, 1), f"{scenario or 'base'}: {k} = {v[k]}, not 0 or 1"
         return self
@@ -257,9 +263,9 @@ def attention(
     runs it (architecture.md, KV cache layout): K or V read in whole tiles of
     `lanes` positions, once per query head (no tile shared between heads;
     Q-27), or once per KV head with `tiles_shared` (the tile waits are kept
-    as unshared, an upper bound). Scores have a row per position, a pass per head and tile; p.V a
-    row per head and output dimension, in passes of up to VALUES_HEADS heads
-    (one if two do not fit the lanes)."""
+    as unshared, an upper bound). Scores have a row per position, a pass
+    per head and tile; p.V a row per head and output dimension, in passes
+    of up to VALUES_HEADS heads (one if two do not fit the lanes)."""
     heads, d = cmd.n, cmd.m
     tiles = math.ceil(positions / lanes)
     if cmd.op == commands.Op.SCORES:  # a unit fills d cols and steps d
@@ -282,7 +288,7 @@ def attention(
     )
 
 
-def step(cmd: commands.Command, t: int, lanes: int, tiles_shared: bool = False) -> Step:
+def step(cmd: commands.Command, t: int, lanes: int, tiles_shared: bool) -> Step:
     """The work of one command when attention reads t positions, on an
     engine of `lanes` lanes (tiles_shared: attention())."""
     match cmd.op:
@@ -315,22 +321,19 @@ def ops(
 ) -> list[Step]:
     """The work of one decode step at `position` (0-based: it attends to
     position + 1 cache rows), one entry per command, on an engine of
-    `lanes` lanes (attention reads whole tiles of that many positions).
-    With the design flags (module docstring), softmax's EXP and SUM ride
-    on its subtraction's pass, its MAX is the engine's, and attention reads
-    a tile per KV head."""
+    `lanes` lanes (attention reads whole tiles of that many positions),
+    with the design flags (module docstring). The softmax flags drop
+    softmax's commands here until commands.build() has the fused command
+    and the engine's max (D-054, M6)."""
     layout = commands.Layout.of(config, cap=position + 1)
     cmds = commands.build(layout)
-    out = []
-    for cmd, w in zip(cmds, commands.engine_waits(cmds), strict=True):
-        softmax = bool(cmd.flags & commands.Flag.LEN_T)
-        if softmax and (
-            (max_in_drain and cmd.op == commands.Op.MAX)
-            or (softmax_fused and cmd.op in (commands.Op.EXP, commands.Op.SUM))
-        ):
-            continue
-        out.append(dataclasses.replace(step(cmd, position + 1, lanes, kv_tiles_shared), waits=w))
-    return out
+    dropped = {commands.Op.MAX} if max_in_drain else set()
+    dropped |= {commands.Op.EXP, commands.Op.SUM} if softmax_fused else set()
+    return [
+        dataclasses.replace(step(cmd, position + 1, lanes, kv_tiles_shared), waits=w)
+        for cmd, w in zip(cmds, commands.engine_waits(cmds), strict=True)
+        if not (cmd.flags & commands.Flag.LEN_T and cmd.op in dropped)
+    ]
 
 
 def design_ops(config: LlamaConfig, position: int, design: dict[str, float]) -> list[Step]:

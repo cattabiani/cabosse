@@ -1475,7 +1475,8 @@ and the buffer-port check in `commands.hazards()`; one slot's FP chain
 (every operation) with its bulk tests and area; the vector unit with its
 buffers (whole commands, sequences, the tiny step; two PRs, owner
 2026-10-23: the buffers and the elementwise commands, then the reductions,
-D-050, with the fused softmax command, D-054); `LOAD` and `KV_STORE`
+D-050, with the fused softmax command, D-054, which also replaces the
+perf model's softmax filter with a `commands.build()` option); `LOAD` and `KV_STORE`
 with the memory model's write side; real data, speed and
 `vector_startup_cycles`, with the perf model's latencies (D-053); the
 engine's pipelined step control and max in the drain, then its placed
