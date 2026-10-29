@@ -18,9 +18,9 @@
 /// (+offer, permille; +seed). After the last done_o and kDrainCycles more,
 /// the reads go one per cycle.
 ///
-/// The memory starts at address 0, a read port (axi_bench.h's plusargs) and a
-/// write port (the same with a w in front: +wlatency, +woutstanding, +wrate,
-/// +wpause, +wpause_max, +wbad: the burst answered with SLVERR).
+/// The memory, behind a read port (axi_bench.h's plusargs) and a write port
+/// (the same with a w in front; +wbad: the burst answered with SLVERR),
+/// starts at +base for both.
 ///
 /// Output: per command the cycle it was taken and the cycle of its done_o
 /// (counted from the first command's offer); per read its Lanes words; the
@@ -46,6 +46,7 @@ using Params = Vvec_unit___024root;  // the build's parameters (verif/bulk.py: -
 constexpr size_t kLanes = Params::vec_unit__DOT__Lanes;
 constexpr size_t kAddrBits = Params::vec_unit__DOT__MemAddrW;
 constexpr size_t kBeatWords = kLanes / 2;  ///< DataWidth = Lanes * 16 bits
+constexpr size_t kBeatBytes = 4 * kBeatWords;
 constexpr size_t kCmdWords = 16;  ///< op ... scalar, cap, addr low, addr high, token, t, stride, wait
 constexpr int kExitBadDone = 4;
 constexpr int kExitAxi = 5;
@@ -80,19 +81,6 @@ void put_word(std::span<std::byte> bytes, size_t i, uint32_t word) {
   std::ranges::copy(std::bit_cast<std::array<std::byte, 4>>(word), bytes.subspan(4 * i, 4).begin());
 }
 
-/// @brief The write port's settings: axi_bench.h's plusargs with a w in front.
-AxiMemSettings write_settings(VerilatedContext& context) {
-  AxiMemSettings s;
-  s.latency = plusarg(context, "wlatency", s.latency);
-  s.outstanding = plusarg(context, "woutstanding", s.outstanding);
-  s.rate_permille = plusarg(context, "wrate", s.rate_permille);
-  s.pause_permille = plusarg(context, "wpause", s.pause_permille);
-  s.pause_max = plusarg(context, "wpause_max", s.pause_max);
-  s.bad_beat = plusarg(context, "wbad", s.bad_beat);
-  s.beat_bytes = 4 * kBeatWords;
-  return s;
-}
-
 /// @brief The unit, its memory, and the test's side of its command port.
 struct Bench {
   Vvec_unit& dut;
@@ -107,7 +95,7 @@ struct Bench {
   bool running = false;    ///< commands may be offered
   uint64_t cycles = 0;     ///< since the first offer
   std::vector<uint64_t> answers;  ///< the cycle of each write response
-  std::vector<std::byte> w_beat = std::vector<std::byte>(4 * kBeatWords);
+  std::vector<std::byte> w_beat = std::vector<std::byte>(kBeatBytes);
 
   /// @brief Whether the next command may be offered this cycle.
   bool may_offer() {
@@ -153,9 +141,11 @@ struct Bench {
   void tick_memory() {
     rd.tick({static_cast<bool>(dut.ar_valid_o), dut.ar_addr_o, dut.ar_len_o, dut.ar_size_o, dut.ar_burst_o},
             dut.r_ready_o);
-    for (size_t i = 0; i < kBeatWords; ++i) put_word(w_beat, i, static_cast<uint32_t>(get_bits(dut.w_data_o, 32 * i, 32)));
+    if (dut.w_valid_o) {
+      for (size_t i = 0; i < kBeatWords; ++i) put_word(w_beat, i, static_cast<uint32_t>(get_bits(dut.w_data_o, 32 * i, 32)));
+    }
     wr.tick({static_cast<bool>(dut.aw_valid_o), dut.aw_addr_o, dut.aw_len_o, dut.aw_size_o, dut.aw_burst_o},
-            {static_cast<bool>(dut.w_valid_o), w_beat, get_bits(dut.w_strb_o, 0, 4 * kBeatWords),
+            {static_cast<bool>(dut.w_valid_o), w_beat, get_bits(dut.w_strb_o, 0, kBeatBytes),
              static_cast<bool>(dut.w_last_o)},
             dut.b_ready_o);
   }
@@ -249,8 +239,11 @@ int main(int argc, char** argv) {
 
   const uint64_t seed = plusarg(context, "seed", 1);
   const std::span<std::byte> bytes = std::as_writable_bytes(std::span(mem));
-  AxiReadPort rd(bytes, axi_settings(context, 4 * kBeatWords, 0), seed << 16);
-  AxiWritePort wr(bytes, write_settings(context), (seed << 16) + 1);
+  const AxiMemSettings read = axi_settings(context, kBeatBytes, 0);
+  AxiMemSettings write = axi_settings(context, kBeatBytes, 0, "w");
+  write.base = read.base;  // one memory
+  AxiReadPort rd(bytes, read, seed << 16);
+  AxiWritePort wr(bytes, write, (seed << 16) + 1);
   Bench bench{.dut = *dut,
               .rd = rd,
               .wr = wr,

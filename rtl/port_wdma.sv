@@ -65,7 +65,7 @@ module port_wdma #(
   // lens for its data. sent_q counts bursts taken and not yet answered.
   logic [AddrWidth-1:0] addr_q;
   logic [LenW-1:0]      beats_q, lens_out, beat_q;
-  logic                 aw_q, aw_fire, lens_valid, w_fire, b_fire;
+  logic                 aw_q, aw_fire, lens_valid, w_fire;
   logic [OW-1:0]        sent_q;
 
   assign cmd_ready_o = !aw_q;
@@ -89,7 +89,9 @@ module port_wdma #(
   end
 
   // Every burst taken has a place: sent_q < Outstanding when it is.
+  // verilator lint_off UNUSEDSIGNAL
   logic unused_lens_ready;
+  // verilator lint_on UNUSEDSIGNAL
   stream_fifo #(.Width(LenW), .Depth(Outstanding)) u_lens (
     .clk_i,
     .rst_ni,
@@ -114,22 +116,16 @@ module port_wdma #(
   end
 
   assign b_ready_o = 1'b1;
-  assign b_fire    = b_valid_i;
-  assign done_o    = b_fire;
+  assign done_o    = b_valid_i;
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       sent_q <= '0;
       err_o  <= 1'b0;
     end else begin
-      sent_q <= sent_q + OW'(aw_fire) - OW'(b_fire);
-      if (b_fire && b_resp_i != 2'b00) err_o <= 1'b1;
+      sent_q <= sent_q + OW'(aw_fire) - OW'(b_valid_i);
+      if (b_valid_i && b_resp_i != 2'b00) err_o <= 1'b1;
     end
   end
-
-  // verilator lint_off UNUSEDSIGNAL
-  logic unused;
-  assign unused = unused_lens_ready;
-  // verilator lint_on UNUSEDSIGNAL
 
 endmodule

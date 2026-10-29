@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 import vector
 from commands import Buf, Command, Flag, Op
+from fp_inputs import random_bits, with_exponents
 from test_vec_unit import LENGTH, SEED, random_command, with_waits
 from vector import Step
 
@@ -32,12 +33,12 @@ SLOW_WRITES = {"wlatency": 40, "wrate": 600, "wpause": 20, "wpause_max": 6}
 
 def random_memory(rng: np.random.Generator) -> np.ndarray:
     """Random words, mostly moderate values whatever the format they are read
-    in: an FP32 word's high half is a BF16 value of the same exponent."""
-    raw = rng.integers(0, 2**32, vector.MEM_WORDS, dtype=np.uint32)
-    exps = rng.integers(127 - 20, 127 + 20, vector.MEM_WORDS, dtype=np.uint32)
-    moderate = (raw & ~np.uint32(0x7F80_0000)) | (exps << np.uint32(23))
-    moderate = (moderate & ~np.uint32(0x7F80)) | ((exps & np.uint32(0xFF)) << np.uint32(7))
-    return np.where(rng.random(vector.MEM_WORDS) < 0.95, moderate, raw).astype(np.uint32)
+    in (as vector.random_buffers): an FP32 word's high half is a moderate
+    BF16 value, and so is its low half."""
+    n = vector.MEM_WORDS
+    low = with_exponents(rng, n, 127 - 20, 126 + 20, 16).astype(np.uint32)
+    moderate = with_exponents(rng, n, 127 - 20, 126 + 20, 32) & np.uint32(0xFFFF0000) | low
+    return np.where(rng.random(n) < 0.95, moderate, random_bits(rng, n)).astype(np.uint32)
 
 
 def load(dst: Buf, m: int, flags: Flag) -> Command:
@@ -88,6 +89,27 @@ def test_loads_back_to_back(slow: bool) -> None:
         f"slow {slow}",
         random_memory(rng),
         **(SLOW if slow else {}),
+    )
+
+
+@rtl.needs_verilator
+def test_load_far_row() -> None:
+    """A row at a token whose offset needs more than the 20 bits of a row
+    index (Qwen2.5's last token is 151,935 rows of 56 beats): the memory's
+    image starts at the row's 4 KB page, about 260 MiB in."""
+    token, m = 151_935, 896
+    row_addr = token * m * 2
+    base = row_addr - row_addr % 4096
+    cmd = Command(Op.LOAD, Buf.H, m=m, flags=Flag.SRC_BF16 | Flag.BY_TOKEN)
+    rng = np.random.default_rng(SEED)
+    length = 1024
+    vector.check(
+        [Step(cmd, token=token)],
+        vector.random_buffers(rng, length),
+        length,
+        "far row",
+        random_memory(rng),
+        base=base,
     )
 
 

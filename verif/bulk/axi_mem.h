@@ -239,9 +239,11 @@ class AxiWritePort {
       take_beat(w);
       held_w_ = {};
     } else {
-      held_w_ = w;
-      held_data_.assign(w.data.begin(), w.data.end());  // the master's span may change under us
-      held_w_.data = held_data_;
+      held_w_ = {};
+      if (w.valid) {  // a valid beat must stay the same until taken; the master's span may change
+        held_data_.assign(w.data.begin(), w.data.end());
+        held_w_ = {true, held_data_, w.strb, w.last};
+      }
     }
     if (b_valid_ && b_ready) {
       bursts_.pop_front();
@@ -262,7 +264,6 @@ class AxiWritePort {
   bool idle() const { return bursts_.empty(); }
   uint64_t n_bursts() const { return n_bursts_; }      ///< bursts taken
   uint64_t n_answered() const { return n_answered_; }  ///< responses taken by the master
-  uint64_t n_beats() const { return n_beats_; }        ///< beats written
 
  private:
   /// @brief A taken burst: written beat by beat, then answered.
@@ -292,7 +293,6 @@ class AxiWritePort {
     const bool last = b->written + 1 == b->beats;
     if (w.last != last) fail(std::format("WLAST {} on beat {} of {}", w.last, b->written + 1, b->beats));
     std::ranges::copy(w.data, mem_.subspan(b->addr - s_.base + b->written * s_.beat_bytes).begin());
-    ++n_beats_;
     if (++b->written == b->beats) b->done = cycle_ + s_.latency;
   }
 
@@ -315,5 +315,5 @@ class AxiWritePort {
   bool w_ready_ = false, b_valid_ = false;
   uint64_t pause_left_ = 0;
   uint64_t cycle_ = 0;
-  uint64_t n_bursts_ = 0, n_answered_ = 0, n_beats_ = 0;
+  uint64_t n_bursts_ = 0, n_answered_ = 0;
 };

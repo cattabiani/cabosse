@@ -160,6 +160,14 @@ def place(mats: Sequence[Command], ports: int, gaps: Sequence[int] | None = None
     return addrs
 
 
+def cache_by_channel(rows: np.ndarray, ports: int) -> np.ndarray:
+    """A KV cache [kv, cap, d] as D-043 spreads it: [ports, kv, cap // ports,
+    d], position i of a KV head on channel i mod ports, row i div ports of
+    its region."""
+    kv_heads, cap, d = rows.shape
+    return rows.reshape(kv_heads, cap // ports, ports, d).transpose(2, 0, 1, 3)
+
+
 def channel_images(mats: Sequence[Command], addrs: Sequence[int], ports: int) -> np.ndarray:
     """Every port's channel, uint32 [ports, words]: each matrix in the lanes'
     order (commands.lane_order), each cache by D-043 (position i of a KV
@@ -169,10 +177,7 @@ def channel_images(mats: Sequence[Command], addrs: Sequence[int], ports: int) ->
     images = np.zeros((ports, end * BEAT_WORDS), dtype=np.uint32)
     for m, addr in zip(mats, addrs, strict=True):
         if isinstance(m, Attention):
-            kv_heads, cap, d = m.cache.shape
-            bits = bf16_bits(m.cache)
-            # [kv, row, channel, d] -> channel-major: each channel's rows in order
-            rows = bits.reshape(kv_heads, cap // ports, ports, d).transpose(2, 0, 1, 3)
+            rows = cache_by_channel(bf16_bits(m.cache), ports)
             words = np.ascontiguousarray(rows).view(np.uint32).reshape(ports, -1)
             images[:, addr // 4 : addr // 4 + words.shape[1]] = words
             continue
