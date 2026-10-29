@@ -28,7 +28,7 @@ reads only cache entries `0…p`, so stale entries need no clearing.
 | Engine | matrix-vector products and attention's two dot products, in BF16 × BF16 → FP32 (numerics.md, section 3) |
 | Vector unit | RMSNorm, softmax, RoPE, SwiGLU, residual adds, the BF16 roundings before each product (section 4) |
 | Controller | reads the command list and starts each operation on the engine, the vector unit and the memory front end |
-| Memory front end | the 32 HBM ports: streams weights into the engine, moves KV tiles between HBM and on-chip buffers |
+| Memory front end | the 32 HBM ports: streams weights into the engine, moves KV tiles between HBM and on-chip buffers; the vector unit's own AXI port for `LOAD` and `KV_STORE` |
 | On-chip buffers | activations (the current vector, partial results), KV tiles, the command list |
 | Host interface | AXI-Lite registers on the shell's OCL port (control); the shell's PCIS port to write HBM from the host (loading) |
 
@@ -158,11 +158,23 @@ can widen without a numerics change. Online softmax changes the spec.
 recip and rsqrt; sums, sums of squares and maxima per row; RoPE's half
 rotation; loads from HBM. Each is one pass over its rows ("Commands").
 
+**`LOAD` and `KV_STORE` (M6).** Both run in the vector unit's pipeline, in
+order with its other commands, so no write meets another's and the buffers
+need no arbitration. They use one AXI master of the vector unit's own (read
+and write, 256 bits, global HBM addresses: channel and offset). `LOAD`'s
+beats take the place of a buffer read and pass the chain unchanged.
+`KV_STORE` reads its rows, rounds them to BF16 and writes a burst per KV
+head where D-043 puts the position. It is done after its last write
+response; later commands run meanwhile, and their dones wait behind it. On
+F2 the wrapper merges this port into one HBM port, and the HBM switch
+carries it to the other channels (to verify, M8).
+
 ## Memory (D-028)
 
 | What | Where | Why |
 |---|---|---|
 | Weights | HBM, spread over all 32 channels | the only memory big and fast enough; all ports stream at once |
+| Embedding, norm weights, RoPE tables | HBM, by rows | `LOAD` reads a row at a time; a tied embedding gets this copy besides the classifier's, in the lanes' order |
 | KV cache | HBM, spread over all 32 channels | grows with the position; read every token |
 | Command list | on chip, next to the controller | small (below, "One token as commands"); fetched with no HBM latency |
 | Activations | on chip | small, used constantly; no HBM traffic (perf.md's assumption) |

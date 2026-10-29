@@ -17,6 +17,7 @@ fp32_chain.sv
 dot_lane.sv
 stream_fifo.sv
 port_dma.sv
+port_wdma.sv
 rotate.sv
 tile_buffer.sv
 engine.sv
