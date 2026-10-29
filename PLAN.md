@@ -929,6 +929,27 @@ with the memory model's write side; real data, speed and
 engine's pipelined step control, then its placed
 Vivado build (D-051); checkpoint report.
 
+**Answers for `LOAD` and `KV_STORE` (owner, 2026-10-29):**
+- Both run in the vector unit's own pipeline, in order with its other
+  commands: `LOAD`'s beats take the place of a's read (BF16 converted up
+  exactly), pass the chain unchanged and are written like any result;
+  `KV_STORE` reads a, passes the chain, and its write stage rounds to BF16
+  and sends the beats to AXI instead of a buffer. No write collides with
+  another, so the buffers need no arbitration; the ext port stays the
+  testbench's (and the engine's, M7).
+- One AXI master of the vector unit's own (read and write channels, 256
+  bits, one ID), with global HBM addresses (channel and offset; `KV_STORE`
+  writes D-043's place, where the engine reads). In M8 the F2 wrapper
+  merges it into one HBM port and the HBM switch carries it to the other
+  channels (to verify); if the switch fails, `KV_STORE` moves to the engine
+  ports' unused write channels.
+- `LOAD BY_TOKEN` reads a row-ordered embedding: with tied embeddings the
+  host stores a second copy for `LOAD` (about 57 MB for SmolLM2, 136 MB for
+  Qwen2.5-0.5B), the classifier keeps the lanes' order.
+- A `KV_STORE` is done after its last write response (D-044), and the unit
+  keeps taking commands meanwhile; `done_o` stays one pulse per command in
+  list order, so later commands' dones wait behind it.
+
 **Progress:**
 - [x] Answers above (PR #59).
 - [x] S and P at the STRIDE register's stride, and the buffer-port check
