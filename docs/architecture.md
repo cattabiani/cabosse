@@ -396,8 +396,8 @@ command that repeats a layer's block at shifted addresses would fix that.
 <!-- begin: ladder -->
 | model | layers | context | commands | command bytes | HBM (MiB) |
 |---|---|---|---|---|---|
-| SmolLM2-135M-Instruct | 30 | 8192 | 1333 | 42,656 | 440.7 |
-| Qwen2.5-0.5B-Instruct | 24 | 32768 | 1069 | 34,208 | 1,342.3 |
+| SmolLM2-135M-Instruct | 30 | 8192 | 1333 | 42,656 | 494.7 |
+| Qwen2.5-0.5B-Instruct | 24 | 32768 | 1069 | 34,208 | 1,602.0 |
 
 Command buffer: 64 KiB, 2,048 commands.
 <!-- end: ladder -->
@@ -491,9 +491,9 @@ SmolLM2-135M-Instruct, cache of 8192 positions:
 | 1327 | RSQRT | R | R |  |  | 1 | 1 |  |  |  |
 | 1328 | MUL | T | H | R |  | 1 | 576 | B_PER_ROW |  |  |
 | 1329 | MUL | X | T | W |  | 1 | 576 |  |  |  |
-| 1330 | MATVEC | LOGITS | X |  |  | 49152 | 576 |  |  | 0x0 |
+| 1330 | MATVEC | LOGITS | X |  |  | 49152 | 576 |  |  | 0x1B8BD000 |
 | 1331 | OUTPUT |  | LOGITS |  |  | 49152 |  |  |  |  |
 | 1332 | END |  |  |  |  |  |  |  |  |  |
 
-1333 commands (44 per layer), 42,656 bytes. HBM in use: 440.7 MiB.
+1333 commands (44 per layer), 42,656 bytes. HBM in use: 494.7 MiB.
 <!-- end: token -->

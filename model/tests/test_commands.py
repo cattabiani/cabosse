@@ -80,7 +80,6 @@ def test_layout_is_aligned_and_does_not_overlap(tied: bool) -> None:
     spans = sorted({(a, a + commands.n_bytes(s, t)) for a, s, t in layout.tensors.values()})
     assert all(a % commands.ALIGN == 0 for a, _ in spans)
     assert all(end <= start for (_, end), (start, _) in zip(spans, spans[1:], strict=False))
-    assert (layout.addr("lm_head") == layout.addr("embed")) == tied
 
 
 def test_every_opcode_is_documented_and_used() -> None:

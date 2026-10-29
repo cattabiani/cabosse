@@ -944,7 +944,7 @@ Vivado build (D-051); checkpoint report.
   channels (to verify); if the switch fails, `KV_STORE` moves to the engine
   ports' unused write channels.
 - `LOAD BY_TOKEN` reads a row-ordered embedding: with tied embeddings the
-  host stores a second copy for `LOAD` (about 57 MB for SmolLM2, 136 MB for
+  host stores a second copy for `LOAD` (about 57 MB for SmolLM2, 272 MB for
   Qwen2.5-0.5B), the classifier keeps the lanes' order.
 - A `KV_STORE` is done after its last write response (D-044), and the unit
   keeps taking commands meanwhile; `done_o` stays one pulse per command in

@@ -331,15 +331,14 @@ class Layout:
                 p + "k_cache": (cache, BF16),
                 p + "v_cache": (cache, BF16),
             }
+        # Its own copy when tied to embed: LOAD reads embed by rows, the
+        # engine lm_head in the lanes' order (lane_order).
         shapes["final_norm"] = ((hidden,), BF16)
-        if not c.tie_word_embeddings:
-            shapes["lm_head"] = ((c.vocab_size, hidden), BF16)
+        shapes["lm_head"] = ((c.vocab_size, hidden), BF16)
         tensors, addr = {}, 0
         for name, (shape, dtype) in shapes.items():
             tensors[name] = (addr, shape, dtype)
             addr += -(-n_bytes(shape, dtype) // ALIGN) * ALIGN
-        if c.tie_word_embeddings:
-            tensors["lm_head"] = tensors["embed"]  # last: run() names the address lm_head
         return Layout(config, cap, stride, tensors)
 
     def addr(self, name: str) -> int:
