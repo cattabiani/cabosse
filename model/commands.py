@@ -842,8 +842,10 @@ def kv_store_command(
     cmd: Command, buf: dict[Buf, torch.Tensor], mem: torch.Tensor, position: int
 ) -> None:
     """KV_STORE: row `position` of each of the n heads of the cache `mem`
-    (n × cap × m, BF16) = a's n rows of m, rounded."""
+    (n × cap × m, BF16) = a's n rows of m, rounded. m (the head dimension)
+    is a power of two: a row is one burst inside a 4 KB page (D-043)."""
     assert mem.shape == (cmd.n, cmd.cap, cmd.m) and buf[cmd.a].dtype == F32, (mem.shape, cmd)
+    assert cmd.m & (cmd.m - 1) == 0, cmd
     mem[:, position] = arith.bf16(buffer_span(buf[cmd.a], cmd.n, cmd.m))
 
 

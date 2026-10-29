@@ -1036,13 +1036,15 @@ Vivado build (D-051); checkpoint report.
   `rtl/port_wdma.sv` writes a burst per KV head at D-043's place, through a
   queue of 64 beats with credits; dones in order through a queue of tags
   (one per command taken: KV_STORE or not, its heads). The addresses are
-  registered the cycle after the take (one multiply, by beats).
+  registered the cycle after the take (by beats; a small second multiply
+  for a head's region). `KV_STORE` needs m a power of two (one burst inside
+  a 4 KB page) and `cap` a multiple of the channels, as the engine does.
   `commands.Layout` gives a tied `lm_head` its own copy, so `LOAD BY_TOKEN`
   reads `embed` by rows (`load_command` and `kv_store_command` are `run()`'s
   steps). The memory model gains a write port that checks itself
   (`verif/bulk/axi_mem.h`: every channel held while waiting, full strobes,
   WLAST on each burst's last beat, each burst answered once). Tests
-  (`verif/tests/test_vec_mem.py`, 69): `LOAD` in every row mode from BF16
+  (`verif/tests/test_vec_mem.py`, 70): `LOAD` in every row mode from BF16
   and FP32 into FP32 and BF16 buffers, a row about 260 MiB in (Qwen2.5's
   last token), `KV_STORE` at positions in every
   channel with its done after its last response, later commands running
@@ -1052,10 +1054,15 @@ Vivado build (D-051); checkpoint report.
   mutations, all caught (the queue's credits only once the test's rows
   were 16 beats and 4 heads a command), and 6 again after the /simplify
   changes to the done queue and the write's destinations. Found on the way: a BF16 NaN must
-  become the canonical NaN on `LOAD` (`bf16_to_fp32`), as `up()` does.
+  become the canonical NaN on `LOAD` (`bf16_to_fp32`), as `up()` does;
+  and (/code-review) `port_wdma`'s data waited for its address to be taken,
+  which AXI forbids: a slave that takes an address only once its data is in
+  (the memory model's `aw_after_w`, now in the slow tests) deadlocked it.
   Next in this step: the tiny config's whole decode step (vector, `LOAD`
   and `KV_STORE` commands, the engine's results from the golden model) in
-  CI.
+  CI. It needs `KV_STORE`'s address as an offset within a channel, as the
+  unit takes it, while `Layout`'s addresses are still flat (D-040: they
+  move to channel offsets in M7); the test maps them until then.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register

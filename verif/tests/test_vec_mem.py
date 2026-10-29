@@ -28,7 +28,7 @@ LOAD_ADDR = 0x400  # channel 0, below the cache's offset
 CACHE_ADDR = 0x2000  # the KV cache's offset in every channel
 CAP = 16  # cache rows per head: 4 a channel
 SLOW = {"latency": 30, "rate": 600, "pause": 20, "pause_max": 6}
-SLOW_WRITES = {"wlatency": 40, "wrate": 600, "wpause": 20, "wpause_max": 6}
+SLOW_WRITES = {"wlatency": 40, "wrate": 600, "wpause": 20, "wpause_max": 6, "waw_after_w": 1}
 
 
 def random_memory(rng: np.random.Generator) -> np.ndarray:
@@ -148,6 +148,22 @@ def test_kv_store(m: int, position: int) -> None:
     )
     assert len(result.answers) == heads, result.answers
     assert result.done[0] > result.answers.max(), (result.done, result.answers)
+
+
+@rtl.needs_verilator
+def test_kv_store_into_a_slave_that_waits_for_data() -> None:
+    """A write port that takes an address only once its burst's data is in
+    (AXI allows it): the unit's data must not wait for the address."""
+    rng = np.random.default_rng(SEED)
+    steps = [Step(kv_store(Buf.KR, 3, 64), t=7), Step(kv_store(Buf.V, 3, 64), t=7)]
+    vector.check(
+        steps,
+        vector.random_buffers(rng, LENGTH),
+        LENGTH,
+        "aw after w",
+        random_memory(rng),
+        waw_after_w=1,
+    )
 
 
 @rtl.needs_verilator

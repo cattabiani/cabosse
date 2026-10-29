@@ -4,9 +4,12 @@
 // One AXI port's writer (PLAN.md, M6: KV_STORE): a command is one burst, a
 // beat-aligned address and 1 to MaxBurst beats inside one 4 KB page (the
 // caller's to keep); its beats come from the data stream in order, full beats
-// (every strobe set). A burst's data goes out once its address is taken, and
-// done_o pulses for each write response, in order, err_o (sticky) for one
-// that is not OKAY. At most Outstanding bursts are sent and not yet answered.
+// (every strobe set). A burst's data goes out from its command's take, not
+// waiting for its address to be taken (AXI: WVALID must not wait for
+// AWREADY; a slave may wait for data before taking an address), and done_o
+// pulses for each write response, in order, err_o (sticky) for one that is
+// not OKAY. At most Outstanding bursts are sent and not yet answered, and at
+// most Outstanding taken and not yet written.
 //
 // AXI: write channels only, in the subset AXI3 and AXI4 share: incrementing
 // bursts of the full data width, one ID (responses in order; no ID ports).
@@ -61,14 +64,16 @@ module port_wdma #(
     $error("port_wdma: DataWidth must be a power of two, 8 to 1024 bits");
   end
 
-  // The address channel holds one burst; once taken, its length waits in
-  // lens for its data. sent_q counts bursts taken and not yet answered.
+  // The address channel holds one burst; its length waits in lens for its
+  // data from the command's take. sent_q counts bursts sent and not yet
+  // answered.
   logic [AddrWidth-1:0] addr_q;
   logic [LenW-1:0]      beats_q, lens_out, beat_q;
-  logic                 aw_q, aw_fire, lens_valid, w_fire;
+  logic                 aw_q, aw_fire, lens_valid, lens_ready, cmd_fire, w_fire;
   logic [OW-1:0]        sent_q;
 
-  assign cmd_ready_o = !aw_q;
+  assign cmd_ready_o = !aw_q && lens_ready;
+  assign cmd_fire    = cmd_valid_i && cmd_ready_o;
   assign aw_valid_o  = aw_q && sent_q != OW'(Outstanding);
   assign aw_fire     = aw_valid_o && aw_ready_i;
   assign aw_addr_o   = addr_q;
@@ -79,7 +84,7 @@ module port_wdma #(
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       aw_q <= 1'b0;
-    end else if (cmd_valid_i && cmd_ready_o) begin
+    end else if (cmd_fire) begin
       aw_q    <= 1'b1;
       addr_q  <= cmd_addr_i;
       beats_q <= cmd_beats_i;
@@ -88,16 +93,12 @@ module port_wdma #(
     end
   end
 
-  // Every burst taken has a place: sent_q < Outstanding when it is.
-  // verilator lint_off UNUSEDSIGNAL
-  logic unused_lens_ready;
-  // verilator lint_on UNUSEDSIGNAL
   stream_fifo #(.Width(LenW), .Depth(Outstanding)) u_lens (
     .clk_i,
     .rst_ni,
-    .in_valid_i (aw_fire),
-    .in_ready_o (unused_lens_ready),
-    .in_data_i  (beats_q),
+    .in_valid_i (cmd_fire),
+    .in_ready_o (lens_ready),
+    .in_data_i  (cmd_beats_i),
     .out_valid_o(lens_valid),
     .out_ready_i(w_fire && w_last_o),
     .out_data_o (lens_out)

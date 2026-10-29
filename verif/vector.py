@@ -90,6 +90,7 @@ def cache_view(mem: np.ndarray, cmd: Command) -> np.ndarray:
     """KV_STORE's cache in the memory's image (from address 0), as BF16 bits
     [KV_PORTS, n, cap / KV_PORTS, m] (engine.cache_by_channel's order): the
     same offset in every channel (D-043). A view: writes go to the memory."""
+    assert cmd.cap % KV_PORTS == 0, cmd  # whole rows in every channel, as the unit needs
     channels = mem.view(np.uint16).reshape(KV_PORTS, -1)
     rows = cmd.n * cmd.cap // KV_PORTS * cmd.m
     region = channels[:, cmd.addr // 2 : cmd.addr // 2 + rows]

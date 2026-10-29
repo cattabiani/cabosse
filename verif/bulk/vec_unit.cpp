@@ -69,6 +69,10 @@ struct DoneError : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
 
+// Beats go word by word through set_bits / get_bits, not a byte copy into
+// the port as port_dma.cpp does: at 4 lanes or fewer a beat is a plain
+// integer, not a VlWide with data().
+
 /// @brief Word i (little-endian) of a run of bytes.
 uint32_t word_at(std::span<const std::byte> bytes, size_t i) {
   std::array<std::byte, 4> w;

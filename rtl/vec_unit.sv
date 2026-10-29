@@ -48,7 +48,9 @@
 // (port_dma); a group's beats take the place of a's read (BF16 converted up
 // exactly), pass the chain unchanged and are written like any result. Its
 // rows must be whole beats: m a multiple of Lanes (BF16) or Lanes / 2 (FP32).
-// KV_STORE (n heads of m, m a multiple of Lanes up to 16 * Lanes) reads a,
+// KV_STORE (n heads of m, m a power of two from Lanes to 16 * Lanes beats'
+// worth, KvMaxBurst; cap a multiple of KvPorts: so a row is one burst inside
+// a 4 KB page, as the engine's head dimension and cap already are) reads a,
 // passes the chain, and its write stage rounds the group to BF16 and queues
 // it as a beat for port_wdma, a burst per head: position p of head h at
 // channel p mod KvPorts, row p div KvPorts of h's region of cap / KvPorts rows
@@ -327,7 +329,8 @@ module vec_unit
   // A row's beats (LOAD: m BF16 or FP32 values; KV_STORE: m BF16). The
   // cycle after the take, its first byte: LOAD's row mrow; KV_STORE's
   // channel and row in it for position mrow, and a head's region (D-043).
-  // One multiply for both, by beats.
+  // By beats: one multiply for either first byte, a small one (a row is at
+  // most KvMaxBurst beats) for the region.
   logic [AddrW-1:0] row_idx, region_beats;
   assign ld_bf16   = is_kv || cur_q.flags[SrcBf16];
   assign row_beats = ld_bf16 ? cur_q.len >> LW : cur_q.len >> (LW - 1);
