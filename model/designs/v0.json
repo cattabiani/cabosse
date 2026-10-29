@@ -8,8 +8,8 @@
  "vector_elems_per_cycle": {"value": 16, "unit": "elements/cycle", "status": "choice", "source": "docs/architecture.md, vector unit (D-030)"},
  "command_cycles": {"value": 64, "unit": "cycles/command", "status": "guess", "source": "none yet (the controller is designed in M2/M7)"},
  "engine_startup_cycles": {"value": 64, "unit": "cycles/command", "status": "measured by us", "source": "per engine command that waits for an earlier result (D-042), weights or KV read ahead: the most a SmolLM2 engine command after the first took over its engine cycles (SCORES at positions 1023 and 8191; MATVECs 61), 128-lane RTL in simulation (reports/data/M5-engine.json, real); scenarios with other lanes or accumulators reuse it (estimate: its drain and final sum change with them)"},
- "softmax_fused": {"value": 0, "unit": "flag", "status": "choice", "source": "D-054: softmax's subtraction, exp and sum in one vector pass, with an FP32 adder before and after each slot's chain; 1 once built (M6)"},
- "max_in_drain": {"value": 0, "unit": "flag", "status": "choice", "source": "D-054: the engine keeps each score row's max as it writes it, so softmax has no MAX pass; 1 once built (with D-051's engine work)"},
+ "softmax_fused": {"value": 0, "unit": "flag", "status": "choice", "source": "D-054: softmax's subtraction, exp and sum in one vector pass, with an FP32 adder before and after each slot's chain; deferred (D-057)"},
+ "max_in_drain": {"value": 0, "unit": "flag", "status": "choice", "source": "D-054: the engine keeps each score row's max as it writes it, so softmax has no MAX pass; deferred (D-057)"},
  "kv_tiles_shared": {"value": 0, "unit": "flag", "status": "choice", "source": "Q-27: a K or V tile serves every query head of its group; not planned"},
  "scenarios": {
   "as planned": {},

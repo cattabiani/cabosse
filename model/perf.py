@@ -324,8 +324,8 @@ def ops(
     position + 1 cache rows), one entry per command, on an engine of
     `lanes` lanes (attention reads whole tiles of that many positions),
     with the design flags (module docstring). The softmax flags drop
-    softmax's commands here until commands.build() has the fused command
-    and the engine's max (D-054, M6)."""
+    softmax's commands here: commands.build() has neither the fused
+    command nor the engine's max (D-054, deferred by D-057)."""
     layout = commands.Layout.of(config, cap=position + 1)
     cmds = commands.build(layout)
     dropped = {commands.Op.MAX} if max_in_drain else set()
