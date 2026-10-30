@@ -18,5 +18,178 @@
    "DSPs": 14,
    "carry blocks": 538
   }
+ },
+ "latency": {
+  "provenance": {
+   "commit": "bb0abb1a6eb9c13ac28c40f6f52332fa29791fa4",
+   "dirty": false,
+   "date": "2026-10-30",
+   "machine": "Linux x86_64"
+  },
+  "0": {
+   "cycles": 176323,
+   "model_cycles": 176293.0,
+   "worst": {
+    "index": 14,
+    "kind": "kv_store",
+    "cycles": 13,
+    "model_cycles": 12.0,
+    "off": 0.08333333333333326
+   },
+   "cycles_by_kind": {
+    "load": 7037,
+    "sumsq": 11956,
+    "mul": 29572,
+    "add": 14964,
+    "rsqrt": 3294,
+    "rotate_half": 1980,
+    "fma": 4620,
+    "kv_store": 4500,
+    "max": 42990,
+    "exp": 6330,
+    "sum": 42990,
+    "recip": 6090
+   },
+   "latencies": {
+    "vector_startup_cycles": {
+     "53": 785
+    },
+    "load_latency_cycles": {
+     "74": 63
+    },
+    "reduction_tail_cycles": {
+     "107": 61
+    },
+    "kv_store_latency_cycles": {
+     "72": 30
+    },
+    "reduction_row_cycles": {
+     "159": 60
+    }
+   }
+  },
+  "63": {
+   "cycles": 178933,
+   "model_cycles": 178903.0,
+   "worst": {
+    "index": 14,
+    "kind": "kv_store",
+    "cycles": 13,
+    "model_cycles": 12.0,
+    "off": 0.08333333333333326
+   },
+   "cycles_by_kind": {
+    "load": 7037,
+    "sumsq": 11956,
+    "mul": 30382,
+    "add": 15774,
+    "rsqrt": 3294,
+    "rotate_half": 1980,
+    "fma": 4620,
+    "kv_store": 4500,
+    "max": 43080,
+    "exp": 7140,
+    "sum": 43080,
+    "recip": 6090
+   },
+   "latencies": {
+    "vector_startup_cycles": {
+     "53": 785
+    },
+    "load_latency_cycles": {
+     "74": 63
+    },
+    "reduction_tail_cycles": {
+     "107": 61
+    },
+    "kv_store_latency_cycles": {
+     "72": 30
+    },
+    "reduction_row_cycles": {
+     "159": 60
+    }
+   }
+  },
+  "1023": {
+   "cycles": 231133,
+   "model_cycles": 231103.0,
+   "worst": {
+    "index": 14,
+    "kind": "kv_store",
+    "cycles": 13,
+    "model_cycles": 12.0,
+    "off": 0.08333333333333326
+   },
+   "cycles_by_kind": {
+    "load": 7037,
+    "sumsq": 11956,
+    "mul": 46582,
+    "add": 31974,
+    "rsqrt": 3294,
+    "rotate_half": 1980,
+    "fma": 4620,
+    "kv_store": 4500,
+    "max": 44880,
+    "exp": 23340,
+    "sum": 44880,
+    "recip": 6090
+   },
+   "latencies": {
+    "vector_startup_cycles": {
+     "53": 785
+    },
+    "load_latency_cycles": {
+     "74": 63
+    },
+    "reduction_tail_cycles": {
+     "107": 61
+    },
+    "kv_store_latency_cycles": {
+     "72": 30
+    },
+    "reduction_row_cycles": {
+     "159": 60
+    }
+   }
+  },
+  "8191": {
+   "cycles": 790333,
+   "model_cycles": 790303.0,
+   "worst": {
+    "index": 14,
+    "kind": "kv_store",
+    "cycles": 13,
+    "model_cycles": 12.0,
+    "off": 0.08333333333333326
+   },
+   "cycles_by_kind": {
+    "load": 7037,
+    "sumsq": 11956,
+    "mul": 167542,
+    "add": 152934,
+    "rsqrt": 3294,
+    "rotate_half": 1980,
+    "fma": 4620,
+    "kv_store": 4500,
+    "max": 143040,
+    "exp": 144300,
+    "sum": 143040,
+    "recip": 6090
+   },
+   "latencies": {
+    "vector_startup_cycles": {
+     "53": 785
+    },
+    "load_latency_cycles": {
+     "74": 63
+    },
+    "reduction_tail_cycles": {
+     "107": 61
+    },
+    "kv_store_latency_cycles": {
+     "72": 30
+    }
+   }
+  }
  }
 }
