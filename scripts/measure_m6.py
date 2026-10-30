@@ -3,26 +3,38 @@
 """Measurements of the vector unit (PLAN.md, M6) into reports/data/M6.json,
 each part replacing its own key:
 
-    python scripts/measure_m6.py area   # Yosys for UltraScale+: one FMA, one slot's chain
-    python scripts/measure_m6.py show   # print the table from the saved data
+    python scripts/measure_m6.py area     # Yosys for UltraScale+: one FMA, one slot's chain
+    python scripts/measure_m6.py latency  # SmolLM2's whole step: each command's cycles
+    python scripts/measure_m6.py show     # print the tables from the saved data
 
 `area` needs Yosys with the slang plugin (.tools/, scripts/get_rtl_tools.sh)
 and takes a few minutes. Yosys's cells are a proxy, not Vivado's
 utilization: the table scales M3's Vivado numbers for one fp32_fma by the
-chain's ratio to it (an estimate until M8's build). Commit first: the data
-records the commit.
+chain's ratio to it (an estimate until M8's build).
+
+`latency` runs SmolLM2's whole decode step on the vector unit
+(verif/decode.py) at the real-data positions, about 2 minutes and 3 GB:
+run it under the memory cap. It needs the checkpoint and the long cache
+(scripts/fill_long_cache.py). Each latency of the perf model's
+vector_cycles (D-053) comes from the commands that show it alone, every
+value found with its count: design v0 takes them when each has one value.
+Commit first: the data records the commit.
 """
 
 import argparse
+import collections
 import json
+import math
 import re
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-for sub in ("model", "verif"):
+for sub in ("model", "model/tests", "verif"):
     sys.path.insert(0, str(REPO / sub))
 
+import decode  # noqa: E402
+import perf  # noqa: E402
 from reporting import blocks, measure  # noqa: E402
 
 import rtl  # noqa: E402  (puts .tools/ on PATH)
@@ -33,6 +45,11 @@ SLOTS = 16  # the vector unit's width (D-030)
 # One fp32_fma in Vivado on F2's part, MulRegs = 2 (PLAN.md, M3: the fifth
 # timing log): LUTs, registers, DSPs.
 VIVADO_FMA = {"LUTs": 1262, "registers": 535, "DSPs": 2}
+DESIGN = perf.load_design("v0").values()
+# Commands whose next one does not start right behind their groups
+# (perf.vector_cycles: after a reduction, at its done; a KV_STORE's done
+# comes later than its groups and start-up).
+LATE_START = ("kv_store", *perf.REDUCTION_KINDS)
 # Yosys's UltraScale+ cells, by what they count.
 KINDS = {
     "LUTs": re.compile(r"LUT\d|SRL\w*"),  # shift registers are LUTs too
@@ -54,6 +71,98 @@ def area() -> dict:
     return {top: yosys_cells(top) for top in TOPS}
 
 
+def latencies(steps: tuple[perf.Step, ...], got: list[int]) -> dict[str, collections.Counter]:
+    """Each latency of perf.vector_cycles as the commands that show it
+    alone give it, value -> count: vector_startup_cycles past the groups
+    of an elementwise command that stops; reduction_tail_cycles past those
+    and the start-up for a reduction of one row that stops;
+    reduction_row_cycles for a reduction of more rows, each shorter than
+    that; load_latency_cycles past the beats of a LOAD after an elementwise
+    command or a LOAD (the latency the two share is the start-up);
+    kv_store_latency_cycles past the groups and the start-up for a
+    KV_STORE that stops."""
+    lanes = DESIGN["vector_elems_per_cycle"]
+    found = collections.defaultdict(collections.Counter)
+    for s, g in zip(steps, got, strict=True):
+        rows, length = s.walk
+        if s.stops and s.kind not in ("load", "kv_store", *perf.REDUCTION_KINDS):
+            found["vector_startup_cycles"][g - rows * math.ceil(length / lanes)] += 1
+    (startup,) = found["vector_startup_cycles"]  # one value, else no constant
+    for p, s, g in zip((None, *steps), steps, got, strict=False):
+        rows, length = s.walk
+        row_groups = math.ceil(length / lanes)
+        if s.kind in perf.REDUCTION_KINDS and s.stops and rows == 1:
+            found["reduction_tail_cycles"][g - row_groups - startup] += 1
+        elif s.kind == "kv_store" and s.stops:
+            found["kv_store_latency_cycles"][g - rows * row_groups - startup] += 1
+        elif s.kind == "load" and p is not None and not s.stops and p.kind not in LATE_START:
+            beats = math.ceil(s.weight_bytes / perf.commands.BEAT_BYTES)
+            found["load_latency_cycles"][g - beats] += 1
+    (tail,) = found["reduction_tail_cycles"]
+    for s, g in zip(steps, got, strict=True):
+        rows, length = s.walk
+        row_groups = math.ceil(length / lanes)
+        if s.kind in perf.REDUCTION_KINDS and s.stops and rows > 1:
+            row = (g - startup - tail - row_groups) / (rows - 1)
+            if row > row_groups:
+                found["reduction_row_cycles"][int(row) if row.is_integer() else row] += 1
+    return found
+
+
+def latency() -> dict:
+    """Per position: the unit's cycles and the perf model's in total, the
+    worst command against the model, the unit's cycles by kind, and the
+    latencies found (latencies())."""
+    out = {}
+    for position in decode.SMOLLM2_POSITIONS:
+        got, model, steps = decode.smollm2_step(position)
+        off = [g / m - 1 for g, m in zip(got, model, strict=True)]
+        worst = max(range(len(off)), key=lambda i: abs(off[i]))
+        by_kind = collections.Counter()
+        for s, g in zip(steps, got, strict=True):
+            by_kind[s.kind] += g
+        out[str(position)] = {
+            "cycles": sum(got),
+            "model_cycles": sum(model),
+            "worst": {
+                "index": worst,
+                "kind": steps[worst].kind,
+                "cycles": got[worst],
+                "model_cycles": model[worst],
+                "off": off[worst],
+            },
+            "cycles_by_kind": dict(by_kind),
+            "latencies": {
+                k: {str(v): n for v, n in c.items()} for k, c in latencies(steps, got).items()
+            },
+        }
+    return out
+
+
+def latency_tables(data: dict) -> str:
+    """The latencies found at each position, and each position's cycles."""
+    positions = [k for k in data if k != "provenance"]
+    names = sorted({n for p in positions for n in data[p]["latencies"]})
+    rows = [
+        [
+            n,
+            *(
+                "; ".join(f"{v} ({c}x)" for v, c in data[p]["latencies"].get(n, {}).items()) or "-"
+                for p in positions
+            ),
+        ]
+        for n in names
+    ]
+    head = ["latency (cycles found, count)", *(f"position {p}" for p in positions)]
+    cycles = []
+    for p in positions:
+        d, w = data[p], data[p]["worst"]
+        worst = f"{w['kind']}: {w['cycles']} against {w['model_cycles']:.0f} ({w['off']:+.1%})"
+        cycles.append([p, f"{d['cycles']:,}", f"{d['model_cycles']:,.0f}", worst])
+    head2 = ["position", "unit cycles", "perf model", "worst command"]
+    return blocks.table(head, rows) + "\n\n" + blocks.table(head2, cycles)
+
+
 def table(data: dict) -> str:
     """Per top: Yosys's cells, and the Vivado estimate (M3's FMA times the
     ratio); the vector unit's 16 slots."""
@@ -71,15 +180,16 @@ def table(data: dict) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("part", choices=("area", "show"))
+    parser.add_argument("part", choices=("area", "latency", "show"))
     args = parser.parse_args()
     data = json.loads(DATA.read_text()) if DATA.exists() else {}
     if args.part != "show":
         data[args.part] = {"provenance": measure.provenance()} | globals()[args.part]()
         DATA.write_text(json.dumps(data, indent=1) + "\n")
-    if "area" not in data:
-        sys.exit(f"no area data in {DATA}: run `python scripts/measure_m6.py area` first")
-    print(table(data["area"]))
+    if "area" in data:
+        print(table(data["area"]))
+    if "latency" in data:
+        print(latency_tables(data["latency"]))
 
 
 if __name__ == "__main__":
