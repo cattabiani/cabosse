@@ -1064,8 +1064,9 @@ Vivado build (D-051); checkpoint report.
   order). The driver gains engine steps: once every earlier command is
   done, it reads the engine's input and writes its result
   (`commands.run()`'s `EngineCall`) through the ext port. Checked bit for
-  bit: each engine command's input, every buffer at the end (`run()`'s,
-  through its new `buffers_out`; all start as NaN), and the whole memory.
+  bit: each engine command's input, every buffer at the end (`run()` now
+  takes the starting buffers: both start from the same NaN ones), and the
+  whole memory.
   Memory map: channel 0 (256 KiB) holds `Layout`'s flat image, `LOAD`
   reads it at its flat addresses, and `KV_STORE` takes a cache's flat
   address as its offset in every channel (D-043; D-040's offsets come in

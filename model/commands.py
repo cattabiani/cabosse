@@ -856,18 +856,17 @@ def run(
     token: int,
     position: int,
     record: Callable[[EngineCall], None] | None = None,
-    buffers_out: dict[Buf, torch.Tensor] | None = None,
+    start: dict[Buf, torch.Tensor] | None = None,
 ) -> torch.Tensor | None:
     """Execute a command list for one token, as the controller does: buffers
-    start with stale data (empty_buffers), HBM (the KV cache) is updated in
-    place. Returns what OUTPUT wrote to the host, or None for a list without
-    OUTPUT (a prompt token whose logits the host does not need). `record`
-    gets every engine command's EngineCall; `buffers_out`, if given, every
-    buffer at END."""
+    start with stale data (empty_buffers, or `start`, updated in place),
+    HBM (the KV cache) is updated in place. Returns what OUTPUT wrote to the
+    host, or None for a list without OUTPUT (a prompt token whose logits the
+    host does not need). `record` gets every engine command's EngineCall."""
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
     names = {addr: name for name, (addr, _, _) in layout.tensors.items()} if record else {}
     waits = engine_waits(commands) if record else []
-    buf = empty_buffers(buffers(layout.config, layout.stride))
+    buf = empty_buffers(buffers(layout.config, layout.stride)) if start is None else start
     output = None
     t = position + 1  # positions attention reads: 0 ... position
     stride = layout.stride  # the STRIDE register
@@ -904,8 +903,6 @@ def run(
                 vector_command(cmd, buf, t, stride)
             case Op.END:  # must be the last command (the COMMANDS register's count)
                 assert i == len(commands) - 1, f"{len(commands) - 1 - i} commands after END"
-                if buffers_out is not None:
-                    buffers_out.update(buf)
                 return output
             case _:  # the controller stops with STATUS error and the index in ERROR
                 raise AssertionError(f"unknown command {cmd.op!r}")

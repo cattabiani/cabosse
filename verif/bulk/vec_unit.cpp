@@ -29,9 +29,9 @@
 ///
 /// Output: per command the cycle it was taken and the cycle of its done_o
 /// (counted from the first command's offer); per engine step's read, then
-/// per read, its Lanes words; the
-/// memory's words; the number of write responses, then the cycle of each;
-/// err_o; the cycles from the first offer to the last done_o.
+/// per read, its Lanes words; the memory's words; the number of write
+/// responses, then the cycle of each; err_o; the cycles from the first offer
+/// to the last done_o.
 /// Checks, each ending the run with a message: no done_o past the last
 /// command, no command left without one, the AXI rules (axi_mem.h), and no
 /// burst left unanswered at the end.
@@ -63,10 +63,15 @@ struct Write {
   std::span<const uint32_t> data;  ///< kLanes words
 };
 
+/// @brief One ext read: kLanes words of a buffer.
+struct Read {
+  uint32_t buf, addr;
+};
+
 /// @brief An engine command's stand-in: what it reads, then what it writes.
 struct EngineStep {
   size_t before;  ///< the command it goes before (the number of commands: after the last)
-  std::vector<std::pair<uint32_t, uint32_t>> reads;  ///< buffer, first element
+  std::vector<Read> reads;
   std::vector<Write> writes;
   size_t n_ops() const { return reads.size() + writes.size(); }
 };
@@ -111,11 +116,11 @@ std::vector<Write> take_writes(Reader& in) {
 
 /// @brief Ext reads from the input: their number, then buffer and first
 /// element each.
-std::vector<std::pair<uint32_t, uint32_t>> take_reads(Reader& in) {
-  std::vector<std::pair<uint32_t, uint32_t>> out;
+std::vector<Read> take_reads(Reader& in) {
+  std::vector<Read> out;
   for (size_t i = 0, n = in.next(); i < n; ++i) {
     const auto f = in.take(2);
-    out.emplace_back(f[0], f[1]);
+    out.push_back({f[0], f[1]});
   }
   return out;
 }
@@ -200,6 +205,29 @@ struct Bench {
             dut.b_ready_o);
   }
 
+  /// @brief An ext write onto the port, for the next cycle.
+  void put_write(const Write& w) {
+    dut.ext_w_valid_i = 1;
+    dut.ext_w_buf_i = w.buf;
+    dut.ext_w_addr_i = w.addr;
+    dut.ext_w_mask_i = w.mask;
+    for (size_t l = 0; l < kLanes; ++l) set_bits(dut.ext_w_data_i, 32 * l, 32, w.data[l]);
+  }
+
+  /// @brief An ext read onto the port, for the next cycle.
+  void put_read(const Read& r) {
+    dut.ext_r_valid_i = 1;
+    dut.ext_r_buf_i = r.buf;
+    dut.ext_r_addr_i = r.addr;
+  }
+
+  /// @brief The ext port's read data: the kLanes words read the cycle before.
+  std::vector<uint32_t> read_data() const {
+    std::vector<uint32_t> out(kLanes);
+    for (size_t l = 0; l < kLanes; ++l) out[l] = static_cast<uint32_t>(get_bits(dut.ext_r_data_o, 32 * l, 32));
+    return out;
+  }
+
   /// @brief An engine step's next read or write onto the ext port, once
   /// every earlier command is done.
   /// @return whether it was a read.
@@ -208,15 +236,9 @@ struct Bench {
     const EngineStep& s = engine[next_step];
     const bool read = step_op < s.reads.size();
     if (read) {
-      dut.ext_r_valid_i = 1;
-      std::tie(dut.ext_r_buf_i, dut.ext_r_addr_i) = s.reads[step_op];
+      put_read(s.reads[step_op]);
     } else {
-      const Write& w = s.writes[step_op - s.reads.size()];
-      dut.ext_w_valid_i = 1;
-      dut.ext_w_buf_i = w.buf;
-      dut.ext_w_addr_i = w.addr;
-      dut.ext_w_mask_i = w.mask;
-      for (size_t l = 0; l < kLanes; ++l) set_bits(dut.ext_w_data_i, 32 * l, 32, w.data[l]);
+      put_write(s.writes[step_op - s.reads.size()]);
     }
     if (++step_op == s.n_ops()) {
       ++next_step;
@@ -238,9 +260,7 @@ struct Bench {
     drive_memory();
     dut.clk_i = 0;
     dut.eval();
-    if (read_sent) {
-      for (size_t l = 0; l < kLanes; ++l) engine_reads.push_back(static_cast<uint32_t>(get_bits(dut.ext_r_data_o, 32 * l, 32)));
-    }
+    if (read_sent) std::ranges::copy(read_data(), std::back_inserter(engine_reads));
     read_sent = read;
     if (offering && dut.cmd_ready_o) {
       commands[next_cmd++].taken = cycles;
@@ -254,33 +274,23 @@ struct Bench {
     if (dut.rst_ni) tick_memory();
     dut.clk_i = 1;
     dut.eval();
-    if (running) dut.ext_r_valid_i = dut.ext_w_valid_i = 0;  // an engine step's, for one cycle
+    dut.ext_r_valid_i = dut.ext_w_valid_i = 0;  // an ext read or write lasts one cycle
     if (running) ++cycles;
   }
 
   /// @brief One ext write, in one cycle.
   void ext_write(const Write& w) {
-    dut.ext_w_valid_i = 1;
-    dut.ext_w_buf_i = w.buf;
-    dut.ext_w_addr_i = w.addr;
-    dut.ext_w_mask_i = w.mask;
-    for (size_t l = 0; l < kLanes; ++l) set_bits(dut.ext_w_data_i, 32 * l, 32, w.data[l]);
+    put_write(w);
     cycle();
-    dut.ext_w_valid_i = 0;
   }
 
   /// @brief One ext read: kLanes words, from the cycle after.
-  std::vector<uint32_t> ext_read(uint32_t buf, uint32_t addr) {
-    dut.ext_r_valid_i = 1;
-    dut.ext_r_buf_i = buf;
-    dut.ext_r_addr_i = addr;
+  std::vector<uint32_t> ext_read(const Read& r) {
+    put_read(r);
     cycle();
-    dut.ext_r_valid_i = 0;
     dut.clk_i = 0;
     dut.eval();
-    std::vector<uint32_t> out(kLanes);
-    for (size_t l = 0; l < kLanes; ++l) out[l] = static_cast<uint32_t>(get_bits(dut.ext_r_data_o, 32 * l, 32));
-    return out;
+    return read_data();
   }
 };
 
@@ -301,7 +311,7 @@ int main(int argc, char** argv) {
   std::vector<Write> writes;
   std::vector<Command> commands;
   std::vector<EngineStep> engine;
-  std::vector<std::pair<uint32_t, uint32_t>> reads;
+  std::vector<Read> reads;
   try {
     const auto image = in.take(in.next());
     mem.assign(image.begin(), image.end());
@@ -360,7 +370,7 @@ int main(int argc, char** argv) {
       out.push_back(static_cast<uint32_t>(c.done));
     }
     std::ranges::copy(bench.engine_reads, std::back_inserter(out));
-    for (const auto& [buf, addr] : reads) std::ranges::copy(bench.ext_read(buf, addr), std::back_inserter(out));
+    for (const Read& r : reads) std::ranges::copy(bench.ext_read(r), std::back_inserter(out));
     std::ranges::copy(mem, std::back_inserter(out));
     out.push_back(static_cast<uint32_t>(bench.answers.size()));
     for (const uint64_t a : bench.answers) out.push_back(static_cast<uint32_t>(a));
