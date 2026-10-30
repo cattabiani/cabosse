@@ -59,8 +59,7 @@ def test_smollm2(position: int) -> None:
         got, model, steps = decode.smollm2_step(position)
     except eng.NoLongCache as e:
         pytest.skip(str(e))
-    off = [(g / m - 1, i) for i, (g, m) in enumerate(zip(got, model, strict=True))]
-    worst, i = max(off, key=lambda o: abs(o[0]))
+    i, worst = decode.worst(got, model)
     print(
         f"position {position}: {sum(got)} cycles on the unit, the perf model {sum(model):.0f}; "
         f"worst command {i} ({steps[i].kind}): {got[i]} against {model[i]:.0f}"

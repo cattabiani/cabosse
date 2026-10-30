@@ -407,6 +407,19 @@ def hazard_lists() -> list[tuple[str, list[commands.Command]]]:
     return [(name, commands.build(commands.Layout.of(c, cap=16))) for name, c in tiny_lists + real]
 
 
+@pytest.mark.parametrize(("name", "cmds"), hazard_lists())
+def test_the_command_after_the_engine_stops(name: str, cmds: list[commands.Command]) -> None:
+    """The first command off the engine after an engine command reads a
+    result written since the last stop, so the controller stops there: the
+    vector unit's tests hold it until the engine is done, with the same
+    cycles (verif/decode.py's unit_cycles)."""
+    stops = commands.stops(cmds)
+    for i in range(1, len(cmds)):
+        before, cmd = cmds[i - 1], cmds[i]
+        if before.op in commands.ENGINE_OPS and cmd.op not in commands.ENGINE_OPS:
+            assert stops[i] or cmd.op in (commands.Op.OUTPUT, commands.Op.END), (name, i, cmd)
+
+
 @pytest.mark.parametrize("write_after_reads", [True, False])
 def test_command_list_has_no_hazards(write_after_reads: bool) -> None:
     """Under the ordering rules (D-041, D-042, D-044) no command reads a

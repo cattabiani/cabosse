@@ -72,7 +72,7 @@ CLEARED = {MEASURED, "not measurable"}  # the platform is cleared when all are
 UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 # Ops on the matrix-vector engine that are attention, not weights.
 ATTENTION_KINDS = ("scores", "values")
-REDUCTION_KINDS = ("sum", "sumsq", "max")
+REDUCTION_KINDS = tuple(op.name.lower() for op in commands.REDUCE)
 # Design values that are counts: whole numbers (Design checks).
 ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
 # Design values that are on (1) or off (0); see ops().
@@ -309,7 +309,7 @@ def vector_walk(cmd: commands.Command, length: int) -> tuple[int, int]:
     per_row = commands.Flag.B_PER_ROW | commands.Flag.B_ROW | commands.Flag.LEN_T
     if cmd.op == commands.Op.ROTATE_HALF:
         return 2 * cmd.n, length // 2
-    if cmd.op.name.lower() in REDUCTION_KINDS or cmd.flags & per_row:
+    if cmd.op in commands.REDUCE or cmd.flags & per_row:
         return cmd.n, length
     return 1, cmd.n * length
 
@@ -362,10 +362,9 @@ def ops(
     cmds = commands.build(layout)
     dropped = {commands.Op.MAX} if max_in_drain else set()
     dropped |= {commands.Op.EXP, commands.Op.SUM} if softmax_fused else set()
-    waits = zip(commands.engine_waits(cmds), commands.stops(cmds), strict=True)
     return [
         dataclasses.replace(step(cmd, position + 1, lanes, kv_tiles_shared), waits=w, stops=s)
-        for cmd, (w, s) in zip(cmds, waits, strict=True)
+        for cmd, w, s in zip(cmds, commands.engine_waits(cmds), commands.stops(cmds), strict=True)
         if not (cmd.flags & commands.Flag.LEN_T and cmd.op in dropped)
     ]
 
@@ -462,6 +461,16 @@ def engine_cycles(
     )
 
 
+def vector_issue(s: Step, lanes: float) -> tuple[int, int]:
+    """A vector-unit step's groups in a row (`lanes` elements each), and the
+    cycles it issues for, latencies apart: its groups, a LOAD its beats."""
+    rows, length = s.walk
+    row_groups = math.ceil(length / lanes)
+    if s.kind == "load":
+        return row_groups, math.ceil(s.weight_bytes / commands.BEAT_BYTES)
+    return row_groups, rows * row_groups
+
+
 def vector_cycles(steps: tuple[Step, ...], design: dict[str, float]) -> list[float]:
     """Each vector-unit step's cycles from the done before it to its own
     (D-053): rtl/vec_unit.sv in order, as measured (reports/data/M6.json).
@@ -478,20 +487,17 @@ def vector_cycles(steps: tuple[Step, ...], design: dict[str, float]) -> list[flo
     issued = done = 0.0  # the cycle the unit has issued the last group by; the last done
     out = []
     for s in steps:
-        rows, length = s.walk
-        row_groups = math.ceil(length / lanes)
+        row_groups, issue = vector_issue(s, lanes)
         start = done if s.stops else issued
         latency = design["vector_startup_cycles"]
         if s.kind == "load":
-            beats = math.ceil(s.weight_bytes / commands.BEAT_BYTES)
-            issued = start + design["load_latency_cycles"] + beats
+            issued = start + design["load_latency_cycles"] + issue
         elif s.kind in REDUCTION_KINDS:
-            issued = (
-                start + row_groups + (rows - 1) * max(row_groups, design["reduction_row_cycles"])
-            )
+            row = max(row_groups, design["reduction_row_cycles"])
+            issued = start + row_groups + (s.walk[0] - 1) * row
             latency += design["reduction_tail_cycles"]
         else:
-            issued = start + rows * row_groups
+            issued = start + issue
             if s.kind == "kv_store":
                 latency += design["kv_store_latency_cycles"]
         finish = max(done + 1, issued + latency)

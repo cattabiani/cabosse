@@ -27,7 +27,7 @@ from vector import EngineStep, Step
 # SmolLM2 at the real-data positions (PLAN.md, M6); its caches hold whole
 # groups of 16 positions, S and P's rows sit at cap + 16 (so a mix-up of
 # the two shows).
-SMOLLM2_POSITIONS = (0, 63, 1023, 8191)
+SMOLLM2_POSITIONS = (0, *eng.SMOLLM2_POSITIONS)
 SMOLLM2_LENGTH = 9 * (8192 + 16)  # S and P at the longest stride
 SMOLLM2_CHAN_W = 27  # 128 MiB: at 8191, the caches' 47 MiB a channel, then LOAD's 61 MiB
 # F2's read latency for both of the unit's AXI channels: its write latency
@@ -42,19 +42,17 @@ def mapped(layout: Layout, chan_w: int) -> Layout:
     cmds = commands.build(layout)
     caches = {c.addr for c in cmds if c.op == Op.KV_STORE}
     loads = {c.addr for c in cmds if c.op == Op.LOAD}
-
-    def place(addrs: set[int], at: int, share: int = 1) -> int:
+    rest = {a for a, _, _ in layout.tensors.values()} - caches - loads
+    new: dict[str, tuple[int, tuple[int, ...], torch.dtype]] = {}
+    at = 0
+    for group, share in ((caches, vector.KV_PORTS), (loads, 1), (rest, 1)):
+        if group is rest:
+            assert at <= 1 << chan_w, (at, chan_w)
+            at = vector.KV_PORTS << chan_w  # past the memory
         for name, (addr, shape, dtype) in layout.tensors.items():
-            if addr in addrs:
+            if addr in group:
                 new[name] = (at, shape, dtype)
                 at += -(-commands.n_bytes(shape, dtype) // share // commands.ALIGN) * commands.ALIGN
-        return at
-
-    new: dict[str, tuple[int, tuple[int, ...], torch.dtype]] = {}
-    end = place(loads, place(caches, 0, vector.KV_PORTS))
-    assert end <= 1 << chan_w, (end, chan_w)
-    rest = {a for a, _, _ in layout.tensors.values()} - caches - loads
-    place(rest, vector.KV_PORTS << chan_w)
     return dataclasses.replace(layout, tensors={n: new[n] for n in layout.tensors})
 
 
@@ -105,19 +103,12 @@ def unit_steps(
 def unit_cycles(steps: list[Step | EngineStep], result: vector.Result) -> list[int]:
     """Each command's cycles, as perf.vector_cycles counts them: from the
     done before it, or from the cycle before it was taken if it waited.
-    Every command after an engine step must wait (the driver holds it until
-    the step is done, the controller would not)."""
+    The driver holds a command after an engine step until the step is done;
+    the controller stops there too, as every such command waits
+    (test_commands.py's test_the_command_after_the_engine_stops)."""
     cmd_steps = [s for s in steps if isinstance(s, Step)]
-    after_engine = [
-        isinstance(p, EngineStep)
-        for p, s in zip([None, *steps[:-1]], steps, strict=True)
-        if isinstance(s, Step)
-    ]
     out, done = [], None
-    for s, follows, taken, d in zip(
-        cmd_steps, after_engine, result.taken, result.done, strict=True
-    ):
-        assert s.wait or not follows, f"{s.cmd} after an engine step does not wait"
+    for s, taken, d in zip(cmd_steps, result.taken, result.done, strict=True):
         out.append(int(d) - (int(taken) - 1 if s.wait or done is None else done))
         done = int(d)
     return out
@@ -171,20 +162,28 @@ def smollm2_step(position: int) -> tuple[list[int], list[float], tuple[perf.Step
     (unit_cycles), the perf model's (design v0) and its perf.Step."""
     tokens, saved = eng.saved_cache()
     cache = dataclasses.replace(saved, length=position)
-    cap = -(-(position + 1) // 16) * 16
+    align = commands.STRIDE_ALIGN  # a multiple of the KV channels, as KV_STORE needs
+    cap = -(-(position + 1) // align) * align
     model = eng.smollm2()
     steps, result = decode_step(
         model,
         cache,
         tokens[position],
         cap,
-        cap + 16,
+        cap + align,
         SMOLLM2_LENGTH,
         SMOLLM2_CHAN_W,
         f"SmolLM2 at position {position}",
         **F2_MEMORY,
     )
-    design = perf.load_design("v0").values()
-    work = perf.Work.of(perf.design_ops(model.config, position, design))
-    model_cycles = perf.vector_cycles(work.vector_steps, design)
+    work = perf.Work.of(perf.design_ops(model.config, position, eng.DESIGN))
+    model_cycles = perf.vector_cycles(work.vector_steps, eng.DESIGN)
     return unit_cycles(steps, result), model_cycles, work.vector_steps
+
+
+def worst(got: list[int], model: list[float]) -> tuple[int, float]:
+    """The command furthest from the perf model's cycles, and how far
+    (got / model - 1)."""
+    off = [g / m - 1 for g, m in zip(got, model, strict=True)]
+    i = max(range(len(off)), key=lambda i: abs(off[i]))
+    return i, off[i]

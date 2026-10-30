@@ -24,7 +24,6 @@ Commit first: the data records the commit.
 import argparse
 import collections
 import json
-import math
 import re
 import sys
 from pathlib import Path
@@ -45,11 +44,7 @@ SLOTS = 16  # the vector unit's width (D-030)
 # One fp32_fma in Vivado on F2's part, MulRegs = 2 (PLAN.md, M3: the fifth
 # timing log): LUTs, registers, DSPs.
 VIVADO_FMA = {"LUTs": 1262, "registers": 535, "DSPs": 2}
-DESIGN = perf.load_design("v0").values()
-# Commands whose next one does not start right behind their groups
-# (perf.vector_cycles: after a reduction, at its done; a KV_STORE's done
-# comes later than its groups and start-up).
-LATE_START = ("kv_store", *perf.REDUCTION_KINDS)
+DESIGN = decode.eng.DESIGN
 # Yosys's UltraScale+ cells, by what they count.
 KINDS = {
     "LUTs": re.compile(r"LUT\d|SRL\w*"),  # shift registers are LUTs too
@@ -73,35 +68,34 @@ def area() -> dict:
 
 def latencies(steps: tuple[perf.Step, ...], got: list[int]) -> dict[str, collections.Counter]:
     """Each latency of perf.vector_cycles as the commands that show it
-    alone give it, value -> count: vector_startup_cycles past the groups
-    of an elementwise command that stops; reduction_tail_cycles past those
-    and the start-up for a reduction of one row that stops;
-    reduction_row_cycles for a reduction of more rows, each shorter than
-    that; load_latency_cycles past the beats of a LOAD after an elementwise
-    command or a LOAD (the latency the two share is the start-up);
-    kv_store_latency_cycles past the groups and the start-up for a
-    KV_STORE that stops."""
+    alone give it, value -> count, from each command's cycles past what it
+    issues (perf.vector_issue): vector_startup_cycles for an elementwise
+    command that stops; reduction_tail_cycles past the start-up for a
+    reduction of one row that stops; reduction_row_cycles for one of more
+    rows, each shorter than that; kv_store_latency_cycles past the start-up
+    for a KV_STORE that stops; load_latency_cycles for a LOAD right behind
+    an elementwise command or a LOAD (the latency the two share is the
+    start-up; after a reduction or a KV_STORE it starts later)."""
     lanes = DESIGN["vector_elems_per_cycle"]
+    issue = [perf.vector_issue(s, lanes) for s in steps]
+    past = [g - n for g, (_, n) in zip(got, issue, strict=True)]
+    plain = [s.kind not in ("load", "kv_store", *perf.REDUCTION_KINDS) for s in steps]
     found = collections.defaultdict(collections.Counter)
-    for s, g in zip(steps, got, strict=True):
-        rows, length = s.walk
-        if s.stops and s.kind not in ("load", "kv_store", *perf.REDUCTION_KINDS):
-            found["vector_startup_cycles"][g - rows * math.ceil(length / lanes)] += 1
+    for s, x, is_plain in zip(steps, past, plain, strict=True):
+        if s.stops and is_plain:
+            found["vector_startup_cycles"][x] += 1
     (startup,) = found["vector_startup_cycles"]  # one value, else no constant
-    for p, s, g in zip((None, *steps), steps, got, strict=False):
-        rows, length = s.walk
-        row_groups = math.ceil(length / lanes)
-        if s.kind in perf.REDUCTION_KINDS and s.stops and rows == 1:
-            found["reduction_tail_cycles"][g - row_groups - startup] += 1
+    for i in range(1, len(steps)):
+        p, s, x = steps[i - 1], steps[i], past[i]
+        if s.kind in perf.REDUCTION_KINDS and s.stops and s.walk[0] == 1:
+            found["reduction_tail_cycles"][x - startup] += 1
         elif s.kind == "kv_store" and s.stops:
-            found["kv_store_latency_cycles"][g - rows * row_groups - startup] += 1
-        elif s.kind == "load" and p is not None and not s.stops and p.kind not in LATE_START:
-            beats = math.ceil(s.weight_bytes / perf.commands.BEAT_BYTES)
-            found["load_latency_cycles"][g - beats] += 1
+            found["kv_store_latency_cycles"][x - startup] += 1
+        elif s.kind == "load" and not s.stops and (plain[i - 1] or p.kind == "load"):
+            found["load_latency_cycles"][x] += 1
     (tail,) = found["reduction_tail_cycles"]
-    for s, g in zip(steps, got, strict=True):
-        rows, length = s.walk
-        row_groups = math.ceil(length / lanes)
+    for s, (row_groups, _), g in zip(steps, issue, got, strict=True):
+        rows = s.walk[0]
         if s.kind in perf.REDUCTION_KINDS and s.stops and rows > 1:
             row = (g - startup - tail - row_groups) / (rows - 1)
             if row > row_groups:
@@ -116,8 +110,7 @@ def latency() -> dict:
     out = {}
     for position in decode.SMOLLM2_POSITIONS:
         got, model, steps = decode.smollm2_step(position)
-        off = [g / m - 1 for g, m in zip(got, model, strict=True)]
-        worst = max(range(len(off)), key=lambda i: abs(off[i]))
+        worst, off = decode.worst(got, model)
         by_kind = collections.Counter()
         for s, g in zip(steps, got, strict=True):
             by_kind[s.kind] += g
@@ -129,7 +122,7 @@ def latency() -> dict:
                 "kind": steps[worst].kind,
                 "cycles": got[worst],
                 "model_cycles": model[worst],
-                "off": off[worst],
+                "off": off,
             },
             "cycles_by_kind": dict(by_kind),
             "latencies": {

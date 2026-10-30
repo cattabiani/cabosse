@@ -230,19 +230,11 @@ def read_spans(
     return got, at
 
 
-def with_waits(steps: list[Step | EngineStep]) -> list[Step | EngineStep]:
-    """A command waits for every earlier one to be done when it reads a
-    buffer that one still running may write (the controller's stop, D-045);
-    after a wait, or an engine step, nothing earlier runs. A write after a
-    read or after a write needs no wait: the unit reads a command's groups
-    before the next one's, and writes in order."""
-    written: set[Buf] = set()  # by the commands since the last wait
-    for s in steps:
-        if isinstance(s, EngineStep):
-            written = set()
-            continue
-        s.wait = bool({s.cmd.a, s.cmd.b, s.cmd.c} & written)
-        written = ({s.cmd.dst} | (set() if s.wait else written)) - {Buf.NONE}
+def with_waits(steps: list[Step]) -> list[Step]:
+    """Each command waits for every earlier one to be done where the
+    controller stops (commands.stops, D-045)."""
+    for s, stop in zip(steps, commands.stops([s.cmd for s in steps]), strict=True):
+        s.wait = stop
     return steps
 
 
@@ -279,7 +271,7 @@ def run(
             got, at = read_spans(out, at, s.reads)
             engine_reads.append(got)
     reads, at = read_spans(out, at, [(b, 0, length) for b in start])
-    got_mem = out[at : at + len(mem)].copy()
+    got_mem = out[at : at + len(mem)]  # a view of the driver's output, no copy
     at += len(mem)
     n_answers = int(out[at])
     answers = out[at + 1 : at + 1 + n_answers].copy()
