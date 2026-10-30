@@ -381,6 +381,22 @@ def test_engine_waits_for_every_unwaited_write() -> None:
     assert commands.engine_waits([norm, other, q, k]) == [False, False, True, False]
 
 
+def test_stops() -> None:
+    """The controller stops at a command off the engine that reads what a
+    command since the last stop wrote, an engine command's result included;
+    after a stop, only later writes count."""
+    Op, Buf = commands.Op, commands.Buf
+    cmds = [
+        commands.Command(Op.ADD, Buf.H, Buf.X, Buf.T, n=1, m=8),  # nothing written yet
+        commands.Command(Op.MUL, Buf.R, Buf.X, Buf.T, n=1, m=8),  # reads no write
+        commands.Command(Op.ADD, Buf.X, Buf.H, Buf.R, n=1, m=8),  # reads H: stops
+        commands.Command(Op.MUL, Buf.T, Buf.H, Buf.H, n=1, m=8),  # H before the stop
+        commands.Command(Op.MATVEC, Buf.Q, Buf.X, n=8, m=8),  # waits in the engine
+        commands.Command(Op.KV_STORE, Buf.NONE, Buf.Q, n=1, m=8, cap=8),  # reads Q: stops
+    ]
+    assert commands.stops(cmds) == [False, False, True, False, False, True]
+
+
 def hazard_lists() -> list[tuple[str, list[commands.Command]]]:
     """Tiny models with grouped and plain attention, and the real models'
     lists (the configs are in the repo; no weights needed)."""

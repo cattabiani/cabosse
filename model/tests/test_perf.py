@@ -34,8 +34,13 @@ DESIGN = {
     "macs_per_lane": 1,
     "accumulators": 1,
     "vector_elems_per_cycle": 4,
-    "command_cycles": 5,
+    "issue_cycles": 5,
     "engine_startup_cycles": 25,
+    "vector_startup_cycles": 10,
+    "reduction_tail_cycles": 20,
+    "reduction_row_cycles": 6,
+    "load_latency_cycles": 30,
+    "kv_store_latency_cycles": 40,
     "softmax_fused": 0,
     "max_in_drain": 0,
     "kv_tiles_shared": 0,
@@ -151,10 +156,11 @@ def test_seconds_by_hand() -> None:
         kv_write_bytes=100,
         matvec_macs=900,
         attention_macs=100,
-        vector_elems=200,
+        vector_elems=160,
         commands=4,
         engine_shapes=((10, 100),),  # one pass of the 10 lanes, 100 cycles
         engine_waits=2,  # 2 x 25 cycles of start-up
+        vector_steps=(perf.Step("add", (1, 160), walk=(1, 160)),),  # 40 groups + 10
     )
     # memory: the ports' raw width caps the measured 1600 B/s at 2 x 1 x 400 = 800 B/s
     assert perf.seconds(work, PLATFORM, DESIGN) == {
@@ -168,6 +174,48 @@ def test_seconds_by_hand() -> None:
     assert p.tokens_per_s_overlapped == 0.5
     assert p.tokens_per_s_serial == pytest.approx(1 / 4.2)
     assert p.tokens_per_s_in_order == pytest.approx(1 / 2.7)  # max(2, 1.5) + 0.5 + 0.2
+
+
+def vector_step(kind: str, walk: tuple[int, int], stops: bool = False, **kw) -> perf.Step:
+    return perf.Step(kind, walk, walk=walk, stops=stops, **kw)
+
+
+# Steps -> each one's cycles with DESIGN (4 elements a group, start-up 10,
+# a reduction's tail 20 and rows 6 apart, LOAD 30 and KV_STORE 40 later).
+VECTOR_CASES = [
+    # Back to back, the latency once; a stop waits for the done before it.
+    ([vector_step("add", (1, 16)), vector_step("mul", (1, 8))], [14, 2]),
+    ([vector_step("add", (1, 16)), vector_step("mul", (1, 8), stops=True)], [14, 12]),
+    # Rows of a reduction 6 apart at least (rows of 1 group) or their groups.
+    ([vector_step("sum", (3, 4))], [1 + 2 * 6 + 10 + 20]),
+    ([vector_step("max", (3, 40))], [30 + 10 + 20]),
+    # The next step starts at a reduction's done.
+    ([vector_step("sumsq", (1, 4)), vector_step("add", (1, 4))], [31, 11]),
+    # A LOAD a beat (32 bytes) a cycle after its latency.
+    ([vector_step("load", (1, 64), weight_bytes=128)], [30 + 4 + 10]),
+    # A KV_STORE's writes answered later; a step after it waits for its done.
+    ([vector_step("kv_store", (2, 8)), vector_step("add", (1, 8))], [4 + 10 + 40, 1]),
+]
+
+
+@pytest.mark.parametrize(("steps", "want"), VECTOR_CASES)
+def test_vector_cycles_by_hand(steps: list[perf.Step], want: list[int]) -> None:
+    assert perf.vector_cycles(tuple(steps), DESIGN) == want
+
+
+@pytest.mark.parametrize(
+    ("op", "flags", "n", "length", "walk"),
+    [
+        (commands.Op.ADD, commands.Flag.NONE, 3, 64, (1, 192)),  # packed
+        (commands.Op.MUL, commands.Flag.B_PER_ROW, 3, 64, (3, 64)),
+        (commands.Op.EXP, commands.Flag.LEN_T, 9, 5, (9, 5)),
+        (commands.Op.ROTATE_HALF, commands.Flag.NONE, 3, 64, (6, 32)),
+        (commands.Op.SUM, commands.Flag.LEN_T, 9, 5, (9, 5)),
+    ],
+)
+def test_vector_walk(op, flags, n: int, length: int, walk: tuple[int, int]) -> None:
+    cmd = commands.Command(op, commands.Buf.X, commands.Buf.H, n=n, m=length, flags=flags)
+    assert perf.vector_walk(cmd, length) == walk
 
 
 # (rows, cols) -> engine cycles with ENGINE_DESIGN.

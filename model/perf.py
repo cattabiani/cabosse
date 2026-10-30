@@ -20,8 +20,10 @@ and the fixed cost per command. The token takes at least the largest of them
 
 Assumptions: weights and the KV cache live in HBM and are read once per token
 (K and V once per KV head, shared by its query heads); activations stay on
-chip; every command costs a fixed time, and every vector-unit command is one
-pass over its elements; the HBM read rate scales with the memory
+chip; every command costs a fixed time to issue; the vector unit runs its
+commands in order, each a pass over its elements plus the latencies that
+show where a command waits for an earlier result (vector_cycles, D-053); the
+HBM read rate scales with the memory
 clock from the measured rate at the port's maximum clock. The engine is
 `lanes` lanes of `macs_per_lane` multiply-adds each; a lane computes one row
 at a time with `accumulators` partial sums (docs/numerics.md, section 3),
@@ -70,6 +72,7 @@ CLEARED = {MEASURED, "not measurable"}  # the platform is cleared when all are
 UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 # Ops on the matrix-vector engine that are attention, not weights.
 ATTENTION_KINDS = ("scores", "values")
+REDUCTION_KINDS = ("sum", "sumsq", "max")
 # Design values that are counts: whole numbers (Design checks).
 ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
 # Design values that are on (1) or off (0); see ops().
@@ -99,6 +102,11 @@ class Step:
     # Attention: cols' worth of cycles the engine waits for its tiles
     # (tile_wait_cols).
     fill_cols: int = 0
+    # On the vector unit (its commands, LOAD, KV_STORE): (rows, length) as
+    # it walks them (vector_walk), and whether the controller stops at it
+    # (commands.stops).
+    walk: tuple[int, int] = ()
+    stops: bool = False
 
 
 class Param(BaseModel):
@@ -172,8 +180,13 @@ class Design(Inputs):
     macs_per_lane: Param
     accumulators: Param
     vector_elems_per_cycle: Param
-    command_cycles: Param
+    issue_cycles: Param
     engine_startup_cycles: Param
+    vector_startup_cycles: Param
+    reduction_tail_cycles: Param
+    reduction_row_cycles: Param
+    load_latency_cycles: Param
+    kv_store_latency_cycles: Param
     softmax_fused: Param
     max_in_drain: Param
     kv_tiles_shared: Param
@@ -289,6 +302,18 @@ def attention(
     )
 
 
+def vector_walk(cmd: commands.Command, length: int) -> tuple[int, int]:
+    """(rows, length) of a vector-unit command as rtl/vec_unit.sv walks it:
+    an elementwise command without B_PER_ROW, B_ROW or LEN_T is one row of
+    n·m, ROTATE_HALF walks each row's two halves."""
+    per_row = commands.Flag.B_PER_ROW | commands.Flag.B_ROW | commands.Flag.LEN_T
+    if cmd.op == commands.Op.ROTATE_HALF:
+        return 2 * cmd.n, length // 2
+    if cmd.op.name.lower() in REDUCTION_KINDS or cmd.flags & per_row:
+        return cmd.n, length
+    return 1, cmd.n * length
+
+
 def step(cmd: commands.Command, t: int, lanes: int, tiles_shared: bool) -> Step:
     """The work of one command when attention reads t positions, on an
     engine of `lanes` lanes (tiles_shared: attention())."""
@@ -300,16 +325,23 @@ def step(cmd: commands.Command, t: int, lanes: int, tiles_shared: bool) -> Step:
             )
         case commands.Op.LOAD:
             dtype = commands.BF16 if cmd.flags & commands.Flag.SRC_BF16 else commands.F32
-            return Step("load", (cmd.m,), weight_bytes=commands.n_bytes(cmd.m, dtype))
+            n_bytes = commands.n_bytes(cmd.m, dtype)
+            return Step("load", (cmd.m,), weight_bytes=n_bytes, walk=(1, cmd.m))
         case commands.Op.KV_STORE:
-            return Step("kv_store", (cmd.n, cmd.m), kv_write_bytes=cmd.n * cmd.m * BF16_BYTES)
+            n_bytes = cmd.n * cmd.m * BF16_BYTES
+            return Step("kv_store", (cmd.n, cmd.m), kv_write_bytes=n_bytes, walk=(cmd.n, cmd.m))
         case commands.Op.SCORES | commands.Op.VALUES:
             return attention(cmd, t, lanes, tiles_shared)
         case commands.Op.OUTPUT | commands.Op.END:  # OUTPUT goes over PCIe, not HBM
             return Step(cmd.op.name.lower(), ())
         case _:  # the vector unit
             length = cmd.row_length(t)
-            return Step(cmd.op.name.lower(), (cmd.n, length), vector_elems=cmd.n * length)
+            return Step(
+                cmd.op.name.lower(),
+                (cmd.n, length),
+                vector_elems=cmd.n * length,
+                walk=vector_walk(cmd, length),
+            )
 
 
 def ops(
@@ -330,9 +362,10 @@ def ops(
     cmds = commands.build(layout)
     dropped = {commands.Op.MAX} if max_in_drain else set()
     dropped |= {commands.Op.EXP, commands.Op.SUM} if softmax_fused else set()
+    waits = zip(commands.engine_waits(cmds), commands.stops(cmds), strict=True)
     return [
-        dataclasses.replace(step(cmd, position + 1, lanes, kv_tiles_shared), waits=w)
-        for cmd, w in zip(cmds, commands.engine_waits(cmds), strict=True)
+        dataclasses.replace(step(cmd, position + 1, lanes, kv_tiles_shared), waits=w, stops=s)
+        for cmd, (w, s) in zip(cmds, waits, strict=True)
         if not (cmd.flags & commands.Flag.LEN_T and cmd.op in dropped)
     ]
 
@@ -368,6 +401,7 @@ class Work:
     engine_shapes: tuple[tuple[int, int], ...]  # (rows, cols) per engine op
     engine_waits: int  # engine ops that wait for an earlier result
     engine_fill_cols: tuple[int, ...] = ()  # Step.fill_cols of each engine op
+    vector_steps: tuple[Step, ...] = ()  # the vector unit's, in order (vector_cycles)
 
     @property
     def memory_bytes(self) -> int:
@@ -393,6 +427,7 @@ class Work:
             engine_shapes=tuple(shape for o in op_list for shape in o.engine_shapes),
             engine_waits=total("waits"),
             engine_fill_cols=tuple(o.fill_cols for o in op_list if o.engine_shapes),
+            vector_steps=tuple(o for o in op_list if o.walk),
         )
 
 
@@ -427,6 +462,46 @@ def engine_cycles(
     )
 
 
+def vector_cycles(steps: tuple[Step, ...], design: dict[str, float]) -> list[float]:
+    """Each vector-unit step's cycles from the done before it to its own
+    (D-053): rtl/vec_unit.sv in order, as measured (reports/data/M6.json).
+    A step starts at the done before it if the controller stops at it, else
+    once the unit has issued the previous step's groups, so their latencies
+    overlap. The unit issues a group (`vector_elems_per_cycle` elements of a
+    row) a cycle; a LOAD a beat a cycle, `load_latency_cycles` after it
+    starts. A step is done `vector_startup_cycles` after its last group, a
+    KV_STORE `kv_store_latency_cycles` later (its writes answered), a
+    reduction `reduction_tail_cycles` later (its last row's tree), whose rows
+    end at least `reduction_row_cycles` apart; the next step starts once a
+    reduction is done. Dones come in order, one a cycle at most."""
+    lanes = design["vector_elems_per_cycle"]
+    issued = done = 0.0  # the cycle the unit has issued the last group by; the last done
+    out = []
+    for s in steps:
+        rows, length = s.walk
+        row_groups = math.ceil(length / lanes)
+        start = done if s.stops else issued
+        latency = design["vector_startup_cycles"]
+        if s.kind == "load":
+            beats = math.ceil(s.weight_bytes / commands.BEAT_BYTES)
+            issued = start + design["load_latency_cycles"] + beats
+        elif s.kind in REDUCTION_KINDS:
+            issued = (
+                start + row_groups + (rows - 1) * max(row_groups, design["reduction_row_cycles"])
+            )
+            latency += design["reduction_tail_cycles"]
+        else:
+            issued = start + rows * row_groups
+            if s.kind == "kv_store":
+                latency += design["kv_store_latency_cycles"]
+        finish = max(done + 1, issued + latency)
+        out.append(finish - done)
+        done = finish
+        if s.kind in REDUCTION_KINDS:
+            issued = done
+    return out
+
+
 def engine_use(
     shapes: tuple[tuple[int, int], ...], design: dict[str, float], fill_cols: tuple[int, ...] = ()
 ) -> float:
@@ -445,8 +520,8 @@ def seconds(work: Work, platform: dict[str, float], design: dict[str, float]) ->
             work.engine_shapes, design, work.engine_waits, work.engine_fill_cols
         )
         / clock,
-        "vector": work.vector_elems / (design["vector_elems_per_cycle"] * clock),
-        "commands": work.commands * design["command_cycles"] / clock,
+        "vector": sum(vector_cycles(work.vector_steps, design)) / clock,
+        "commands": work.commands * design["issue_cycles"] / clock,
     }
 
 
