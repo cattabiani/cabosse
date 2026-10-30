@@ -950,6 +950,24 @@ Vivado build (D-051); checkpoint report.
   keeps taking commands meanwhile; `done_o` stays one pulse per command in
   list order, so later commands' dones wait behind it.
 
+**Answers for the real-data step (owner, 2026-10-30):**
+- The real-data test runs SmolLM2's whole decode step (every vector,
+  `LOAD` and `KV_STORE` command, the engine's stood in as in the tiny
+  step), not only the first and last layers and the final norm: the tiny
+  step's test reused, no starting state taken mid-step.
+- The perf model counts `LOAD` and `KV_STORE`: a `LOAD` costs its groups
+  and a `load_latency_cycles` (its read starts when the unit reaches it,
+  and later commands wait behind it), a `SCORES` that waits for a
+  `KV_STORE` (D-044) a `kv_store_latency_cycles`. Both measured in
+  simulation at F2's documented read latency, again on F2 in M8.
+- `command_cycles` becomes `issue_cycles`, the controller's cost to hand a
+  command over, 4 a command (guess, M7 measures it); the stops are the
+  latencies above, `vector_startup_cycles` and the reductions' trees.
+- The test's memory holds only what the unit reads and writes (a map of
+  its own: the caches at low offsets in every channel, the `LOAD` tensors
+  in channel 0 above them); D-040's offsets stay M7's. The positions run
+  one at a time (about 2 GiB of memory each at most, estimate).
+
 **Progress:**
 - [x] Answers above (PR #59).
 - [x] S and P at the STRIDE register's stride, and the buffer-port check
