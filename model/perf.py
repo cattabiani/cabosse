@@ -105,7 +105,7 @@ class Step:
     # On the vector unit (its commands, LOAD, KV_STORE): (rows, length) as
     # it walks them (vector_walk), and whether the controller stops at it
     # (commands.stops).
-    walk: tuple[int, int] = ()
+    walk: tuple[int, int] | None = None
     stops: bool = False
 
 
@@ -357,7 +357,9 @@ def ops(
     `lanes` lanes (attention reads whole tiles of that many positions),
     with the design flags (module docstring). The softmax flags drop
     softmax's commands here: commands.build() has neither the fused
-    command nor the engine's max (D-054, deferred by D-057)."""
+    command nor the engine's max (D-054, deferred by D-057). Waits and
+    stops are the full list's: the commands next to the dropped ones stop
+    either way."""
     layout = commands.Layout.of(config, cap=position + 1)
     cmds = commands.build(layout)
     dropped = {commands.Op.MAX} if max_in_drain else set()
@@ -426,7 +428,7 @@ class Work:
             engine_shapes=tuple(shape for o in op_list for shape in o.engine_shapes),
             engine_waits=total("waits"),
             engine_fill_cols=tuple(o.fill_cols for o in op_list if o.engine_shapes),
-            vector_steps=tuple(o for o in op_list if o.walk),
+            vector_steps=tuple(o for o in op_list if o.walk is not None),
         )
 
 

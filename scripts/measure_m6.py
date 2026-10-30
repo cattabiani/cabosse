@@ -32,7 +32,6 @@ REPO = Path(__file__).resolve().parent.parent
 for sub in ("model", "model/tests", "verif"):
     sys.path.insert(0, str(REPO / sub))
 
-import decode  # noqa: E402
 import perf  # noqa: E402
 from reporting import blocks, measure  # noqa: E402
 
@@ -44,7 +43,7 @@ SLOTS = 16  # the vector unit's width (D-030)
 # One fp32_fma in Vivado on F2's part, MulRegs = 2 (PLAN.md, M3: the fifth
 # timing log): LUTs, registers, DSPs.
 VIVADO_FMA = {"LUTs": 1262, "registers": 535, "DSPs": 2}
-DESIGN = decode.eng.DESIGN
+DESIGN = perf.load_design("v0").values()
 # Yosys's UltraScale+ cells, by what they count.
 KINDS = {
     "LUTs": re.compile(r"LUT\d|SRL\w*"),  # shift registers are LUTs too
@@ -66,6 +65,11 @@ def area() -> dict:
     return {top: yosys_cells(top) for top in TOPS}
 
 
+def mode(found: collections.Counter) -> float:
+    """The value found most often (the tables show every value)."""
+    return found.most_common(1)[0][0]
+
+
 def latencies(steps: tuple[perf.Step, ...], got: list[int]) -> dict[str, collections.Counter]:
     """Each latency of perf.vector_cycles as the commands that show it
     alone give it, value -> count, from each command's cycles past what it
@@ -74,8 +78,9 @@ def latencies(steps: tuple[perf.Step, ...], got: list[int]) -> dict[str, collect
     reduction of one row that stops; reduction_row_cycles for one of more
     rows, each shorter than that; kv_store_latency_cycles past the start-up
     for a KV_STORE that stops; load_latency_cycles for a LOAD right behind
-    an elementwise command or a LOAD (the latency the two share is the
-    start-up; after a reduction or a KV_STORE it starts later)."""
+    a LOAD or an elementwise command done on time (the latency the two
+    share is the start-up; after a reduction or a KV_STORE it starts
+    later)."""
     lanes = DESIGN["vector_elems_per_cycle"]
     issue = [perf.vector_issue(s, lanes) for s in steps]
     past = [g - n for g, (_, n) in zip(got, issue, strict=True)]
@@ -84,16 +89,22 @@ def latencies(steps: tuple[perf.Step, ...], got: list[int]) -> dict[str, collect
     for s, x, is_plain in zip(steps, past, plain, strict=True):
         if s.stops and is_plain:
             found["vector_startup_cycles"][x] += 1
-    (startup,) = found["vector_startup_cycles"]  # one value, else no constant
+    startup = mode(found["vector_startup_cycles"])
+    # Elementwise commands done when their own groups and start-up say, not
+    # pushed back behind an earlier done.
+    on_time = [
+        is_plain and x == (startup if s.stops else 0)
+        for s, x, is_plain in zip(steps, past, plain, strict=True)
+    ]
     for i in range(1, len(steps)):
         p, s, x = steps[i - 1], steps[i], past[i]
         if s.kind in perf.REDUCTION_KINDS and s.stops and s.walk[0] == 1:
             found["reduction_tail_cycles"][x - startup] += 1
         elif s.kind == "kv_store" and s.stops:
             found["kv_store_latency_cycles"][x - startup] += 1
-        elif s.kind == "load" and not s.stops and (plain[i - 1] or p.kind == "load"):
+        elif s.kind == "load" and not s.stops and (on_time[i - 1] or p.kind == "load"):
             found["load_latency_cycles"][x] += 1
-    (tail,) = found["reduction_tail_cycles"]
+    tail = mode(found["reduction_tail_cycles"])
     for s, (row_groups, _), g in zip(steps, issue, got, strict=True):
         rows = s.walk[0]
         if s.kind in perf.REDUCTION_KINDS and s.stops and rows > 1:
@@ -108,6 +119,8 @@ def latency() -> dict:
     worst command against the model, the unit's cycles by kind, and the
     latencies found (latencies())."""
     out = {}
+    import decode  # the verification stack, only here
+
     for position in decode.SMOLLM2_POSITIONS:
         got, model, steps = decode.smollm2_step(position)
         worst, off = decode.worst(got, model)
@@ -183,6 +196,8 @@ def main() -> None:
         print(table(data["area"]))
     if "latency" in data:
         print(latency_tables(data["latency"]))
+    if not data:
+        sys.exit(f"no data in {DATA}: run the `area` or `latency` part first")
 
 
 if __name__ == "__main__":

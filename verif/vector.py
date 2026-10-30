@@ -86,7 +86,7 @@ class EngineStep:
 class Result:
     buffers: dict[Buf, np.ndarray]  # raw bits, uint32
     engine_reads: list[list[np.ndarray]]  # per EngineStep, per read span: raw bits
-    mem: np.ndarray  # the memory's words
+    mem: np.ndarray  # the memory's words: a read-only view of the driver's output
     taken: np.ndarray  # per command, the cycle it was taken
     done: np.ndarray  # per command, the cycle of its done_o
     answers: np.ndarray  # the cycle of each write response

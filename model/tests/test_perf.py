@@ -176,7 +176,7 @@ def test_seconds_by_hand() -> None:
     assert p.tokens_per_s_in_order == pytest.approx(1 / 2.7)  # max(2, 1.5) + 0.5 + 0.2
 
 
-def vector_step(kind: str, walk: tuple[int, int], stops: bool = False, **kw) -> perf.Step:
+def vector_step(kind: str, walk: tuple[int, int], stops: bool = False, **kw: int) -> perf.Step:
     return perf.Step(kind, walk, walk=walk, stops=stops, **kw)
 
 
@@ -213,7 +213,9 @@ def test_vector_cycles_by_hand(steps: list[perf.Step], want: list[int]) -> None:
         (commands.Op.SUM, commands.Flag.LEN_T, 9, 5, (9, 5)),
     ],
 )
-def test_vector_walk(op, flags, n: int, length: int, walk: tuple[int, int]) -> None:
+def test_vector_walk(
+    op: commands.Op, flags: commands.Flag, n: int, length: int, walk: tuple[int, int]
+) -> None:
     cmd = commands.Command(op, commands.Buf.X, commands.Buf.H, n=n, m=length, flags=flags)
     assert perf.vector_walk(cmd, length) == walk
 
