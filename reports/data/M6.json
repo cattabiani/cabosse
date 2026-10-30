@@ -21,7 +21,7 @@
  },
  "latency": {
   "provenance": {
-   "commit": "bb0abb1a6eb9c13ac28c40f6f52332fa29791fa4",
+   "commit": "d4445d1bda148058e83868c020971591f5990c72",
    "dirty": false,
    "date": "2026-10-30",
    "machine": "Linux x86_64"
