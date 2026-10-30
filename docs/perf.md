@@ -88,8 +88,8 @@ v0: first-order design choices (M2), from `model/designs/v0.json`:
 | `vector_elems_per_cycle` | 16 elements/cycle | choice | docs/architecture.md, vector unit (D-030) |
 | `command_cycles` | 64 cycles/command | guess | none yet (the controller is designed in M2/M7) |
 | `engine_startup_cycles` | 64 cycles/command | measured by us | per engine command that waits for an earlier result (D-042), weights or KV read ahead: the most a SmolLM2 engine command after the first took over its engine cycles (SCORES at positions 1023 and 8191; MATVECs 61), 128-lane RTL in simulation (reports/data/M5-engine.json, real); scenarios with other lanes or accumulators reuse it (estimate: its drain and final sum change with them) |
-| `softmax_fused` | 0 flag | choice | D-054: softmax's subtraction, exp and sum in one vector pass, with an FP32 adder before and after each slot's chain; 1 once built (M6) |
-| `max_in_drain` | 0 flag | choice | D-054: the engine keeps each score row's max as it writes it, so softmax has no MAX pass; 1 once built (with D-051's engine work) |
+| `softmax_fused` | 0 flag | choice | D-054: softmax's subtraction, exp and sum in one vector pass, with an FP32 adder before and after each slot's chain; deferred (D-057) |
+| `max_in_drain` | 0 flag | choice | D-054: the engine keeps each score row's max as it writes it, so softmax has no MAX pass; deferred (D-057) |
 | `kv_tiles_shared` | 0 flag | choice | Q-27: a K or V tile serves every query head of its group; not planned |
 
 | scenario | changes |

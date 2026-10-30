@@ -503,7 +503,7 @@ a command's shape tells in advance), and the stall and the x broadcast go
 through register stages with a small skid buffer per group of lanes: same
 bits, cycle counts re-measured. Then one placed-and-routed Vivado build of
 the 128-lane engine (moved from M8), its launch with the owner's OK and a
-time limit. Max in the drain (D-054) is done in the same work. *Why:* the
+time limit. Max in the drain (D-054) waits (D-057). *Why:* the
 engine is about 480k LUTs (M4's lane × 128, estimate), more than one of
 the VU47P's SLRs (the dies it is built from; 3, to verify) holds, and a
 crossing costs about 1 ns of the 4. M3 and M4 timed one lane out of
@@ -568,6 +568,18 @@ the same positions as the accelerator, next to the Gemmini figures. It
 runs in the same AWS session as an F2 measurement. *Why:* the same
 instance at the same price is the comparison a reader asks for first;
 Gemmini ran a model 500 times smaller on a 29.8 MHz soft core.
+
+**D-057 (2026-10-29) — The fused softmax pass and the max in the drain wait
+for a working core** (owner, 2026-10-29; defers D-054's fused pass and the
+max in the drain, which D-051 was to build). Softmax stays six primitive commands (`MAX`,
+`ADD`, `EXP`, `SUM`, `RECIP`, `MUL`), which run and pass their tests today.
+Both changes are kept as a possible improvement (Q-31). *Why:* a simpler
+structure first. The gain is small at short positions (609 → 618 tokens/s
+at position 0, perf model, in order, estimate) and only large at long ones
+(148 → 198 at 8191), and its hardware costs more than D-054 assumed: the
+fused sum is exp's, after the chain, while `SUMSQ` must keep its single
+rounding (`fma(x, x, p)`), so either a second accumulation point beside the
+first FMA or an FMA, not an adder, after each slot's chain.
 
 ## Milestones
 
@@ -911,11 +923,10 @@ and the buffer-port check in `commands.hazards()`; one slot's FP chain
 (every operation) with its bulk tests and area; the vector unit with its
 buffers (whole commands, sequences, the tiny step; two PRs, owner
 2026-10-23: the buffers and the elementwise commands, then the reductions,
-D-050; then the fused softmax command, D-054, which also replaces the
-perf model's softmax filter with a `commands.build()` option); `LOAD` and `KV_STORE`
+D-050; the fused softmax command waits, D-057); `LOAD` and `KV_STORE`
 with the memory model's write side; real data, speed and
 `vector_startup_cycles`, with the perf model's latencies (D-053); the
-engine's pipelined step control and max in the drain, then its placed
+engine's pipelined step control, then its placed
 Vivado build (D-051); checkpoint report.
 
 **Progress:**
@@ -997,11 +1008,8 @@ Vivado build (D-051); checkpoint report.
   sequences, and the trees overlapping rows longer than a tree (each row
   after the first costs its groups alone). 11 hand mutations, all caught.
   Found on the way: a reduction's slots wrote with an empty mask over the
-  tree's write. Open for the fused command (D-054): its sum is exp's, after
-  the chain, so a second accumulation point beside the first FMA; or all
-  reductions after the chain, one path for about 50 cycles more a
-  reduction command (about 0.7% of a token at position 0, estimate). The
-  owner chooses in that PR.
+  tree's write.
+- Fused softmax command (D-054): waits for a working core (D-057, Q-31).
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
@@ -1092,5 +1100,6 @@ New ones are added as a table:
 |------|----------|----------------|
 | Q-27 | Share K and V tiles between the query heads of a GQA group (q·K: one tile for the group's heads in turn; p·V: lanes that save and resume their partial sums, or a chunked summation order, a numerics change)? Today each query head reads K and V. | Only once the engine outruns the memory on attention. Perf model (docs/perf.md, "KV tiles shared", in order, the best case): sharing cuts SmolLM2's memory time at 8191 from 3.527 to 1.933 ms but gains under 1% (148 → 149 tokens/s), because attention's multiply-adds keep the engine as slow as the memory. |
 | Q-28 | Use the ports a partial last pass leaves idle (rows not a multiple of `L`: SmolLM2's `q`, `o`, `down`, `k`, `v` at 128 lanes)? Either split the last pass's dot products across lanes and add the halves (a numerics change), or start the next command's first pass on the idle ports (controller and engine redesign). | After M7/M8 measure a whole token at F2's HBM rate; only if the idle ports show up there. |
-| Q-29 | Bring the vector unit below 10% of token time at long positions? With D-054's fused pass and max in the drain, SmolLM2 at 8191 goes from 42.6% to 24.0% (in order, estimate). Left without a numerics change: 32 elements per cycle (D-030), softmax of head h beside the engine's scores of head h+1 (controller). With one: online softmax (D-022), which D-054 argues against. | After M7/M8 measure a whole token. |
+| Q-29 | Bring the vector unit below 10% of token time at long positions? With D-054's fused pass (deferred, Q-31) and max in the drain, SmolLM2 at 8191 goes from 42.6% to 24.0% (in order, estimate). Left without a numerics change: 32 elements per cycle (D-030), softmax of head h beside the engine's scores of head h+1 (controller). With one: online softmax (D-022), which D-054 argues against. | After M7/M8 measure a whole token. |
 | Q-30 | Cut the latency of dependent vector commands (D-053)? Options: residual adds and scalings on the engine's drain, as it already multiplies by `scale` (epilogue fusion); a short path through the chain for `ADD`, `MUL` and `FMA`; RMSNorm's three one-element commands on a small scalar unit; ROTATE_HALF as an addressing flag on `MUL` (today it goes through the 50-cycle chain), which saves RoPE one dependent command per rotation. All keep the bits. | Once the perf model counts latency (M6, D-053). |
+| Q-31 | Add D-054's fused softmax pass (`exp(a - b)` per row and the row's sum, one command) and the max in the engine's drain? Same bits; softmax reads the scores twice instead of five times (perf model, in order, estimate: SmolLM2 609 → 618 tokens/s at position 0, 148 → 198 at 8191). The fused sum comes after the chain, and `SUMSQ` keeps `fma(x, x, p)`, so either a second accumulation point beside the first FMA or every reduction on an FMA after the chain (about 50 cycles more a reduction command, 32 DSPs). Deferred by D-057. | Once a whole token runs and is measured (M7/M8 or later). |
