@@ -1,0 +1,302 @@
+CABOSSE-BEGIN host
+2026-10-30T10:12:46Z
+$ cat /etc/os-release
+PRETTY_NAME="Ubuntu 24.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.1 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+$ nproc
+16
+$ free -b
+               total        used        free      shared  buff/cache   available
+Mem:     132919668736  1394810880 132235808768     2891776   313237504 131524857856
+Swap:    10737414144           0 10737414144
+CABOSSE-END host
+CABOSSE-BEGIN setup
+cabosse 8ab66a951c0cc8b4fe067c4bd0fd36578c2df716 2026-10-30T10:25:30+01:00
+aws-fpga c34f88e97eaf8a9b6ea7a3516ab65ee64690ab82 2026-10-16T20:30:15-05:00
+$ which vivado
+/opt/Xilinx/2025.2/Vivado/bin/vivado
+$ vivado -version
+vivado v2025.2 (64-bit)
+Tool Version Limit: 2025.11
+SW Build 6299465 on Fri Nov 14 12:34:56 MST 2025
+IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
+SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+part xcvu47p-fsvh2892-2-e
+CABOSSE-END setup
+CABOSSE-BEGIN vivado
+2026-10-30T10:14:06Z
+run1 (engine_path:MulRegs:2:0:0) exit 1 12:32:32
+Ending Routing Task | Checksum: 294290ba3
+Time (s): cpu = 02:08:49 ; elapsed = 00:58:49 . Memory (MB): peak = 16475.184 ; gain = 0.000 ; free physical = 109029 ; free virtual = 122806
+Routing Is Done.
+INFO: [Common 17-83] Releasing license: Implementation
+28 Infos, 105 Warnings, 0 Critical Warnings and 0 Errors encountered.
+route_design completed successfully
+route_design: Time (s): cpu = 02:09:33 ; elapsed = 00:59:09 . Memory (MB): peak = 16475.184 ; gain = 0.000 ; free physical = 109056 ; free virtual = 122833
+# report_timing_summary -no_header -file timing_summary.rpt
+INFO: [Timing 38-91] UpdateTimingParams: Speed grade: -2, Temperature grade: E, Delay Type: min_max.
+INFO: [Timing 38-191] Multithreading enabled for timing update using a maximum of 4 CPUs
+report_timing_summary: Time (s): cpu = 00:01:19 ; elapsed = 00:00:38 . Memory (MB): peak = 16475.184 ; gain = 0.000 ; free physical = 109061 ; free virtual = 122838
+# report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+INFO: [Timing 38-91] UpdateTimingParams: Speed grade: -2, Temperature grade: E, Delay Type: max.
+INFO: [Timing 38-191] Multithreading enabled for timing update using a maximum of 4 CPUs
+INFO: [Timing 38-78] ReportTimingParams: -max_paths 3 -nworst 1 -delay_type max -sort_by slack.
+# report_utilization -file utilization.rpt
+report_utilization: Time (s): cpu = 00:00:44 ; elapsed = 00:00:45 . Memory (MB): peak = 16475.184 ; gain = 0.000 ; free physical = 109066 ; free virtual = 122843
+# report_utilization -hierarchical -hierarchical_depth 4 -file utilization_hier.rpt
+report_utilization: Time (s): cpu = 00:01:08 ; elapsed = 00:01:09 . Memory (MB): peak = 16475.184 ; gain = 0.000 ; free physical = 109064 ; free virtual = 122842
+# set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=engine_path loop_cycles=0 retime=0 wns_ns=-4.698
+# if {$wns < 0} {
+#   puts "CABOSSE-TIMING-FAILED top=$top wns_ns=$wns"
+#   exit 1
+# }
+CABOSSE-TIMING-FAILED top=engine_path wns_ns=-4.698
+INFO: [Common 17-206] Exiting Vivado at Fri Oct 30 12:32:31 2026...
+2026-10-30T12:32:32Z
+CABOSSE-END vivado
+CABOSSE-BEGIN run1 engine_path:MulRegs:2:0:0
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
+CABOSSE-RESULT top=engine_path loop_cycles=0 retime=0 wns_ns=-4.698
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+     -4.698  -368655.938                 288260               986478        0.010        0.000                      0               986478        1.468        0.000                       0                444267  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                -4.698  -368655.938                 288260               986478        0.010        0.000                      0               986478        1.468        0.000                       0                444267  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Fri Oct 30 12:30:33 2026
+| Host              : ip-172-31-37-49 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : engine_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (VIOLATED) :        -4.698ns  (required time - arrival time)
+  Source:                 u_engine/step_unit_q_reg[t][5]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_engine/u_tile/gen_bank[120].rd_phys_q_reg[120][4]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        8.679ns  (logic 1.805ns (20.797%)  route 6.874ns (79.203%))
+  Logic Levels:           16  (CARRY8=2 LUT2=2 LUT4=2 LUT5=2 LUT6=7 RAMD64E=1)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.029ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.029     0.029    
+    SLICE_X78Y432        FDRE                         0.000     0.029 r  u_engine/step_unit_q_reg[t][5]/C
+    SLICE_X78Y432        FDRE (Prop_FFF2_SLICEL_C_Q)
+                                                      0.081     0.110 r  u_engine/step_unit_q_reg[t][5]/Q
+                         net (fo=8, routed)           0.465     0.575    u_engine/gen_lane[31].u_lane/i___64_i_30_2
+    SLICE_X78Y432                                                     r  u_engine/gen_lane[31].u_lane/i___64_i_69/I0
+    SLICE_X78Y432        LUT2 (Prop_F6LUT_SLICEL_I0_O)
+                                                      0.089     0.664 r  u_engine/gen_lane[31].u_lane/i___64_i_69/O
+                         net (fo=1, routed)           0.011     0.675    u_engine/gen_lane[31].u_lane/i___64_i_69_n_0
+    SLICE_X78Y432                                                     r  u_engine/gen_lane[31].u_lane/i___64_i_30/S[5]
+    SLICE_X78Y432        CARRY8 (Prop_CARRY8_SLICEL_S[5]_CO[7])
+                                                      0.155     0.830 r  u_engine/gen_lane[31].u_lane/i___64_i_30/CO[7]
+                         net (fo=1, routed)           0.026     0.856    u_engine/gen_lane[31].u_lane/i___64_i_30_n_0
+    SLICE_X78Y433                                                     r  u_engine/gen_lane[31].u_lane/i___64_i_75/CI
+    SLICE_X78Y433        CARRY8 (Prop_CARRY8_SLICEL_CI_O[4])
+                                                      0.086     0.942 f  u_engine/gen_lane[31].u_lane/i___64_i_75/O[4]
+                         net (fo=6, routed)           0.456     1.398    u_engine/gen_lane[60].u_lane/p_0_out0[12]
+    SLICE_X75Y434                                                     f  u_engine/gen_lane[60].u_lane/i___64_i_31/I2
+    SLICE_X75Y434        LUT4 (Prop_A6LUT_SLICEL_I2_O)
+                                                      0.098     1.496 f  u_engine/gen_lane[60].u_lane/i___64_i_31/O
+                         net (fo=1, routed)           0.152     1.648    u_engine/gen_lane[60].u_lane/i___64_i_31_n_0
+    SLICE_X75Y435                                                     f  u_engine/gen_lane[60].u_lane/i___64_i_8/I3
+    SLICE_X75Y435        LUT6 (Prop_B6LUT_SLICEL_I3_O)
+                                                      0.124     1.772 r  u_engine/gen_lane[60].u_lane/i___64_i_8/O
+                         net (fo=49, routed)          0.181     1.954    u_engine/gen_lane[60].u_lane/last_tile127_return49_in
+    SLICE_X73Y435                                                     r  u_engine/gen_lane[60].u_lane/i___64_i_2__18/I3
+    SLICE_X73Y435        LUT4 (Prop_E6LUT_SLICEL_I3_O)
+                                                      0.051     2.005 r  u_engine/gen_lane[60].u_lane/i___64_i_2__18/O
+                         net (fo=213, routed)         0.422     2.427    u_engine/gen_lane[35].u_lane/reserved_q_reg[1]_0
+    SLICE_X70Y436                                                     r  u_engine/gen_lane[35].u_lane/step_unit_q[pos][12]_i_41/I1
+    SLICE_X70Y436        LUT2 (Prop_B6LUT_SLICEL_I1_O)
+                                                      0.124     2.551 f  u_engine/gen_lane[35].u_lane/step_unit_q[pos][12]_i_41/O
+                         net (fo=2, routed)           0.098     2.649    u_engine/gen_lane[90].u_lane/lane_in_ready[1]
+    SLICE_X70Y436                                                     f  u_engine/gen_lane[90].u_lane/i___64_i_85/I4
+    SLICE_X70Y436        LUT5 (Prop_G6LUT_SLICEL_I4_O)
+                                                      0.050     2.699 r  u_engine/gen_lane[90].u_lane/i___64_i_85/O
+                         net (fo=1, routed)           0.420     3.119    u_engine/gen_lane[122].u_lane/i___64_i_18_1
+    SLICE_X70Y434                                                     r  u_engine/gen_lane[122].u_lane/i___64_i_53/I4
+    SLICE_X70Y434        LUT6 (Prop_C6LUT_SLICEL_I4_O)
+                                                      0.146     3.265 r  u_engine/gen_lane[122].u_lane/i___64_i_53/O
+                         net (fo=1, routed)           0.160     3.425    u_engine/gen_lane[122].u_lane/i___64_i_53_n_0
+    SLICE_X70Y428                                                     r  u_engine/gen_lane[122].u_lane/i___64_i_18/I0
+    SLICE_X70Y428        LUT6 (Prop_A6LUT_SLICEL_I0_O)
+                                                      0.098     3.523 r  u_engine/gen_lane[122].u_lane/i___64_i_18/O
+                         net (fo=14, routed)          0.438     3.961    u_engine/gen_lane[107].u_lane/tile_ok_q_reg_1
+    SLICE_X72Y427                                                     r  u_engine/gen_lane[107].u_lane/i___64_i_6/I3
+    SLICE_X72Y427        LUT6 (Prop_H6LUT_SLICEM_I3_O)
+                                                      0.039     4.000 f  u_engine/gen_lane[107].u_lane/i___64_i_6/O
+                         net (fo=148, routed)         0.060     4.061    u_engine/gen_queue[2].u_queue/p_369_in
+    SLICE_X72Y427                                                     f  u_engine/gen_queue[2].u_queue/step_unit_q[values]_i_2/I5
+    SLICE_X72Y427        LUT6 (Prop_C6LUT_SLICEM_I5_O)
+                                                      0.123     4.184 r  u_engine/gen_queue[2].u_queue/step_unit_q[values]_i_2/O
+                         net (fo=203, routed)         0.349     4.532    u_engine/gen_queue[2].u_queue/step_busy_q_reg_0
+    SLICE_X75Y424                                                     r  u_engine/gen_queue[2].u_queue/step_cyc_q[2]_i_1/I1
+    SLICE_X75Y424        LUT5 (Prop_F6LUT_SLICEL_I1_O)
+                                                      0.148     4.680 r  u_engine/gen_queue[2].u_queue/step_cyc_q[2]_i_1/O
+                         net (fo=6, routed)           0.312     4.992    u_engine/gen_queue[2].u_queue/C__0[0]
+    SLICE_X74Y419                                                     r  u_engine/gen_queue[2].u_queue/rd_rot_q[2]_i_1/I5
+    SLICE_X74Y419        LUT6 (Prop_F6LUT_SLICEM_I5_O)
+                                                      0.148     5.140 r  u_engine/gen_queue[2].u_queue/rd_rot_q[2]_i_1/O
+                         net (fo=216, routed)         0.678     5.819    u_engine/u_tile/u_rd_addr_rot/gen_bank[8].rd_phys_q_reg[8][63][0]
+    SLICE_X73Y409                                                     r  u_engine/u_tile/u_rd_addr_rot/i_/gen_bank[123].mem_q_reg_0_63_0_6_i_11/I2
+    SLICE_X73Y409        LUT6 (Prop_G6LUT_SLICEL_I2_O)
+                                                      0.097     5.916 r  u_engine/u_tile/u_rd_addr_rot/i_/gen_bank[123].mem_q_reg_0_63_0_6_i_11/O
+                         net (fo=512, routed)         1.935     7.850    u_engine/u_tile/gen_bank[120].mem_q_reg_0_63_0_6/ADDRE0
+    SLICE_X102Y411                                                    r  u_engine/u_tile/gen_bank[120].mem_q_reg_0_63_0_6/RAME/RADR0
+    SLICE_X102Y411       RAMD64E (Prop_E6LUT_SLICEM_RADR0_O)
+                                                      0.148     7.998 r  u_engine/u_tile/gen_bank[120].mem_q_reg_0_63_0_6/RAME/O
+                         net (fo=1, routed)           0.710     8.708    u_engine/u_tile/p_0_out__123[4]
+    SLICE_X102Y411       FDRE                                         r  u_engine/u_tile/gen_bank[120].rd_phys_q_reg[120][4]/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.021     4.021    
+                         clock pessimism              0.000     4.021    
+                         clock uncertainty           -0.035     3.986    
+    SLICE_X102Y411       FDRE (Setup_GFF_SLICEM_C_D)
+                                                      0.025     4.011    u_engine/u_tile/gen_bank[120].rd_phys_q_reg[120][4]
+  -------------------------------------------------------------------
+                         required time                          4.011    
+                         arrival time                          -8.708    
+  -------------------------------------------------------------------
+                         slack                                 -4.698    
+Slack (VIOLATED) :        -4.634ns  (required time - arrival time)
+  Source:                 u_engine/step_unit_q_reg[t][5]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_engine/u_tile/gen_bank[71].rd_phys_q_reg[71][3]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        8.616ns  (logic 1.896ns (22.006%)  route 6.720ns (77.994%))
+  Logic Levels:           17  (CARRY8=2 LUT2=2 LUT3=1 LUT4=2 LUT5=2 LUT6=7 RAMD64E=1)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.029ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.029     0.029    
+    SLICE_X78Y432        FDRE                         0.000     0.029 r  u_engine/step_unit_q_reg[t][5]/C
+| CLB LUTs                   | 618132 |     0 |          0 |   1303680 | 47.41 |
+|   LUT as Logic             | 570432 |     0 |          0 |   1303680 | 43.76 |
+|   LUT as Memory            |  47700 |     0 |          0 |    600960 |  7.94 |
+| CLB Registers              | 378367 |     0 |          0 |   2607360 | 14.51 |
+| CARRY8                     |  14099 |     0 |          0 |    162960 |  8.65 |
+|   LUT as Distributed RAM                   |  46608 |     0 |            |           |       |
+|   LUT as Shift Register                    |   1092 |     0 |            |           |       |
+| CLB Registers                              | 378367 |     0 |          0 |   2607360 | 14.51 |
+| DSPs           |   16 |     0 |          0 |      9024 |  0.18 |
+| CARRY8   |  14099 |                 CLB |
+| CLB LUTs                   | 152713 | 320284 | 145135 |  34.73 |  74.14 |  33.60 |
+|   LUT as Logic             | 152447 | 277521 | 140464 |  34.67 |  64.24 |  32.51 |
+|   LUT as Memory            |    266 |  42763 |   4671 |   0.13 |  21.62 |   2.36 |
+| CLB Registers              | 111471 | 168126 |  98770 |  12.68 |  19.46 |  11.43 |
+| CARRY8                     |   4230 |   5947 |   3922 |   7.70 |  11.01 |   7.26 |
+| DSPs                       |      0 |     16 |      0 |   0.00 |   0.52 |   0.00 |
+1. Utilization by Hierarchy
+1. Utilization by Hierarchy
+---------------------------
++------------------------------+----------------------------------+------------+------------+---------+------+--------+--------+--------+------+------------+
+|           Instance           |              Module              | Total LUTs | Logic LUTs | LUTRAMs | SRLs |   FFs  | RAMB36 | RAMB18 | URAM | DSP Blocks |
++------------------------------+----------------------------------+------------+------------+---------+------+--------+--------+--------+------+------------+
+| engine_path                  |                            (top) |     618132 |     570432 |   46608 | 1092 | 378367 |      0 |      0 |    0 |         16 |
+|   (engine_path)              |                            (top) |          0 |          0 |       0 |    0 |  10414 |      0 |      0 |    0 |          0 |
+|   u_engine                   |                           engine |     618132 |     570432 |   46608 | 1092 | 367953 |      0 |      0 |    0 |         16 |
+|     (u_engine)               |                           engine |        536 |        497 |       0 |   39 |   1148 |      0 |      0 |    0 |          0 |
+|     gen_dma[0].u_dma         |                         port_dma |       1855 |       1263 |     592 |    0 |    114 |      0 |      0 |    0 |          0 |
+|       (gen_dma[0].u_dma)     |                         port_dma |         90 |         90 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1372 |       1765 |       1173 |     592 |    0 |     55 |      0 |      0 |    0 |          0 |
+|     gen_dma[10].u_dma        |                       port_dma_0 |       1783 |       1191 |     592 |    0 |    113 |      0 |      0 |    0 |          0 |
+|       (gen_dma[10].u_dma)    |                       port_dma_0 |         91 |         91 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1371 |       1692 |       1100 |     592 |    0 |     54 |      0 |      0 |    0 |          0 |
+|     gen_dma[11].u_dma        |                       port_dma_1 |       1784 |       1192 |     592 |    0 |    108 |      0 |      0 |    0 |          0 |
+|       (gen_dma[11].u_dma)    |                       port_dma_1 |         90 |         90 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1370 |       1694 |       1102 |     592 |    0 |     49 |      0 |      0 |    0 |          0 |
+|     gen_dma[12].u_dma        |                       port_dma_2 |       1797 |       1205 |     592 |    0 |    108 |      0 |      0 |    0 |          0 |
+|       (gen_dma[12].u_dma)    |                       port_dma_2 |        100 |        100 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1369 |       1697 |       1105 |     592 |    0 |     49 |      0 |      0 |    0 |          0 |
+|     gen_dma[13].u_dma        |                       port_dma_3 |       1779 |       1187 |     592 |    0 |    118 |      0 |      0 |    0 |          0 |
+|       (gen_dma[13].u_dma)    |                       port_dma_3 |         90 |         90 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1368 |       1689 |       1097 |     592 |    0 |     59 |      0 |      0 |    0 |          0 |
+|     gen_dma[14].u_dma        |                       port_dma_4 |       1791 |       1199 |     592 |    0 |    108 |      0 |      0 |    0 |          0 |
+|       (gen_dma[14].u_dma)    |                       port_dma_4 |        100 |        100 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1367 |       1691 |       1099 |     592 |    0 |     49 |      0 |      0 |    0 |          0 |
+|     gen_dma[15].u_dma        |                       port_dma_5 |       1787 |       1195 |     592 |    0 |    107 |      0 |      0 |    0 |          0 |
+|       (gen_dma[15].u_dma)    |                       port_dma_5 |         90 |         90 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1366 |       1697 |       1105 |     592 |    0 |     48 |      0 |      0 |    0 |          0 |
+|     gen_dma[16].u_dma        |                       port_dma_6 |       1778 |       1186 |     592 |    0 |    106 |      0 |      0 |    0 |          0 |
+|       (gen_dma[16].u_dma)    |                       port_dma_6 |        100 |        100 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1365 |       1678 |       1086 |     592 |    0 |     47 |      0 |      0 |    0 |          0 |
+|     gen_dma[17].u_dma        |                       port_dma_7 |       1785 |       1193 |     592 |    0 |    111 |      0 |      0 |    0 |          0 |
+|       (gen_dma[17].u_dma)    |                       port_dma_7 |        106 |        106 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1364 |       1679 |       1087 |     592 |    0 |     52 |      0 |      0 |    0 |          0 |
+|     gen_dma[18].u_dma        |                       port_dma_8 |       1784 |       1192 |     592 |    0 |    110 |      0 |      0 |    0 |          0 |
+|       (gen_dma[18].u_dma)    |                       port_dma_8 |         90 |         90 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1363 |       1694 |       1102 |     592 |    0 |     51 |      0 |      0 |    0 |          0 |
+|     gen_dma[19].u_dma        |                       port_dma_9 |       1790 |       1198 |     592 |    0 |    102 |      0 |      0 |    0 |          0 |
+|       (gen_dma[19].u_dma)    |                       port_dma_9 |         99 |         99 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1362 |       1691 |       1099 |     592 |    0 |     43 |      0 |      0 |    0 |          0 |
+|     gen_dma[1].u_dma         |                      port_dma_10 |       1800 |       1208 |     592 |    0 |    107 |      0 |      0 |    0 |          0 |
+|       (gen_dma[1].u_dma)     |                      port_dma_10 |        100 |        100 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1361 |       1700 |       1108 |     592 |    0 |     48 |      0 |      0 |    0 |          0 |
+|     gen_dma[20].u_dma        |                      port_dma_11 |       1786 |       1194 |     592 |    0 |    108 |      0 |      0 |    0 |          0 |
+|       (gen_dma[20].u_dma)    |                      port_dma_11 |         94 |         94 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1360 |       1692 |       1100 |     592 |    0 |     49 |      0 |      0 |    0 |          0 |
+|     gen_dma[21].u_dma        |                      port_dma_12 |       1794 |       1202 |     592 |    0 |    108 |      0 |      0 |    0 |          0 |
+|       (gen_dma[21].u_dma)    |                      port_dma_12 |         90 |         90 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1359 |       1704 |       1112 |     592 |    0 |     49 |      0 |      0 |    0 |          0 |
+|     gen_dma[22].u_dma        |                      port_dma_13 |       1783 |       1191 |     592 |    0 |    108 |      0 |      0 |    0 |          0 |
+|       (gen_dma[22].u_dma)    |                      port_dma_13 |         91 |         91 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1358 |       1692 |       1100 |     592 |    0 |     49 |      0 |      0 |    0 |          0 |
+|     gen_dma[23].u_dma        |                      port_dma_14 |       1801 |       1209 |     592 |    0 |    108 |      0 |      0 |    0 |          0 |
+|       (gen_dma[23].u_dma)    |                      port_dma_14 |         90 |         90 |       0 |    0 |     59 |      0 |      0 |    0 |          0 |
+|       u_data                 | stream_fifo__parameterized0_1357 |       1711 |       1119 |     592 |    0 |     49 |      0 |      0 |    0 |          0 |
+CABOSSE-END run1 engine_path:MulRegs:2:0:0

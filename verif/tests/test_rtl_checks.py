@@ -31,8 +31,12 @@ IDS = [top + ("-ftz" if params else "") for top, _, params in TOPS]
 # at that cap after 3 minutes, M5). 4 ports (16 lanes, with the default
 # Writes = 8) still build a drain of several write groups. The vector unit
 # at 16 lanes (112 FMAs) needs more than 8 GB too (M6); 2 lanes still bank
-# every buffer.
-SYNTH_PARAMS = {"engine": (("Ports", 4),), "vec_unit": (("Lanes", 2), ("Len", 64))}
+# every buffer. engine_path, the engine's timing harness, as the engine.
+SYNTH_PARAMS = {
+    "engine": (("Ports", 4),),
+    "engine_path": (("Ports", 4),),
+    "vec_unit": (("Lanes", 2), ("Len", 64)),
+}
 # (top, parameters, message): shapes that must not elaborate.
 BAD_SHAPES = [
     # fp_product: its callers delay the addend by Regs cycles; a third
