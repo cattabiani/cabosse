@@ -94,7 +94,7 @@ def with_waits(steps: list[Step]) -> list[Step]:
     written: set[Buf] = set()  # by the commands since the last wait
     for s in steps:
         s.wait = bool({s.cmd.a, s.cmd.b, s.cmd.c} & written)
-        written = {s.cmd.dst} | (set() if s.wait else written)
+        written = ({s.cmd.dst} | (set() if s.wait else written)) - {Buf.NONE}
     return steps
 
 

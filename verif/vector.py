@@ -3,7 +3,8 @@
 """What the vector unit's tests share: its buffers as the golden model holds
 them, the memory behind its AXI port as words, the driver
 verif/bulk/vec_unit.cpp run on commands, and the bit-exact comparison of
-every buffer and of the memory afterwards (rtl/vec_unit.sv)."""
+every buffer and of the memory afterwards (rtl/vec_unit.sv). An EngineStep
+stands in for an engine command among the commands."""
 
 from dataclasses import dataclass
 
@@ -70,8 +71,20 @@ class Step:
 
 
 @dataclass
+class EngineStep:
+    """An engine command's stand-in, the driver's engine step: once every
+    earlier command is done, read the spans `reads` (buffer, first element,
+    length) through the ext port, then write `writes` (buffer, first element,
+    the elements)."""
+
+    reads: list[tuple[Buf, int, int]]
+    writes: list[tuple[Buf, int, torch.Tensor]]
+
+
+@dataclass
 class Result:
     buffers: dict[Buf, np.ndarray]  # raw bits, uint32
+    engine_reads: list[list[np.ndarray]]  # per EngineStep, per read span: raw bits
     mem: np.ndarray  # the memory's words
     taken: np.ndarray  # per command, the cycle it was taken
     done: np.ndarray  # per command, the cycle of its done_o
@@ -135,33 +148,71 @@ def golden(
     return {b: bits(x) for b, x in buf.items()}, mem
 
 
+def span_groups(first: int, length: int) -> range:
+    """The groups (their first elements) that hold elements first ... first
+    + length - 1."""
+    return range(first // LANES * LANES, first + length, LANES)
+
+
+def group_writes(b: Buf, first: int, x: torch.Tensor) -> list[int]:
+    """The driver's ext writes of x into b from element `first`: per group
+    buffer, first element, lane mask and LANES words."""
+    raw = bits(x)
+    out = []
+    for g in span_groups(first, len(raw)):
+        lanes = [e - first for e in range(g, g + LANES)]
+        mask = sum(1 << i for i, j in enumerate(lanes) if 0 <= j < len(raw))
+        out += [int(b), g, mask, *(int(raw[j]) if 0 <= j < len(raw) else 0 for j in lanes)]
+    return out
+
+
+def group_reads(spans: list[tuple[Buf, int, int]]) -> list[int]:
+    """The driver's ext reads of the spans (buffer, first, length): per group
+    buffer and first element."""
+    return [x for b, first, n in spans for g in span_groups(first, n) for x in (int(b), g)]
+
+
 def words(
-    steps: list[Step], start: dict[Buf, torch.Tensor], length: int, mem: np.ndarray
+    steps: list[Step | EngineStep], start: dict[Buf, torch.Tensor], length: int, mem: np.ndarray
 ) -> np.ndarray:
     """The driver's input: the memory, every buffer written, the commands,
-    every buffer read."""
-    groups = range(0, length, LANES)
-    out = [len(mem), *mem.tolist(), len(start) * len(groups)]
-    for b, x in start.items():
-        raw = np.zeros(-(-length // LANES) * LANES, dtype=np.uint32)
-        raw[:length] = bits(x)
-        for g in groups:
-            mask = (1 << min(LANES, length - g)) - 1
-            out += [int(b), g, mask, *raw[g : g + LANES].tolist()]
-    out.append(len(steps))
-    for s in steps:
+    the engine steps, every buffer read."""
+    writes = [x for b, v in start.items() for x in group_writes(b, 0, v[:length])]
+    commands = [s for s in steps if isinstance(s, Step)]
+    out = [len(mem), *mem.tolist(), len(writes) // (3 + LANES), *writes, len(commands)]
+    for s in commands:
         c = s.cmd
         addr = [c.addr & 0xFFFFFFFF, c.addr >> 32]
         out += [c.op, c.dst, c.a, c.b, c.c, c.flags, c.n, c.m, c.scalar, c.cap, *addr, s.token]
         out += [s.t, s.stride, int(s.wait)]
-    out.append(len(start) * len(groups))
-    for b in start:
-        out += [x for g in groups for x in (int(b), g)]
+    engine, before = [], 0
+    for s in steps:
+        if isinstance(s, Step):
+            before += 1
+            continue
+        reads = group_reads(s.reads)
+        writes = [x for b, first, v in s.writes for x in group_writes(b, first, v)]
+        engine += [before, len(reads) // 2, *reads, len(writes) // (3 + LANES), *writes]
+    out += [len(steps) - len(commands), *engine]
+    reads = group_reads([(b, 0, length) for b in start])
+    out += [len(reads) // 2, *reads]
     return np.array(out, dtype=np.uint32)
 
 
-def params(length: int) -> tuple[tuple[str, int], ...]:
-    return (("Len", length), ("Bf16Mask", BF16_MASK), ("KvPorts", KV_PORTS), ("ChanW", CHAN_W))
+def read_spans(out: np.ndarray, spans: list[tuple[Buf, int, int]]) -> list[np.ndarray]:
+    """The spans' elements from the driver's reads (group_reads' order)."""
+    got, at = [], 0
+    for _, first, n in spans:
+        groups = span_groups(first, n)
+        lanes = out[at : at + LANES * len(groups)]
+        start = first - groups[0]
+        got.append(lanes[start : start + n].copy())
+        at += len(lanes)
+    return got
+
+
+def params(length: int, chan_w: int = CHAN_W) -> tuple[tuple[str, int], ...]:
+    return (("Len", length), ("Bf16Mask", BF16_MASK), ("KvPorts", KV_PORTS), ("ChanW", chan_w))
 
 
 def zero_memory() -> np.ndarray:
@@ -169,22 +220,30 @@ def zero_memory() -> np.ndarray:
 
 
 def run(
-    steps: list[Step],
+    steps: list[Step | EngineStep],
     start: dict[Buf, torch.Tensor],
     length: int,
     mem: np.ndarray,
     base: int = 0,
+    chan_w: int = CHAN_W,
     **plusargs: int,
 ) -> Result:
-    """The commands on the unit, every buffer filled with `start` first and
-    the memory (an image from byte `base`) with `mem`'s words."""
+    """The commands and engine steps on the unit, every buffer filled with
+    `start` first and the memory (an image from byte `base`, channels of
+    2^chan_w bytes) with `mem`'s words."""
     argv = words(steps, start, length, mem)
     plusargs = {"base": base, **plusargs} if base else plusargs
-    result = bulk.run_driver("vec_unit", argv, params(length), **plusargs)
+    result = bulk.run_driver("vec_unit", argv, params(length, chan_w), **plusargs)
     assert result.returncode == 0, result.stderr.decode()
     out = np.frombuffer(result.stdout, dtype="<u4")
-    at = 2 * len(steps)
+    at = 2 * sum(isinstance(s, Step) for s in steps)
     times = out[:at].reshape(-1, 2)
+    engine_reads = []
+    for s in steps:
+        if isinstance(s, EngineStep):
+            n = LANES * len(group_reads(s.reads)) // 2
+            engine_reads.append(read_spans(out[at : at + n], s.reads))
+            at += n
     n_reads = len(start) * -(-length // LANES) * LANES
     reads = out[at : at + n_reads].reshape(len(start), -1)[:, :length]
     at += n_reads
@@ -193,7 +252,16 @@ def run(
     n_answers = int(out[at])
     answers = out[at + 1 : at + 1 + n_answers].copy()
     buffers = {b: r.copy() for b, r in zip(start, reads, strict=True)}
-    return Result(buffers, got_mem, times[:, 0], times[:, 1], answers, bool(out[-2]), int(out[-1]))
+    return Result(
+        buffers,
+        engine_reads,
+        got_mem,
+        times[:, 0],
+        times[:, 1],
+        answers,
+        bool(out[-2]),
+        int(out[-1]),
+    )
 
 
 def assert_same(got: dict[Buf, np.ndarray], want: dict[Buf, np.ndarray], label: str) -> None:
