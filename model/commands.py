@@ -559,6 +559,23 @@ def engine_waits(commands: list[Command]) -> list[bool]:
     return waits
 
 
+def stops(commands: list[Command]) -> list[bool]:
+    """Per command, whether the controller stops at it until the commands
+    before it are done (D-045): a command off the engine that reads a buffer
+    written since the last stop. Engine commands wait inside the engine
+    (engine_waits)."""
+    written: set[Buf] = set()  # since the last stop
+    out = []
+    for cmd in commands:
+        stop = cmd.op not in ENGINE_OPS and bool({cmd.a, cmd.b, cmd.c} & written)
+        if stop:
+            written = set()
+        if cmd.dst != Buf.NONE:
+            written.add(cmd.dst)
+        out.append(stop)
+    return out
+
+
 def kv_waits(commands: list[Command]) -> list[int | None]:
     """Per command, the KV_STORE an engine command is given after (D-044):
     the last one before it that writes the cache it reads. None for the
