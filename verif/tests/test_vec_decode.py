@@ -8,7 +8,9 @@ commands.run()'s results (OUTPUT and END are not the unit's).
 Checked bit for bit against run(): what each engine command reads (so a
 divergence shows at the first engine command after it), every buffer at the
 end, and the whole memory: the KV cache in channel order (D-043), every
-other byte unchanged. Both start from the same buffers, all NaN
+other byte unchanged. An engine step waits for every earlier command, so
+the engine never overlaps the vector unit here (on shared buffers: M7).
+Both start from the same buffers, all NaN
 (commands.empty_buffers), so a read of an element no command wrote shows.
 
 The memory map: Layout's addresses are still flat (D-040: channel offsets
@@ -87,10 +89,12 @@ CASES = [(0, 16, 16), (5, 8, 32)]
 @rtl.needs_verilator
 @pytest.mark.parametrize(("position", "cap", "stride"), CASES)
 def test_decode_step(position: int, cap: int, stride: int) -> None:
-    gen = torch.Generator().manual_seed(SEED + position)
+    seed = SEED + position  # the tokens'
+    gen = torch.Generator().manual_seed(seed)
     tokens = torch.randint(CONFIG.vocab_size, (position + 1,), generator=gen).tolist()
     model = decoder.from_state_dict(CONFIG, tiny.random_weights(CONFIG, SEED))
     layout = Layout.of(CONFIG, cap, stride)
+    assert max(n for _, n in commands.buffers(CONFIG, stride).values()) <= LENGTH
     cache = decoder.KVCache.empty(model, cap)
     if position:
         decoder.step(model, cache, tokens[:-1])
@@ -103,7 +107,7 @@ def test_decode_step(position: int, cap: int, stride: int) -> None:
     commands.run(cmds, layout, hbm, tokens[-1], position, calls.append, want)
     steps = unit_steps(cmds, calls, tokens[-1], position + 1, stride)
     result = vector.run(steps, start, LENGTH, mem, chan_w=CHAN_W)
-    label = f"position {position}, seed {SEED}"
+    label = f"position {position}, token seed {seed}"
 
     for call, (got,) in zip(calls, result.engine_reads, strict=True):
         bad = np.flatnonzero(got != vector.bits(call.a))

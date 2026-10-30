@@ -189,11 +189,11 @@ def words(
     the engine steps, every buffer read."""
     no_writes = np.empty((0, WRITE_WORDS), dtype=np.uint32)
     writes = [group_writes(b, 0, v[:length]) for b, v in start.items()]
-    commands, engine = [], []
+    cmd_rows, engine = [], []
     for s in steps:
         if isinstance(s, EngineStep):
             writes_s = [group_writes(b, first, v) for b, first, v in s.writes]
-            before = np.array([len(commands)], dtype=np.uint32)
+            before = np.array([len(cmd_rows)], dtype=np.uint32)
             engine += [
                 before,
                 counted(group_reads(s.reads)),
@@ -203,14 +203,13 @@ def words(
         c = s.cmd
         addr = [c.addr & 0xFFFFFFFF, c.addr >> 32]
         fields = [c.op, c.dst, c.a, c.b, c.c, c.flags, c.n, c.m, c.scalar, c.cap, *addr, s.token]
-        commands.append(fields + [s.t, s.stride, int(s.wait)])
-    n_engine = sum(isinstance(s, EngineStep) for s in steps)
+        cmd_rows.append(fields + [s.t, s.stride, int(s.wait)])
     return np.concatenate(
         [
             counted(mem),
             counted(np.vstack([no_writes, *writes])),
-            counted(np.array(commands, dtype=np.uint32).reshape(-1, CMD_WORDS)),
-            np.array([n_engine], dtype=np.uint32),
+            counted(np.array(cmd_rows, dtype=np.uint32).reshape(-1, CMD_WORDS)),
+            np.array([len(engine) // 3], dtype=np.uint32),  # 3 arrays a step
             *engine,
             counted(group_reads([(b, 0, length) for b in start])),
         ]

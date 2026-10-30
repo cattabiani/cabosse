@@ -1071,7 +1071,8 @@ Vivado build (D-051); checkpoint report.
   reads it at its flat addresses, and `KV_STORE` takes a cache's flat
   address as its offset in every channel (D-043; D-040's offsets come in
   M7). GQA (4 heads, 2 KV heads) at position 0 (cap 16, stride 16) and 5
-  (cap 8, stride 32): 99 steps, 7,041 cycles each. 3 hand mutations caught
+  (cap 8, stride 32): 99 steps, 7,041 and 7,049 cycles (with the engine
+  steps' ext reads and writes; the engine never overlaps the unit here). 3 hand mutations caught
   (an engine result, dropped `KV_STORE`s, a wrong token). `with_waits` no
   longer counts `NONE` as written, so a command after a `KV_STORE` no
   longer waits for it.

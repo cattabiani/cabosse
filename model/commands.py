@@ -866,7 +866,9 @@ def run(
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
     names = {addr: name for name, (addr, _, _) in layout.tensors.items()} if record else {}
     waits = engine_waits(commands) if record else []
-    buf = empty_buffers(buffers(layout.config, layout.stride)) if start is None else start
+    formats = buffers(layout.config, layout.stride)
+    buf = empty_buffers(formats) if start is None else start
+    assert all(buf[b].dtype == dt and len(buf[b]) >= n for b, (dt, n) in formats.items()), formats
     output = None
     t = position + 1  # positions attention reads: 0 ... position
     stride = layout.stride  # the STRIDE register

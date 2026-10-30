@@ -28,10 +28,10 @@
 /// starts at +base for both.
 ///
 /// Output: per command the cycle it was taken and the cycle of its done_o
-/// (counted from the first command's offer); per engine step's read, then
-/// per read, its Lanes words; the memory's words; the number of write
-/// responses, then the cycle of each; err_o; the cycles from the first offer
-/// to the last done_o.
+/// (counted from the first command's offer); per ext read, engine steps'
+/// first and then the final ones, its Lanes words; the memory's words; the
+/// number of write responses, then the cycle of each; err_o; the cycles from
+/// the first offer to the last done_o.
 /// Checks, each ending the run with a message: no done_o past the last
 /// command, no command left without one, the AXI rules (axi_mem.h), and no
 /// burst left unanswered at the end.
@@ -73,6 +73,7 @@ struct EngineStep {
   size_t before;  ///< the command it goes before (the number of commands: after the last)
   std::vector<Read> reads;
   std::vector<Write> writes;
+  /// @brief Its reads and writes, one a cycle.
   size_t n_ops() const { return reads.size() + writes.size(); }
 };
 
@@ -140,6 +141,7 @@ struct Bench {
   bool running = false;    ///< commands may be offered
   size_t next_step = 0;    ///< the first engine step not yet finished
   size_t step_op = 0;      ///< its next read or write
+  size_t step_ops = 0;     ///< every engine step's reads and writes so far
   bool read_sent = false;  ///< an engine read went last cycle: its data is out this cycle
   std::vector<uint32_t> engine_reads;  ///< every engine read's kLanes words, in order
   uint64_t cycles = 0;     ///< since the first offer
@@ -240,6 +242,7 @@ struct Bench {
     } else {
       put_write(s.writes[step_op - s.reads.size()]);
     }
+    ++step_ops;
     if (++step_op == s.n_ops()) {
       ++next_step;
       step_op = 0;
@@ -351,7 +354,7 @@ int main(int argc, char** argv) {
     bench.running = true;
     const auto cycles = run(
         bench, [&] { return bench.finished(); },
-        [&] { return bench.next_cmd + bench.oldest + bench.next_step + bench.step_op; });
+        [&] { return bench.next_cmd + bench.oldest + bench.step_ops + bench.engine_reads.size(); });
     if (!cycles) {
       std::println(stderr, "hung: {} of {} commands taken, {} done, {} engine steps, after {} cycles",
                    bench.next_cmd, commands.size(), bench.oldest, bench.next_step, bench.cycles);
