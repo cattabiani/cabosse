@@ -331,15 +331,14 @@ class Layout:
                 p + "k_cache": (cache, BF16),
                 p + "v_cache": (cache, BF16),
             }
+        # Its own copy when tied to embed: LOAD reads embed by rows, the
+        # engine lm_head in the lanes' order (lane_order).
         shapes["final_norm"] = ((hidden,), BF16)
-        if not c.tie_word_embeddings:
-            shapes["lm_head"] = ((c.vocab_size, hidden), BF16)
+        shapes["lm_head"] = ((c.vocab_size, hidden), BF16)
         tensors, addr = {}, 0
         for name, (shape, dtype) in shapes.items():
             tensors[name] = (addr, shape, dtype)
             addr += -(-n_bytes(shape, dtype) // ALIGN) * ALIGN
-        if c.tie_word_embeddings:
-            tensors["lm_head"] = tensors["embed"]  # last: run() names the address lm_head
         return Layout(config, cap, stride, tensors)
 
     def addr(self, name: str) -> int:
@@ -824,6 +823,32 @@ def vector_command(cmd: Command, buf: dict[Buf, torch.Tensor], t: int, stride: i
             store(rows(cmd.dst), vector.rotate_half(rows(cmd.a)))
 
 
+def load_command(
+    cmd: Command, buf: dict[Buf, torch.Tensor], mem: torch.Tensor, token: int, position: int
+) -> None:
+    """LOAD: dst = up(the tensor `mem` at cmd.addr, or its row `token` or
+    `position`), m elements."""
+    assert (mem.dtype == BF16) == bool(cmd.flags & Flag.SRC_BF16), (mem.dtype, cmd)
+    if cmd.flags & Flag.BY_TOKEN:
+        mem = mem[token]
+    elif cmd.flags & Flag.BY_POSITION:
+        mem = mem[position]
+    assert mem.numel() == cmd.m, (mem.shape, cmd.m)
+    mem = mem.reshape(1, -1)
+    store(buffer_span(buf[cmd.dst], 1, cmd.m), arith.up(mem) if mem.dtype == BF16 else mem)
+
+
+def kv_store_command(
+    cmd: Command, buf: dict[Buf, torch.Tensor], mem: torch.Tensor, position: int
+) -> None:
+    """KV_STORE: row `position` of each of the n heads of the cache `mem`
+    (n × cap × m, BF16) = a's n rows of m, rounded. m (the head dimension)
+    is a power of two: a row is one burst inside a 4 KB page (D-043)."""
+    assert mem.shape == (cmd.n, cmd.cap, cmd.m) and buf[cmd.a].dtype == F32, (mem.shape, cmd)
+    assert cmd.m & (cmd.m - 1) == 0, cmd
+    mem[:, position] = arith.bf16(buffer_span(buf[cmd.a], cmd.n, cmd.m))
+
+
 def run(
     commands: list[Command],
     layout: Layout,
@@ -856,20 +881,12 @@ def run(
         a, mem = buf.get(cmd.a), hbm.get(cmd.addr)
         match cmd.op:
             case Op.LOAD:
-                assert (mem.dtype == BF16) == bool(cmd.flags & Flag.SRC_BF16), (mem.dtype, cmd)
-                if cmd.flags & Flag.BY_TOKEN:
-                    mem = mem[token]
-                elif cmd.flags & Flag.BY_POSITION:
-                    mem = mem[position]
-                assert mem.numel() == cmd.m, (mem.shape, cmd.m)
-                mem = mem.reshape(1, -1)
-                store(span(cmd.dst, 1, cmd.m), arith.up(mem) if mem.dtype == BF16 else mem)
+                load_command(cmd, buf, mem, token, position)
             case Op.MATVEC:
                 assert mem.shape == (cmd.n, cmd.m) and a.dtype == BF16, (mem.shape, a.dtype)
                 store(span(cmd.dst, 1, cmd.n), dot.matvec(mem, span(cmd.a, 1, cmd.m)))  # one vector
             case Op.KV_STORE:
-                assert mem.shape == (cmd.n, cmd.cap, cmd.m) and a.dtype == F32, (mem.shape, a.dtype)
-                mem[:, position] = arith.bf16(span(cmd.a, cmd.n, cmd.m))  # the cache is BF16
+                kv_store_command(cmd, buf, mem, position)
             case Op.SCORES:
                 q = span(cmd.a, cmd.n, cmd.m).reshape(cmd.kv_heads, -1, cmd.m)  # KV head h // group
                 s = decoder.attention_scores(q, mem[:, None, :t], f32_value(cmd.scalar))

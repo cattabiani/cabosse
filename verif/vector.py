@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """What the vector unit's tests share: its buffers as the golden model holds
-them, the driver verif/bulk/vec_unit.cpp run on commands, and the bit-exact
-comparison of every buffer afterwards (rtl/vec_unit.sv)."""
+them, the memory behind its AXI port as words, the driver
+verif/bulk/vec_unit.cpp run on commands, and the bit-exact comparison of
+every buffer and of the memory afterwards (rtl/vec_unit.sv)."""
 
 from dataclasses import dataclass
 
@@ -10,12 +11,17 @@ import bulk
 import commands
 import numpy as np
 import torch
-from commands import Buf, Command
+from commands import Buf, Command, Flag, Op
+from engine import cache_by_channel
 from engine import port_bits as bits  # a buffer's raw bits: the engine's write port's
 from fp_inputs import random_bits, with_exponents
 from golden import arith, tiny
 
 LANES = 16  # rtl/vec_unit.sv's default
+# The memory's channels in the tests: KV_PORTS of 2^CHAN_W bytes (F2: 32 of
+# 512 MiB), one byte array from address 0.
+KV_PORTS, CHAN_W = 4, 14
+MEM_WORDS = (KV_PORTS << CHAN_W) // 4
 # Each buffer's format, from the command list's (any model: formats do not
 # depend on it); the RTL takes them as Bf16Mask.
 BF16_BUFS = frozenset(
@@ -60,28 +66,82 @@ class Step:
     t: int = 1
     stride: int = 16
     wait: bool = False
+    token: int = 0
 
 
 @dataclass
 class Result:
     buffers: dict[Buf, np.ndarray]  # raw bits, uint32
+    mem: np.ndarray  # the memory's words
     taken: np.ndarray  # per command, the cycle it was taken
     done: np.ndarray  # per command, the cycle of its done_o
+    answers: np.ndarray  # the cycle of each write response
+    err: bool
     cycles: int
 
 
-def golden(steps: list[Step], start: dict[Buf, torch.Tensor]) -> dict[Buf, np.ndarray]:
-    """The buffers after the commands, by commands.vector_command, as raw bits."""
+def tensor_at(mem: np.ndarray, at: int, shape: tuple[int, ...], dtype: torch.dtype) -> torch.Tensor:
+    """The memory's bytes from byte `at` of its image as a tensor (a copy)."""
+    raw = mem.view(np.uint8)[at : at + commands.n_bytes(shape, dtype)].copy()
+    return torch.from_numpy(raw).view(dtype).reshape(shape)
+
+
+def cache_view(mem: np.ndarray, cmd: Command) -> np.ndarray:
+    """KV_STORE's cache in the memory's image (from address 0), as BF16 bits
+    [KV_PORTS, n, cap / KV_PORTS, m] (engine.cache_by_channel's order): the
+    same offset in every channel (D-043). A view: writes go to the memory."""
+    assert cmd.cap % KV_PORTS == 0, cmd  # whole rows in every channel, as the unit needs
+    channels = mem.view(np.uint16).reshape(KV_PORTS, -1)
+    rows = cmd.n * cmd.cap // KV_PORTS * cmd.m
+    region = channels[:, cmd.addr // 2 : cmd.addr // 2 + rows]
+    return region.reshape(KV_PORTS, cmd.n, cmd.cap // KV_PORTS, cmd.m)
+
+
+def memory_command(s: Step, buf: dict[Buf, torch.Tensor], mem: np.ndarray, base: int) -> None:
+    """LOAD or KV_STORE on the buffers and the memory's words (an image of
+    the bytes from `base`), in place, by commands.load_command and
+    kv_store_command."""
+    c, position = s.cmd, s.t - 1
+    if c.op == Op.LOAD:
+        # The row LOAD reads, as every row of a tensor (stride 0): the image
+        # need not hold the rest.
+        dtype = commands.BF16 if c.flags & Flag.SRC_BF16 else commands.F32
+        row = s.token if c.flags & Flag.BY_TOKEN else position if c.flags & Flag.BY_POSITION else 0
+        at = c.addr + row * commands.n_bytes(c.m, dtype) - base
+        tensor = tensor_at(mem, at, (c.m,), dtype)
+        if c.flags & (Flag.BY_TOKEN | Flag.BY_POSITION):
+            tensor = tensor.expand(row + 1, c.m)
+        commands.load_command(c, buf, tensor, s.token, position)
+        return
+    assert base == 0, base  # the cache's channels start at address 0
+    view = cache_view(mem, c)
+    bits = view.transpose(1, 2, 0, 3).reshape(c.n, c.cap, c.m)  # back to [n, cap, m]
+    cache = torch.from_numpy(bits.astype(np.int16)).view(commands.BF16)
+    commands.kv_store_command(c, buf, cache, position)
+    view[...] = cache_by_channel(cache.view(torch.int16).numpy().view(np.uint16), KV_PORTS)
+
+
+def golden(
+    steps: list[Step], start: dict[Buf, torch.Tensor], mem: np.ndarray, base: int = 0
+) -> tuple[dict[Buf, np.ndarray], np.ndarray]:
+    """The buffers (raw bits) and the memory's words after the commands."""
     buf = {b: x.clone() for b, x in start.items()}
+    mem = mem.copy()
     for s in steps:
-        commands.vector_command(s.cmd, buf, s.t, s.stride)
-    return {b: bits(x) for b, x in buf.items()}
+        if s.cmd.op in (Op.LOAD, Op.KV_STORE):
+            memory_command(s, buf, mem, base)
+        else:
+            commands.vector_command(s.cmd, buf, s.t, s.stride)
+    return {b: bits(x) for b, x in buf.items()}, mem
 
 
-def words(steps: list[Step], start: dict[Buf, torch.Tensor], length: int) -> np.ndarray:
-    """The driver's input: every buffer written, the commands, every buffer read."""
+def words(
+    steps: list[Step], start: dict[Buf, torch.Tensor], length: int, mem: np.ndarray
+) -> np.ndarray:
+    """The driver's input: the memory, every buffer written, the commands,
+    every buffer read."""
     groups = range(0, length, LANES)
-    out = [len(start) * len(groups)]
+    out = [len(mem), *mem.tolist(), len(start) * len(groups)]
     for b, x in start.items():
         raw = np.zeros(-(-length // LANES) * LANES, dtype=np.uint32)
         raw[:length] = bits(x)
@@ -91,7 +151,9 @@ def words(steps: list[Step], start: dict[Buf, torch.Tensor], length: int) -> np.
     out.append(len(steps))
     for s in steps:
         c = s.cmd
-        out += [c.op, c.dst, c.a, c.b, c.c, c.flags, c.n, c.m, c.scalar, s.t, s.stride, int(s.wait)]
+        addr = [c.addr & 0xFFFFFFFF, c.addr >> 32]
+        out += [c.op, c.dst, c.a, c.b, c.c, c.flags, c.n, c.m, c.scalar, c.cap, *addr, s.token]
+        out += [s.t, s.stride, int(s.wait)]
     out.append(len(start) * len(groups))
     for b in start:
         out += [x for g in groups for x in (int(b), g)]
@@ -99,18 +161,39 @@ def words(steps: list[Step], start: dict[Buf, torch.Tensor], length: int) -> np.
 
 
 def params(length: int) -> tuple[tuple[str, int], ...]:
-    return (("Len", length), ("Bf16Mask", BF16_MASK))
+    return (("Len", length), ("Bf16Mask", BF16_MASK), ("KvPorts", KV_PORTS), ("ChanW", CHAN_W))
 
 
-def run(steps: list[Step], start: dict[Buf, torch.Tensor], length: int, **plusargs: int) -> Result:
-    """The commands on the unit, every buffer filled with `start` first."""
-    result = bulk.run_driver("vec_unit", words(steps, start, length), params(length), **plusargs)
+def zero_memory() -> np.ndarray:
+    return np.zeros(MEM_WORDS, dtype=np.uint32)
+
+
+def run(
+    steps: list[Step],
+    start: dict[Buf, torch.Tensor],
+    length: int,
+    mem: np.ndarray,
+    base: int = 0,
+    **plusargs: int,
+) -> Result:
+    """The commands on the unit, every buffer filled with `start` first and
+    the memory (an image from byte `base`) with `mem`'s words."""
+    argv = words(steps, start, length, mem)
+    plusargs = {"base": base, **plusargs} if base else plusargs
+    result = bulk.run_driver("vec_unit", argv, params(length), **plusargs)
     assert result.returncode == 0, result.stderr.decode()
     out = np.frombuffer(result.stdout, dtype="<u4")
-    times = out[: 2 * len(steps)].reshape(-1, 2)
-    reads = out[2 * len(steps) : -1].reshape(len(start), -1)[:, :length]
+    at = 2 * len(steps)
+    times = out[:at].reshape(-1, 2)
+    n_reads = len(start) * -(-length // LANES) * LANES
+    reads = out[at : at + n_reads].reshape(len(start), -1)[:, :length]
+    at += n_reads
+    got_mem = out[at : at + len(mem)].copy()
+    at += len(mem)
+    n_answers = int(out[at])
+    answers = out[at + 1 : at + 1 + n_answers].copy()
     buffers = {b: r.copy() for b, r in zip(start, reads, strict=True)}
-    return Result(buffers, times[:, 0], times[:, 1], int(out[-1]))
+    return Result(buffers, got_mem, times[:, 0], times[:, 1], answers, bool(out[-2]), int(out[-1]))
 
 
 def assert_same(got: dict[Buf, np.ndarray], want: dict[Buf, np.ndarray], label: str) -> None:
@@ -124,8 +207,24 @@ def assert_same(got: dict[Buf, np.ndarray], want: dict[Buf, np.ndarray], label: 
 
 
 def check(
-    steps: list[Step], start: dict[Buf, torch.Tensor], length: int, label: str, **plusargs: int
+    steps: list[Step],
+    start: dict[Buf, torch.Tensor],
+    length: int,
+    label: str,
+    mem: np.ndarray | None = None,
+    base: int = 0,
+    **plusargs: int,
 ) -> Result:
-    result = run(steps, start, length, **plusargs)
-    assert_same(result.buffers, golden(steps, start), label)
+    """Run, then compare every buffer and the memory (zeros by default) with
+    golden()."""
+    mem = zero_memory() if mem is None else mem
+    result = run(steps, start, length, mem, base, **plusargs)
+    want_buf, want_mem = golden(steps, start, mem, base)
+    assert_same(result.buffers, want_buf, label)
+    bad = np.flatnonzero(result.mem != want_mem)
+    assert not len(bad), (
+        f"{label}: memory: {len(bad)} words differ, first at byte 0x{4 * bad[0]:X}: "
+        f"got 0x{result.mem[bad[0]]:08X}, want 0x{want_mem[bad[0]]:08X}"
+    )
+    assert not result.err, f"{label}: err_o"
     return result

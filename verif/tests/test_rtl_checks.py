@@ -56,8 +56,14 @@ BAD_SHAPES = [
     ("engine", (("Ports", 4), ("MaxD", 256)), "MaxD"),
     ("engine", (("Ports", 4), ("MaxD", 96)), "MaxD"),
     ("engine", (("Ports", 4), ("ColWidth", 24)), "ColWidth"),
-    # vec_unit: 32 lanes leave 4 partials a slot, fewer than its 7-cycle loop
+    # port_wdma: longer bursts than AXI3 allows, a data width that is not a
+    # power of two.
+    ("port_wdma", (("MaxBurst", 17),), "MaxBurst"),
+    ("port_wdma", (("DataWidth", 96),), "DataWidth"),
+    # vec_unit: 32 lanes leave 4 partials a slot, fewer than its 7-cycle
+    # loop; the KV cache over a channel count that is not a power of two.
     ("vec_unit", (("Lanes", 32),), "Partials"),
+    ("vec_unit", (("KvPorts", 24),), "KvPorts"),
 ]
 
 

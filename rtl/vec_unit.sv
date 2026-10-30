@@ -3,8 +3,9 @@
 //
 // The vector unit (D-030, D-048, D-050; docs/architecture.md, "Vector unit"):
 // the on-chip buffers, the elementwise commands ADD, MUL, FMA, EXP, RECIP,
-// RSQRT and ROTATE_HALF, and the reductions SUM, SUMSQ and MAX
-// (model/commands.py, golden: vector_command).
+// RSQRT and ROTATE_HALF, the reductions SUM, SUMSQ and MAX
+// (model/commands.py, golden: vector_command), and LOAD and KV_STORE through
+// its AXI port (golden: load_command, kv_store_command).
 //
 // Buffers: ids 1 to Bufs - 1 (0 is NONE), each of Len elements, FP32 or,
 // where Bf16Mask has the id's bit, BF16. A buffer reads and writes up to
@@ -39,11 +40,32 @@
 // runs while the slots take the next row. After a reduction the next command
 // is taken once its last row is written: only that row's tree shows.
 //
+// LOAD and KV_STORE (PLAN.md, M6 answers of 2026-10-29) run in the same
+// pipeline, so their writes keep the order of every other command's. AXI
+// beats are DataWidth = Lanes * 16 bits: a group of BF16 values, half a group
+// of FP32. LOAD (one row of m, the tensor at addr or its row token or
+// position) reads m * 2 or m * 4 bytes from addr + row * those bytes
+// (port_dma); a group's beats take the place of a's read (BF16 converted up
+// exactly), pass the chain unchanged and are written like any result. Its
+// rows must be whole beats: m a multiple of Lanes (BF16) or Lanes / 2 (FP32).
+// KV_STORE (n heads of m, m a power of two from Lanes to 16 * Lanes beats'
+// worth, KvMaxBurst; cap a multiple of KvPorts: so a row is one burst inside
+// a 4 KB page, as the engine's head dimension and cap already are) reads a,
+// passes the chain, and its write stage rounds the group to BF16 and queues
+// it as a beat for port_wdma, a burst per head: position p of head h at
+// channel p mod KvPorts, row p div KvPorts of h's region of cap / KvPorts rows
+// (D-043), at the global address channel * ChannelBytes + addr + offset. A
+// group is read only when its beat has a place in the queue. A KV_STORE is
+// done once its last write is answered (D-044); the unit takes later commands
+// meanwhile, and done_o stays one pulse per command in order: a done waits
+// behind an earlier KV_STORE's (a queue of the dones, one cycle later than the
+// write that ends a command). err_o (sticky): a read or write answered with an
+// error.
+//
 // The ext port reads and writes any buffer's raw bits (BF16 in the low
-// half): the testbench now, LOAD and the engine later. It must not use a
-// buffer's read or write port in a cycle the unit uses it: the unit's access
-// wins and nothing flags it. Nothing enforces this yet; LOAD and the engine's
-// ports settle how (M6's LOAD step, M7).
+// half): the testbench now, the engine later. It must not use a buffer's read
+// or write port in a cycle the unit uses it: the unit's access wins and
+// nothing flags it. The engine's ports settle how (M7).
 
 module vec_unit
   import fp_pkg::*;
@@ -55,6 +77,12 @@ module vec_unit
   parameter  int unsigned     AddrW    = 20,
   parameter  int unsigned     MulRegs  = 2,
   parameter  int unsigned     Partials = 128,  // a reduction's partial sums, S (D-030)
+  parameter  int unsigned     MemAddrW = 34,   // F2's HBM: 16 GiB
+  parameter  int unsigned     KvPorts  = 32,   // the channels the KV cache spreads over (D-043)
+  parameter  int unsigned     ChanW    = 29,   // log2 of a channel's bytes: 512 MiB
+  parameter  int unsigned     MemDepth = 64,   // beats: port_dma's FIFO, and KV_STORE's queue
+  parameter  int unsigned     Dones    = 64,   // commands taken and not yet done, at most
+  localparam int unsigned     DataWidth = Lanes * 16,  // an AXI beat
   localparam int unsigned     BufW     = $clog2(Bufs),
   localparam int unsigned     LW       = $clog2(Lanes),
   localparam int unsigned     Parts    = Partials / Lanes,  // a slot's partials
@@ -74,9 +102,39 @@ module vec_unit
   input  logic [AddrW-1:0]             cmd_n_i,
   input  logic [AddrW-1:0]             cmd_m_i,
   input  logic [31:0]                  cmd_scalar_i,
-  input  logic [AddrW-1:0]             t_i,          // positions attention reads
+  input  logic [AddrW-1:0]             cmd_cap_i,
+  input  logic [MemAddrW-1:0]          cmd_addr_i,
+  input  logic [AddrW-1:0]             token_i,
+  input  logic [AddrW-1:0]             t_i,          // positions attention reads: position + 1
   input  logic [AddrW-1:0]             stride_i,     // the STRIDE register
-  output logic                         done_o,       // a command's last write
+  output logic                         done_o,       // a command done, in order
+  output logic                         err_o,
+  // AXI read channels (LOAD)
+  output logic                         ar_valid_o,
+  input  logic                         ar_ready_i,
+  output logic [MemAddrW-1:0]          ar_addr_o,
+  output logic [7:0]                   ar_len_o,
+  output logic [2:0]                   ar_size_o,
+  output logic [1:0]                   ar_burst_o,
+  input  logic                         r_valid_i,
+  output logic                         r_ready_o,
+  input  logic [DataWidth-1:0]         r_data_i,
+  input  logic [1:0]                   r_resp_i,
+  // AXI write channels (KV_STORE)
+  output logic                         aw_valid_o,
+  input  logic                         aw_ready_i,
+  output logic [MemAddrW-1:0]          aw_addr_o,
+  output logic [7:0]                   aw_len_o,
+  output logic [2:0]                   aw_size_o,
+  output logic [1:0]                   aw_burst_o,
+  output logic                         w_valid_o,
+  input  logic                         w_ready_i,
+  output logic [DataWidth-1:0]         w_data_o,
+  output logic [DataWidth/8-1:0]       w_strb_o,
+  output logic                         w_last_o,
+  input  logic                         b_valid_i,
+  output logic                         b_ready_o,
+  input  logic [1:0]                   b_resp_i,
   // ext: raw bits of any buffer
   input  logic                         ext_w_valid_i,
   input  logic [BufW-1:0]              ext_w_buf_i,
@@ -90,10 +148,19 @@ module vec_unit
 );
 
   // model/commands.py's opcodes and flags (docs/architecture.md, "Commands").
+  localparam logic [4:0] OpLoad = 5'd1, OpKvStore = 5'd3;
   localparam logic [4:0] OpAdd = 5'd7, OpMul = 5'd8, OpFma = 5'd9, OpExp = 5'd10;
   localparam logic [4:0] OpRecip = 5'd11, OpRsqrt = 5'd12, OpSum = 5'd13, OpSumsq = 5'd14;
   localparam logic [4:0] OpMax = 5'd15, OpRotateHalf = 5'd16;
   localparam int unsigned NegA = 0, NegB = 1, BPerRow = 2, BRow = 3, LenT = 4;
+  localparam int unsigned ByToken = 5, ByPosition = 6, SrcBf16 = 7;
+  localparam int unsigned KvW = $clog2(KvPorts);
+  localparam int unsigned BeatW = $clog2(Lanes * 2);  // log2 of a beat's bytes
+  localparam int unsigned KvMaxBurst = 16;             // a KV head's row, in beats (AXI3)
+  localparam int unsigned LenW = $clog2(KvMaxBurst + 1);
+  localparam int unsigned MW = $clog2(MemDepth + 1);
+  localparam int unsigned DoneW = $clog2(Dones + 1);
+  localparam int unsigned TagW = AddrW + 1;  // a command's done tag: KV_STORE, its heads
   localparam int unsigned Depth = (Len + Lanes - 1) / Lanes;  // a bank's entries
   localparam int unsigned DW = $clog2(Depth);
   localparam int unsigned ChainLat = chain_latency(MulRegs);
@@ -109,16 +176,23 @@ module vec_unit
   if (Partials != Parts * Lanes || Parts != 2 ** PW || Parts < AccLat + 1) begin : gen_parts_check
     $error("Partials must be a power-of-two multiple of Lanes, at least MulRegs + 6 a slot");
   end
+  if (KvPorts != 2 ** KvW || MemAddrW < ChanW + KvW) begin : gen_mem_check
+    $error("KvPorts must be a power of two, MemAddrW hold its channels");
+  end
 
   // --- Walk: a command's groups ---------------------------------------------
 
   // The command being walked, with its walk.
   typedef struct packed {
-    logic [4:0]       op;
-    logic [BufW-1:0]  dst, a, b, c;
-    logic [7:0]       flags;
-    logic [31:0]      scalar;
-    logic [AddrW-1:0] rows, len, row_stride;
+    logic [4:0]          op;
+    logic [BufW-1:0]     dst, a, b, c;
+    logic [7:0]          flags;
+    logic [31:0]         scalar;
+    logic [AddrW-1:0]    rows, len, row_stride;
+    // LOAD and KV_STORE: the tensor's address, the row LOAD reads (token,
+    // position or 0) or the position KV_STORE writes, the cache's rows.
+    logic [MemAddrW-1:0] addr;
+    logic [AddrW-1:0]    mrow, cap;
   } walk_t;
 
   // What a group's operands, the slots and the write need of it, from its
@@ -161,14 +235,17 @@ module vec_unit
 
   function automatic walk_t take(logic [4:0] op, logic [BufW-1:0] dst, a, b, c, logic [7:0] flags,
                                  logic [AddrW-1:0] n, m, logic [31:0] scalar,
-                                 logic [AddrW-1:0] t, stride);
+                                 logic [AddrW-1:0] cap, logic [MemAddrW-1:0] addr,
+                                 logic [AddrW-1:0] token, t, stride);
     walk_t w;
     logic  flat;
     flat = elementwise(op) && !flags[BPerRow] && !flags[BRow] && !flags[LenT];
-    w = '{op: op, dst: dst, a: a, b: b, c: c, flags: flags, scalar: scalar, default: '0};
-    w.rows       = flat ? AddrW'(1) : n;
+    w = '{op: op, dst: dst, a: a, b: b, c: c, flags: flags, scalar: scalar, addr: addr, cap: cap,
+          default: '0};
+    w.rows       = flat || op == OpLoad ? AddrW'(1) : n;
     w.len        = flags[LenT] ? t : flat ? AddrW'(n * m) : m;
     w.row_stride = flags[LenT] ? stride : m;
+    w.mrow       = op == OpKvStore || flags[ByPosition] ? t - 1'b1 : flags[ByToken] ? token : '0;
     return w;
   endfunction
 
@@ -182,6 +259,18 @@ module vec_unit
   logic             red_q;   // a reduction runs: no command is taken until its last row is written
   logic             pend_q;  // a row's last group went, its partials not yet in the tree
   logic             tree_busy, stall;
+  logic             is_load, is_kv, ld_issue_q, ld_ready, kv_room, aw_ready;
+  logic [MW-1:0]    kv_credit_q;  // KV_STORE's queue: places no group read so far will take
+  logic             prep_q;       // a LOAD or KV_STORE taken last cycle: its addresses next
+  logic             tags_ready;   // a done tag has a place: fewer than Dones commands open
+  // A row's beats; LOAD's first byte or KV_STORE's first head's burst, KV_STORE's
+  // region (a head's), the burst's offset from the first head's (below).
+  logic [AddrW-1:0]    row_beats;
+  logic [MemAddrW-1:0] mbase_q, region_q, kv_off_q;
+  logic                ld_bf16;
+
+  assign is_load = cur_q.op == OpLoad;
+  assign is_kv   = cur_q.op == OpKvStore;
 
   always_comb begin
     half       = cur_q.len >> 1;
@@ -204,10 +293,13 @@ module vec_unit
     grp.b_addr = cur_q.flags[BPerRow] ? row_q : cur_q.flags[BRow] ? g_q : addr;
   end
 
-  // A reduction row's last group waits for the tree.
-  assign stall       = reduction(grp.is.op) && row_end && (pend_q || tree_busy);
+  // A reduction row's last group waits for the tree, a LOAD group for its
+  // beats, a KV_STORE group for a place in the queue (and a row's first for
+  // its burst's address).
+  assign stall = reduction(grp.is.op) && row_end && (pend_q || tree_busy)
+              || is_load && !ld_ready || is_kv && (prep_q || !kv_room || g_q == '0 && !aw_ready);
   assign grp_fire    = active_q && !stall;
-  assign cmd_ready_o = !red_q && (!active_q || grp.is.last && grp_fire);
+  assign cmd_ready_o = !red_q && (!active_q || grp.is.last && grp_fire) && tags_ready;
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -215,19 +307,175 @@ module vec_unit
     end else if (cmd_valid_i && cmd_ready_o) begin
       active_q <= 1'b1;
       cur_q    <= take(cmd_op_i, cmd_dst_i, cmd_a_i, cmd_b_i, cmd_c_i, cmd_flags_i, cmd_n_i,
-                       cmd_m_i, cmd_scalar_i, t_i, stride_i);
+                       cmd_m_i, cmd_scalar_i, cmd_cap_i, cmd_addr_i, token_i, t_i, stride_i);
       {row_q, base_q, g_q} <= '0;
+      kv_off_q <= '0;
     end else if (grp_fire) begin
       if (grp.is.last) begin
         active_q <= 1'b0;
       end else if (row_end) begin
-        row_q  <= row_q + 1'b1;
-        base_q <= base_q + cur_q.row_stride;
-        g_q    <= '0;
+        row_q    <= row_q + 1'b1;
+        base_q   <= base_q + cur_q.row_stride;
+        g_q      <= '0;
+        kv_off_q <= kv_off_q + region_q;
       end else begin
         g_q <= g_next;
       end
     end
+  end
+
+  // --- LOAD and KV_STORE: the AXI port ----------------------------------------
+
+  // A row's beats (LOAD: m BF16 or FP32 values; KV_STORE: m BF16). The
+  // cycle after the take, its first byte: LOAD's row mrow; KV_STORE's
+  // channel and row in it for position mrow, and a head's region (D-043).
+  // By beats: one multiply for either first byte, a small one (a row is at
+  // most KvMaxBurst beats) for the region.
+  logic [AddrW-1:0] row_idx, region_beats;
+  assign ld_bf16   = is_kv || cur_q.flags[SrcBf16];
+  assign row_beats = ld_bf16 ? cur_q.len >> LW : cur_q.len >> (LW - 1);
+  assign row_idx   = is_kv ? cur_q.mrow >> KvW : cur_q.mrow;
+  assign region_beats = (cur_q.cap >> KvW) * AddrW'(LenW'(row_beats));  // a row: <= KvMaxBurst beats
+
+  always_ff @(posedge clk_i) begin
+    prep_q <= rst_ni && cmd_valid_i && cmd_ready_o && cmd_op_i inside {OpLoad, OpKvStore};
+    if (prep_q) begin
+      mbase_q  <= (is_kv ? MemAddrW'(cur_q.mrow[KvW-1:0]) << ChanW : '0) + cur_q.addr
+                + (MemAddrW'(row_idx) * MemAddrW'(row_beats) << BeatW);
+      region_q <= MemAddrW'(region_beats) << BeatW;
+    end
+  end
+
+  // LOAD: its command goes to the reader the cycle after it is taken.
+  logic                 dma_ready, beat_valid, beat_take;
+  logic [DataWidth-1:0] beat;
+  logic                 rd_err, wr_err;
+  port_dma #(
+    .AddrWidth (MemAddrW),
+    .DataWidth (DataWidth),
+    .CountWidth(AddrW),
+    .Depth     (MemDepth)
+  ) u_rd (
+    .clk_i,
+    .rst_ni,
+    .cmd_valid_i(ld_issue_q && !prep_q),
+    .cmd_ready_o(dma_ready),
+    .cmd_addr_i (mbase_q),
+    .cmd_beats_i(row_beats),
+    .out_valid_o(beat_valid),
+    .out_ready_i(beat_take),
+    .out_data_o (beat),
+    .ar_valid_o,
+    .ar_ready_i,
+    .ar_addr_o,
+    .ar_len_o,
+    .ar_size_o,
+    .ar_burst_o,
+    .r_valid_i,
+    .r_ready_o,
+    .r_data_i,
+    .r_resp_i,
+    .err_o      (rd_err)
+  );
+
+  // The group's beats: one of BF16, one or two of FP32 (half a group or
+  // less fits one). A beat is taken while the group lacks one, and as a
+  // group goes when it is not the command's last (the next group's first).
+  logic [1:0][DataWidth-1:0] gb_q;
+  logic [1:0]                gb_have_q, need;
+  assign need      = ld_bf16 || count <= AddrW'(Lanes / 2) ? 2'd1 : 2'd2;
+  assign ld_ready  = !ld_issue_q && gb_have_q == need;
+  assign beat_take = active_q && is_load && !ld_issue_q
+                  && (gb_have_q < need || grp_fire && !grp.is.last);
+
+  always_ff @(posedge clk_i) begin
+    if (!rst_ni) begin
+      ld_issue_q <= 1'b0;
+      gb_have_q  <= '0;
+    end else begin
+      if (cmd_valid_i && cmd_ready_o) ld_issue_q <= cmd_op_i == OpLoad;
+      else if (!prep_q && dma_ready) ld_issue_q <= 1'b0;
+      if (grp_fire && is_load) begin
+        gb_have_q <= {1'b0, beat_take && beat_valid};
+        if (beat_take && beat_valid) gb_q[0] <= beat;
+      end else if (beat_take && beat_valid) begin
+        gb_q[gb_have_q[0]] <= beat;
+        gb_have_q <= gb_have_q + 1'b1;
+      end
+    end
+  end
+
+  // LOAD's group as FP32 (BF16 converted up exactly, a NaN made canonical),
+  // for the slots the cycle after it goes.
+  logic [Lanes-1:0][31:0] ld_q, ld_up;
+  for (genvar l = 0; l < Lanes; l++) begin : gen_up
+    bf16_to_fp32 u_up (
+      .a_i(gb_q[0][16*l+:16]),
+      .y_o(ld_up[l])
+    );
+  end
+  always_ff @(posedge clk_i) begin
+    if (grp_fire && is_load) begin
+      for (int unsigned l = 0; l < Lanes; l++) begin
+        ld_q[l] <= ld_bf16 ? ld_up[l] : gb_q[l/(Lanes/2)][32*(l%(Lanes/2))+:32];
+      end
+    end
+  end
+
+  // KV_STORE: a group's rounded values join the queue as they leave the
+  // slots (kv_beat, below); a group is read only with a place for it, and a
+  // row's first group gives its burst to the writer.
+  logic                 kv_beat_valid, q_valid, q_take, wr_done, unused_q_ready;
+  logic [DataWidth-1:0] kv_beat, q_beat;
+  assign kv_room = kv_credit_q != '0;
+
+  stream_fifo #(.Width(DataWidth), .Depth(MemDepth)) u_kv_queue (
+    .clk_i,
+    .rst_ni,
+    .in_valid_i (kv_beat_valid),
+    .in_ready_o (unused_q_ready),  // the credits keep a place
+    .in_data_i  (kv_beat),
+    .out_valid_o(q_valid),
+    .out_ready_i(q_take),
+    .out_data_o (q_beat)
+  );
+
+  port_wdma #(
+    .AddrWidth(MemAddrW),
+    .DataWidth(DataWidth),
+    .MaxBurst (KvMaxBurst)
+  ) u_wr (
+    .clk_i,
+    .rst_ni,
+    .cmd_valid_i(active_q && is_kv && !prep_q && g_q == '0 && kv_room),
+    .cmd_ready_o(aw_ready),
+    .cmd_addr_i (mbase_q + kv_off_q),
+    .cmd_beats_i(LenW'(row_beats)),
+    .in_valid_i (q_valid),
+    .in_ready_o (q_take),
+    .in_data_i  (q_beat),
+    .done_o     (wr_done),
+    .aw_valid_o,
+    .aw_ready_i,
+    .aw_addr_o,
+    .aw_len_o,
+    .aw_size_o,
+    .aw_burst_o,
+    .w_valid_o,
+    .w_ready_i,
+    .w_data_o,
+    .w_strb_o,
+    .w_last_o,
+    .b_valid_i,
+    .b_ready_o,
+    .b_resp_i,
+    .err_o      (wr_err)
+  );
+  assign err_o = rd_err || wr_err;
+
+  always_ff @(posedge clk_i) begin
+    if (!rst_ni) kv_credit_q <= MW'(MemDepth);
+    else kv_credit_q <= kv_credit_q - MW'(grp_fire && is_kv) + MW'(q_valid && q_take);
   end
 
   // --- Buffers ----------------------------------------------------------------
@@ -325,10 +573,18 @@ module vec_unit
       OpExp:   return ChainExp;
       OpRecip: return ChainRecip;
       OpRsqrt: return ChainRsqrt;
-      OpRotateHalf: return ChainPass;
+      OpRotateHalf, OpLoad, OpKvStore: return ChainPass;
       default: return ChainAdd;  // ADD; SUM; MAX's x through add(x, -0)
     endcase
   endfunction
+
+  // Where a group's results go: a buffer, the partials (a reduction's, so
+  // nowhere from here), KV_STORE's queue.
+  typedef enum logic [1:0] {
+    SinkBuf,
+    SinkNone,
+    SinkKv
+  } sink_e;
 
   // What the write needs, alongside the slots.
   typedef struct packed {
@@ -336,6 +592,7 @@ module vec_unit
     logic [AddrW-1:0] addr;
     logic [Lanes-1:0] mask;
     logic             last;
+    sink_e            sink;
   } dest_t;
 
   dest_t                  dest_q[ChainLat];
@@ -367,6 +624,7 @@ module vec_unit
       c = rd_data[grp_q.c][l];
       a[31] = a[31] ^ grp_q.neg_a;  // exact sign flips
       b[31] = b[31] ^ grp_q.neg_b;
+      if (grp_q.op == OpLoad) a = ld_q[l];
       p = grp_q.first ? '0 : part_q[l][grp_q.part];  // a sum's
       if (reduction(grp_q.op)) begin  // SUM: add(x, p); SUMSQ: fma(x, x, p); MAX: add(x, -0)
         b = grp_q.op == OpMax ? NegZero : grp_q.op == OpSumsq ? a : p;
@@ -426,7 +684,8 @@ module vec_unit
   } tree_t;
 
   logic                      cap_valid_q, t_pend_q, tree_run, tree_done;
-  logic [$clog2(ChainLat+2)-1:0] slot_groups_q;  // elementwise groups in the slots
+  logic [$clog2(ChainLat+2)-1:0] slot_groups_q;  // groups in the slots, but a reduction's
+  logic                      slot_out;  // one of them leaves the slots (below)
   logic                      cap_rmax_q;
   tree_t                     cap_q, tree_q;
   logic [Partials-1:0][31:0] parts;
@@ -475,7 +734,7 @@ module vec_unit
       slot_groups_q <= '0;
     end else begin
       slot_groups_q <= slot_groups_q + $bits(slot_groups_q)'(grp_fire && !reduction(grp.is.op))
-                     - $bits(slot_groups_q)'(u_w_valid);
+                     - $bits(slot_groups_q)'(slot_out);
       if (cmd_valid_i && cmd_ready_o) red_q <= reduction(cmd_op_i);
       else if (t_w_valid && tree_q.last) red_q <= 1'b0;
       if (grp_fire && reduction(grp.is.op) && row_end) pend_q <= 1'b1;
@@ -487,32 +746,76 @@ module vec_unit
 
   always_ff @(posedge clk_i) begin
     dest_q[0] <= '{dst: grp_q.dst, addr: grp_q.addr,
-                   mask: reduction(grp_q.op) ? '0 : grp_q.mask, last: grp_q.last};
+                   mask: grp_q.mask, last: grp_q.last,
+                   sink: reduction(grp_q.op) ? SinkNone : grp_q.op == OpKvStore ? SinkKv : SinkBuf};
     for (int unsigned j = 1; j < ChainLat; j++) dest_q[j] <= dest_q[j-1];
   end
 
   // The write: dest_q[ChainLat - 1] belongs to the slots' result this cycle.
+  // A reduction's groups write nothing here, a KV_STORE's go to its queue.
   dest_t d;
-  assign d         = dest_q[ChainLat-1];
-  assign u_w_valid = slot_valid[0] && |d.mask;  // a reduction's groups write nothing here
-  assign u_w_buf   = d.dst;
-  assign u_w_addr  = d.addr;
-  assign u_w_mask  = d.mask;
-  assign done_o    = u_w_valid && d.last || t_w_valid && tree_q.last;
+  assign d             = dest_q[ChainLat-1];
+  assign slot_out      = slot_valid[0] && d.sink != SinkNone;
+  assign u_w_valid     = slot_valid[0] && d.sink == SinkBuf;
+  assign u_w_buf       = d.dst;
+  assign u_w_addr      = d.addr;
+  assign u_w_mask      = d.mask;
+  assign kv_beat_valid = slot_valid[0] && d.sink == SinkKv;
   for (genvar l = 0; l < Lanes; l++) begin : gen_round
     logic [15:0] r;
     fp32_to_bf16 u_round (
       .a_i(y[l]),
       .y_o(r)
     );
-    assign u_w_data[l] = Bf16Mask[d.dst] ? {16'h0, r} : y[l];
+    assign u_w_data[l]        = Bf16Mask[d.dst] ? {16'h0, r} : y[l];
+    assign kv_beat[16*l+:16] = r;
+  end
+
+  // --- Dones, in order ----------------------------------------------------------
+
+  // Each command taken leaves a tag (KV_STORE or not, its heads); a command
+  // ends with its last write (a KV_STORE's last group leaving the slots).
+  // The oldest tag leaves as done_o once its command has ended and, for a
+  // KV_STORE, its writes are all answered. ended_q: commands ended, not yet
+  // done; answered_q: write responses not yet given to a done.
+  logic                tag_valid, tag_go, end_valid;
+  logic [TagW-1:0]     tag;
+  logic [DoneW-1:0]    ended_q;
+  logic [AddrW:0]      answered_q;
+  logic                tag_kv;
+  logic [AddrW-1:0]    tag_heads;
+  assign end_valid = (u_w_valid || kv_beat_valid) && d.last || t_w_valid && tree_q.last;
+
+  stream_fifo #(.Width(TagW), .Depth(Dones)) u_tags (
+    .clk_i,
+    .rst_ni,
+    .in_valid_i (cmd_valid_i && cmd_ready_o),
+    .in_ready_o (tags_ready),
+    .in_data_i  ({cmd_op_i == OpKvStore, cmd_n_i}),
+    .out_valid_o(tag_valid),
+    .out_ready_i(tag_go),
+    .out_data_o (tag)
+  );
+
+  assign {tag_kv, tag_heads} = tag;
+  assign tag_go = tag_valid && ended_q != '0 && (!tag_kv || answered_q >= {1'b0, tag_heads});
+  assign done_o = tag_go;
+
+  always_ff @(posedge clk_i) begin
+    if (!rst_ni) begin
+      answered_q <= '0;
+      ended_q    <= '0;
+    end else begin
+      answered_q <= answered_q + (AddrW + 1)'(wr_done) - (tag_go && tag_kv ? {1'b0, tag_heads} : '0);
+      ended_q    <= ended_q + DoneW'(end_valid) - DoneW'(tag_go);
+    end
   end
 
   // verilator lint_off UNUSEDSIGNAL
   logic unused;
   // ext_r_valid_i: the banks read every cycle, so a read needs no enable.
   assign unused = ^{slot_valid[Lanes-1:1], ext_r_valid_i, rd_addr[0], wr_addr[0], wr_mask[0],
-                    wr_data[0]};
+                    wr_data[0], unused_q_ready};
   // verilator lint_on UNUSEDSIGNAL
 
 endmodule

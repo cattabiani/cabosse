@@ -28,7 +28,7 @@ reads only cache entries `0…p`, so stale entries need no clearing.
 | Engine | matrix-vector products and attention's two dot products, in BF16 × BF16 → FP32 (numerics.md, section 3) |
 | Vector unit | RMSNorm, softmax, RoPE, SwiGLU, residual adds, the BF16 roundings before each product (section 4) |
 | Controller | reads the command list and starts each operation on the engine, the vector unit and the memory front end |
-| Memory front end | the 32 HBM ports: streams weights into the engine, moves KV tiles between HBM and on-chip buffers |
+| Memory front end | the 32 HBM ports: streams weights into the engine, moves KV tiles between HBM and on-chip buffers; the vector unit's own AXI port for `LOAD` and `KV_STORE` |
 | On-chip buffers | activations (the current vector, partial results), KV tiles, the command list |
 | Host interface | AXI-Lite registers on the shell's OCL port (control); the shell's PCIS port to write HBM from the host (loading) |
 
@@ -158,11 +158,23 @@ can widen without a numerics change. Online softmax changes the spec.
 recip and rsqrt; sums, sums of squares and maxima per row; RoPE's half
 rotation; loads from HBM. Each is one pass over its rows ("Commands").
 
+**`LOAD` and `KV_STORE` (M6).** Both run in the vector unit's pipeline, in
+order with its other commands, so no write meets another's and the buffers
+need no arbitration. They use one AXI master of the vector unit's own (read
+and write, 256 bits, global HBM addresses: channel and offset). `LOAD`'s
+beats take the place of a buffer read and pass the chain unchanged.
+`KV_STORE` reads its rows, rounds them to BF16 and writes a burst per KV
+head where D-043 puts the position. It is done after its last write
+response; later commands run meanwhile, and their dones wait behind it. On
+F2 the wrapper merges this port into one HBM port, and the HBM switch
+carries it to the other channels (to verify, M8).
+
 ## Memory (D-028)
 
 | What | Where | Why |
 |---|---|---|
 | Weights | HBM, spread over all 32 channels | the only memory big and fast enough; all ports stream at once |
+| Embedding, norm weights, RoPE tables | HBM, by rows | `LOAD` reads a row at a time; a tied embedding gets this copy besides the classifier's, in the lanes' order |
 | KV cache | HBM, spread over all 32 channels | grows with the position; read every token |
 | Command list | on chip, next to the controller | small (below, "One token as commands"); fetched with no HBM latency |
 | Activations | on chip | small, used constantly; no HBM traffic (perf.md's assumption) |
@@ -396,8 +408,8 @@ command that repeats a layer's block at shifted addresses would fix that.
 <!-- begin: ladder -->
 | model | layers | context | commands | command bytes | HBM (MiB) |
 |---|---|---|---|---|---|
-| SmolLM2-135M-Instruct | 30 | 8192 | 1333 | 42,656 | 440.7 |
-| Qwen2.5-0.5B-Instruct | 24 | 32768 | 1069 | 34,208 | 1,342.3 |
+| SmolLM2-135M-Instruct | 30 | 8192 | 1333 | 42,656 | 494.7 |
+| Qwen2.5-0.5B-Instruct | 24 | 32768 | 1069 | 34,208 | 1,602.0 |
 
 Command buffer: 64 KiB, 2,048 commands.
 <!-- end: ladder -->
@@ -491,9 +503,9 @@ SmolLM2-135M-Instruct, cache of 8192 positions:
 | 1327 | RSQRT | R | R |  |  | 1 | 1 |  |  |  |
 | 1328 | MUL | T | H | R |  | 1 | 576 | B_PER_ROW |  |  |
 | 1329 | MUL | X | T | W |  | 1 | 576 |  |  |  |
-| 1330 | MATVEC | LOGITS | X |  |  | 49152 | 576 |  |  | 0x0 |
+| 1330 | MATVEC | LOGITS | X |  |  | 49152 | 576 |  |  | 0x1B8BD000 |
 | 1331 | OUTPUT |  | LOGITS |  |  | 49152 |  |  |  |  |
 | 1332 | END |  |  |  |  |  |  |  |  |  |
 
-1333 commands (44 per layer), 42,656 bytes. HBM in use: 440.7 MiB.
+1333 commands (44 per layer), 42,656 bytes. HBM in use: 494.7 MiB.
 <!-- end: token -->

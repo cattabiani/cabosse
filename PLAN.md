@@ -929,6 +929,27 @@ with the memory model's write side; real data, speed and
 engine's pipelined step control, then its placed
 Vivado build (D-051); checkpoint report.
 
+**Answers for `LOAD` and `KV_STORE` (owner, 2026-10-29):**
+- Both run in the vector unit's own pipeline, in order with its other
+  commands: `LOAD`'s beats take the place of a's read (BF16 converted up
+  exactly), pass the chain unchanged and are written like any result;
+  `KV_STORE` reads a, passes the chain, and its write stage rounds to BF16
+  and sends the beats to AXI instead of a buffer. No write collides with
+  another, so the buffers need no arbitration; the ext port stays the
+  testbench's (and the engine's, M7).
+- One AXI master of the vector unit's own (read and write channels, 256
+  bits, one ID), with global HBM addresses (channel and offset; `KV_STORE`
+  writes D-043's place, where the engine reads). In M8 the F2 wrapper
+  merges it into one HBM port and the HBM switch carries it to the other
+  channels (to verify); if the switch fails, `KV_STORE` moves to the engine
+  ports' unused write channels.
+- `LOAD BY_TOKEN` reads a row-ordered embedding: with tied embeddings the
+  host stores a second copy for `LOAD` (about 57 MB for SmolLM2, 272 MB for
+  Qwen2.5-0.5B), the classifier keeps the lanes' order.
+- A `KV_STORE` is done after its last write response (D-044), and the unit
+  keeps taking commands meanwhile; `done_o` stays one pulse per command in
+  list order, so later commands' dones wait behind it.
+
 **Progress:**
 - [x] Answers above (PR #59).
 - [x] S and P at the STRIDE register's stride, and the buffer-port check
@@ -1010,6 +1031,38 @@ Vivado build (D-051); checkpoint report.
   Found on the way: a reduction's slots wrote with an empty mask over the
   tree's write.
 - Fused softmax command (D-054): waits for a working core (D-057, Q-31).
+- [x] `LOAD` and `KV_STORE` (answers above): in `rtl/vec_unit.sv`'s
+  pipeline, with its AXI master: `port_dma` reads, the new
+  `rtl/port_wdma.sv` writes a burst per KV head at D-043's place, through a
+  queue of 64 beats with credits; dones in order through a queue of tags
+  (one per command taken: KV_STORE or not, its heads). The addresses are
+  registered the cycle after the take (by beats; a small second multiply
+  for a head's region). `KV_STORE` needs m a power of two (one burst inside
+  a 4 KB page) and `cap` a multiple of the channels, as the engine does.
+  `commands.Layout` gives a tied `lm_head` its own copy, so `LOAD BY_TOKEN`
+  reads `embed` by rows (`load_command` and `kv_store_command` are `run()`'s
+  steps). The memory model gains a write port that checks itself
+  (`verif/bulk/axi_mem.h`: every channel held while waiting, full strobes,
+  WLAST on each burst's last beat, each burst answered once). Tests
+  (`verif/tests/test_vec_mem.py`, 70): `LOAD` in every row mode from BF16
+  and FP32 into FP32 and BF16 buffers, a row about 260 MiB in (Qwen2.5's
+  last token), `KV_STORE` at positions in every
+  channel with its done after its last response, later commands running
+  while it waits, the queue filling, random sequences with the other
+  commands and slow, pausing memories, error responses; a long `LOAD` of
+  BF16 runs a group a cycle (312 cycles for 256 groups). 11 hand
+  mutations, all caught (the queue's credits only once the test's rows
+  were 16 beats and 4 heads a command), and 6 again after the /simplify
+  changes to the done queue and the write's destinations. Found on the way: a BF16 NaN must
+  become the canonical NaN on `LOAD` (`bf16_to_fp32`), as `up()` does;
+  and (/code-review) `port_wdma`'s data waited for its address to be taken,
+  which AXI forbids: a slave that takes an address only once its data is in
+  (the memory model's `aw_after_w`, now in the slow tests) deadlocked it.
+  Next in this step: the tiny config's whole decode step (vector, `LOAD`
+  and `KV_STORE` commands, the engine's results from the golden model) in
+  CI. It needs `KV_STORE`'s address as an offset within a channel, as the
+  unit takes it, while `Layout`'s addresses are still flat (D-040: they
+  move to channel offsets in M7); the test maps them until then.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register

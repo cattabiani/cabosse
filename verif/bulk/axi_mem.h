@@ -2,8 +2,9 @@
 // Copyright 2026 The Cabosse Authors
 
 /// @file
-/// @brief A simulated memory behind one AXI read port (PLAN.md, M5): it
-/// answers read bursts from a byte array, with a set latency, a limit on
+/// @brief A simulated memory behind one AXI read port (PLAN.md, M5) or one
+/// write port (M6): it answers read bursts from a byte array, or writes
+/// bursts into it and answers each once, with a set latency, a limit on
 /// bursts in flight, a bandwidth and random pauses, and checks that the
 /// master keeps to the AXI subset we use. Independent of Verilator: a driver
 /// copies its outputs onto the block's ports before each cycle and hands it
@@ -20,6 +21,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 constexpr uint64_t kAxiMaxBurst = 16;  ///< beats per burst, at most (AXI3)
 constexpr uint64_t kAxiPageBytes = 4096;  ///< no burst crosses a boundary of these
@@ -31,10 +33,13 @@ struct AxiMemSettings {
   uint64_t rate_permille = 1000; ///< chance per cycle that the next beat may start
   uint64_t pause_permille = 0;   ///< chance per cycle that a pause starts
   uint64_t pause_max = 0;        ///< a pause lasts 1 to pause_max cycles, uniformly
-  uint64_t bad_beat = UINT64_MAX; ///< the index of a beat answered with SLVERR (none by default)
+  uint64_t bad_beat = UINT64_MAX; ///< the index of a beat (a write port's: burst) answered with SLVERR
   uint64_t beat_bytes = 32;      ///< bytes per beat: the data width
   uint64_t base = 0;             ///< the address of the memory's first byte
+  bool aw_after_w = false;       ///< write port: AWREADY only once a whole burst's data is in
 };
+
+constexpr uint64_t kAxiWriteBuffer = 64;  ///< W beats a write port takes ahead of their address
 
 /// @brief The read address channel as the master drives it in one cycle.
 struct ArChannel {
@@ -47,10 +52,45 @@ struct ArChannel {
   bool operator==(const ArChannel&) const = default;
 };
 
+/// @brief The write address channel as the master drives it in one cycle.
+using AwChannel = ArChannel;
+
+/// @brief The write data channel as the master drives it in one cycle.
+struct WChannel {
+  bool valid = false;
+  std::span<const std::byte> data;  ///< beat_bytes
+  uint64_t strb = 0;                ///< a bit per byte
+  bool last = false;
+
+  /// @brief The same beat: valid, strobes, WLAST and data (a held beat's check).
+  bool operator==(const WChannel& o) const {
+    return valid == o.valid && strb == o.strb && last == o.last && std::ranges::equal(data, o.data);
+  }
+};
+
 /// @brief A broken AXI rule, with what the master did.
 struct AxiError : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
+
+/// @brief Check a burst's fields against the AXI subset: incrementing, full
+/// width, at most kAxiMaxBurst beats, aligned, inside one 4 KB page and the
+/// memory.
+/// @return what is wrong, or an empty string.
+inline std::string burst_error(const ArChannel& a, const AxiMemSettings& s, uint64_t mem_bytes) {
+  const uint64_t bytes = (a.len + 1ull) * s.beat_bytes;
+  if (a.burst != 1) return std::format("burst type {}, not INCR", a.burst);
+  if ((1ull << a.size) != s.beat_bytes) return std::format("size {} is not the data width", a.size);
+  if (a.len + 1ull > kAxiMaxBurst) return std::format("{} beats, more than {}", a.len + 1, kAxiMaxBurst);
+  if (a.addr % s.beat_bytes != 0) return std::format("address 0x{:x} not beat-aligned", a.addr);
+  if (a.addr / kAxiPageBytes != (a.addr + bytes - 1) / kAxiPageBytes) {
+    return std::format("burst at 0x{:x} of {} bytes crosses 4 KB", a.addr, bytes);
+  }
+  if (a.addr < s.base || a.addr - s.base + bytes > mem_bytes) {
+    return std::format("burst at 0x{:x} past the memory", a.addr);
+  }
+  return {};
+}
 
 /// @brief One AXI read port's memory. Bursts are answered in order (one ID).
 class AxiReadPort {
@@ -128,23 +168,10 @@ class AxiReadPort {
     uint64_t sent;  ///< beats already taken
   };
 
-  /// @brief Check a request's fields against the AXI subset: incrementing, full
-  /// width, at most max_burst beats, aligned, inside one 4 KB page and the
-  /// memory.
-  /// @param ar the request.
-  /// @throws AxiError on the first field that breaks the subset.
+  /// @brief Check a request against the AXI subset (burst_error).
+  /// @throws AxiError on the first field that breaks it.
   void check(const ArChannel& ar) const {
-    const uint64_t bytes = (ar.len + 1ull) * s_.beat_bytes;
-    if (ar.burst != 1) fail(std::format("burst type {}, not INCR", ar.burst));
-    if ((1ull << ar.size) != s_.beat_bytes) fail(std::format("size {} is not the data width", ar.size));
-    if (ar.len + 1ull > kAxiMaxBurst) fail(std::format("{} beats, more than {}", ar.len + 1, kAxiMaxBurst));
-    if (ar.addr % s_.beat_bytes != 0) fail(std::format("address 0x{:x} not beat-aligned", ar.addr));
-    if (ar.addr / kAxiPageBytes != (ar.addr + bytes - 1) / kAxiPageBytes) {
-      fail(std::format("burst at 0x{:x} of {} bytes crosses 4 KB", ar.addr, bytes));
-    }
-    if (ar.addr < s_.base || ar.addr - s_.base + bytes > mem_.size()) {
-      fail(std::format("burst at 0x{:x} past the memory", ar.addr));
-    }
+    if (const std::string e = burst_error(ar, s_, mem_.size()); !e.empty()) fail(e);
   }
 
   /// @brief Stop the run on a broken rule.
@@ -168,4 +195,159 @@ class AxiReadPort {
   uint64_t pause_left_ = 0;
   uint64_t cycle_ = 0;
   uint64_t n_bursts_ = 0, n_beats_ = 0, r_stalls_ = 0, max_in_flight_ = 0;
+};
+
+/// @brief One AXI write port's memory. Beats are taken before their burst's
+/// address too (up to kAxiWriteBuffer), as AXI allows; with aw_after_w the
+/// port takes an address only once a whole burst's data is in (a slave AXI
+/// allows, which deadlocks a master whose WVALID waits for AWREADY). A
+/// burst is written as its beats meet its address, and answered once,
+/// `latency` cycles after its last beat, in order (one ID). Checks, besides
+/// the subset: every channel held while valid and not ready, full strobes
+/// (our subset), WLAST on each burst's last beat only, and the response held
+/// until taken.
+class AxiWritePort {
+ public:
+  /// @param mem the memory's bytes; must outlive the port.
+  /// @param settings latency (last beat to response), limits, bandwidth
+  ///   (W ready) and pauses (of AW and W).
+  /// @param seed for the bandwidth and pause draws.
+  AxiWritePort(std::span<std::byte> mem, const AxiMemSettings& settings, uint64_t seed)
+      : mem_(mem), s_(settings), rng_(seed) {
+    if (s_.latency < 1) throw std::invalid_argument("latency must be at least 1");
+    if (s_.outstanding < 1) throw std::invalid_argument("outstanding must be at least 1");
+    if (s_.beat_bytes > 64) throw std::invalid_argument("at most 64 bytes a beat (strobes in a word)");
+  }
+
+  /// @return AWREADY for this cycle.
+  bool aw_ready() const {
+    return pause_left_ == 0 && bursts_.size() < s_.outstanding && (!s_.aw_after_w || n_ahead_lasts_ > 0);
+  }
+  /// @return WREADY for this cycle: a burst waits for data, or the buffer
+  /// ahead of the addresses has room.
+  bool w_ready() const { return w_ready_; }
+  /// @return BVALID for this cycle.
+  bool b_valid() const { return b_valid_; }
+  /// @return BRESP for this cycle: SLVERR (2) on burst settings.bad_beat, else OKAY.
+  unsigned b_resp() const { return b_valid_ && n_answered_ == s_.bad_beat ? 2 : 0; }
+
+  /// @brief The clock edge: take this cycle's handshakes and pick the next
+  /// cycle's outputs.
+  /// @throws AxiError if the master breaks a rule (the message says which).
+  void tick(const AwChannel& aw, const WChannel& w, bool b_ready) {
+    if (held_aw_.valid && aw != held_aw_) fail("AW changed or dropped while waiting for AWREADY");
+    if (held_w_.valid && !(w == held_w_)) fail("W changed or dropped while waiting for WREADY");
+    if (aw.valid && aw_ready()) {
+      if (const std::string e = burst_error(aw, s_, mem_.size()); !e.empty()) fail(e);
+      bursts_.push_back({aw.addr, aw.len + 1u, 0, UINT64_MAX});
+      ++n_bursts_;
+      held_aw_ = {};
+      for (Burst* b; !ahead_.empty() && (b = filling()) != nullptr; ahead_.pop_front()) {
+        n_ahead_lasts_ -= ahead_.front().last;
+        write_beat(*b, ahead_.front().data, ahead_.front().last);
+      }
+    } else {
+      held_aw_ = aw;
+    }
+    if (w.valid && w_ready_) {
+      take_beat(w);
+      held_w_ = {};
+    } else {
+      held_w_ = {};
+      if (w.valid) {  // a valid beat must stay the same until taken; the master's span may change
+        held_data_.assign(w.data.begin(), w.data.end());
+        held_w_ = {true, held_data_, w.strb, w.last};
+      }
+    }
+    if (b_valid_ && b_ready) {
+      bursts_.pop_front();
+      ++n_answered_;
+      b_valid_ = false;
+    }
+    if (pause_left_ > 0) {
+      --pause_left_;
+    } else if (s_.pause_max > 0 && draw(s_.pause_permille)) {
+      pause_left_ = std::uniform_int_distribution<uint64_t>(1, s_.pause_max)(rng_);
+    }
+    ++cycle_;
+    w_ready_ = pause_left_ == 0 && (filling() != nullptr || ahead_.size() < kAxiWriteBuffer) &&
+               draw(s_.rate_permille);
+    if (!b_valid_ && !bursts_.empty() && bursts_.front().done <= cycle_) b_valid_ = true;
+  }
+
+  /// @return whether every taken burst has been written and answered, and no
+  /// beat waits for an address.
+  bool idle() const { return bursts_.empty() && ahead_.empty(); }
+  uint64_t n_bursts() const { return n_bursts_; }      ///< bursts taken
+  uint64_t n_answered() const { return n_answered_; }  ///< responses taken by the master
+
+ private:
+  /// @brief A taken burst: written beat by beat, then answered.
+  struct Burst {
+    uint64_t addr;
+    uint64_t beats;
+    uint64_t written;  ///< beats so far
+    uint64_t done;     ///< first cycle its response may be valid (once written)
+  };
+
+  /// @return the first taken burst still waiting for data, or nullptr.
+  Burst* filling() {
+    for (Burst& b : bursts_) {
+      if (b.written < b.beats) return &b;
+    }
+    return nullptr;
+  }
+
+  /// @brief A beat taken before its burst's address.
+  struct Beat {
+    std::vector<std::byte> data;
+    bool last;
+  };
+
+  /// @brief Take one beat: into the burst waiting for it, or into the
+  /// buffer ahead of the addresses.
+  /// @throws AxiError on partial strobes or the wrong width.
+  void take_beat(const WChannel& w) {
+    const uint64_t full = s_.beat_bytes == 64 ? ~0ull : (1ull << s_.beat_bytes) - 1;
+    if (w.strb != full) fail(std::format("strobes 0x{:x}, not a full beat", w.strb));
+    if (w.data.size() != s_.beat_bytes) fail("a W beat of the wrong width");
+    if (Burst* b = filling(); b != nullptr && ahead_.empty()) {
+      write_beat(*b, w.data, w.last);
+    } else {
+      ahead_.push_back({{w.data.begin(), w.data.end()}, w.last});
+      n_ahead_lasts_ += w.last;
+    }
+  }
+
+  /// @brief Write one beat into its burst.
+  /// @throws AxiError on a misplaced WLAST.
+  void write_beat(Burst& b, std::span<const std::byte> data, bool w_last) {
+    const bool last = b.written + 1 == b.beats;
+    if (w_last != last) fail(std::format("WLAST {} on beat {} of {}", w_last, b.written + 1, b.beats));
+    std::ranges::copy(data, mem_.subspan(b.addr - s_.base + b.written * s_.beat_bytes).begin());
+    if (++b.written == b.beats) b.done = cycle_ + s_.latency;
+  }
+
+  /// @brief Stop the run on a broken rule.
+  /// @throws AxiError always, with the cycle.
+  [[noreturn]] void fail(const std::string& what) const {
+    throw AxiError(std::format("cycle {}: {}", cycle_, what));
+  }
+
+  /// @return whether an event of chance permille / 1000 happens.
+  bool draw(uint64_t permille) { return permille >= 1000 || (permille > 0 && rng_() % 1000 < permille); }
+
+  std::span<std::byte> mem_;
+  AxiMemSettings s_;
+  std::mt19937_64 rng_;
+  std::deque<Burst> bursts_;
+  std::deque<Beat> ahead_;     ///< beats taken before their burst's address
+  uint64_t n_ahead_lasts_ = 0; ///< whole bursts among them
+  AwChannel held_aw_;
+  WChannel held_w_;
+  std::vector<std::byte> held_data_;
+  bool w_ready_ = false, b_valid_ = false;
+  uint64_t pause_left_ = 0;
+  uint64_t cycle_ = 0;
+  uint64_t n_bursts_ = 0, n_answered_ = 0;
 };
