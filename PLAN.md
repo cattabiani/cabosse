@@ -1141,6 +1141,16 @@ timing fails (D-059); checkpoint report.
   47.1% and 46.9%. At position 0 for SmolLM2, `SUM` and `MAX` (9 rows of
   one element, 159 cycles a row) take 86k of the unit's 176k cycles, the
   start-ups about 42k, the passes themselves about 27k. Q-30, Q-32.
+- [x] The engine's placed build, as it is (D-059; 2026-10-30, r6i.4xlarge,
+  2 h 18 min, peak 16.5 GB; reports/data/f2/2026-10-30-engine-placed.txt):
+  timing fails, worst slack -4.698 ns at 250 MHz (an 8.68 ns path, 79% of
+  it routing), 288,260 of 986,478 endpoints failing. The worst path is
+  D-051's: the step decision (`step_unit_q`'s last-tile compare, the
+  lanes' ready ANDed across the chip, the queue's step) into the tile
+  buffer's read rotation, whose address fans out to 512 LUT RAMs (1.9 ns
+  of wire), 16 logic levels. Use: 618,132 LUTs (47.4%), 378,367 registers,
+  16 DSPs; by SLR 34.7% / 74.1% / 33.6% of LUTs. So the pipelined step
+  control (D-051) is built.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
