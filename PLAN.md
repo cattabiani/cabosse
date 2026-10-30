@@ -599,6 +599,17 @@ control is built only if that build fails timing, on the paths its report
 names. *Why:* measure before building the fix; if `fire`'s fan-out meets
 250 MHz the pipelining is not needed.
 
+**D-060 (2026-10-30) — The engine's timing loop, with a stopping rule**
+(owner, 2026-10-30; follows D-059). The placed build failed (worst slack
+-4.698 ns at 250 MHz, D-051's step path), so D-051's pipelined step control
+is built, then at most 3 placed builds of the engine, each with the
+owner's go. If the third is still worse than about -0.5 ns, the target
+clock becomes 200 MHz. *Why:* the datapath already meets 250 MHz (the lane
++0.17 ns, M4); what fails is one-cycle control across the chip, a known
+pattern fixed by register stages. 200 MHz alone does not help: the worst
+path is 8.68 ns, about 115 MHz. The cap keeps the tinkering from eating
+the path to F2 (D-058).
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -945,7 +956,29 @@ D-050; the fused softmax command waits, D-057); `LOAD` and `KV_STORE`
 with the memory model's write side; real data, speed and
 `vector_startup_cycles`, with the perf model's latencies (D-053); the
 engine's placed Vivado build, then its pipelined step control only if
-timing fails (D-059); checkpoint report.
+timing fails (D-059; it failed: the timing loop below, D-060); checkpoint
+report.
+
+**The timing loop (D-060, owner 2026-10-30):** one branch and PR per
+iteration, at most 3 placed builds.
+1. Build D-051's pipelined step control in `rtl/engine.sv`: no global
+   stall (the lanes take every step; the step is decided a few cycles
+   ahead from what the FIFOs and the command's shape already tell), and
+   the step, the x broadcast and the tile buffer's read addresses reach
+   the lanes and banks through register stages, copied per group of lanes
+   or banks. Same bits (every engine test passes unchanged); cycle counts
+   re-measured, the perf model's `engine_startup_cycles` updated.
+2. `platforms/f2/timing/timing.tcl` reports every family of failing
+   paths, not only the worst 3: the failing paths grouped by endpoint,
+   and the logic-level distribution.
+3. Placed build of `engine_path` (scripts/f2/time_loops.sh; c6i.4xlarge
+   is enough: the first build peaked at 16.5 GB), with the owner's go and
+   a time limit for each launch. Fix the paths it names; repeat.
+4. Stop when the worst slack is >= 0 at 250 MHz. If the third build is
+   still worse than about -0.5 ns, stop tinkering: target 200 MHz (5 ns),
+   with a decision-log entry and the perf model's clock changed (about 20%
+   fewer tokens/s where the engine bounds them). Floorplanning (SLRs,
+   the HBM side) waits for the full build inside the shell (M8, M9).
 
 **Answers for `LOAD` and `KV_STORE` (owner, 2026-10-29):**
 - Both run in the vector unit's own pipeline, in order with its other
@@ -1150,7 +1183,7 @@ timing fails (D-059); checkpoint report.
   buffer's read rotation, whose address fans out to 512 LUT RAMs (1.9 ns
   of wire), 16 logic levels. Use: 618,132 LUTs (47.4%), 378,367 registers,
   16 DSPs; by SLR 34.7% / 74.1% / 33.6% of LUTs. So the pipelined step
-  control (D-051) is built.
+  control (D-051) is built: the timing loop (D-060).
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
