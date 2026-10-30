@@ -26,12 +26,13 @@ import commands
 import engine as eng
 import numpy as np
 import paths
+import perf
 import pytest
 import torch
 import vector
 from commands import Command, Layout, Op
 from golden import decoder, tiny
-from vector import EngineStep, Step, with_waits
+from vector import EngineStep, Step
 
 import rtl
 
@@ -105,16 +106,37 @@ def unit_steps(
     cmds: list[Command], calls: list[commands.EngineCall], token: int, t: int, stride: int
 ) -> list[Step | EngineStep]:
     """The list as the driver runs it: vector, LOAD and KV_STORE commands
-    (with_waits' waits), engine steps for the engine's."""
+    (waiting where the controller stops, commands.stops), engine steps for
+    the engine's."""
     by_index = {c.index: c for c in calls}
-    steps = [
+    return [
         engine_step(by_index[i])
         if cmd.op in commands.ENGINE_OPS
-        else Step(cmd, t=t, stride=stride, token=token)
-        for i, cmd in enumerate(cmds)
+        else Step(cmd, t=t, stride=stride, token=token, wait=stop)
+        for i, (cmd, stop) in enumerate(zip(cmds, commands.stops(cmds), strict=True))
         if cmd.op not in (Op.OUTPUT, Op.END)
     ]
-    return with_waits(steps)
+
+
+def unit_cycles(steps: list[Step | EngineStep], result: vector.Result) -> list[int]:
+    """Each command's cycles, as perf.vector_cycles counts them: from the
+    done before it, or from the cycle before it was taken if it waited.
+    Every command after an engine step must wait (the driver holds it until
+    the step is done, the controller would not)."""
+    cmd_steps = [s for s in steps if isinstance(s, Step)]
+    after_engine = [
+        isinstance(p, EngineStep)
+        for p, s in zip([None, *steps[:-1]], steps, strict=True)
+        if isinstance(s, Step)
+    ]
+    out, done = [], None
+    for s, follows, taken, d in zip(
+        cmd_steps, after_engine, result.taken, result.done, strict=True
+    ):
+        assert s.wait or not follows, f"{s.cmd} after an engine step does not wait"
+        out.append(int(d) - (int(taken) - 1 if s.wait or done is None else done))
+        done = int(d)
+    return out
 
 
 def decode_step(
@@ -192,7 +214,7 @@ def test_smollm2(position: int) -> None:
     cache = dataclasses.replace(saved, length=position)
     cap = -(-(position + 1) // 16) * 16
     label = f"SmolLM2 at position {position}"
-    decode_step(
+    steps, result = decode_step(
         eng.smollm2(),
         cache,
         tokens[position],
@@ -203,3 +225,14 @@ def test_smollm2(position: int) -> None:
         label,
         **F2_MEMORY,
     )
+    design = perf.load_design("v0").values()
+    work = perf.Work.of(perf.design_ops(eng.smollm2().config, position, design))
+    model = perf.vector_cycles(work.vector_steps, design)
+    got = unit_cycles(steps, result)
+    off = [(g / m - 1, i) for i, (g, m) in enumerate(zip(got, model, strict=True))]
+    worst, i = max(off, key=lambda o: abs(o[0]))
+    print(
+        f"{label}: {sum(got)} cycles on the unit, the perf model {sum(model):.0f}; "
+        f"worst command {i} ({work.vector_steps[i].kind}): {got[i]} against {model[i]:.0f}"
+    )
+    assert abs(worst) <= 0.10, (label, i, got[i], model[i])
