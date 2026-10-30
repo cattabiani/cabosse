@@ -581,6 +581,24 @@ fused sum is exp's, after the chain, while `SUMSQ` must keep its single
 rounding (`fma(x, x, p)`), so either a second accumulation point beside the
 first FMA or an FMA, not an adder, after each slot's chain.
 
+**D-058 (2026-10-30) — Speed waits for the real thing; the path to a token
+on F2 comes first** (owner, 2026-10-30; changes D-047). M6's share of
+token time at position 0 is a recorded number, not an exit criterion.
+Speed work (Q-30, Q-32, Q-31) is judged after M9 on F2's measured numbers.
+Bit-exactness stays a criterion everywhere; no new cycle-matching criteria
+until there is hardware to match. *Why:* the share is not met (36.8% for
+SmolLM2, perf model, estimate), but what can still stop the project is the
+placed build, the controller and the F2 platform, not the vector unit's
+speed. The cycles that miss it are inside the vector unit and are already
+measured, so the finding does not depend on the modelled memory or engine.
+
+**D-059 (2026-10-30) — The placed build comes before the engine's
+pipelined step control** (owner, 2026-10-30; reorders D-051). The engine
+as it is gets its placed-and-routed Vivado build first. The pipelined step
+control is built only if that build fails timing, on the paths its report
+names. *Why:* measure before building the fix; if `fire`'s fan-out meets
+250 MHz the pipelining is not needed.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -836,9 +854,9 @@ step and drain, so a sequencing fix is made once); checkpoint report.
 KV cache writes.
 **Done when:** each operation is bit-exact on random and real activations.
 Every vector-unit command of the real-data test takes within 10% of the
-perf model's cycles, and the perf model shows the vector unit at < 10% of
-token time at position 0 for SmolLM2 and Qwen2.5-0.5B (D-047; the criterion
-first read "< 10% of token time" at every position).
+perf model's cycles. The perf model's share of token time at position 0 for
+SmolLM2 and Qwen2.5-0.5B is recorded, not a criterion (D-058; it was < 10%,
+D-047).
 **Check:** the area of the D-020 function units (rsqrt, recip, exp); fewer
 Newton steps or a lower exp degree only through a numerics change (was Q-08).
 **Possible optimization:** online softmax (D-022), only if score storage or
@@ -926,8 +944,8 @@ buffers (whole commands, sequences, the tiny step; two PRs, owner
 D-050; the fused softmax command waits, D-057); `LOAD` and `KV_STORE`
 with the memory model's write side; real data, speed and
 `vector_startup_cycles`, with the perf model's latencies (D-053); the
-engine's pipelined step control, then its placed
-Vivado build (D-051); checkpoint report.
+engine's placed Vivado build, then its pipelined step control only if
+timing fails (D-059); checkpoint report.
 
 **Answers for `LOAD` and `KV_STORE` (owner, 2026-10-29):**
 - Both run in the vector unit's own pipeline, in order with its other
@@ -1118,7 +1136,7 @@ Vivado build (D-051); checkpoint report.
   tree pairing i with i + P instead of neighbours (by the bits at 1023; at
   position 0 SmolLM2's 61 `SUMSQ`s give the same bits either way, and
   `test_vec_unit.py` catches it). **D-047's share at position 0 is not
-  met** (perf model, in order, estimate): SmolLM2 36.8% (0.705 of 1.917
+  met** (perf model, in order, estimate; recorded, no longer a criterion: D-058): SmolLM2 36.8% (0.705 of 1.917
   ms), Qwen2.5-0.5B 16.6%; at 1023 38.6% and 19.5%, at the full window
   47.1% and 46.9%. At position 0 for SmolLM2, `SUM` and `MAX` (9 rows of
   one element, 159 cycles a row) take 86k of the unit's 176k cycles, the
@@ -1214,6 +1232,6 @@ New ones are added as a table:
 | Q-27 | Share K and V tiles between the query heads of a GQA group (q·K: one tile for the group's heads in turn; p·V: lanes that save and resume their partial sums, or a chunked summation order, a numerics change)? Today each query head reads K and V. | Only once the engine outruns the memory on attention. Perf model (docs/perf.md, "KV tiles shared", in order, the best case): sharing cuts SmolLM2's memory time at 8191 from 3.527 to 1.933 ms but gains under 1% (148 → 149 tokens/s), because attention's multiply-adds keep the engine as slow as the memory. |
 | Q-28 | Use the ports a partial last pass leaves idle (rows not a multiple of `L`: SmolLM2's `q`, `o`, `down`, `k`, `v` at 128 lanes)? Either split the last pass's dot products across lanes and add the halves (a numerics change), or start the next command's first pass on the idle ports (controller and engine redesign). | After M7/M8 measure a whole token at F2's HBM rate; only if the idle ports show up there. |
 | Q-29 | Bring the vector unit below 10% of token time at long positions? With D-054's fused pass (deferred, Q-31) and max in the drain, SmolLM2 at 8191 goes from 42.6% to 24.0% (in order, estimate). Left without a numerics change: 32 elements per cycle (D-030), softmax of head h beside the engine's scores of head h+1 (controller). With one: online softmax (D-022), which D-054 argues against. | After M7/M8 measure a whole token. |
-| Q-30 | Cut the latency of dependent vector commands (D-053)? Options: residual adds and scalings on the engine's drain, as it already multiplies by `scale` (epilogue fusion); a short path through the chain for `ADD`, `MUL` and `FMA`; RMSNorm's three one-element commands on a small scalar unit; ROTATE_HALF as an addressing flag on `MUL` (today it goes through the 50-cycle chain), which saves RoPE one dependent command per rotation. All keep the bits. Measured (M6): 785 of SmolLM2's commands stop, 53 cycles each, about 42k cycles a token (0.17 ms). | After M6's checkpoint, with Q-32. |
+| Q-30 | Cut the latency of dependent vector commands (D-053)? Options: residual adds and scalings on the engine's drain, as it already multiplies by `scale` (epilogue fusion); a short path through the chain for `ADD`, `MUL` and `FMA`; RMSNorm's three one-element commands on a small scalar unit; ROTATE_HALF as an addressing flag on `MUL` (today it goes through the 50-cycle chain), which saves RoPE one dependent command per rotation. All keep the bits. Measured (M6): 785 of SmolLM2's commands stop, 53 cycles each, about 42k cycles a token (0.17 ms). | After M9, on F2's measured numbers (D-058). |
 | Q-31 | Add D-054's fused softmax pass (`exp(a - b)` per row and the row's sum, one command) and the max in the engine's drain? Same bits; softmax reads the scores twice instead of five times (perf model, in order, estimate: SmolLM2 609 → 618 tokens/s at position 0, 148 → 198 at 8191). The fused sum comes after the chain, and `SUMSQ` keeps `fma(x, x, p)`, so either a second accumulation point beside the first FMA or every reduction on an FMA after the chain (about 50 cycles more a reduction command, 32 DSPs). Deferred by D-057. | Once a whole token runs and is measured (M7/M8 or later). |
-| Q-32 | Let a reduction's short rows stop queueing on the tree (D-050)? A row's last group waits for the tree to take the row before, so rows end at least 159 cycles apart (measured): `SUM` and `MAX` over 9 rows of t take about 9 × 159 cycles while t is below about 2,500, 86k of the vector unit's 176k cycles at position 0 for SmolLM2. Options: skip the tree's levels whose right half no element reached (those partials stay +0, or the canonical NaN for `MAX`, so the bits stay, to verify by test); more tree adders (`TreeAdders`). | After M6's checkpoint, with Q-30. |
+| Q-32 | Let a reduction's short rows stop queueing on the tree (D-050)? A row's last group waits for the tree to take the row before, so rows end at least 159 cycles apart (measured): `SUM` and `MAX` over 9 rows of t take about 9 × 159 cycles while t is below about 2,500, 86k of the vector unit's 176k cycles at position 0 for SmolLM2. Options: skip the tree's levels whose right half no element reached (those partials stay +0, or the canonical NaN for `MAX`, so the bits stay, to verify by test); more tree adders (`TreeAdders`). | After M9, on F2's measured numbers (D-058). |
