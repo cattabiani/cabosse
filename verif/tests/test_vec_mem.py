@@ -19,8 +19,8 @@ import pytest
 import vector
 from commands import Buf, Command, Flag, Op
 from fp_inputs import random_bits, with_exponents
-from test_vec_unit import LENGTH, SEED, random_command, with_waits
-from vector import Step
+from test_vec_unit import LENGTH, SEED, random_command
+from vector import Step, with_waits
 
 import rtl
 

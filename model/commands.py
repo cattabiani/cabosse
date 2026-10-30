@@ -856,16 +856,19 @@ def run(
     token: int,
     position: int,
     record: Callable[[EngineCall], None] | None = None,
+    start: dict[Buf, torch.Tensor] | None = None,
 ) -> torch.Tensor | None:
     """Execute a command list for one token, as the controller does: buffers
-    start with stale data (empty_buffers), HBM (the KV cache) is updated in
-    place. Returns what OUTPUT wrote to the host, or None for a list without
-    OUTPUT (a prompt token whose logits the host does not need). `record`
-    gets every engine command's EngineCall."""
+    start with stale data (empty_buffers, or `start`, updated in place),
+    HBM (the KV cache) is updated in place. Returns what OUTPUT wrote to the
+    host, or None for a list without OUTPUT (a prompt token whose logits the
+    host does not need). `record` gets every engine command's EngineCall."""
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
     names = {addr: name for name, (addr, _, _) in layout.tensors.items()} if record else {}
     waits = engine_waits(commands) if record else []
-    buf = empty_buffers(buffers(layout.config, layout.stride))
+    formats = buffers(layout.config, layout.stride)
+    buf = empty_buffers(formats) if start is None else start
+    assert all(buf[b].dtype == dt and len(buf[b]) >= n for b, (dt, n) in formats.items()), formats
     output = None
     t = position + 1  # positions attention reads: 0 ... position
     stride = layout.stride  # the STRIDE register

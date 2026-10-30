@@ -20,7 +20,7 @@ import vector
 from commands import Buf, Command, Flag, Op, f32_bits
 from fp_inputs import F32_SPECIAL_BITS, with_exponents
 from golden import arith
-from vector import Step
+from vector import Step, with_waits
 
 import rtl
 
@@ -83,19 +83,6 @@ def random_command(rng: np.random.Generator, length: int) -> Step:
     if not commands.overlap_ok(cmd):  # a dst the unit may not write: a free buffer
         cmd = dataclasses.replace(cmd, dst=next(x for x in SOURCES if x not in (a, b, c)))
     return Step(cmd, t=t, stride=stride)
-
-
-def with_waits(steps: list[Step]) -> list[Step]:
-    """A command waits for every earlier one to be done when it reads a
-    buffer that one still running may write (the controller's stop, D-045);
-    after a wait nothing earlier runs. A write after a read or after a write
-    needs no wait: the unit reads a command's groups before the next one's,
-    and writes in order."""
-    written: set[Buf] = set()  # by the commands since the last wait
-    for s in steps:
-        s.wait = bool({s.cmd.a, s.cmd.b, s.cmd.c} & written)
-        written = {s.cmd.dst} | (set() if s.wait else written)
-    return steps
 
 
 @rtl.needs_verilator

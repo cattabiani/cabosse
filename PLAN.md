@@ -1058,11 +1058,24 @@ Vivado build (D-051); checkpoint report.
   and (/code-review) `port_wdma`'s data waited for its address to be taken,
   which AXI forbids: a slave that takes an address only once its data is in
   (the memory model's `aw_after_w`, now in the slow tests) deadlocked it.
-  Next in this step: the tiny config's whole decode step (vector, `LOAD`
-  and `KV_STORE` commands, the engine's results from the golden model) in
-  CI. It needs `KV_STORE`'s address as an offset within a channel, as the
-  unit takes it, while `Layout`'s addresses are still flat (D-040: they
-  move to channel offsets in M7); the test maps them until then.
+- [x] The tiny config's whole decode step (`verif/tests/test_vec_decode.py`,
+  in CI). Owner, 2026-10-30: one run per token, kept small (the random
+  sequences cover most of it; what is new is the real list's shapes and
+  order). The driver gains engine steps: once every earlier command is
+  done, it reads the engine's input and writes its result
+  (`commands.run()`'s `EngineCall`) through the ext port. Checked bit for
+  bit: each engine command's input, every buffer at the end (`run()` now
+  takes the starting buffers: both start from the same NaN ones), and the
+  whole memory.
+  Memory map: channel 0 (256 KiB) holds `Layout`'s flat image, `LOAD`
+  reads it at its flat addresses, and `KV_STORE` takes a cache's flat
+  address as its offset in every channel (D-043; D-040's offsets come in
+  M7). GQA (4 heads, 2 KV heads) at position 0 (cap 16, stride 16) and 5
+  (cap 8, stride 32): 99 steps, 7,041 and 7,049 cycles (with the engine
+  steps' ext reads and writes; the engine never overlaps the unit here). 3 hand mutations caught
+  (an engine result, dropped `KV_STORE`s, a wrong token). `with_waits` no
+  longer counts `NONE` as written, so a command after a `KV_STORE` no
+  longer waits for it.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
