@@ -33,6 +33,11 @@ route_design
 
 report_timing_summary -no_header -file timing_summary.rpt
 report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+# Every family of failing paths, not only the worst: grouped by start and end
+# point, logic levels per path, and the nets with the most loads.
+report_design_analysis -timing -max_paths 1000 -file path_families.rpt
+report_design_analysis -logic_level_distribution -max_paths 10000 -file logic_levels.rpt
+report_high_fanout_nets -timing -max_nets 50 -file fanout.rpt
 report_utilization -file utilization.rpt
 report_utilization -hierarchical -hierarchical_depth 4 -file utilization_hier.rpt
 set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
