@@ -16,23 +16,24 @@
 // - VALUES: dst[h * d + c] = dot over i < t of (p[h][i], V[kv][i][c]), p[h]
 //   the t values of x at h * stride. V is stored transposed, as a matrix of
 //   d rows (the dimensions) and cap columns, once per head of a pass (D-062:
-//   head a of a pass reads ports a * d / 4 ...). A pass is up to Heads heads
-//   (one lane per head and output dimension); a unit is a pass and a tile
-//   of L positions, and a lane's row runs through all tiles.
+//   head a of a pass reads ports a * d / 4 ...). A unit is a pass of up to
+//   Heads heads (one lane per head and output dimension), each row t
+//   positions long, like a MATVEC pass of t columns.
 // Every command streams its port's beats straight to the port's lanes.
 // Ports is a multiple of 4 (groups of 4 ports, below). Commands need rows
 // >= 1 and cols >= 1 (cols = 0 hangs step). The attention commands need d
 // a power of two from 16 to MaxD (VALUES: d <= L), cap a multiple of L,
-// 1 <= t <= cap, stride (S and P's rows, the STRIDE register) a multiple
-// of E with t <= stride, group dividing heads.
+// 1 <= t <= cap (VALUES: t / E beats fit ColWidth), stride (S and P's
+// rows, the STRIDE register) a multiple of E with t <= stride, group
+// dividing heads.
 //
 // Three stages, each with its own queue of the commands taken, so a
 // command starts while earlier ones finish (PLAN.md, M5). Each walks a
 // command's units (unit_init, unit_next): a MATVEC's passes, an attention
 // command's units as above.
 // - Issue: DMA commands, in order, per unit and head to each port with
-//   rows in it: MATVEC and SCORES ceil(cols / E) beats, VALUES the tile's
-//   positions / E. It runs ahead as far as the DMAs' FIFOs allow.
+//   rows in it, a row's ceil(cols / E) beats (VALUES: ceil(t / E)). It runs
+//   ahead as far as the DMAs' FIFOs allow.
 // - Step: one beat to every lane per cycle, when the lanes have room for
 //   it and every port with rows in the unit has a beat. x comes from the
 //   read ports, E values broadcast (a VALUES lane takes its head's).
@@ -177,18 +178,17 @@ module engine
   // --- Units -------------------------------------------------------------------
   //
   // A command is a sequence of units. MATVEC: its passes of L rows.
-  // Attention: a pass's heads and a tile; SCORES for each head, for each
-  // tile, VALUES for each pass of Heads heads (one when 2d > L), for each
-  // tile. Every stage walks the same sequence with unit_init and unit_next.
-  // Each port reads its unit's beats at addr + its head's KV offset +
-  // unit_off: a KV head's region per channel holds SCORES' cap / L tiles of
-  // d / E beats, or VALUES' cap / E beats.
+  // SCORES: a head and a tile of L positions, for each head, for each tile.
+  // VALUES: a pass of Heads heads (one when 2d > L). Every stage walks the
+  // same sequence with unit_init and unit_next. Each port reads its unit's
+  // beats at addr + its head's KV offset + unit_off: a KV head's region per
+  // channel holds SCORES' cap / L tiles of d / E beats, or VALUES' cap / E
+  // beats.
 
   // A MATVEC pass is a SCORES unit of one head whose positions are rows:
   // t is the rows, a tile a pass of L of them.
   typedef struct packed {
-    logic                  matvec;                   // a MATVEC, not attention
-    logic [ColWidth-1:0]   beats;                    // a port's per unit (VALUES: a whole tile's)
+    logic [ColWidth-1:0]   beats;                    // a row's: each port's, and step's cycles
     logic                  values, heads2;           // VALUES; Heads heads a pass
     logic [HeadWidth-1:0]  n, g;                     // heads, group
     logic [2:0]            dlog;                     // log2(d)
@@ -210,26 +210,18 @@ module engine
   function automatic logic [RowWidth-1:0] rem(unit_t u);  // positions from the tile on
     return u.t - u.pos;
   endfunction
-  function automatic logic last_tile(unit_t u);
-    return rem(u) <= RowWidth'(L);
+  function automatic logic last_tile(unit_t u);  // VALUES: no tiles
+    return u.values || rem(u) <= RowWidth'(L);
   endfunction
   function automatic logic [1:0] unit_heads(unit_t u);
     return u.heads2 && 32'(u.h) + 1 < 32'(u.n) ? 2'd2 : 2'd1;
   endfunction
   function automatic logic last_unit(unit_t u);
-    if (!last_tile(u)) return 1'b0;
-    if (!u.values) return 32'(u.h) + 1 == 32'(u.n);
-    return 32'(u.h) + (u.heads2 ? 2 : 1) >= 32'(u.n);
+    return last_tile(u) && 32'(u.h) + 32'(unit_heads(u)) >= 32'(u.n);
   endfunction
   // The byte offset of the unit's head a's KV head.
   function automatic logic [AddrWidth-1:0] kv_offset(unit_t u, logic a);
     return a && u.r + 1'b1 == u.g ? u.kv_off + u.region : u.kv_off;
-  endfunction
-  // Step cycles: MATVEC and SCORES a row's beats (d / E); VALUES L / E
-  // positions' groups, fewer in the last tile.
-  function automatic logic [RowWidth-1:0] unit_cycles(unit_t u);
-    if (!u.values) return RowWidth'(u.beats);
-    return last_tile(u) ? (rem(u) + RowWidth'(E - 1)) / RowWidth'(E) : RowWidth'(Ports);
   endfunction
   // A unit's results (drain): how many lanes, from lane 0, and lane 0's row.
   function automatic logic [LW-1:0] res_lanes(unit_t u);
@@ -239,18 +231,19 @@ module engine
   function automatic logic [RowWidth-1:0] res_row(unit_t u);
     return u.values ? u.head_row : u.head_row + u.pos;
   endfunction
-  // The ports head a of a unit reads: MATVEC and SCORES those with rows
-  // (positions) in it; VALUES the d / LanesPerPort ports of head a's lanes.
-  function automatic logic [Ports-1:0] head_ports(unit_t u, logic a);
+  // The ports a unit reads: those with lanes with a row.
+  function automatic logic [Ports-1:0] unit_ports(unit_t u);
     logic [Ports-1:0] ports;
-    for (int unsigned p = 0; p < Ports; p++) begin
-      ports[p] = u.values ? (p >> (32'(u.dlog) - LPW)) == 32'(a)
-                          : !a && p * LanesPerPort < 32'(rem(u));
-    end
+    for (int unsigned p = 0; p < Ports; p++) ports[p] = p * LanesPerPort < 32'(res_lanes(u));
     return ports;
   endfunction
-  function automatic logic [Ports-1:0] unit_ports(unit_t u);  // every head's
-    return head_ports(u, 1'b0) | (unit_heads(u) == 2'd2 ? head_ports(u, 1'b1) : '0);
+  // Those of head a (issue): VALUES the d / LanesPerPort ports of head a's
+  // lanes, l >> dlog == a; the others have one head.
+  function automatic logic [Ports-1:0] head_ports(unit_t u, logic a);
+    logic [Ports-1:0] ports;
+    if (!u.values) return a ? '0 : unit_ports(u);
+    for (int unsigned p = 0; p < Ports; p++) ports[p] = (p >> (32'(u.dlog) - LPW)) == 32'(a);
+    return ports & unit_ports(u);
   endfunction
 
   // A row's beats: ceil(cols / E).
@@ -261,9 +254,8 @@ module engine
   function automatic unit_t unit_init(cmd_t c);
     unit_t u;
     u = '0;
-    u.matvec = c.op == OpMatvec;
     u.beats  = n_beats(c.cols);
-    if (u.matvec) begin
+    if (c.op == OpMatvec) begin
       u.n = HeadWidth'(1);
       u.t = c.rows;
       return u;
@@ -276,7 +268,7 @@ module engine
     u.t       = c.t;
     u.stride  = c.stride;
     if (u.values) begin
-      u.beats  = ColWidth'(L / E);
+      u.beats  = n_beats(ColWidth'(c.t));
       u.region = AddrWidth'(c.cap / RowWidth'(E)) * AddrWidth'(BeatBytes);
     end else begin
       u.region = AddrWidth'(c.cap / RowWidth'(Ports)) << (32'(u.dlog) + 1);  // * d * 2 bytes
@@ -294,6 +286,13 @@ module engine
     end
     return u;
   endfunction
+  // ... and its rows: SCORES' S row and q, VALUES' outputs and p.
+  function automatic unit_t next_head_rows(unit_t u);
+    u          = next_head(u);
+    u.head_row = u.head_row + (u.values ? RowWidth'(dim(u)) : u.stride);
+    u.xh       = u.xh + (u.values ? u.stride : RowWidth'(dim(u))) / RowWidth'(E);
+    return u;
+  endfunction
   function automatic unit_t unit_next(unit_t u);
     if (!last_tile(u)) begin
       u.pos      = u.pos + RowWidth'(L);
@@ -302,25 +301,8 @@ module engine
     end
     u.pos      = '0;
     u.unit_off = '0;
-    if (!u.values) begin
-      u          = next_head(u);
-      u.head_row = u.head_row + u.stride;
-      u.xh       = u.xh + RowWidth'(dim(u)) / RowWidth'(E);
-    end else begin
-      u          = next_head(u);
-      u.head_row = u.head_row + RowWidth'(dim(u));
-      u.xh       = u.xh + u.stride / RowWidth'(E);
-      if (u.heads2) begin
-        u          = next_head(u);
-        u.head_row = u.head_row + RowWidth'(dim(u));
-        u.xh       = u.xh + u.stride / RowWidth'(E);
-      end
-    end
-    return u;
-  endfunction
-  // The drain sees a VALUES pass once, at its last tile.
-  function automatic unit_t to_last_tile(unit_t u);
-    if (u.values) u.pos = (u.t - 1'b1) / RowWidth'(L) * RowWidth'(L);
+    u          = next_head_rows(u);
+    if (u.heads2) u = next_head_rows(u);
     return u;
   endfunction
   // verilator lint_on UNUSEDSIGNAL
@@ -403,7 +385,6 @@ module engine
   logic [AddrWidth-1:0] iss_addr_q;   // the matrix's or the cache's
   logic [Ports-1:0]     iss_taken_q;  // this DMA command's ports already taken
   logic [Ports-1:0]     iss_ports_q[Heads];  // head_ports(iss_unit_q, a), registered for timing
-  logic [ColWidth-1:0]  iss_beats_q;  // unit_cycles(iss_unit_q): each port's beats
   unit_t                iss_unit_q;
   logic [Ports-1:0]     iss_taken, iss_active;
   logic                 iss_done, iss_last_head;
@@ -411,7 +392,7 @@ module engine
   assign iss_active    = iss_ports_q[iss_head_q];
   assign dma_cmd_valid = {Ports{iss_busy_q}} & iss_active & ~iss_taken_q;
   assign dma_addr      = iss_addr_q + kv_offset(iss_unit_q, iss_head_q) + iss_unit_q.unit_off;
-  assign dma_beats     = iss_beats_q;
+  assign dma_beats     = iss_unit_q.beats;
   assign iss_taken     = iss_taken_q | dma_cmd_ready;
   assign iss_done      = iss_busy_q && &(iss_taken | ~iss_active);  // this DMA command's
   assign iss_last_head = 2'(iss_head_q) + 2'd1 == unit_heads(iss_unit_q);
@@ -428,7 +409,6 @@ module engine
       // The unit and its ports from each branch's own copy, in parallel: a
       // mux of the two units before unit_ports would lengthen the path.
       iss_unit_q   <= unit_init(q_head[0]);
-      iss_beats_q  <= ColWidth'(unit_cycles(unit_init(q_head[0])));
       for (int unsigned a = 0; a < Heads; a++) iss_ports_q[a] <= head_ports(unit_init(q_head[0]), 1'(a));
     end else if (iss_done) begin
       iss_taken_q <= '0;
@@ -437,7 +417,6 @@ module engine
       end else begin
         iss_head_q   <= 1'b0;
         iss_unit_q   <= unit_next(iss_unit_q);
-        iss_beats_q  <= ColWidth'(unit_cycles(unit_next(iss_unit_q)));
         for (int unsigned a = 0; a < Heads; a++) iss_ports_q[a] <= head_ports(unit_next(iss_unit_q), 1'(a));
         if (last_unit(iss_unit_q)) iss_busy_q <= 1'b0;
       end
@@ -476,7 +455,7 @@ module engine
 
   typedef struct packed {
     logic                 valid;    // a beat to the lanes
-    logic                 values, last;
+    logic                 last;
     logic [E-1:0]         mask;
     logic [LW-1:0]        lanes;    // the lanes with a row
     logic [2:0]           dlog;
@@ -492,22 +471,20 @@ module engine
   // this one), muxed at the end, as issue does.
 
   logic                step_busy_q;
-  logic [E-1:0]        step_mask_q;    // MATVEC: the last beat's elements
+  logic [E-1:0]        step_mask_q;    // a row's last beat's elements
   logic [BufWidth-1:0] step_buf_q;
-  logic [Ports-1:0]    step_active_q;  // MATVEC: unit_ports(step_unit_q)
+  logic [Ports-1:0]    step_active_q;  // unit_ports(step_unit_q)
   unit_t               step_unit_q;    // the unit stepped
-  logic [RowWidth-1:0] step_cyc_q;     // the unit's cycle (MATVEC: the row's beat)
-  logic [RowWidth-1:0] step_cycles_q;  // unit_cycles(step_unit_q)
-  logic                step_last_cyc_q;   // step_cyc_q + 1 == step_cycles_q
-  logic                step_last_tile_q;  // last_tile(step_unit_q)
+  logic [RowWidth-1:0] step_cyc_q;     // the unit's cycle: the row's beat
+  logic                step_last_cyc_q;   // step_cyc_q + 1 == step_unit_q.beats
   logic                step_last_unit_q;  // last_unit(step_unit_q)
   logic                fire, step_end, step_go, step_load, unit_end, last_beat, room_ok;
   logic [CW-1:0]       credits_q;      // go_i pulses not yet spent
   unit_t               unit_init_c, unit_next_c, unit_n;
   logic [RowWidth-1:0] cyc_n;
-  logic [E-1:0]        values_mask;    // positions of this cycle before t
+  logic [ColWidth-1:0] row_len;        // the command's row length: cols, VALUES t
 
-  assign last_beat     = step_last_cyc_q && (!step_unit_q.values || step_last_tile_q);
+  assign last_beat     = step_last_cyc_q;  // every unit ends its lanes' rows
   assign fire          = step_busy_q && dma_ok && (!last_beat || room_ok);
   assign unit_end      = fire && step_last_cyc_q;
   assign step_end      = unit_end && step_last_unit_q;
@@ -517,9 +494,7 @@ module engine
   assign unit_init_c   = unit_init(q_head[1]);
   assign unit_next_c   = unit_next(step_unit_q);
 
-  for (genvar e = 0; e < E; e++) begin : gen_values_mask
-    assign values_mask[e] = E * step_cyc_q + e < rem(step_unit_q);
-  end
+  assign row_len       = q_head[1].op == OpValues ? ColWidth'(q_head[1].t) : q_head[1].cols;
 
   always_comb begin
     unit_n = step_load ? unit_init_c : unit_end ? unit_next_c : step_unit_q;
@@ -535,26 +510,21 @@ module engine
       step_cyc_q  <= cyc_n;
       credits_q   <= credits_q + CW'(go_i) - CW'(step_load && q_head[1].wait_go);
       if (step_load) begin
-        step_cycles_q    <= unit_cycles(unit_init_c);
         step_active_q    <= unit_ports(unit_init_c);
-        step_last_cyc_q  <= unit_cycles(unit_init_c) == RowWidth'(1);
-        step_last_tile_q <= last_tile(unit_init_c);
+        step_last_cyc_q  <= unit_init_c.beats == ColWidth'(1);
         step_last_unit_q <= last_unit(unit_init_c);
       end else if (unit_end) begin
-        step_cycles_q    <= unit_cycles(unit_next_c);
         step_active_q    <= unit_ports(unit_next_c);
-        step_last_cyc_q  <= unit_cycles(unit_next_c) == RowWidth'(1);
-        step_last_tile_q <= last_tile(unit_next_c);
+        step_last_cyc_q  <= unit_next_c.beats == ColWidth'(1);
         step_last_unit_q <= last_unit(unit_next_c);
       end else if (fire) begin
-        step_last_cyc_q  <= step_cyc_q + RowWidth'(2) == step_cycles_q;
+        step_last_cyc_q  <= step_cyc_q + RowWidth'(2) == RowWidth'(step_unit_q.beats);
       end
       if (step_load) begin
         step_busy_q   <= 1'b1;
         step_buf_q    <= q_head[1].a;
         for (int unsigned e = 0; e < E; e++) begin
-          step_mask_q[e] <= q_head[1].cols % ColWidth'(E) == '0
-                            || ColWidth'(e) < q_head[1].cols % ColWidth'(E);
+          step_mask_q[e] <= row_len % ColWidth'(E) == '0 || ColWidth'(e) < row_len % ColWidth'(E);
         end
       end else if (step_end) begin
         step_busy_q <= 1'b0;
@@ -582,9 +552,9 @@ module engine
   endfunction
 
   logic [L-1:0][$clog2(LaneBanks):0] lane_reserved;
-  logic [Ports-1:0]             chk_d, chk_q;
+  logic [Ports-1:0]             chk_q;
   logic [Ports-1:0]             cover_q[SeenRegs+2];  // chk_q's, as each stage's min has them
-  logic                         pop_now, last_now;
+  logic                         last_now;
   logic [NG-1:0][CrW-1:0]       grp_min_q;
   logic [NG-1:0][LaneBanks-1:0] grp_res_q;
   logic [CrW-1:0]               min_q;
@@ -593,10 +563,8 @@ module engine
   logic signed [CrW+1:0]        est_q;   // beats certainly in every port covered
   logic [RW-1:0]                room_q;  // reservations a lane may have, at most
 
-  assign chk_d    = step_active_q;
-  assign dma_ok   = est_q > 0 && !(|(chk_d & ~cover_q[SeenRegs+1]));
+  assign dma_ok   = est_q > 0 && !(|(step_active_q & ~cover_q[SeenRegs+1]));
   assign room_ok  = room_q < RW'(LaneBanks);
-  assign pop_now  = fire;
   assign last_now = fire && last_beat;
 
   for (genvar g = 0; g < NG; g++) begin : gen_seen
@@ -632,7 +600,7 @@ module engine
   always_ff @(posedge clk_i) begin
     min_q      <= min_tree(grp_mins, NG);
     res_q      <= all_res;
-    chk_q      <= chk_d;
+    chk_q      <= step_active_q;
     cover_q[0] <= chk_q;
     for (int unsigned i = 1; i < SeenRegs + 2; i++) cover_q[i] <= cover_q[i-1];
     if (!rst_ni) begin
@@ -642,9 +610,9 @@ module engine
       room_q     <= '0;
     end else begin
       est_q      <= $signed({2'b00, min_q}) - $signed((CrW + 2)'($countones(pop_win_q)))
-                    - $signed((CrW + 2)'(pop_now));
+                    - $signed((CrW + 2)'(fire));
       room_q     <= RW'($countones(res_q)) + RW'($countones(last_win_q)) + RW'(last_now);
-      pop_win_q  <= {pop_win_q[Window-3:0], pop_now};
+      pop_win_q  <= {pop_win_q[Window-3:0], fire};
       last_win_q <= {last_win_q[Window-3:0], last_now};
     end
   end
@@ -656,10 +624,8 @@ module engine
   always_comb begin
     beat_d         = '0;
     beat_d.valid   = fire;
-    beat_d.values  = step_unit_q.values;
     beat_d.last    = last_beat;
-    beat_d.mask    = step_unit_q.matvec ? (step_last_cyc_q ? step_mask_q : '1)
-                   : step_unit_q.values ? values_mask : '1;
+    beat_d.mask    = step_last_cyc_q ? step_mask_q : '1;
     beat_d.lanes   = res_lanes(step_unit_q);
     beat_d.dlog    = step_unit_q.dlog;
     beat_d.active  = step_active_q;
@@ -671,15 +637,11 @@ module engine
   logic [BufWidth-1:0]            x_buf_q;
   logic [Heads-1:0][E-1:0][15:0]  x_data_q;
 
+  // Port 1 reads port 0's group but for VALUES (its second head), so a
+  // lane may take port 1 whatever the command (MATVEC: xh = 0).
   always_comb begin
-    if (step_unit_q.matvec) begin
-      x_addr_d[0] = step_cyc_q;
-    end else if (!step_unit_q.values) begin
-      x_addr_d[0] = step_unit_q.xh + step_cyc_q;
-    end else begin
-      x_addr_d[0] = step_unit_q.xh + step_unit_q.pos / RowWidth'(E) + step_cyc_q;
-    end
-    x_addr_d[1] = x_addr_d[0] + step_unit_q.stride / RowWidth'(E);
+    x_addr_d[0] = step_unit_q.xh + step_cyc_q;
+    x_addr_d[1] = x_addr_d[0] + (step_unit_q.values ? step_unit_q.stride / RowWidth'(E) : '0);
   end
 
   always_ff @(posedge clk_i) begin
@@ -732,7 +694,7 @@ module engine
     always_comb begin
       second = (l >> bt.dlog) == 1;  // VALUES: the pass's second head
       lane_in_valid[l] = bt.valid && l < 32'(bt.lanes);
-      x = x_at[l/GL][bt.values && second];
+      x = x_at[l/GL][second];
     end
     dot_lane #(
       .E    (E),
@@ -791,8 +753,8 @@ module engine
 
   assign lanes_with_result = RowWidth'(res_lanes(drain_unit_q));
   assign pass_row          = res_row(drain_unit_q);
-  assign drain_next        = !drain_busy_q || drain_end ? to_last_tile(unit_init(q_head[2]))
-                                                        : to_last_tile(unit_next(drain_unit_q));
+  assign drain_next        = !drain_busy_q || drain_end ? unit_init(q_head[2])
+                                                        : unit_next(drain_unit_q);
   assign next_lanes        = RowWidth'(res_lanes(drain_next));
   for (genvar s = 0; s < Writes; s++) begin : gen_slot
     assign has[s] = RowWidth'(drain_grp_q) * RowWidth'(Writes) + RowWidth'(s) < lanes_with_result;

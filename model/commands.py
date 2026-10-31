@@ -40,6 +40,7 @@ BF16, F32 = torch.bfloat16, torch.float32
 BEAT_BYTES = 32  # one beat of an HBM port (256 bits)
 E = 4  # weights a lane takes per cycle (D-027)
 LANES_PER_PORT = BEAT_BYTES // (E * BF16.itemsize)  # a beat holds E weights for each
+VALUES_HEADS = 2  # heads per p.V pass, at most (rtl/engine.sv's Heads)
 STRIDE_ALIGN = 16  # elements: S and P's stride, the vector unit's width (D-030, D-049)
 
 
@@ -404,19 +405,25 @@ def lane_order(w: torch.Tensor, lanes: int) -> list[torch.Tensor]:
     return [beats[p::ports].reshape(-1, LANES_PER_PORT * E) for p in range(ports)]
 
 
+def kv_region_beats(cap: int, d: int, values: bool, lanes: int) -> int:
+    """The beats of one KV head's region in each channel (kv_lane_order):
+    K's cap / lanes tiles of ceil(d / E) beats, or V's cap / E."""
+    return -(-cap // E) if values else cap // lanes * -(-d // E)
+
+
 def kv_lane_order(cache: torch.Tensor, values: bool, lanes: int) -> list[torch.Tensor]:
     """A KV cache [kv_heads, cap, d] in the order the engine's ports read it
     (D-062), each KV head's region after the last, the same size in every
     channel: K as a matrix of cap rows (the positions) and d columns, V
     transposed (d rows, cap columns) and stacked once per head of a VALUES
-    pass (2 when 2d <= lanes: the pass's second head reads ports d / 4 ...),
+    pass (up to VALUES_HEADS: the pass's second head reads ports d / 4 ...),
     both in lane_order. A channel with no rows of a head holds zeros there.
     Returns each port's beats, BF16 [n_beats, LANES_PER_PORT * E]."""
     assert cache.dim() == 3 and cache.dtype == BF16, (cache.shape, cache.dtype)
     kv_heads, cap, d = cache.shape
     ports = lanes // LANES_PER_PORT
-    copies = 2 if values and 2 * d <= lanes else 1
-    region = cap // E if values else cap // lanes * -(-d // E)  # beats per head and channel
+    copies = max(1, min(VALUES_HEADS, lanes // d)) if values else 1
+    region = kv_region_beats(cap, d, values, lanes)
     out = torch.zeros(ports, kv_heads, region, LANES_PER_PORT * E, dtype=BF16)
     for kv in range(kv_heads):
         w = torch.cat([cache[kv].T] * copies) if values else cache[kv]

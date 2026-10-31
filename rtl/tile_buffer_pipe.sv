@@ -3,8 +3,8 @@
 //
 // N banks of Depth entries of W bits, one write and one read per bank and
 // cycle, whose data cross the banks through rotations of Regs registers
-// (rotate_pipe.sv, D-051): the engine's tile buffer (docs/architecture.md,
-// "Tile buffer banks"), and with Regs = 0 the vector unit's (tile_buffer.sv).
+// (rotate_pipe.sv, D-051): with Regs = 0 the vector unit's tile buffer
+// (tile_buffer.sv). The engine's, which used Regs > 0, went with D-062.
 // Physical bank B holds logical entry (B - rot) mod N. Addresses and write
 // enables are per physical bank, from the caller, so no rotation carries
 // them: each bank's come from a register of its own when Regs > 0.

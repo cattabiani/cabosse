@@ -77,7 +77,7 @@ REDUCTION_KINDS = tuple(op.name.lower() for op in commands.REDUCE)
 ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
 # Design values that are on (1) or off (0); see ops().
 FLAGS = ("softmax_fused", "max_in_drain", "kv_tiles_shared")
-VALUES_HEADS = 2  # heads per p.V pass, at most (rtl/engine.sv's Heads)
+VALUES_HEADS = commands.VALUES_HEADS
 
 
 @dataclass(frozen=True)
@@ -270,7 +270,7 @@ def attention(
         shapes = tuple((n * d, positions) for n in passes)
     readers = cmd.kv_heads if tiles_shared else heads
     # Each port reads its 4 positions per beat (D-062).
-    read_positions = math.ceil(positions / 4) * 4
+    read_positions = math.ceil(positions / commands.LANES_PER_PORT) * commands.LANES_PER_PORT
     return Step(
         cmd.op.name.lower(),
         (heads, positions, d),

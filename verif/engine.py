@@ -126,8 +126,7 @@ def n_beats(m: Command, ports: int) -> int:
     regions per KV head (commands.kv_lane_order, D-062)."""
     if isinstance(m, Attention):
         kv_heads, cap, d = m.cache.shape
-        lanes = ports * LANES_PER_PORT
-        return kv_heads * (cap // E if m.values else cap // lanes * (d // E))
+        return kv_heads * commands.kv_region_beats(cap, d, m.values, ports * LANES_PER_PORT)
     rows, cols = m.w.shape
     return -(-rows // (ports * LANES_PER_PORT)) * -(-cols // E)
 

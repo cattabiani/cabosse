@@ -219,7 +219,8 @@ every channel.
   = 2 × 64; `d ≤ L`), the second on ports `d / 4` and up; with GQA a KV
   head can be either, so V is stored once per head of a pass (2 copies
   for SmolLM2: HBM space only, the reads are the same). A lane's row runs
-  over all positions; a unit is a pass and a tile of 128 positions.
+  over all positions: a pass is one unit, like a MATVEC pass of `t`
+  columns.
 - `KV_STORE` writes a K row as a burst of `head_dim / 4` beats and a V row
   as one beat per channel and copy, 8 bytes of each enabled (AXI write
   strobes). Until it does (M6, next step), it writes D-043's layout.

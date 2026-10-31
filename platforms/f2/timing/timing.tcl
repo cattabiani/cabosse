@@ -45,20 +45,18 @@ report_utilization -hierarchical -hierarchical_depth 4 -file utilization_hier.rp
 report_design_analysis -congestion -file congestion.rpt
 
 # Every failing path's family, compactly: start and end cells with their
-# indices dropped, the paths of each, and the worst slack.
+# indices dropped, the paths of each, and the worst slack. The properties
+# come as lists, a call each.
+set paths [get_timing_paths -setup -max_paths 300000 -nworst 1 -slack_lesser_than 0]
 set families [dict create]
-foreach p [get_timing_paths -setup -max_paths 100000 -nworst 1 -slack_lesser_than 0] {
-  set key "[regsub -all {\[[0-9]+\]} [get_property STARTPOINT_PIN $p] {[*]}] -> [regsub -all {\[[0-9]+\]} [get_property ENDPOINT_PIN $p] {[*]}]"
-  set slack [get_property SLACK $p]
-  if {[dict exists $families $key]} {
-    lassign [dict get $families $key] n worst
-    dict set families $key [list [expr {$n + 1}] [expr {min($worst, $slack)}]]
-  } else {
-    dict set families $key [list 1 $slack]
-  }
+foreach s [get_property STARTPOINT_PIN $paths] e [get_property ENDPOINT_PIN $paths] \
+        slack [get_property SLACK $paths] {
+  dict lappend families "[regsub -all {\[[0-9]+\]} $s {[*]}] -> [regsub -all {\[[0-9]+\]} $e {[*]}]" $slack
 }
 set f [open families.rpt w]
-foreach {key v} $families {puts $f "[lindex $v 1] [lindex $v 0] $key"}
+dict for {key slacks} $families {
+  puts $f "[tcl::mathfunc::min {*}$slacks] [llength $slacks] $key"
+}
 close $f
 set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
 puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
