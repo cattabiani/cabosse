@@ -375,7 +375,10 @@ module vec_unit
     .r_ready_o,
     .r_data_i,
     .r_resp_i,
-    .err_o      (rd_err)
+    .err_o      (rd_err),
+    // verilator lint_off PINCONNECTEMPTY
+    .out_count_o()
+    // verilator lint_on PINCONNECTEMPTY
   );
 
   // The group's beats: one of BF16, one or two of FP32 (half a group or
@@ -437,7 +440,10 @@ module vec_unit
     .in_data_i  (kv_beat),
     .out_valid_o(q_valid),
     .out_ready_i(q_take),
-    .out_data_o (q_beat)
+    .out_data_o (q_beat),
+    // verilator lint_off PINCONNECTEMPTY
+    .count_o    ()
+    // verilator lint_on PINCONNECTEMPTY
   );
 
   port_wdma #(
@@ -794,7 +800,10 @@ module vec_unit
     .in_data_i  ({cmd_op_i == OpKvStore, cmd_n_i}),
     .out_valid_o(tag_valid),
     .out_ready_i(tag_go),
-    .out_data_o (tag)
+    .out_data_o (tag),
+    // verilator lint_off PINCONNECTEMPTY
+    .count_o    ()
+    // verilator lint_on PINCONNECTEMPTY
   );
 
   assign {tag_kv, tag_heads} = tag;

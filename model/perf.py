@@ -78,6 +78,10 @@ ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
 # Design values that are on (1) or off (0); see ops().
 FLAGS = ("softmax_fused", "max_in_drain", "kv_tiles_shared")
 VALUES_HEADS = 2  # heads per p.V pass, at most (rtl/engine.sv's Heads)
+TILE_SLOTS = 3  # rtl/engine.sv's Slots (D-051)
+# A filled tile reaches step's reads 6 cycles of 4 cols after fill's last
+# beat (rtl/engine.sv: LandLat + 2, from the RTL's register stages).
+TILE_LAND_COLS = 24
 
 
 @dataclass(frozen=True)
@@ -257,14 +261,16 @@ def tile_wait_cols(units: list[tuple[int, int]]) -> int:
     """How long the engine waits for its tile buffer over these units (a
     pass and a tile each: cols to fill, cols to step; a cycle is
     `macs_per_lane` cols of either). Fill reads at the engine's rate, one
-    unit at a time, into two slots, a slot refilled once its unit is
-    stepped; read ahead (D-042, D-044), the first two are full at the go."""
+    unit at a time, into TILE_SLOTS slots, a slot refilled once its unit is
+    stepped, and a filled unit is stepped TILE_LAND_COLS after its fill;
+    read ahead (D-042, D-044), the first TILE_SLOTS are full at the go."""
     fill_end = step_end = 0
     ends: list[int] = []  # each unit's step end
     for u, (fill, step) in enumerate(units):
-        if u >= 2:
-            fill_end = max(fill_end, ends[u - 2]) + fill
-        step_end = max(step_end, fill_end) + step
+        if u >= TILE_SLOTS:
+            fill_end = max(fill_end, ends[u - TILE_SLOTS]) + fill
+            step_end = max(step_end, fill_end + TILE_LAND_COLS)
+        step_end += step
         ends.append(step_end)
     return step_end - sum(step for _, step in units)
 

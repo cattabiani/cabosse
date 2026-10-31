@@ -50,9 +50,9 @@ Assumptions, to revisit in `docs/architecture.md`:
   the engine's rate ÷ the memory's rate on attention otherwise (1024 ÷ 947
   B/cycle on F2 at 250 MHz, about 8%, estimate). A p.V tile fills its
   heads' d values per position and steps its positions, so a partly filled
-  last tile can wait for its fill (`perf.tile_wait_cols`: two slots, the
-  first two read ahead: 32 cycles at position 63, the excess measured
-  over the model before it, with a 55-cycle start-up).
+  last tile can wait for its fill (`perf.tile_wait_cols`: three slots,
+  the first three read ahead, and a filled tile stepped 6 cycles after its
+  fill, D-051).
 - Activations stay on chip, and cost no HBM traffic.
 - Attention's multiply-adds (q·K and p·V) run on the matrix-vector engine.
 - The HBM read rate scales with the memory clock from AWS's measured rate at
@@ -146,12 +146,12 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: engine -->
 | scenario, engine use at position | 0 | 1023 | 8191 |
 |---|---|---|---|
-| as planned | 91.9% | 94.8% | 94.8% |
+| as planned | 92.1% | 94.8% | 94.8% |
 | 64 lanes x 8, A = 32 | 93.5% | 77.0% | 50.6% |
-| 512 lanes x 1, A = 4 | 68.8% | 61.1% | 43.8% |
-| core at 125 MHz | 91.9% | 94.8% | 94.8% |
-| 256 lanes, HBM at 450 MHz | 83.4% | 81.2% | 68.6% |
-| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 83.4% | 81.2% | 68.6% |
+| 512 lanes x 1, A = 4 | 69.3% | 61.1% | 43.8% |
+| core at 125 MHz | 92.1% | 94.8% | 94.8% |
+| 256 lanes, HBM at 450 MHz | 83.8% | 81.2% | 68.6% |
+| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 83.8% | 81.2% | 68.6% |
 <!-- end: engine -->
 
 ## Predictions
@@ -159,28 +159,28 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: predictions -->
 | scenario | position | tokens/s | in order | limited by | memory (ms) | engine (ms) | vector (ms) | commands (ms) |
 |---|---|---|---|---|---|---|---|---|
-| as planned | 0 | 324–840 | 522 | engine | 1.173 | 1.190 | 0.705 | 0.021 |
+| as planned | 0 | 324–842 | 523 | engine | 1.173 | 1.187 | 0.705 | 0.021 |
 | as planned | 1023 | 261–691 | 418 | engine | 1.435 | 1.446 | 0.924 | 0.021 |
 | as planned | 8191 | 98–284 | 149 | memory | 3.527 | 3.489 | 3.161 | 0.021 |
-| 64 lanes x 8, A = 32 | 0 | 328–854 | 527 | engine | 1.155 | 1.171 | 0.705 | 0.021 |
+| 64 lanes x 8, A = 32 | 0 | 328–855 | 527 | engine | 1.155 | 1.170 | 0.705 | 0.021 |
 | 64 lanes x 8, A = 32 | 1023 | 241–565 | 368 | engine | 1.435 | 1.771 | 0.924 | 0.021 |
 | 64 lanes x 8, A = 32 | 8191 | 76–154 | 103 | engine | 3.527 | 6.488 | 3.161 | 0.021 |
-| 512 lanes x 1, A = 4 | 0 | 279–635 | 435 | engine | 1.286 | 1.575 | 0.705 | 0.021 |
+| 512 lanes x 1, A = 4 | 0 | 280–640 | 437 | engine | 1.286 | 1.562 | 0.705 | 0.021 |
 | 512 lanes x 1, A = 4 | 1023 | 217–451 | 316 | engine | 1.435 | 2.218 | 0.924 | 0.021 |
 | 512 lanes x 1, A = 4 | 8191 | 70–134 | 94 | engine | 3.527 | 7.487 | 3.161 | 0.021 |
-| core at 125 MHz | 0 | 200–420 | 261 | engine | 1.173 | 2.381 | 1.410 | 0.043 |
+| core at 125 MHz | 0 | 200–421 | 261 | engine | 1.173 | 2.375 | 1.410 | 0.043 |
 | core at 125 MHz | 1023 | 161–346 | 209 | engine | 1.435 | 2.893 | 1.849 | 0.043 |
 | core at 125 MHz | 8191 | 59–143 | 75 | engine | 3.527 | 6.979 | 6.322 | 0.043 |
-| 256 lanes, HBM at 450 MHz | 0 | 482–1418 | 713 | vector | 0.673 | 0.677 | 0.705 | 0.021 |
+| 256 lanes, HBM at 450 MHz | 0 | 482–1418 | 714 | vector | 0.673 | 0.674 | 0.705 | 0.021 |
 | 256 lanes, HBM at 450 MHz | 1023 | 384–1082 | 553 | vector | 0.797 | 0.863 | 0.924 | 0.021 |
 | 256 lanes, HBM at 450 MHz | 8191 | 132–316 | 178 | vector | 1.959 | 2.423 | 3.161 | 0.021 |
-| fused softmax, max in drain | 0 | 365–840 | 639 | engine | 1.173 | 1.190 | 0.354 | 0.020 |
+| fused softmax, max in drain | 0 | 366–842 | 641 | engine | 1.173 | 1.187 | 0.354 | 0.020 |
 | fused softmax, max in drain | 1023 | 295–691 | 511 | engine | 1.435 | 1.446 | 0.490 | 0.020 |
 | fused softmax, max in drain | 8191 | 118–284 | 200 | memory | 3.527 | 3.489 | 1.458 | 0.020 |
-| KV tiles shared | 0 | 326–840 | 522 | engine | 1.149 | 1.190 | 0.705 | 0.021 |
+| KV tiles shared | 0 | 327–842 | 523 | engine | 1.149 | 1.187 | 0.705 | 0.021 |
 | KV tiles shared | 1023 | 276–691 | 418 | engine | 1.236 | 1.446 | 0.924 | 0.021 |
 | KV tiles shared | 8191 | 116–287 | 150 | engine | 1.933 | 3.489 | 3.161 | 0.021 |
-| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 0 | 580–1478 | 952 | engine | 0.673 | 0.677 | 0.354 | 0.020 |
+| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 0 | 581–1485 | 955 | engine | 0.673 | 0.674 | 0.354 | 0.020 |
 | 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 1023 | 461–1158 | 728 | engine | 0.797 | 0.863 | 0.490 | 0.020 |
 | 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 8191 | 171–413 | 256 | engine | 1.959 | 2.423 | 1.458 | 0.020 |
 <!-- end: predictions -->

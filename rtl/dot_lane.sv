@@ -45,7 +45,9 @@ module dot_lane
   parameter  int unsigned A       = 16,    // partial sums per row (D-027)
   parameter  int unsigned MulRegs = 1,     // registers inside each product (bf16_mac)
   parameter  bit          Ftz     = 1'b0,  // flush-to-zero variant (fp_mul_add)
-  localparam int unsigned S       = A / E  // partial sums per unit
+  parameter  int unsigned Banks   = 2,     // level-1 buffers
+  localparam int unsigned S       = A / E, // partial sums per unit
+  localparam int unsigned BW      = $clog2(Banks)
 ) (
   input  logic                clk_i,
   input  logic                rst_ni,
@@ -57,7 +59,8 @@ module dot_lane
   input  logic                last_i,
   output logic                out_valid_o,
   input  logic                out_ready_i,
-  output logic [31:0]         out_o
+  output logic [31:0]         out_o,
+  output logic [BW:0]         reserved_o  // rows past their last beat still in the level-1 buffers
 );
 
   localparam int unsigned W          = prod_sig_w(8);
@@ -66,8 +69,6 @@ module dot_lane
   localparam int unsigned Levels     = $clog2(A);  // of the tree; level i here is i + 1 there
   localparam int unsigned LW         = $clog2(Levels);
   localparam int unsigned PW         = $clog2(A / 2);  // a level-1 pair's index
-  localparam int unsigned Banks      = 2;  // level-1 buffers
-  localparam int unsigned BW         = $clog2(Banks);
   localparam int unsigned OutDepth   = 2;
   localparam int unsigned OW         = $clog2(OutDepth);
   // Stages of a beat's tag: 0 is the input register; it enters fp_add at
@@ -88,6 +89,7 @@ module dot_lane
   logic [BW:0] reserved_q;  // rows past their last beat whose level-1 pairs are not all taken
   logic        fire, bank_done, root_issue;
   assign in_ready_o = !last_i || (reserved_q < (BW + 1)'(Banks));
+  assign reserved_o = reserved_q;
   assign fire       = in_valid_i && in_ready_o;
 
   // The beat's place in its row: slot = group mod S, first = group < S.
@@ -237,12 +239,12 @@ module dot_lane
     end else begin
       if (snap) begin
         full_q[load_ptr_q] <= 1'b1;
-        load_ptr_q         <= load_ptr_q + 1'b1;
+        load_ptr_q         <= BW'((load_ptr_q + 1) % Banks);
       end
       if (pick && pick_lvl == '0) pair_q <= pair_q + 1'b1;
       if (bank_done) begin
         full_q[read_ptr_q] <= 1'b0;
-        read_ptr_q         <= read_ptr_q + 1'b1;
+        read_ptr_q         <= BW'((read_ptr_q + 1) % Banks);
       end
       reserved_q <= reserved_q + (BW + 1)'(fire && last_i) - (BW + 1)'(bank_done);
     end
