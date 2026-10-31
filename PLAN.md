@@ -620,6 +620,47 @@ after its last write; with two slots fill would fall behind by those
 cycles on every unit, about 25% on SmolLM2's attention (estimate). Two
 slots and the bubbles was the alternative.
 
+**D-062 (2026-10-31) — The KV cache in the lanes' order; no tile buffer**
+(owner, 2026-10-31; revises D-028 and D-043, replaces D-061; for D-060).
+K and V are stored the way weights are, so port `p` feeds its own lanes
+`4p` to `4p+3` on attention too, and `SCORES` and `VALUES` stream from
+HBM like a `MATVEC`:
+- K: in the tile of positions `128j` to `128j+127` of a KV head, channel
+  `c` holds positions `128j+4c` to `128j+4c+3`; for `k` = 0, 4, …, it
+  holds the beat `K[q][k…k+3]` for those 4 positions. `SCORES`: lane `q`
+  takes position `q`, as now. A tile is still `d/4` sequential beats per
+  port (16 for SmolLM2).
+- V: stored as `Vᵀ`, rows the head's dimensions, columns the positions.
+  Channel `p` holds dimensions `4p` to `4p+3`, beat by beat over the
+  positions. `VALUES`: lane `j` takes output dimension `j`, as now. A pass
+  of two heads (`d` ≤ `L/2`) puts its second head on ports `L/8` and up,
+  and with GQA a KV head can be either, so V is stored once per such half
+  (2 copies for SmolLM2: 94 → 189 MB at 8192 positions, estimate; reads
+  unchanged).
+- `KV_STORE` writes a K row as one burst of `d/4` beats, and a V row as
+  one beat per channel and copy, each with 8 bytes enabled (AXI write
+  strobes). For SmolLM2 about 7,200 cycles per token against about 700
+  now, about 2% at position 1023 if not hidden (estimate; a one-beat
+  write at half rate, as the memory model's reads).
+- Gone: the tile buffer, its rotations, fill, the tile slots (D-061) and
+  the bank mapping. Each port's 256-bit FIFO becomes 4 FIFOs of 64 bits,
+  one per lane, each with its own pointers.
+- Same numerics: `SCORES` sums over `d`, `VALUES` over the positions, 4 at
+  a time in the same order as now (to confirm with the tests).
+- To verify: the HBM controller's handling of partial writes (strobes);
+  the first full build (M8) measures their rate.
+
+*Why:* the first placed build after D-051 (-3.096 ns) fails on wires, not
+logic: about 145 of the 177 worst paths are the tile buffer's rotations
+and addresses, two 8,192-bit crossbars that exist only because the cache
+was stored by position. With K and V in the lanes' order no data crosses
+the engine, and about 85,000 to 100,000 LUTs go (estimate: the tile's LUT
+RAM and the rotations), mostly from the fullest SLR. D-028's reason for
+the tile buffer was V without a second copy; a copy costs HBM space only,
+which is plentiful. A one-head `VALUES` pass instead of the copy halves
+`VALUES`' rate (about 10% more engine time at 1023, estimate); pairing
+passes by KV head does not balance with SmolLM2's 3 KV heads.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1016,6 +1057,12 @@ iteration, at most 3 placed builds.
    middle SLR holds most of the LUT RAM (47,369 of 58,214 LUTs as memory)
    and is 76% full in LUTs. Cost of builds 0 and 1: about $2 (estimate,
    2.6 h of c6i.4xlarge).
+   Next (owner, 2026-10-31): D-062 (KV cache in the lanes' order, no tile
+   buffer, per-lane FIFOs), then build 2, which prints the full
+   per-module utilization, a congestion report and every failing path
+   family. What it names decides the next step: DSPs for the lanes'
+   arithmetic (16 of 9,024 used), floorplanning, or neighbour chains for
+   the x broadcast and the drain.
 4. Stop when the worst slack is >= 0 at 250 MHz. If the third build is
    still worse than about -0.5 ns, stop tinkering: target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%
