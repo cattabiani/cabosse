@@ -1000,6 +1000,22 @@ iteration, at most 3 placed builds.
 3. Placed build of `engine_path` (scripts/f2/time_loops.sh; c6i.4xlarge
    is enough: the first build peaked at 16.5 GB), with the owner's go and
    a time limit for each launch. Fix the paths it names; repeat.
+   Build 1 (2026-10-31, commit 6dbfdae,
+   reports/data/f2/2026-10-31-engine-placed.txt): worst slack -3.096 ns
+   (-4.698 before), 177,270 of 1,110,481 endpoints failing (288,260 of
+   986,478 before). Against the predictions: the step-to-tile-address
+   path is gone; the slack is not better than -1 ns; 39% fewer failing
+   endpoints, not most. The failing paths are now short wires, not deep
+   logic: the worst is a bank's own read-address register to its LUT RAM,
+   2 levels, 6.45 ns of a single net (fan-out 128, 104 rows away). Among
+   the 177 worst paths the log kept, 0 to 3 levels each (one has 5), are the tile
+   buffer's rotations (read rotation 71, shift copies 37 and their `_rep`
+   ones, write side), the per-bank addresses (12), and the DMA FIFOs' own
+   write pointers to their LUT RAM (`stream_fifo` `count_q`/`wr_q`,
+   fan-out 674, up to -2.97 ns; code this step did not change). The
+   middle SLR holds most of the LUT RAM (47,369 of 58,214 LUTs as memory)
+   and is 76% full in LUTs. Cost of builds 0 and 1: about $2 (estimate,
+   2.6 h of c6i.4xlarge).
 4. Stop when the worst slack is >= 0 at 250 MHz. If the third build is
    still worse than about -0.5 ns, stop tinkering: target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%
