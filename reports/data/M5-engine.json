@@ -171,8 +171,8 @@
  },
  "real": {
   "provenance": {
-   "commit": "6138536c426f393d188d8ca6403fe2e0fe610ad6",
-   "dirty": true,
+   "commit": "b02a3e7ab94906729c3efc64231d36860eb4d275",
+   "dirty": false,
    "date": "2026-10-31",
    "machine": "Linux x86_64"
   },
@@ -477,7 +477,7 @@
       64
      ],
      "wait": true,
-     "cycles": 1346,
+     "cycles": 1341,
      "model": 1352.0,
      "engine": 1280.0
     },
@@ -587,7 +587,7 @@
       64
      ],
      "wait": true,
-     "cycles": 1346,
+     "cycles": 1341,
      "model": 1352.0,
      "engine": 1280.0
     },
@@ -711,7 +711,7 @@
       64
      ],
      "wait": true,
-     "cycles": 10306,
+     "cycles": 10301,
      "model": 10312.0,
      "engine": 10240.0
     },
@@ -821,7 +821,7 @@
       64
      ],
      "wait": true,
-     "cycles": 10306,
+     "cycles": 10301,
      "model": 10312.0,
      "engine": 10240.0
     },
