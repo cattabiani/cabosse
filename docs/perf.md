@@ -96,7 +96,7 @@ v0: first-order design choices (M2), from `model/designs/v0.json`:
 | `accumulators` | 16 partial sums | choice | docs/architecture.md, engine: 4 multiply-adds x a 4-cycle loop (D-027) |
 | `vector_elems_per_cycle` | 16 elements/cycle | choice | docs/architecture.md, vector unit (D-030) |
 | `issue_cycles` | 4 cycles/command | guess | the controller reads a command and hands it over; the waits are counted apart (D-053); M7 measures it |
-| `engine_startup_cycles` | 64 cycles/command | measured by us | per engine command that waits for an earlier result (D-042), weights or KV read ahead: the most a SmolLM2 engine command after the first took over its engine cycles (SCORES at positions 1023 and 8191; MATVECs 61), 128-lane RTL in simulation (reports/data/M5-engine.json, real); scenarios with other lanes or accumulators reuse it (estimate: its drain and final sum change with them) |
+| `engine_startup_cycles` | 69 cycles/command | measured by us | per engine command that waits for an earlier result (D-042), weights or KV read ahead: the most a SmolLM2 engine command after the first took over its engine cycles (SCORES at positions 1023 and 8191; MATVECs 66), with the pipelined step control (D-051), 128-lane RTL in simulation (reports/data/M5-engine.json, real); scenarios with other lanes or accumulators reuse it (estimate: its drain and final sum change with them) |
 | `vector_startup_cycles` | 53 cycles | measured by us | from a vector command's start to its done, past its groups: the chain (50 cycles at MulRegs = 2) and the read and write; SmolLM2's whole decode step on rtl/vec_unit.sv at F2's read latency (also for writes), positions 0, 63, 1023 and 8191, every command of its kind the same (scripts/measure_m6.py latency, reports/data/M6.json) |
 | `reduction_tail_cycles` | 107 cycles | measured by us | a reduction's last row: its partials' last sums and the tree (D-050, one adder), past vector_startup_cycles; measured as vector_startup_cycles |
 | `reduction_row_cycles` | 159 cycles | measured by us | a reduction's rows end at least this far apart: a row's last group waits for the tree to take the row before; measured as vector_startup_cycles |
@@ -159,30 +159,30 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: predictions -->
 | scenario | position | tokens/s | in order | limited by | memory (ms) | engine (ms) | vector (ms) | commands (ms) |
 |---|---|---|---|---|---|---|---|---|
-| as planned | 0 | 324–842 | 523 | engine | 1.173 | 1.187 | 0.705 | 0.021 |
-| as planned | 1023 | 261–691 | 418 | engine | 1.435 | 1.446 | 0.924 | 0.021 |
-| as planned | 8191 | 98–284 | 149 | memory | 3.527 | 3.489 | 3.161 | 0.021 |
-| 64 lanes x 8, A = 32 | 0 | 328–855 | 527 | engine | 1.155 | 1.170 | 0.705 | 0.021 |
-| 64 lanes x 8, A = 32 | 1023 | 241–565 | 368 | engine | 1.435 | 1.771 | 0.924 | 0.021 |
-| 64 lanes x 8, A = 32 | 8191 | 76–154 | 103 | engine | 3.527 | 6.488 | 3.161 | 0.021 |
-| 512 lanes x 1, A = 4 | 0 | 280–640 | 437 | engine | 1.286 | 1.562 | 0.705 | 0.021 |
-| 512 lanes x 1, A = 4 | 1023 | 217–451 | 316 | engine | 1.435 | 2.218 | 0.924 | 0.021 |
-| 512 lanes x 1, A = 4 | 8191 | 70–134 | 94 | engine | 3.527 | 7.487 | 3.161 | 0.021 |
-| core at 125 MHz | 0 | 200–421 | 261 | engine | 1.173 | 2.375 | 1.410 | 0.043 |
-| core at 125 MHz | 1023 | 161–346 | 209 | engine | 1.435 | 2.893 | 1.849 | 0.043 |
-| core at 125 MHz | 8191 | 59–143 | 75 | engine | 3.527 | 6.979 | 6.322 | 0.043 |
-| 256 lanes, HBM at 450 MHz | 0 | 482–1418 | 714 | vector | 0.673 | 0.674 | 0.705 | 0.021 |
-| 256 lanes, HBM at 450 MHz | 1023 | 384–1082 | 553 | vector | 0.797 | 0.863 | 0.924 | 0.021 |
-| 256 lanes, HBM at 450 MHz | 8191 | 132–316 | 178 | vector | 1.959 | 2.423 | 3.161 | 0.021 |
-| fused softmax, max in drain | 0 | 366–842 | 641 | engine | 1.173 | 1.187 | 0.354 | 0.020 |
-| fused softmax, max in drain | 1023 | 295–691 | 511 | engine | 1.435 | 1.446 | 0.490 | 0.020 |
-| fused softmax, max in drain | 8191 | 118–284 | 200 | memory | 3.527 | 3.489 | 1.458 | 0.020 |
-| KV tiles shared | 0 | 327–842 | 523 | engine | 1.149 | 1.187 | 0.705 | 0.021 |
-| KV tiles shared | 1023 | 276–691 | 418 | engine | 1.236 | 1.446 | 0.924 | 0.021 |
-| KV tiles shared | 8191 | 116–287 | 150 | engine | 1.933 | 3.489 | 3.161 | 0.021 |
-| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 0 | 581–1485 | 955 | engine | 0.673 | 0.674 | 0.354 | 0.020 |
-| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 1023 | 461–1158 | 728 | engine | 0.797 | 0.863 | 0.490 | 0.020 |
-| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 8191 | 171–413 | 256 | engine | 1.959 | 2.423 | 1.458 | 0.020 |
+| as planned | 0 | 324–840 | 522 | engine | 1.173 | 1.191 | 0.705 | 0.021 |
+| as planned | 1023 | 261–690 | 417 | engine | 1.435 | 1.450 | 0.924 | 0.021 |
+| as planned | 8191 | 98–284 | 149 | memory | 3.527 | 3.493 | 3.161 | 0.021 |
+| 64 lanes x 8, A = 32 | 0 | 327–852 | 526 | engine | 1.155 | 1.174 | 0.705 | 0.021 |
+| 64 lanes x 8, A = 32 | 1023 | 241–564 | 368 | engine | 1.435 | 1.774 | 0.924 | 0.021 |
+| 64 lanes x 8, A = 32 | 8191 | 76–154 | 103 | engine | 3.527 | 6.492 | 3.161 | 0.021 |
+| 512 lanes x 1, A = 4 | 0 | 280–639 | 436 | engine | 1.286 | 1.566 | 0.705 | 0.021 |
+| 512 lanes x 1, A = 4 | 1023 | 217–450 | 316 | engine | 1.435 | 2.222 | 0.924 | 0.021 |
+| 512 lanes x 1, A = 4 | 8191 | 70–134 | 94 | engine | 3.527 | 7.490 | 3.161 | 0.021 |
+| core at 125 MHz | 0 | 200–420 | 261 | engine | 1.173 | 2.382 | 1.410 | 0.043 |
+| core at 125 MHz | 1023 | 161–345 | 209 | engine | 1.435 | 2.900 | 1.849 | 0.043 |
+| core at 125 MHz | 8191 | 59–143 | 75 | engine | 3.527 | 6.986 | 6.322 | 0.043 |
+| 256 lanes, HBM at 450 MHz | 0 | 482–1418 | 712 | vector | 0.673 | 0.677 | 0.705 | 0.021 |
+| 256 lanes, HBM at 450 MHz | 1023 | 383–1082 | 552 | vector | 0.797 | 0.867 | 0.924 | 0.021 |
+| 256 lanes, HBM at 450 MHz | 8191 | 132–316 | 178 | vector | 1.959 | 2.426 | 3.161 | 0.021 |
+| fused softmax, max in drain | 0 | 365–840 | 639 | engine | 1.173 | 1.191 | 0.354 | 0.020 |
+| fused softmax, max in drain | 1023 | 295–690 | 510 | engine | 1.435 | 1.450 | 0.490 | 0.020 |
+| fused softmax, max in drain | 8191 | 118–284 | 200 | memory | 3.527 | 3.493 | 1.458 | 0.020 |
+| KV tiles shared | 0 | 326–840 | 522 | engine | 1.149 | 1.191 | 0.705 | 0.021 |
+| KV tiles shared | 1023 | 275–690 | 417 | engine | 1.236 | 1.450 | 0.924 | 0.021 |
+| KV tiles shared | 8191 | 116–286 | 150 | engine | 1.933 | 3.493 | 3.161 | 0.021 |
+| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 0 | 580–1477 | 952 | engine | 0.673 | 0.677 | 0.354 | 0.020 |
+| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 1023 | 460–1153 | 726 | engine | 0.797 | 0.867 | 0.490 | 0.020 |
+| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 8191 | 171–412 | 256 | engine | 1.959 | 2.426 | 1.458 | 0.020 |
 <!-- end: predictions -->
 
 ## Sensitivity
@@ -194,7 +194,7 @@ Tokens/s (overlapped) at position 1023, with the input scaled ×0.5 / ×1 / ×2:
 
 | input | as planned | 64 lanes x 8, A = 32 | 512 lanes x 1, A = 4 | core at 125 MHz | 256 lanes, HBM at 450 MHz | fused softmax, max in drain | KV tiles shared | 256 lanes, HBM at 450 MHz, fused softmax, max in drain |
 |---|---|---|---|---|---|---|---|---|
-| `hbm_port_bytes` (to verify) | 377 / 691 / 691 | 377 / 565 / 565 | 377 / 451 / 451 | 346 / 346 / 346 | 678 / 1082 / 1082 | 377 / 691 / 691 | 437 / 691 / 691 | 678 / 1158 / 1158 |
-| `hbm_read_bytes_per_s` (measured by AWS) | 348 / 691 / 691 | 348 / 565 / 565 | 348 / 451 / 451 | 346 / 346 / 346 | 627 / 1082 / 1082 | 348 / 691 / 691 | 405 / 691 / 691 | 627 / 1158 / 1158 |
-| `issue_cycles` (guess) | 691 / 691 / 691 | 565 / 565 / 565 | 451 / 451 / 451 | 346 / 346 / 346 | 1082 / 1082 / 1082 | 691 / 691 / 691 | 691 / 691 / 691 | 1158 / 1158 / 1158 |
+| `hbm_port_bytes` (to verify) | 377 / 690 / 690 | 377 / 564 / 564 | 377 / 450 / 450 | 345 / 345 / 345 | 678 / 1082 / 1082 | 377 / 690 / 690 | 437 / 690 / 690 | 678 / 1153 / 1153 |
+| `hbm_read_bytes_per_s` (measured by AWS) | 348 / 690 / 690 | 348 / 564 / 564 | 348 / 450 / 450 | 345 / 345 / 345 | 627 / 1082 / 1082 | 348 / 690 / 690 | 405 / 690 / 690 | 627 / 1153 / 1153 |
+| `issue_cycles` (guess) | 690 / 690 / 690 | 564 / 564 / 564 | 450 / 450 / 450 | 345 / 345 / 345 | 1082 / 1082 / 1082 | 690 / 690 / 690 | 690 / 690 / 690 | 1153 / 1153 / 1153 |
 <!-- end: sensitivity -->

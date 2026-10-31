@@ -610,6 +610,16 @@ pattern fixed by register stages. 200 MHz alone does not help: the worst
 path is 8.68 ns, about 115 MHz. The cap keeps the tinkering from eating
 the path to F2 (D-058).
 
+**D-061 (2026-10-31) — Three tile slots** (owner, 2026-10-31; for
+D-051). The engine's tile buffer has three slots, not two: its banks are
+96 entries deep instead of 64, about double the tile buffer's LUT RAM
+(roughly 20,000 to 30,000 LUTs, about 2% of the part; estimate). *Why:*
+with the step decided ahead, a slot's last reads come a few cycles after
+the decision that frees it, and a filled tile reaches step a few cycles
+after its last write; with two slots fill would fall behind by those
+cycles on every unit, about 25% on SmolLM2's attention (estimate). Two
+slots and the bubbles was the alternative.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -961,16 +971,26 @@ report.
 
 **The timing loop (D-060, owner 2026-10-30):** one branch and PR per
 iteration, at most 3 placed builds.
-1. Build D-051's pipelined step control in `rtl/engine.sv`: no global
+1. ✅ (2026-10-31, D-061) Build D-051's pipelined step control in `rtl/engine.sv`: no global
    stall (the lanes take every step; the step is decided a few cycles
    ahead from what the FIFOs and the command's shape already tell), and
    the step, the x broadcast and the tile buffer's read addresses reach
    the lanes and banks through register stages, copied per group of lanes
    or banks. Same bits (every engine test passes unchanged); cycle counts
    re-measured, the perf model's `engine_startup_cycles` updated.
-2. `platforms/f2/timing/timing.tcl` reports every family of failing
+2. ✅ `platforms/f2/timing/timing.tcl` reports every family of failing
    paths, not only the worst 3: the failing paths grouped by endpoint,
    and the logic-level distribution.
+   Done on `m6/step-pipeline`: the engine tests pass unchanged (226,
+   and the 30 at 128 lanes); `engine_startup_cycles` 64 → 69 (measured,
+   reports/data/M5-engine.json); SmolLM2's commands within -0.8% to +1.7%
+   of the perf model, the first one apart. Predictions for its placed
+   build, written before it: the worst slack better than -1 ns; the step
+   to tile-address path gone; most of the 288,260 failing endpoints gone
+   (they hang off that path's nets); what may remain: the drain's `go`
+   (lane outputs to the drain and back), issue's handshake over the 32
+   ports, the VALUES read data's cross-chip wires after the rotation,
+   and step's own counter adders.
 3. Placed build of `engine_path` (scripts/f2/time_loops.sh; c6i.4xlarge
    is enough: the first build peaked at 16.5 GB), with the owner's go and
    a time limit for each launch. Fix the paths it names; repeat.

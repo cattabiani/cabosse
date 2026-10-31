@@ -102,9 +102,15 @@ after the controller's `go`, sent when the command it depends on is done.
 Only the lanes' pipeline remains between the go and the results (about 50
 cycles at 128 lanes), not the memory's latency.
 
-**Step control (D-051, to build in M6).** The lanes do not push back, and
-the stall and the x broadcast go through register stages, so no
-one-cycle signal spans the 128 lanes. Keeping each `SCORES` row's max in
+**Step control (D-051, built in M6).** Fill and step decide each beat from
+registered estimates: the DMA FIFOs' counts and the lanes' level-1
+reservations, less the beats decided since they were seen. A beat then
+reaches the DMAs, the lanes and the tile buffer 5 cycles later, through
+copies per group of 4 ports (16 lanes, 16 banks); the lanes never refuse
+it. Each bank computes its own read address, and the tile buffer's
+rotations go through 2 registers. So no one-cycle signal spans the 128
+lanes. It costs 5 cycles of start-up per waiting command (69, measured)
+and a third tile slot (below). Keeping each `SCORES` row's max in
 the drain, so softmax has no `MAX` command (D-054), waits for a working
 core (D-057).
 
@@ -242,8 +248,9 @@ one `u` from every bank; p·V reads 4 positions × the pass's `u`s; a fill
 writes one beat (4 entries) from every port. The three patterns are
 conflict-free for port counts that are multiples of 4 from 4 to 68, head dimensions 16 to 256 and up to 4
 heads per pass (checked exhaustively: `verif/tests/test_tile_banks.py`).
-Two tile slots: the next tile fills while the engine reads the current
-one.
+Three tile slots: the next tiles fill while the engine reads the current
+one. The third keeps fill a unit ahead now that a slot's last reads, and a
+filled tile's first, come a few cycles after their decisions (D-051, D-061).
 
 ## Clocks (D-028)
 
