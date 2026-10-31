@@ -140,7 +140,8 @@ module engine
   // which needs Heads * d <= L.
   localparam int unsigned SlotWidest = Heads * MaxD < L ? Heads * MaxD : L;
   localparam int unsigned SlotDepth = (MaxD > SlotWidest ? MaxD : SlotWidest) / E;
-  localparam int unsigned TW        = $clog2(2 * SlotDepth);  // a tile buffer address
+  localparam int unsigned Slots     = 3;  // a unit filling, one full, one stepping (D-051)
+  localparam int unsigned TW        = $clog2(Slots * SlotDepth);  // a tile buffer address
   localparam int unsigned EntryBits = E * 16;
   localparam int unsigned BeatValues = DataWidth / 16;     // BF16 values per beat
   localparam int unsigned TileRows  = LanesPerPort;        // a tile's rows per channel
@@ -331,6 +332,9 @@ module engine
   function automatic int unsigned alpha_inv(int unsigned g);  // g < Ports
     return 4 * (g % Quarter) + g / Quarter;
   endfunction
+  function automatic logic [1:0] next_slot(logic [1:0] s);
+    return s == 2'(Slots - 1) ? '0 : s + 1'b1;
+  endfunction
 
   // --- Command queues --------------------------------------------------------
 
@@ -445,9 +449,10 @@ module engine
 
   // --- Fill: attention's beats into the tile buffer --------------------------
 
-  logic [1:0]            tile_full_q;   // per slot: filled, not yet stepped
-  logic [1:0]            tile_fill, tile_free;
-  logic                  fill_busy_q, fill_slot_q, fill_head_q;
+  logic [Slots-1:0]      tile_full_q;   // per slot: filled, not yet stepped
+  logic [Slots-1:0]      tile_fill, tile_free;
+  logic [1:0]            fill_slot_q;
+  logic                  fill_busy_q, fill_head_q;
   logic [$clog2(TileRows)-1:0] fill_row_q;       // the tile's row
   logic [DW-1:0]         fill_beat_q;   // the row's beat
   unit_t                 fill_unit_q;
@@ -465,7 +470,7 @@ module engine
   assign fill_row_end  = fill_fire && 32'(fill_beat_q) + 1 == 32'(dim(fill_unit_q)) / BeatValues;
   assign fill_tile_end = fill_row_end && 32'(fill_row_q) == TileRows - 1;  // a head's tile
   assign fill_unit_end = fill_tile_end && 2'(fill_head_q) + 2'd1 == unit_heads(fill_unit_q);
-  assign tile_fill     = fill_unit_end ? 2'(1) << fill_slot_q : 2'b00;
+  assign tile_fill     = fill_unit_end ? Slots'(1) << fill_slot_q : '0;
   // A MATVEC's beats go to step: fill takes it off its queue when step takes
   // it, and starts the next attention command once step has read them.
   assign q_pop[1]      = q_valid[1] && !fill_busy_q
@@ -477,7 +482,7 @@ module engine
     if (!rst_ni) begin
       fill_busy_q  <= 1'b0;
       fill_mv_q    <= 1'b0;
-      fill_slot_q  <= 1'b0;
+      fill_slot_q  <= '0;
       tile_full_q  <= '0;
     end else begin
       tile_full_q <= (tile_full_q | tile_fill) & ~tile_free;
@@ -494,7 +499,7 @@ module engine
         if (fill_row_end) fill_row_q <= fill_row_q + 1'b1;  // wraps at TileRows
         if (fill_tile_end) fill_head_q <= fill_unit_end ? 1'b0 : !fill_head_q;
         if (fill_unit_end) begin
-          fill_slot_q <= !fill_slot_q;
+          fill_slot_q <= next_slot(fill_slot_q);
           fill_unit_q <= unit_next(fill_unit_q);
           if (last_unit(fill_unit_q)) fill_busy_q <= 1'b0;
         end
@@ -527,12 +532,13 @@ module engine
   unit_t               step_unit_q;    // the unit stepped
   logic [RowWidth-1:0] step_cyc_q;     // the unit's cycle (MATVEC: the row's beat)
   logic [RowWidth-1:0] step_cycles_q;  // unit_cycles(step_unit_q), registered for timing
-  logic                step_slot_q, tile_ok_q;
+  logic [1:0]          step_slot_q;
+  logic                tile_ok_q;
   logic [L-1:0]        lane_in_ready;
   logic                fire, step_end, step_go, unit_last_cyc, unit_end;
   logic [CW-1:0]       credits_q;      // go_i pulses not yet spent
   // The next cycle's state: the RAMs' addresses come from it.
-  logic                slot_n;
+  logic [1:0]          slot_n;
   unit_t               unit_n;
   logic [RowWidth-1:0] cyc_n;
   logic [L-1:0][TW-1:0] tile_addr;
@@ -550,11 +556,11 @@ module engine
   assign step_go       = !q_head[2].wait_go || credits_q != '0;
   assign step_load     = q_valid[2] && (!step_busy_q || step_end) && step_go;
   assign q_pop[2]      = step_load;
-  assign tile_free     = unit_end && !step_unit_q.matvec ? 2'(1) << step_slot_q : 2'b00;
+  assign tile_free     = unit_end && !step_unit_q.matvec ? Slots'(1) << step_slot_q : '0;
   assign x_buf_o       = step_load ? q_head[2].a : step_buf_q;
 
   always_comb begin
-    slot_n = step_slot_q ^ (unit_end && !step_unit_q.matvec);
+    slot_n = unit_end && !step_unit_q.matvec ? next_slot(step_slot_q) : step_slot_q;
     unit_n = step_load ? unit_init(q_head[2]) : unit_end ? unit_next(step_unit_q) : step_unit_q;
     cyc_n  = step_load || unit_end ? '0 : fire ? step_cyc_q + 1'b1 : step_cyc_q;
     // The RAM's address is the next cycle's, so x_data_i is this one's.
@@ -578,7 +584,7 @@ module engine
 
   tile_buffer #(
     .N    (L),
-    .Depth(2 * SlotDepth),
+    .Depth(Slots * SlotDepth),
     .W    (EntryBits)
   ) u_tile (
     .clk_i,
@@ -594,7 +600,7 @@ module engine
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       step_busy_q <= 1'b0;
-      step_slot_q <= 1'b0;
+      step_slot_q <= '0;
       tile_ok_q   <= 1'b0;
       credits_q   <= '0;
     end else begin
