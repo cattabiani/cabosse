@@ -48,11 +48,10 @@ Assumptions, to revisit in `docs/architecture.md`:
   group (Q-27). This costs no engine time while the memory keeps up with
   the engine (a pass reads no faster than the lanes consume), and at most
   the engine's rate ÷ the memory's rate on attention otherwise (1024 ÷ 947
-  B/cycle on F2 at 250 MHz, about 8%, estimate). A p.V tile fills its
-  heads' d values per position and steps its positions, so a partly filled
-  last tile can wait for its fill (`perf.tile_wait_cols`: three slots,
-  the first three read ahead, and a filled tile stepped 6 cycles after its
-  fill, D-051).
+  B/cycle on F2 at 250 MHz, about 8%, estimate). K and V stream from HBM
+  in the lanes' order like weights (D-062), so attention reads the
+  positions it uses, rounded up to 4, and never waits for an on-chip
+  copy.
 - Activations stay on chip, and cost no HBM traffic.
 - Attention's multiply-adds (q·K and p·V) run on the matrix-vector engine.
 - The HBM read rate scales with the memory clock from AWS's measured rate at

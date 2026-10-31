@@ -268,7 +268,7 @@ module engine
     u.t       = c.t;
     u.stride  = c.stride;
     if (u.values) begin
-      u.beats  = n_beats(ColWidth'(c.t));
+      u.beats  = ColWidth'((c.t + RowWidth'(E - 1)) / RowWidth'(E));
       u.region = AddrWidth'(c.cap / RowWidth'(E)) * AddrWidth'(BeatBytes);
     end else begin
       u.region = AddrWidth'(c.cap / RowWidth'(Ports)) << (32'(u.dlog) + 1);  // * d * 2 bytes

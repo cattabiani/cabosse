@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 // Copyright 2026 The Cabosse Authors
 //
-// The vector unit's banked buffer (docs/architecture.md, "Tile buffer
-// banks"): tile_buffer_pipe.sv without registers, on logical vectors. N
+// The vector unit's banked buffer: tile_buffer_pipe.sv without registers,
+// on logical vectors. N
 // banks of Depth entries of W bits, one write and one read per bank and
 // cycle; physical bank B holds logical entry (B - rot) mod N, so a mapping
 // bank = (index + rot) mod N is one rotation each way.

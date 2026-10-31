@@ -255,7 +255,7 @@ def attention(
 ) -> Step:
     """q.K (SCORES) or p.V (VALUES) over `positions` cache rows, as the engine
     runs it (architecture.md, KV cache layout): K and V stream from HBM in
-    the lanes' order (D-062), the positions read rounded up to 4 per port,
+    the lanes' order (D-062), the positions read rounded up to 4,
     once per query head (Q-27), or once per KV head with `tiles_shared`: the
     best case, as p.V's passes of two heads cross groups of an odd size.
     Scores have a row per position; p.V a row per head and output
@@ -269,7 +269,9 @@ def attention(
         passes = [min(per_pass, heads - h) for h in range(0, heads, per_pass)]
         shapes = tuple((n * d, positions) for n in passes)
     readers = cmd.kv_heads if tiles_shared else heads
-    # Each port reads its 4 positions per beat (D-062).
+    # Each port reads its 4 positions per beat (D-062): v0's lanes per port
+    # and E; other scenarios reuse the rounding (estimate, off by under a
+    # beat per port and head).
     read_positions = math.ceil(positions / commands.LANES_PER_PORT) * commands.LANES_PER_PORT
     return Step(
         cmd.op.name.lower(),

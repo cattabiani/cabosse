@@ -660,6 +660,9 @@ the tile buffer was V without a second copy; a copy costs HBM space only,
 which is plentiful. A one-head `VALUES` pass instead of the copy halves
 `VALUES`' rate (about 10% more engine time at 1023, estimate); pairing
 passes by KV head does not balance with SmolLM2's 3 KV heads.
+*Correction (2026-10-31):* the second head of a pass reads ports `d / 4`
+and up (its lanes `d` and up), not `L/8`: the same for SmolLM2 (d = 64),
+different for d < L/2 (rtl/engine.sv, `commands.kv_lane_order`).
 
 ## Milestones
 

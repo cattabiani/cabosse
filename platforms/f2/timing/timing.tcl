@@ -49,9 +49,11 @@ report_design_analysis -congestion -file congestion.rpt
 # come as lists, a call each.
 set paths [get_timing_paths -setup -max_paths 300000 -nworst 1 -slack_lesser_than 0]
 set families [dict create]
-foreach s [get_property STARTPOINT_PIN $paths] e [get_property ENDPOINT_PIN $paths] \
-        slack [get_property SLACK $paths] {
-  dict lappend families "[regsub -all {\[[0-9]+\]} $s {[*]}] -> [regsub -all {\[[0-9]+\]} $e {[*]}]" $slack
+if {[llength $paths]} {  # get_property fails on none: a build that meets timing
+  foreach s [get_property STARTPOINT_PIN $paths] e [get_property ENDPOINT_PIN $paths] \
+          slack [get_property SLACK $paths] {
+    dict lappend families "[regsub -all {\[[0-9]+\]} $s {[*]}] -> [regsub -all {\[[0-9]+\]} $e {[*]}]" $slack
+  }
 }
 set f [open families.rpt w]
 dict for {key slacks} $families {

@@ -25,6 +25,7 @@ E = commands.E
 LANES_PER_PORT = commands.LANES_PER_PORT
 STATS = 4  # words after the commands: cycles, stalls, err, wall time
 MAX_D = 128  # rtl/engine.sv's MaxD
+COL_WIDTH = 16  # rtl/engine.sv's ColWidth
 DESIGN = perf.load_design("v0").values()  # its lanes are set per engine (design())
 # F2's HBM read latency, 280 ns (measured by AWS, docs/f2.md), in core
 # cycles; our path's latency (switch, clock crossing) waits for M8.
@@ -144,6 +145,7 @@ def check_attention(c: Attention, lanes: int) -> None:
     assert not c.values or d <= lanes, f"VALUES needs d <= L: d = {d}, L = {lanes}"
     assert cap % lanes == 0, f"cap a multiple of L: cap = {cap}, L = {lanes}"
     assert 1 <= c.t <= cap, f"1 <= t <= cap: t = {c.t}, cap = {cap}"
+    assert not c.values or -(-c.t // E) < 1 << COL_WIDTH, f"VALUES' t / E beats fit: t = {c.t}"
     assert c.stride % E == 0, f"stride a multiple of E: stride = {c.stride}"
     assert c.t <= c.stride, f"t <= stride: t = {c.t}, stride = {c.stride}"
     assert c.heads % kv_heads == 0, f"group dividing heads: {c.heads} heads, {kv_heads} KV"
