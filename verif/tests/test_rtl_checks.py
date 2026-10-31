@@ -30,12 +30,13 @@ IDS = [top + ("-ftz" if params else "") for top, _, params in TOPS]
 # Yosys takes the code, and the 32-port engine needs more than 8 GB (killed
 # at that cap after 3 minutes, M5). 4 ports (16 lanes, with the default
 # Writes = 8) still build a drain of several write groups. The vector unit
-# at 16 lanes (112 FMAs) needs more than 8 GB too (M6); 2 lanes still bank
-# every buffer. engine_path, the engine's timing harness, as the engine.
+# at 16 lanes (112 FMAs) needs more than 8 GB too (M6); 8 lanes, the
+# fewest its stores take (2 * E), still bank every buffer. engine_path, the
+# engine's timing harness, as the engine.
 SYNTH_PARAMS = {
     "engine": (("Ports", 4),),
     "engine_path": (("Ports", 4),),
-    "vec_unit": (("Lanes", 2), ("Len", 64)),
+    "vec_unit": (("Lanes", 8), ("Len", 64)),
 }
 # (top, parameters, message): shapes that must not elaborate.
 BAD_SHAPES = [
@@ -70,9 +71,11 @@ BAD_SHAPES = [
     ("port_wdma", (("MaxBurst", 17),), "MaxBurst"),
     ("port_wdma", (("DataWidth", 96),), "DataWidth"),
     # vec_unit: 32 lanes leave 4 partials a slot, fewer than its 7-cycle
-    # loop; the KV cache over a channel count that is not a power of two.
+    # loop; the KV cache over a channel count that is not a power of two; a
+    # beat of one chunk (E values, a K slot's).
     ("vec_unit", (("Lanes", 32),), "Partials"),
     ("vec_unit", (("KvPorts", 24),), "KvPorts"),
+    ("vec_unit", (("Lanes", 4), ("Len", 64), ("Partials", 64)), "Lanes must be 2 * E"),
 ]
 
 

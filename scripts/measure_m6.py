@@ -77,14 +77,14 @@ def latencies(steps: tuple[perf.Step, ...], got: list[int]) -> dict[str, collect
     command that stops; reduction_tail_cycles past the start-up for a
     reduction of one row that stops; reduction_row_cycles for one of more
     rows, each shorter than that; kv_store_latency_cycles past the start-up
-    for a KV_STORE that stops; load_latency_cycles for a LOAD right behind
-    a LOAD or an elementwise command done on time (the latency the two
-    share is the start-up; after a reduction or a KV_STORE it starts
-    later)."""
+    and the writes past its groups (perf.store_writes) for a store
+    that stops; load_latency_cycles for a LOAD right behind a LOAD or an
+    elementwise command done on time (the latency the two share is the
+    start-up; after a reduction or a store it starts later)."""
     lanes = DESIGN["vector_elems_per_cycle"]
     issue = [perf.vector_issue(s, lanes) for s in steps]
     past = [g - n for g, (_, n) in zip(got, issue, strict=True)]
-    plain = [s.kind not in ("load", "kv_store", *perf.REDUCTION_KINDS) for s in steps]
+    plain = [s.kind not in ("load", *perf.STORE_KINDS, *perf.REDUCTION_KINDS) for s in steps]
     found = collections.defaultdict(collections.Counter)
     for s, x, is_plain in zip(steps, past, plain, strict=True):
         if s.stops and is_plain:
@@ -100,8 +100,12 @@ def latencies(steps: tuple[perf.Step, ...], got: list[int]) -> dict[str, collect
         p, s, x = steps[i - 1], steps[i], past[i]
         if s.kind in perf.REDUCTION_KINDS and s.stops and s.walk[0] == 1:
             found["reduction_tail_cycles"][x - startup] += 1
-        elif s.kind == "kv_store" and s.stops:
-            found["kv_store_latency_cycles"][x - startup] += 1
+        elif s.kind in perf.STORE_KINDS and s.stops:  # the writer free
+            addresses, beats = perf.store_writes(s, DESIGN)
+            n = issue[i][1]
+            found["kv_store_latency_cycles"][
+                x + n - max(addresses, startup + beats, n + startup)
+            ] += 1
         elif s.kind == "load" and not s.stops and (on_time[i - 1] or p.kind == "load"):
             found["load_latency_cycles"][x] += 1
     tail = mode(found["reduction_tail_cycles"])

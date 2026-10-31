@@ -203,9 +203,9 @@ class AxiReadPort {
 /// allows, which deadlocks a master whose WVALID waits for AWREADY). A
 /// burst is written as its beats meet its address, and answered once,
 /// `latency` cycles after its last beat, in order (one ID). Checks, besides
-/// the subset: every channel held while valid and not ready, full strobes
-/// (our subset), WLAST on each burst's last beat only, and the response held
-/// until taken.
+/// the subset: every channel held while valid and not ready, WLAST on each
+/// burst's last beat only, and the response held until taken. A beat writes
+/// the bytes its strobes enable.
 class AxiWritePort {
  public:
   /// @param mem the memory's bytes; must outlive the port.
@@ -244,7 +244,7 @@ class AxiWritePort {
       held_aw_ = {};
       for (Burst* b; !ahead_.empty() && (b = filling()) != nullptr; ahead_.pop_front()) {
         n_ahead_lasts_ -= ahead_.front().last;
-        write_beat(*b, ahead_.front().data, ahead_.front().last);
+        write_beat(*b, ahead_.front().data, ahead_.front().strb, ahead_.front().last);
       }
     } else {
       held_aw_ = aw;
@@ -301,30 +301,34 @@ class AxiWritePort {
   /// @brief A beat taken before its burst's address.
   struct Beat {
     std::vector<std::byte> data;
+    uint64_t strb;
     bool last;
   };
 
   /// @brief Take one beat: into the burst waiting for it, or into the
   /// buffer ahead of the addresses.
-  /// @throws AxiError on partial strobes or the wrong width.
+  /// @throws AxiError on strobes past the beat or the wrong width.
   void take_beat(const WChannel& w) {
     const uint64_t full = s_.beat_bytes == 64 ? ~0ull : (1ull << s_.beat_bytes) - 1;
-    if (w.strb != full) fail(std::format("strobes 0x{:x}, not a full beat", w.strb));
+    if (w.strb & ~full) fail(std::format("strobes 0x{:x} past a beat of {} bytes", w.strb, s_.beat_bytes));
     if (w.data.size() != s_.beat_bytes) fail("a W beat of the wrong width");
     if (Burst* b = filling(); b != nullptr && ahead_.empty()) {
-      write_beat(*b, w.data, w.last);
+      write_beat(*b, w.data, w.strb, w.last);
     } else {
-      ahead_.push_back({{w.data.begin(), w.data.end()}, w.last});
+      ahead_.push_back({{w.data.begin(), w.data.end()}, w.strb, w.last});
       n_ahead_lasts_ += w.last;
     }
   }
 
-  /// @brief Write one beat into its burst.
+  /// @brief Write one beat into its burst: the bytes its strobes enable.
   /// @throws AxiError on a misplaced WLAST.
-  void write_beat(Burst& b, std::span<const std::byte> data, bool w_last) {
+  void write_beat(Burst& b, std::span<const std::byte> data, uint64_t strb, bool w_last) {
     const bool last = b.written + 1 == b.beats;
     if (w_last != last) fail(std::format("WLAST {} on beat {} of {}", w_last, b.written + 1, b.beats));
-    std::ranges::copy(data, mem_.subspan(b.addr - s_.base + b.written * s_.beat_bytes).begin());
+    const auto at = mem_.subspan(b.addr - s_.base + b.written * s_.beat_bytes, data.size());
+    for (size_t i = 0; i < data.size(); ++i) {
+      if (strb >> i & 1) at[i] = data[i];
+    }
     if (++b.written == b.beats) b.done = cycle_ + s_.latency;
   }
 

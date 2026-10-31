@@ -663,6 +663,22 @@ passes by KV head does not balance with SmolLM2's 3 KV heads.
 *Correction (2026-10-31):* the second head of a pass reads ports `d / 4`
 and up (its lanes `d` and up), not `L/8`: the same for SmolLM2 (d = 64),
 different for d < L/2 (rtl/engine.sv, `commands.kv_lane_order`).
+*Implementation note (2026-10-31, proposed; owner to confirm):*
+- A V cache is written by a new opcode, `V_STORE` (17), not a flag:
+  the FLAGS byte's 8 bits are all taken. `KV_STORE` now writes K only.
+- The writer sends a burst per group of 16 values for K (4 beats) and
+  a one-beat burst per channel and copy for V; its address side starts at
+  the walk, its beats once the values leave the chain. SmolLM2 at position
+  0 on the RTL: 180,523 cycles for the vector unit's whole step against
+  the perf model's 180,463 (it models both sides, `write_burst_cycles` =
+  2); the stores add about 22 µs a token at 250 MHz (perf model).
+- The vector unit keeps up to 128 write bursts in flight
+  (`WrOutstanding`): with fewer, V's one-beat bursts wait for answers at a
+  write latency of 70 cycles (with 32, SmolLM2's `V_STORE` took 213
+  cycles against 135). F2's limit on outstanding writes, and how its HBM
+  controller handles partial writes, are to verify in M8.
+- A K row may be any power of two from 16 values up (a burst per group, so
+  no AXI3 limit on `d`); `V_STORE` needs `d` <= L.
 
 ## Milestones
 
@@ -1071,6 +1087,10 @@ iteration, at most 3 placed builds.
    gone, each port's FIFO split per lane; every engine test passes with
    the same bits, unchanged (110, and 30 at 128 lanes). `KV_STORE`'s new
    layout is the next PR; build 2 runs on this one.
+   D-062's store side done on `m6/kv-store-layout`: `KV_STORE` and a new
+   `V_STORE` write the lanes' order with strobes (rtl/vec_unit.sv), checked
+   bit for bit on the whole memory, SmolLM2's whole step included. See
+   D-062's implementation note (2026-10-31).
 4. Stop when the worst slack is >= 0 at 250 MHz. If the third build is
    still worse than about -0.5 ns, stop tinkering: target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%

@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """A whole decode step on rtl/vec_unit.sv (verif/tests/test_vec_decode.py,
-scripts/measure_m6.py): every vector, LOAD and KV_STORE command of
+scripts/measure_m6.py): every vector, LOAD, KV_STORE and V_STORE command of
 commands.build()'s list in one run, the engine's commands stood in by the
 driver's engine steps with commands.run()'s results (OUTPUT and END are
 not the unit's), and its check bit for bit against run().
 
 The memory holds only what the unit reads and writes (PLAN.md, M6's
 real-data answers; D-040's channel offsets come in M7): its own map puts
-each KV cache at a low offset in every channel (D-043), the tensors LOAD
-reads in channel 0 after them, and the rest (the engine's) past the
-memory."""
+each KV cache at a low offset in every channel, in the engine's order
+(D-062), the tensors LOAD reads after the channels, and the rest (the
+engine's) past the memory."""
 
 import dataclasses
 
@@ -24,50 +24,72 @@ from commands import Command, Layout, Op
 from golden import decoder
 from vector import EngineStep, Step
 
-# SmolLM2 at the real-data positions (PLAN.md, M6); its caches hold whole
-# groups of 16 positions, S and P's rows sit at cap + 16 (so a mix-up of
-# the two shows).
+# SmolLM2 at the real-data positions (PLAN.md, M6), on F2's 32 channels (an
+# engine of 128 lanes); its caches hold whole tiles of 128 positions, S and
+# P's rows sit at cap + 16 (so a mix-up of the two shows).
 SMOLLM2_POSITIONS = (0, *eng.SMOLLM2_POSITIONS)
 SMOLLM2_LENGTH = 9 * (8192 + 16)  # S and P at the longest stride
-SMOLLM2_CHAN_W = 27  # 128 MiB: at 8191, the caches' 47 MiB a channel, then LOAD's 61 MiB
-# F2's read latency for both of the unit's AXI channels: its write latency
-# is not documented (to measure in M8).
-F2_MEMORY = eng.F2_MEMORY | {"wlatency": eng.F2_LATENCY_CYCLES}
+SMOLLM2_KV_PORTS = 32
+SMOLLM2_CHAN_W = 24  # 16 MiB: at 8191, the caches' 8.8 MiB a channel
+# F2's read latency for both of the unit's AXI channels (its write latency
+# is not documented: to measure in M8), and as many writes in flight as the
+# unit sends (WrOutstanding; F2's limit to verify in M8).
+F2_MEMORY = eng.F2_MEMORY | {"wlatency": eng.F2_LATENCY_CYCLES, "woutstanding": 128}
 
 
-def mapped(layout: Layout, chan_w: int) -> Layout:
+def cache_bytes(cmd: Command, kv_ports: int) -> int:
+    """A store's cache's bytes in each channel (commands.kv_lane_order)."""
+    lanes = kv_ports * commands.LANES_PER_PORT
+    beats = commands.kv_region_beats(cmd.cap, cmd.m, cmd.op == Op.V_STORE, lanes)
+    return cmd.n * beats * commands.BEAT_BYTES
+
+
+def mapped(layout: Layout, kv_ports: int, chan_w: int) -> Layout:
     """layout at the test's addresses: each KV cache at a low offset in
-    every channel (its share of the channels' bytes apart), the tensors
-    LOAD reads in channel 0 after them, the rest past the memory."""
+    every channel (its bytes there apart), the tensors LOAD reads after the
+    channels, the rest past the memory."""
     cmds = commands.build(layout)
-    caches = {c.addr for c in cmds if c.op == Op.KV_STORE}
+    caches = {c.addr: cache_bytes(c, kv_ports) for c in cmds if c.op in commands.STORE_OPS}
     loads = {c.addr for c in cmds if c.op == Op.LOAD}
-    rest = {a for a, _, _ in layout.tensors.values()} - caches - loads
     new: dict[str, tuple[int, tuple[int, ...], torch.dtype]] = {}
     at = 0
-    for group, share in ((caches, vector.KV_PORTS), (loads, 1), (rest, 1)):
-        if group is rest:
-            assert at <= 1 << chan_w, (at, chan_w)
-            at = vector.KV_PORTS << chan_w  # past the memory
+    for name, (addr, shape, dtype) in layout.tensors.items():
+        if addr in caches:
+            new[name] = (at, shape, dtype)
+            at += -(-caches[addr] // commands.ALIGN) * commands.ALIGN
+    assert at <= 1 << chan_w, (at, chan_w)
+    at = kv_ports << chan_w
+    for loaded in (True, False):  # LOAD's, then the rest
         for name, (addr, shape, dtype) in layout.tensors.items():
-            if addr in group:
+            if addr not in caches and (addr in loads) == loaded:
                 new[name] = (at, shape, dtype)
-                at += -(-commands.n_bytes(shape, dtype) // share // commands.ALIGN) * commands.ALIGN
+                at += -(-commands.n_bytes(shape, dtype) // commands.ALIGN) * commands.ALIGN
     return dataclasses.replace(layout, tensors={n: new[n] for n in layout.tensors})
 
 
+def memory_bytes(layout: Layout, cmds: list[Command]) -> int:
+    """The memory's bytes: up to the end of the last tensor LOAD reads."""
+    loads = {c.addr for c in cmds if c.op == Op.LOAD}
+    return max(
+        addr + commands.n_bytes(shape, dtype)
+        for addr, shape, dtype in layout.tensors.values()
+        if addr in loads
+    )
+
+
 def image(
-    layout: Layout, hbm: dict[int, torch.Tensor], cmds: list[Command], chan_w: int
+    layout: Layout, hbm: dict[int, torch.Tensor], cmds: list[Command], kv_ports: int, chan_w: int
 ) -> np.ndarray:
-    """The memory's words (mapped()'s layout): each KV cache as KV_STORE
-    writes it (D-043), the tensors in channel 0 as they are."""
-    mem = np.zeros((vector.KV_PORTS << chan_w) // 4, dtype=np.uint32)
-    caches = {c.addr: c for c in cmds if c.op == Op.KV_STORE}
+    """The memory's words (mapped()'s layout): each KV cache as its store
+    writes it (D-062), the tensors LOAD reads as they are."""
+    mem = np.zeros(-(-memory_bytes(layout, cmds) // 4), dtype=np.uint32)
+    caches = {c.addr: c for c in cmds if c.op in commands.STORE_OPS}
+    loads = {c.addr for c in cmds if c.op == Op.LOAD}
     for addr, x in hbm.items():
         if addr in caches:
             rows = x.contiguous().view(torch.int16).numpy().view(np.uint16)
-            vector.cache_view(mem, caches[addr])[...] = eng.cache_by_channel(rows, vector.KV_PORTS)
-        elif addr < 1 << chan_w:
+            vector.write_cache(mem, caches[addr], rows, kv_ports, chan_w)
+        elif addr in loads:
             raw = x.contiguous().view(-1).view(torch.uint8).numpy()
             mem.view(np.uint8)[addr : addr + raw.size] = raw
     return mem
@@ -121,6 +143,7 @@ def decode_step(
     cap: int,
     stride: int,
     length: int,
+    kv_ports: int,
     chan_w: int,
     label: str,
     **plusargs: int,
@@ -129,17 +152,17 @@ def decode_step(
     bit for bit against commands.run(): what each engine command reads,
     every buffer, the whole memory."""
     position = cache.length
-    layout = mapped(Layout.of(model.config, cap, stride), chan_w)
+    layout = mapped(Layout.of(model.config, cap, stride), kv_ports, chan_w)
     assert max(n for _, n in commands.buffers(model.config, stride).values()) <= length
     hbm = commands.load(model, layout, cache)
     cmds = commands.build(layout)
-    mem = image(layout, hbm, cmds, chan_w)
+    mem = image(layout, hbm, cmds, kv_ports, chan_w)
 
     start = commands.empty_buffers({b: (vector.dtype(b), length) for b in vector.BUFS})
     want, calls = {b: x.clone() for b, x in start.items()}, []
     commands.run(cmds, layout, hbm, token, position, calls.append, want)
     steps = unit_steps(cmds, calls, token, position + 1, stride)
-    result = vector.run(steps, start, length, mem, chan_w=chan_w, **plusargs)
+    result = vector.run(steps, start, length, mem, kv_ports=kv_ports, chan_w=chan_w, **plusargs)
     del mem
 
     for call, (got,) in zip(calls, result.engine_reads, strict=True):
@@ -149,7 +172,7 @@ def decode_step(
             f"{len(bad)} elements that differ, first {bad[0]}"
         )
     vector.assert_same(result.buffers, {b: vector.bits(x) for b, x in want.items()}, label)
-    bad = np.flatnonzero(result.mem != image(layout, hbm, cmds, chan_w))
+    bad = np.flatnonzero(result.mem != image(layout, hbm, cmds, kv_ports, chan_w))
     assert not len(bad), f"{label}: memory: {len(bad)} words differ, first at byte 0x{4 * bad[0]:X}"
     assert not result.err, f"{label}: err_o"
     print(f"{label}: {len(steps)} steps in {result.cycles} cycles")
@@ -162,16 +185,17 @@ def smollm2_step(position: int) -> tuple[list[int], list[float], tuple[perf.Step
     (unit_cycles), the perf model's (design v0) and its perf.Step."""
     tokens, saved = eng.saved_cache()
     cache = dataclasses.replace(saved, length=position)
-    align = commands.STRIDE_ALIGN  # a multiple of the KV channels, as KV_STORE needs
-    cap = -(-(position + 1) // align) * align
+    lanes = SMOLLM2_KV_PORTS * commands.LANES_PER_PORT  # cap a multiple of L, as the stores need
+    cap = -(-(position + 1) // lanes) * lanes
     model = eng.smollm2()
     steps, result = decode_step(
         model,
         cache,
         tokens[position],
         cap,
-        cap + align,
+        cap + commands.STRIDE_ALIGN,
         SMOLLM2_LENGTH,
+        SMOLLM2_KV_PORTS,
         SMOLLM2_CHAN_W,
         f"SmolLM2 at position {position}",
         **F2_MEMORY,

@@ -41,6 +41,7 @@ DESIGN = {
     "reduction_row_cycles": 6,
     "load_latency_cycles": 30,
     "kv_store_latency_cycles": 40,
+    "write_burst_cycles": 2,
     "softmax_fused": 0,
     "max_in_drain": 0,
     "kv_tiles_shared": 0,
@@ -78,15 +79,16 @@ def test_a_token_reads_every_weight_once(tied: bool) -> None:
 def test_kv_traffic_in_groups_of_four(position: int, read: int, shared: bool) -> None:
     """A token reads K and V for its positions rounded up to 4 (D-062), per
     query head and layer, or per KV head with kv_tiles_shared (Q-27), which
-    changes nothing else; it writes one row of
-    K and one of V per KV head and layer."""
+    changes nothing else; it writes, per KV head and layer, K's row in
+    beats of E dimensions and V's in beats of LANES_PER_PORT, twice (2
+    copies at 2 * head_dim <= 128 lanes), 8 bytes a beat of 32."""
     c = tiny.tiny_config(n_kv_heads=2)
     row = c.num_hidden_layers * c.head_dim * perf.BF16_BYTES
-    work = perf.Work.of(perf.ops(c, position, 8, kv_tiles_shared=shared))
+    work = perf.Work.of(perf.ops(c, position, LANES, kv_tiles_shared=shared))
     readers = c.num_key_value_heads if shared else c.num_attention_heads
     assert work.kv_read_bytes == 2 * readers * read * row
-    assert work.kv_write_bytes == 2 * c.num_key_value_heads * row
-    alone = perf.Work.of(perf.ops(c, position, 8))
+    assert work.kv_write_bytes == (1 + 2) * c.num_key_value_heads * row * 4
+    alone = perf.Work.of(perf.ops(c, position, LANES))
     assert dataclasses.replace(work, kv_read_bytes=alone.kv_read_bytes) == alone
 
 
@@ -177,8 +179,21 @@ VECTOR_CASES = [
     ([vector_step("sumsq", (1, 4)), vector_step("add", (1, 4))], [31, 11]),
     # A LOAD a beat (32 bytes) a cycle after its latency.
     ([vector_step("load", (1, 64), weight_bytes=128)], [30 + 4 + 10]),
-    # A KV_STORE's writes answered later; a step after it waits for its done.
+    # A store's writes answered later; a step after it waits for its done.
     ([vector_step("kv_store", (2, 8)), vector_step("add", (1, 8))], [4 + 10 + 40, 1]),
+    # Its writer past its groups: 12 beats a cycle from the start-up on;
+    # 24 bursts 2 apart from its start.
+    ([vector_step("kv_store", (2, 8), kv_write_bytes=12 * 32)], [10 + 12 + 40]),
+    ([vector_step("v_store", (2, 8), kv_write_bytes=12 * 32, write_bursts=24)], [48 + 40]),
+    # The writer's sides are shared: the second store's address waits for
+    # the first's (to 48), its 48 beats for the first's 12 (to 10 + 12).
+    (
+        [
+            vector_step("v_store", (2, 8), kv_write_bytes=12 * 32, write_bursts=24),
+            vector_step("kv_store", (2, 8), kv_write_bytes=48 * 32, write_bursts=1),
+        ],
+        [48 + 40, (22 + 48 + 40) - 88],
+    ),
 ]
 
 

@@ -13,15 +13,15 @@ import commands
 import numpy as np
 import torch
 from commands import Buf, Command, Flag, Op
-from engine import cache_by_channel
 from engine import port_bits as bits  # a buffer's raw bits: the engine's write port's
 from fp_inputs import random_bits, with_exponents
 from golden import arith, tiny
 
 LANES = 16  # rtl/vec_unit.sv's default
 # The memory's channels in the tests: KV_PORTS of 2^CHAN_W bytes (F2: 32 of
-# 512 MiB), one byte array from address 0.
-KV_PORTS, CHAN_W = 4, 14
+# 512 MiB), one byte array from address 0; KV_PORTS the engine's ports, so
+# L = 32 lanes (a V cache of head dimension 16 in 2 copies, D-062).
+KV_PORTS, CHAN_W = 8, 14
 MEM_WORDS = (KV_PORTS << CHAN_W) // 4
 CMD_WORDS = 16  # a command's words in the driver's input
 WRITE_WORDS = 3 + LANES  # an ext write's: buffer, first element, mask, data
@@ -100,20 +100,58 @@ def tensor_at(mem: np.ndarray, at: int, shape: tuple[int, ...], dtype: torch.dty
     return torch.from_numpy(raw).view(dtype).reshape(shape)
 
 
-def cache_view(mem: np.ndarray, cmd: Command) -> np.ndarray:
-    """KV_STORE's cache in the memory's image (from address 0), as BF16 bits
-    [KV_PORTS, n, cap / KV_PORTS, m] (engine.cache_by_channel's order): the
-    same offset in every channel (D-043). A view: writes go to the memory."""
-    assert cmd.cap % KV_PORTS == 0, cmd  # whole rows in every channel, as the unit needs
-    channels = mem.view(np.uint16).reshape(KV_PORTS, -1)
-    rows = cmd.n * cmd.cap // KV_PORTS * cmd.m
-    region = channels[:, cmd.addr // 2 : cmd.addr // 2 + rows]
-    return region.reshape(KV_PORTS, cmd.n, cmd.cap // KV_PORTS, cmd.m)
+def cache_slots(cmd: Command, kv_ports: int) -> np.ndarray:
+    """Where a KV_STORE's or V_STORE's cache is in each channel's region
+    (commands.kv_lane_order, D-062): per channel and BF16 element of the
+    region, the element of the cache [n, cap, m] (its flat index) there, or
+    -1 where no element is (the store leaves it alone)."""
+    shape = (cmd.n, cmd.cap, cmd.m)
+    index = torch.arange(1, cmd.n * cmd.cap * cmd.m + 1, dtype=torch.int32).reshape(shape)
+    lanes = kv_ports * commands.LANES_PER_PORT
+    per_port = commands.kv_lane_order(index, cmd.op == Op.V_STORE, lanes)
+    return torch.stack(per_port).reshape(kv_ports, -1).numpy() - 1
 
 
-def memory_command(s: Step, buf: dict[Buf, torch.Tensor], mem: np.ndarray, base: int) -> None:
-    """LOAD or KV_STORE on the buffers and the memory's words (an image of
-    the bytes from `base`), in place, by commands.load_command and
+def cache_view(mem: np.ndarray, cmd: Command, kv_ports: int, chan_w: int, n: int) -> np.ndarray:
+    """The n BF16 elements from the cache's offset in each of the channels
+    (the memory's image from address 0), [kv_ports, n]: a view, writes go
+    to the memory."""
+    channels = mem.view(np.uint16)[: (kv_ports << chan_w) // 2].reshape(kv_ports, -1)
+    return channels[:, cmd.addr // 2 : cmd.addr // 2 + n]
+
+
+def read_cache(mem: np.ndarray, cmd: Command, kv_ports: int, chan_w: int) -> np.ndarray:
+    """The store's cache from the memory, BF16 bits [n, cap, m]."""
+    slots = cache_slots(cmd, kv_ports)
+    view, here = cache_view(mem, cmd, kv_ports, chan_w, slots.shape[1]), slots >= 0
+    out = np.zeros(cmd.n * cmd.cap * cmd.m, dtype=np.uint16)
+    out[slots[here]] = view[here]  # of V's copies, the last
+    return out.reshape(cmd.n, cmd.cap, cmd.m)
+
+
+def write_cache(
+    mem: np.ndarray,
+    cmd: Command,
+    cache: np.ndarray,
+    kv_ports: int,
+    chan_w: int,
+    position: int | None = None,
+) -> None:
+    """The cache (BF16 bits [n, cap, m]) into the memory in the store's
+    layout, in place, or only its rows at `position`; the elements between
+    its rows left alone."""
+    slots = cache_slots(cmd, kv_ports)
+    view, here = cache_view(mem, cmd, kv_ports, chan_w, slots.shape[1]), slots >= 0
+    if position is not None:
+        here &= slots // cmd.m % cmd.cap == position
+    view[here] = cache.ravel()[slots[here]]
+
+
+def memory_command(
+    s: Step, buf: dict[Buf, torch.Tensor], mem: np.ndarray, base: int, kv_ports: int, chan_w: int
+) -> None:
+    """LOAD, KV_STORE or V_STORE on the buffers and the memory's words (an
+    image of the bytes from `base`), in place, by commands.load_command and
     kv_store_command."""
     c, position = s.cmd, s.t - 1
     if c.op == Op.LOAD:
@@ -128,22 +166,27 @@ def memory_command(s: Step, buf: dict[Buf, torch.Tensor], mem: np.ndarray, base:
         commands.load_command(c, buf, tensor, s.token, position)
         return
     assert base == 0, base  # the cache's channels start at address 0
-    view = cache_view(mem, c)
-    bits = view.transpose(1, 2, 0, 3).reshape(c.n, c.cap, c.m)  # back to [n, cap, m]
+    bits = read_cache(mem, c, kv_ports, chan_w)
     cache = torch.from_numpy(bits.astype(np.int16)).view(commands.BF16)
     commands.kv_store_command(c, buf, cache, position)
-    view[...] = cache_by_channel(cache.view(torch.int16).numpy().view(np.uint16), KV_PORTS)
+    rows = cache.view(torch.int16).numpy().view(np.uint16)
+    write_cache(mem, c, rows, kv_ports, chan_w, position)
 
 
 def golden(
-    steps: list[Step], start: dict[Buf, torch.Tensor], mem: np.ndarray, base: int = 0
+    steps: list[Step],
+    start: dict[Buf, torch.Tensor],
+    mem: np.ndarray,
+    base: int = 0,
+    kv_ports: int = KV_PORTS,
+    chan_w: int = CHAN_W,
 ) -> tuple[dict[Buf, np.ndarray], np.ndarray]:
     """The buffers (raw bits) and the memory's words after the commands."""
     buf = {b: x.clone() for b, x in start.items()}
     mem = mem.copy()
     for s in steps:
-        if s.cmd.op in (Op.LOAD, Op.KV_STORE):
-            memory_command(s, buf, mem, base)
+        if s.cmd.op == Op.LOAD or s.cmd.op in commands.STORE_OPS:
+            memory_command(s, buf, mem, base, kv_ports, chan_w)
         else:
             commands.vector_command(s.cmd, buf, s.t, s.stride)
     return {b: bits(x) for b, x in buf.items()}, mem
@@ -238,8 +281,8 @@ def with_waits(steps: list[Step]) -> list[Step]:
     return steps
 
 
-def params(length: int, chan_w: int = CHAN_W) -> tuple[tuple[str, int], ...]:
-    return (("Len", length), ("Bf16Mask", BF16_MASK), ("KvPorts", KV_PORTS), ("ChanW", chan_w))
+def params(length: int, kv_ports: int, chan_w: int) -> tuple[tuple[str, int], ...]:
+    return (("Len", length), ("Bf16Mask", BF16_MASK), ("KvPorts", kv_ports), ("ChanW", chan_w))
 
 
 def zero_memory() -> np.ndarray:
@@ -252,15 +295,16 @@ def run(
     length: int,
     mem: np.ndarray,
     base: int = 0,
+    kv_ports: int = KV_PORTS,
     chan_w: int = CHAN_W,
     **plusargs: int,
 ) -> Result:
     """The commands and engine steps on the unit, every buffer filled with
-    `start` first and the memory (an image from byte `base`, channels of
-    2^chan_w bytes) with `mem`'s words."""
+    `start` first and the memory (an image from byte `base`, kv_ports
+    channels of 2^chan_w bytes from address 0) with `mem`'s words."""
     argv = words(steps, start, length, mem)
     plusargs = {"base": base, **plusargs} if base else plusargs
-    result = bulk.run_driver("vec_unit", argv, params(length, chan_w), **plusargs)
+    result = bulk.run_driver("vec_unit", argv, params(length, kv_ports, chan_w), **plusargs)
     assert result.returncode == 0, result.stderr.decode()
     out = np.frombuffer(result.stdout, dtype="<u4")
     at = 2 * sum(isinstance(s, Step) for s in steps)
@@ -305,13 +349,14 @@ def check(
     label: str,
     mem: np.ndarray | None = None,
     base: int = 0,
+    kv_ports: int = KV_PORTS,
     **plusargs: int,
 ) -> Result:
     """Run, then compare every buffer and the memory (zeros by default) with
     golden()."""
     mem = zero_memory() if mem is None else mem
-    result = run(steps, start, length, mem, base, **plusargs)
-    want_buf, want_mem = golden(steps, start, mem, base)
+    result = run(steps, start, length, mem, base, kv_ports, **plusargs)
+    want_buf, want_mem = golden(steps, start, mem, base, kv_ports)
     assert_same(result.buffers, want_buf, label)
     bad = np.flatnonzero(result.mem != want_mem)
     assert not len(bad), (
