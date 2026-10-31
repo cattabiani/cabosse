@@ -20,6 +20,11 @@
 // requested, while its data may still be on the way. So a command costs at
 // least 2 cycles of requests: commands of 1 beat run at half rate (the
 // engine's are hundreds of beats per port).
+//
+// The data FIFO is Slices FIFOs side by side, slice s holding bits s * W
+// ... of each beat (W = DataWidth / Slices), each with its own pointers: in
+// the engine a slice per lane, so each one's pointers drive only its own
+// memory and it can sit by its lane (D-062). They move in lockstep.
 
 module port_dma #(
   parameter  int unsigned AddrWidth  = 34,   // F2's HBM: 16 GiB
@@ -27,6 +32,7 @@ module port_dma #(
   parameter  int unsigned CountWidth = 24,   // beats per command: Qwen2.5's classifier needs 19
   parameter  int unsigned MaxBurst   = 16,   // beats per burst: AXI3's longest
   parameter  int unsigned Depth      = 64,   // data FIFO, beats
+  parameter  int unsigned Slices     = 1,    // data FIFOs side by side, dividing DataWidth
   localparam int unsigned BeatBytes  = DataWidth / 8,
   localparam int unsigned CrW        = $clog2(Depth + 1)  // a count of beats 0 .. Depth
 ) (
@@ -73,6 +79,9 @@ module port_dma #(
   end
   if (DataWidth < 8 || (DataWidth & (DataWidth - 1)) != 0 || BeatBytes > 128) begin : gen_bad_w
     $error("port_dma: DataWidth must be a power of two, 8 to 1024 bits");
+  end
+  if (Slices < 1 || DataWidth % Slices != 0) begin : gen_bad_slices
+    $error("port_dma: Slices must divide DataWidth");
   end
   if (AddrWidth < PageW || CountWidth < LenW) begin : gen_bad_count
     $error("port_dma: AddrWidth must hold a 4 KB page, CountWidth a burst");
@@ -123,17 +132,29 @@ module port_dma #(
 
   // --- Data side: FIFO, errors -------------------------------------------------
 
-  stream_fifo #(.Width(DataWidth), .Depth(Depth)) u_data (
-    .clk_i,
-    .rst_ni,
-    .in_valid_i (r_valid_i),
-    .in_ready_o (r_ready_o),
-    .in_data_i  (r_data_i),
-    .out_valid_o,
-    .out_ready_i,
-    .out_data_o,
-    .count_o    (out_count_o)
-  );
+  localparam int unsigned SliceW = DataWidth / Slices;
+
+  // In lockstep, so slice 0 speaks for all: the others' flags go unread.
+  // verilator lint_off UNUSEDSIGNAL
+  logic [Slices-1:0]          in_ready, out_valid;
+  logic [Slices-1:0][CrW-1:0] count;
+  // verilator lint_on UNUSEDSIGNAL
+  for (genvar s = 0; s < Slices; s++) begin : gen_slice
+    stream_fifo #(.Width(SliceW), .Depth(Depth)) u_data (
+      .clk_i,
+      .rst_ni,
+      .in_valid_i (r_valid_i),
+      .in_ready_o (in_ready[s]),
+      .in_data_i  (r_data_i[s*SliceW +: SliceW]),
+      .out_valid_o(out_valid[s]),
+      .out_ready_i,
+      .out_data_o (out_data_o[s*SliceW +: SliceW]),
+      .count_o    (count[s])
+    );
+  end
+  assign r_ready_o   = in_ready[0];
+  assign out_valid_o = out_valid[0];
+  assign out_count_o = count[0];
 
   assign out_fire = out_valid_o && out_ready_i;
 

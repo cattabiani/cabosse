@@ -123,10 +123,11 @@ class Result:
 
 def n_beats(m: Command, ports: int) -> int:
     """Beats each port reserves: a matrix's passes, as if full; a cache's
-    regions of cap / ports rows per KV head (D-043)."""
+    regions per KV head (commands.kv_lane_order, D-062)."""
     if isinstance(m, Attention):
         kv_heads, cap, d = m.cache.shape
-        return commands.n_bytes((kv_heads, cap // ports, d), torch.bfloat16) // BEAT_BYTES
+        lanes = ports * LANES_PER_PORT
+        return kv_heads * (cap // E if m.values else cap // lanes * (d // E))
     rows, cols = m.w.shape
     return -(-rows // (ports * LANES_PER_PORT)) * -(-cols // E)
 
@@ -161,7 +162,8 @@ def place(mats: Sequence[Command], ports: int, gaps: Sequence[int] | None = None
 
 
 def cache_by_channel(rows: np.ndarray, ports: int) -> np.ndarray:
-    """A KV cache [kv, cap, d] as D-043 spreads it: [ports, kv, cap // ports,
+    """A KV cache [kv, cap, d] as D-043 spreads it, as KV_STORE still writes
+    it (the engine reads D-062's, channel_images): [ports, kv, cap // ports,
     d], position i of a KV head on channel i mod ports, row i div ports of
     its region."""
     kv_heads, cap, d = rows.shape
@@ -169,19 +171,18 @@ def cache_by_channel(rows: np.ndarray, ports: int) -> np.ndarray:
 
 
 def channel_images(mats: Sequence[Command], addrs: Sequence[int], ports: int) -> np.ndarray:
-    """Every port's channel, uint32 [ports, words]: each matrix in the lanes'
-    order (commands.lane_order), each cache by D-043 (position i of a KV
-    head on channel i mod ports, row i div ports of its region), at its
+    """Every port's channel, uint32 [ports, words]: each matrix and cache in
+    the lanes' order (commands.lane_order, commands.kv_lane_order), at its
     offset."""
     end = max(a // BEAT_BYTES + n_beats(m, ports) for m, a in zip(mats, addrs, strict=True))
     images = np.zeros((ports, end * BEAT_WORDS), dtype=np.uint32)
+    lanes = ports * LANES_PER_PORT
     for m, addr in zip(mats, addrs, strict=True):
         if isinstance(m, Attention):
-            rows = cache_by_channel(bf16_bits(m.cache), ports)
-            words = np.ascontiguousarray(rows).view(np.uint32).reshape(ports, -1)
-            images[:, addr // 4 : addr // 4 + words.shape[1]] = words
-            continue
-        for p, beats in enumerate(commands.lane_order(m.w, ports * LANES_PER_PORT)):
+            per_port = commands.kv_lane_order(m.cache, m.values, lanes)
+        else:
+            per_port = commands.lane_order(m.w, lanes)
+        for p, beats in enumerate(per_port):
             words = bf16_bits(beats).view(np.uint32).ravel()
             start = addr // 4
             images[p, start : start + len(words)] = words
@@ -400,16 +401,15 @@ def design(ports: int) -> dict[str, float]:
 
 
 def model_cycles(m: Command, ports: int, startup: bool = True) -> float:
-    """The perf model's cycles for the command (perf.attention's shapes and
-    tile fills for SCORES and VALUES), with the start-up of a waiting one
+    """The perf model's cycles for the command (perf.attention's shapes for
+    SCORES and VALUES), with the start-up of a waiting one
     (engine_startup_cycles, measured at 128 lanes) if startup."""
-    fill_cols = 0
     if isinstance(m, Attention):
         step = perf.attention(attention_command(m), m.t, ports * LANES_PER_PORT)
-        shapes, fill_cols = step.engine_shapes, step.fill_cols
+        shapes = step.engine_shapes
     else:
         shapes = (tuple(m.w.shape),)
-    return perf.engine_cycles(shapes, design(ports), int(m.wait and startup), (fill_cols,))
+    return perf.engine_cycles(shapes, design(ports), int(m.wait and startup))
 
 
 def read_share(m: Matvec, result: Result, ports: int, rate: int) -> float:

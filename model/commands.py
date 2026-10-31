@@ -404,6 +404,27 @@ def lane_order(w: torch.Tensor, lanes: int) -> list[torch.Tensor]:
     return [beats[p::ports].reshape(-1, LANES_PER_PORT * E) for p in range(ports)]
 
 
+def kv_lane_order(cache: torch.Tensor, values: bool, lanes: int) -> list[torch.Tensor]:
+    """A KV cache [kv_heads, cap, d] in the order the engine's ports read it
+    (D-062), each KV head's region after the last, the same size in every
+    channel: K as a matrix of cap rows (the positions) and d columns, V
+    transposed (d rows, cap columns) and stacked once per head of a VALUES
+    pass (2 when 2d <= lanes: the pass's second head reads ports d / 4 ...),
+    both in lane_order. A channel with no rows of a head holds zeros there.
+    Returns each port's beats, BF16 [n_beats, LANES_PER_PORT * E]."""
+    assert cache.dim() == 3 and cache.dtype == BF16, (cache.shape, cache.dtype)
+    kv_heads, cap, d = cache.shape
+    ports = lanes // LANES_PER_PORT
+    copies = 2 if values and 2 * d <= lanes else 1
+    region = cap // E if values else cap // lanes * -(-d // E)  # beats per head and channel
+    out = torch.zeros(ports, kv_heads, region, LANES_PER_PORT * E, dtype=BF16)
+    for kv in range(kv_heads):
+        w = torch.cat([cache[kv].T] * copies) if values else cache[kv]
+        for p, beats in enumerate(lane_order(w.contiguous(), lanes)):
+            out[p, kv, : len(beats)] = beats
+    return list(out.reshape(ports, kv_heads * region, LANES_PER_PORT * E))
+
+
 def load_vector(dst: Buf, layout: Layout, name: str, flags: Flag = Flag.NONE) -> Command:
     _, shape, dtype = layout.tensors[name]
     by_row = flags & (Flag.BY_TOKEN | Flag.BY_POSITION)

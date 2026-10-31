@@ -49,13 +49,15 @@ BAD_SHAPES = [
     # while the next row ends (and a 0-bit buffer pointer).
     ("dot_lane", (("Banks", 1),), "Banks must be at least 2"),
     # port_dma: longer bursts than AXI3 allows, a FIFO smaller than a burst,
-    # a data width that is not a power of two, a count narrower than a burst.
+    # a data width that is not a power of two, a count narrower than a burst,
+    # slices that do not divide the beat.
     ("port_dma", (("MaxBurst", 17),), "MaxBurst"),
     ("port_dma", (("Depth", 8),), "Depth"),
     ("port_dma", (("DataWidth", 96),), "DataWidth"),
     ("port_dma", (("CountWidth", 4),), "CountWidth"),
-    # engine: a port count that is not a multiple of 4 (the tile buffer's
-    # mapping), a write port wider than a pass, a head dimension unit_t.dlog
+    ("port_dma", (("Slices", 3),), "Slices"),
+    # engine: a port count that is not a multiple of 4 (its groups of 4
+    # ports), a write port wider than a pass, a head dimension unit_t.dlog
     # cannot hold or not a power of two, a row's beats wider than step's
     # cycle count.
     ("engine", (("Ports", 5),), "multiple of 4"),

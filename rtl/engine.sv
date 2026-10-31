@@ -9,40 +9,36 @@
 //   pass port p reads its group of LanesPerPort rows, ceil(cols / E) beats.
 // - SCORES: dst[h * stride + i] = mul(dot(q[h], K[kv][i]), scale) for the heads
 //   h < heads and positions i < t, q[h] the d = cols values of x at h * d,
-//   kv = h div group, K the cache at `addr` (D-043: position i of KV head kv
-//   in channel i mod Ports, row i div Ports of the head's region of
-//   cap / Ports rows). A unit is one head and a tile of L positions: lane l
-//   takes position j * L + l.
+//   kv = h div group. K is stored as a MATVEC's matrix of cap rows (the
+//   positions) and d columns, one per KV head, at `addr` (D-062: in each
+//   tile of L positions port p holds positions 4p ... 4p+3). A unit is one
+//   head and a tile: lane l takes position j * L + l.
 // - VALUES: dst[h * d + c] = dot over i < t of (p[h][i], V[kv][i][c]), p[h]
-//   the t values of x at h * stride. A pass is up to Heads heads (one lane per
-//   head and output dimension); a unit is a pass and a tile, and a lane's
-//   row runs through all tiles.
-// Ports is a multiple of 4 (the tile buffer's mapping), so a pass is whole
-// write groups. Commands need rows >= 1 and cols >= 1 (cols = 0 hangs
-// step). The attention commands need d a power of two from 16 to
-// MaxD (VALUES: d <= L), cap a multiple of L, 1 <= t <= cap, stride (S and
-// P's rows, the STRIDE register) a multiple of E with t <= stride, group
-// dividing heads.
+//   the t values of x at h * stride. V is stored transposed, as a matrix of
+//   d rows (the dimensions) and cap columns, once per head of a pass (D-062:
+//   head a of a pass reads ports a * d / 4 ...). A pass is up to Heads heads
+//   (one lane per head and output dimension); a unit is a pass and a tile
+//   of L positions, and a lane's row runs through all tiles.
+// Every command streams its port's beats straight to the port's lanes.
+// Ports is a multiple of 4 (groups of 4 ports, below). Commands need rows
+// >= 1 and cols >= 1 (cols = 0 hangs step). The attention commands need d
+// a power of two from 16 to MaxD (VALUES: d <= L), cap a multiple of L,
+// 1 <= t <= cap, stride (S and P's rows, the STRIDE register) a multiple
+// of E with t <= stride, group dividing heads.
 //
-// Four stages, each with its own queue of the commands taken, so a command
-// starts while earlier ones finish (PLAN.md, M5). Issue, step and drain
-// each walk a command's units (unit_init, unit_next): a MATVEC's passes, an
-// attention command's units as above; fill walks attention's only.
-// - Issue: DMA commands, in order. MATVEC: per pass, one to each port with
-//   rows in it. Attention: per unit and head, one to every port, the tile's
-//   4 rows (d / 4 beats). It runs ahead as far as the DMAs' FIFOs allow.
-// - Fill (attention): the ports' beats into the tile buffer, a unit at a
-//   time into a free one of three slots (docs/architecture.md, "Tile
-//   buffer banks"), a beat from every port per cycle. On a MATVEC it waits
-//   until step has read it.
+// Three stages, each with its own queue of the commands taken, so a
+// command starts while earlier ones finish (PLAN.md, M5). Each walks a
+// command's units (unit_init, unit_next): a MATVEC's passes, an attention
+// command's units as above.
+// - Issue: DMA commands, in order, per unit and head to each port with
+//   rows in it: MATVEC and SCORES ceil(cols / E) beats, VALUES the tile's
+//   positions / E. It runs ahead as far as the DMAs' FIFOs allow.
 // - Step: one beat to every lane per cycle, when the lanes have room for
-//   it, and for a MATVEC every port with rows in the pass has a beat, for
-//   attention the unit's tile is full. x comes from the read ports, E
-//   values broadcast (a VALUES lane takes its head's). Back-to-back
-//   commands leave no gap. A unit's slot is freed when its last cycle is
-//   decided.
-// Fill and step decide a beat PopLat cycles before it reaches the DMAs,
-// the lanes and the tile buffer, from estimates ("Beats" below, D-051).
+//   it and every port with rows in the unit has a beat. x comes from the
+//   read ports, E values broadcast (a VALUES lane takes its head's).
+//   Back-to-back commands leave no gap. Step decides a beat PopLat cycles
+//   before it reaches the DMAs and the lanes, from estimates ("Beats"
+//   below, D-051).
 // - Drain: the lanes' results, Writes lanes at a time, to the write port,
 //   multiplied by scale (SCORES) or 1 (exact), then rounded to BF16 for a
 //   BF16 destination. Lanes with no row (past the rows, past t, past the
@@ -50,7 +46,7 @@
 //   write.
 // The engine does not order a command after an earlier one whose output it
 // reads; the controller does (D-041, D-042, D-044): it gives such a command
-// `wait` and pulses go_i once its x is ready, so issue and fill read the
+// `wait` and pulses go_i once its x is ready, so issue reads the
 // command's memory ahead while step holds it until its go. Each go_i pulse
 // is a credit for the oldest waiting command not yet given one, sent only
 // after that command was taken (so at most CmdDepth + 1 are pending).
@@ -137,18 +133,7 @@ module engine
   localparam int unsigned GW        = Groups > 1 ? $clog2(Groups) : 1;
   localparam int unsigned CW        = $clog2(CmdDepth + 2);  // go credits: 0 .. CmdDepth + 1
   localparam int unsigned LW        = $clog2(L + 1);         // a count of lanes
-  localparam int unsigned SW        = $clog2(L);             // a tile buffer rotation
-  // The tile buffer: per slot, the entries of E values a unit fills: d / E
-  // for one head, d <= MaxD; 2 * d / E for a VALUES pass of Heads heads,
-  // which needs Heads * d <= L.
-  localparam int unsigned SlotWidest = Heads * MaxD < L ? Heads * MaxD : L;
-  localparam int unsigned SlotDepth = (MaxD > SlotWidest ? MaxD : SlotWidest) / E;
-  localparam int unsigned Slots     = 3;  // a unit filling, one full, one stepping (D-051)
-  localparam int unsigned SlotW     = $clog2(Slots);  // a slot's index
-  localparam int unsigned TW        = $clog2(Slots * SlotDepth);  // a tile buffer address
-  localparam int unsigned EntryBits = E * 16;
-  localparam int unsigned BeatValues = DataWidth / 16;     // BF16 values per beat
-  localparam int unsigned TileRows  = LanesPerPort;        // a tile's rows per channel
+  localparam int unsigned LPW       = $clog2(LanesPerPort);
   localparam int unsigned DW        = $clog2(MaxD + 1);
   localparam int unsigned DrainLat  = mul_add_latency(MulRegs);  // fp32_fma's
   localparam int unsigned CrW       = $clog2(Depth + 1);   // a FIFO count
@@ -168,8 +153,8 @@ module engine
   if (MaxD < 16 || MaxD > 128 || (MaxD & (MaxD - 1)) != 0) begin : gen_bad_maxd
     $error("engine: MaxD must be a power of two from 16 to 128 (unit_t.dlog)");
   end
-  if (E != 4 || LanesPerPort != 4) begin : gen_bad_tile
-    $error("engine: the tile buffer's mapping assumes 4 lanes per port and E = 4");
+  if ((LanesPerPort & (LanesPerPort - 1)) != 0 || 16 % LanesPerPort != 0) begin : gen_bad_lpp
+    $error("engine: LanesPerPort must be a power of two dividing 16 (a head's ports, d >= 16)");
   end
 
   typedef struct packed {
@@ -195,12 +180,15 @@ module engine
   // Attention: a pass's heads and a tile; SCORES for each head, for each
   // tile, VALUES for each pass of Heads heads (one when 2d > L), for each
   // tile. Every stage walks the same sequence with unit_init and unit_next.
+  // Each port reads its unit's beats at addr + its head's KV offset +
+  // unit_off: a KV head's region per channel holds SCORES' cap / L tiles of
+  // d / E beats, or VALUES' cap / E beats.
 
   // A MATVEC pass is a SCORES unit of one head whose positions are rows:
   // t is the rows, a tile a pass of L of them.
   typedef struct packed {
     logic                  matvec;                   // a MATVEC, not attention
-    logic [ColWidth-1:0]   beats;                    // each port's per unit and head
+    logic [ColWidth-1:0]   beats;                    // a port's per unit (VALUES: a whole tile's)
     logic                  values, heads2;           // VALUES; Heads heads a pass
     logic [HeadWidth-1:0]  n, g;                     // heads, group
     logic [2:0]            dlog;                     // log2(d)
@@ -211,7 +199,7 @@ module engine
     logic [RowWidth-1:0]   head_row;  // SCORES: h * stride; VALUES: h * d
     logic [RowWidth-1:0]   xh;        // head h's x group: SCORES h * d / E; VALUES h * stride / E
     logic [RowWidth-1:0]   pos;       // the tile's first position, j * L
-    logic [AddrWidth-1:0]  unit_off;  // j * beats * BeatBytes (attention: 4 rows of d)
+    logic [AddrWidth-1:0]  unit_off;  // j * beats * BeatBytes
   } unit_t;
 
   // The helpers take a whole unit or command and read the fields they need.
@@ -251,15 +239,21 @@ module engine
   function automatic logic [RowWidth-1:0] res_row(unit_t u);
     return u.values ? u.head_row : u.head_row + u.pos;
   endfunction
-  // The ports a unit reads (MATVEC: those with rows in the pass).
-  function automatic logic [Ports-1:0] unit_ports(unit_t u);
+  // The ports head a of a unit reads: MATVEC and SCORES those with rows
+  // (positions) in it; VALUES the d / LanesPerPort ports of head a's lanes.
+  function automatic logic [Ports-1:0] head_ports(unit_t u, logic a);
     logic [Ports-1:0] ports;
-    for (int unsigned p = 0; p < Ports; p++) ports[p] = !u.matvec || p * LanesPerPort < 32'(rem(u));
+    for (int unsigned p = 0; p < Ports; p++) begin
+      ports[p] = u.values ? (p >> (32'(u.dlog) - LPW)) == 32'(a)
+                          : !a && p * LanesPerPort < 32'(rem(u));
+    end
     return ports;
   endfunction
+  function automatic logic [Ports-1:0] unit_ports(unit_t u);  // every head's
+    return head_ports(u, 1'b0) | (unit_heads(u) == 2'd2 ? head_ports(u, 1'b1) : '0);
+  endfunction
 
-  // Each port's beats per unit and head: a row's ceil(cols / E), for
-  // attention TileRows * d / BeatValues = d / E.
+  // A row's beats: ceil(cols / E).
   function automatic logic [ColWidth-1:0] n_beats(logic [ColWidth-1:0] cols);
     return cols / ColWidth'(E) + ColWidth'(cols % ColWidth'(E) != '0);
   endfunction
@@ -281,7 +275,12 @@ module engine
     u.g       = c.group;
     u.t       = c.t;
     u.stride  = c.stride;
-    u.region  = AddrWidth'(c.cap / RowWidth'(Ports)) << (32'(u.dlog) + 1);  // * d * 2 bytes
+    if (u.values) begin
+      u.beats  = ColWidth'(L / E);
+      u.region = AddrWidth'(c.cap / RowWidth'(E)) * AddrWidth'(BeatBytes);
+    end else begin
+      u.region = AddrWidth'(c.cap / RowWidth'(Ports)) << (32'(u.dlog) + 1);  // * d * 2 bytes
+    end
     return u;
   endfunction
   // The next head: h + 1, and its KV head.
@@ -326,20 +325,6 @@ module engine
   endfunction
   // verilator lint_on UNUSEDSIGNAL
 
-  // The tile buffer's mapping (docs/architecture.md, "Tile buffer banks"):
-  // entry u (elements E*u ...) of position q sits in bank (q + E*alpha(u))
-  // mod L.
-  localparam int unsigned Quarter = Ports / 4;
-  function automatic int unsigned alpha(int unsigned u);
-    return (Quarter * (u % 4) + u / 4) % Ports;
-  endfunction
-  function automatic int unsigned alpha_inv(int unsigned g);  // g < Ports
-    return 4 * (g % Quarter) + g / Quarter;
-  endfunction
-  function automatic logic [SlotW-1:0] next_slot(logic [SlotW-1:0] s);
-    return s == SlotW'(Slots - 1) ? '0 : s + 1'b1;
-  endfunction
-
   // --- Command queues --------------------------------------------------------
 
   cmd_t cmd;
@@ -348,11 +333,11 @@ module engine
                  heads: cmd_heads_i, group: cmd_group_i, t: cmd_t_i, cap: cmd_cap_i,
                  stride: cmd_stride_i, scale: cmd_scale_i};
 
-  logic [3:0] q_in_ready, q_valid, q_pop;  // issue, fill, step, drain
-  cmd_t       q_head[4];
+  logic [2:0] q_in_ready, q_valid, q_pop;  // issue, step, drain
+  cmd_t       q_head[3];
   assign cmd_ready_o = &q_in_ready;
 
-  for (genvar i = 0; i < 4; i++) begin : gen_queue
+  for (genvar i = 0; i < 3; i++) begin : gen_queue
     stream_fifo #(
       .Width($bits(cmd_t)),
       .Depth(CmdDepth)
@@ -385,7 +370,8 @@ module engine
       .AddrWidth (AddrWidth),
       .DataWidth (DataWidth),
       .CountWidth(ColWidth),
-      .Depth     (Depth)
+      .Depth     (Depth),
+      .Slices    (LanesPerPort)
     ) u_dma (
       .clk_i,
       .rst_ni,
@@ -416,16 +402,18 @@ module engine
   logic                 iss_busy_q, iss_head_q;  // iss_head_q: the unit's head
   logic [AddrWidth-1:0] iss_addr_q;   // the matrix's or the cache's
   logic [Ports-1:0]     iss_taken_q;  // this DMA command's ports already taken
-  logic [Ports-1:0]     iss_active_q; // unit_ports(iss_unit_q), registered for timing
+  logic [Ports-1:0]     iss_ports_q[Heads];  // head_ports(iss_unit_q, a), registered for timing
+  logic [ColWidth-1:0]  iss_beats_q;  // unit_cycles(iss_unit_q): each port's beats
   unit_t                iss_unit_q;
-  logic [Ports-1:0]     iss_taken;
+  logic [Ports-1:0]     iss_taken, iss_active;
   logic                 iss_done, iss_last_head;
 
-  assign dma_cmd_valid = {Ports{iss_busy_q}} & iss_active_q & ~iss_taken_q;
+  assign iss_active    = iss_ports_q[iss_head_q];
+  assign dma_cmd_valid = {Ports{iss_busy_q}} & iss_active & ~iss_taken_q;
   assign dma_addr      = iss_addr_q + kv_offset(iss_unit_q, iss_head_q) + iss_unit_q.unit_off;
-  assign dma_beats     = iss_unit_q.beats;
+  assign dma_beats     = iss_beats_q;
   assign iss_taken     = iss_taken_q | dma_cmd_ready;
-  assign iss_done      = iss_busy_q && &(iss_taken | ~iss_active_q);  // this DMA command's
+  assign iss_done      = iss_busy_q && &(iss_taken | ~iss_active);  // this DMA command's
   assign iss_last_head = 2'(iss_head_q) + 2'd1 == unit_heads(iss_unit_q);
   assign q_pop[0]      = !iss_busy_q && q_valid[0];
 
@@ -440,7 +428,8 @@ module engine
       // The unit and its ports from each branch's own copy, in parallel: a
       // mux of the two units before unit_ports would lengthen the path.
       iss_unit_q   <= unit_init(q_head[0]);
-      iss_active_q <= unit_ports(unit_init(q_head[0]));
+      iss_beats_q  <= ColWidth'(unit_cycles(unit_init(q_head[0])));
+      for (int unsigned a = 0; a < Heads; a++) iss_ports_q[a] <= head_ports(unit_init(q_head[0]), 1'(a));
     end else if (iss_done) begin
       iss_taken_q <= '0;
       if (!iss_last_head) begin
@@ -448,7 +437,8 @@ module engine
       end else begin
         iss_head_q   <= 1'b0;
         iss_unit_q   <= unit_next(iss_unit_q);
-        iss_active_q <= unit_ports(unit_next(iss_unit_q));
+        iss_beats_q  <= ColWidth'(unit_cycles(unit_next(iss_unit_q)));
+        for (int unsigned a = 0; a < Heads; a++) iss_ports_q[a] <= head_ports(unit_next(iss_unit_q), 1'(a));
         if (last_unit(iss_unit_q)) iss_busy_q <= 1'b0;
       end
     end else if (iss_busy_q) begin
@@ -458,134 +448,42 @@ module engine
 
   // --- Beats: decided ahead, delivered through registers (D-051) ---------------
   //
-  // Fill and step decide their beats from registered state only: the DMAs'
-  // FIFO counts and the lanes' reservations reach the decision through
+  // Step decides its beats from registered state only: the DMAs' FIFO
+  // counts and the lanes' reservations reach the decision through
   // registers, so each decision assumes the worst of the beats it has not
   // seen yet (Window of them). A beat's descriptor then goes through a
   // central register and PopLat - 1 more in copies per group of 4 ports (16
-  // lanes, 16 banks): PopLat cycles after its decision the beat pops the
-  // DMAs and reaches the lanes, which never refuse it (a lane's ready drops
-  // only on a last beat, and a last beat is decided only with room for it).
-  // The tile buffer's read addresses are presented at stage RdStage, from a
-  // register per bank; its writes enter at PopLat.
+  // lanes): PopLat cycles after its decision the beat pops the DMAs and
+  // reaches the lanes, which never refuse it (a lane's ready drops only on
+  // a last beat, and a last beat is decided only with room for it).
 
   localparam int unsigned GP       = 4;          // ports per group
   localparam int unsigned NG       = Ports / GP; // groups
-  localparam int unsigned GL       = L / NG;     // lanes and banks per group
+  localparam int unsigned GL       = L / NG;     // lanes per group
   localparam int unsigned PopLat   = 6;
-  localparam int unsigned RotRegs  = 2;          // the tile buffer's rotations
-  localparam int unsigned RotCopies = GL / E;    // per group: a copy of the rotation per E banks
-  localparam int unsigned RdStage  = PopLat - 1 - RotRegs;  // read data at PopLat
   localparam int unsigned XLat     = 4;  // x_data at stage 3, its central register at 4
   localparam int unsigned SeenRegs = 2;  // a group's register and the central one
-  // Decisions not yet in what fill and step see: PopLat to the pop or the
-  // lane, one into the FIFO count or the reservation, SeenRegs, and the
-  // estimate's own register.
+  // Decisions not yet in what step sees: PopLat to the pop or the lane, one
+  // into the FIFO count or the reservation, SeenRegs, and the estimate's own
+  // register.
   localparam int unsigned Window   = PopLat + SeenRegs + 1;
-  // A unit's last write lands this many cycles after its decision, counted
-  // so that step's first read of the slot comes after it (a read sees the
-  // writes of earlier cycles only).
-  localparam int unsigned LandLat  = PopLat + RotRegs - RdStage - 1;
   localparam int unsigned LaneBanks = 2;  // dot_lane's level-1 buffers
   localparam int unsigned RW       = $clog2(LaneBanks + Window + 1);
-  localparam int unsigned CycW     = $clog2(SlotDepth > Ports ? SlotDepth : Ports);
 
-  if (PopLat <= XLat || RdStage < 3) begin : gen_bad_lat
-    $error("engine: PopLat must leave the x path and the read addresses a group register");
+  if (PopLat <= XLat) begin : gen_bad_lat
+    $error("engine: PopLat must leave the x path a group register");
   end
 
   typedef struct packed {
     logic                 valid;    // a beat to the lanes
-    logic                 matvec, values, last;
+    logic                 values, last;
     logic [E-1:0]         mask;
     logic [LW-1:0]        lanes;    // the lanes with a row
     logic [2:0]           dlog;
-    logic [Ports-1:0]     active;   // MATVEC: the ports popped
-    logic [SlotW-1:0]           slot;     // the tile read
-    logic [CycW-1:0]      cyc;
-    logic [SW-1:0]        rot;
-    logic                 fill;     // a fill beat, from every port
-    logic [TW-1:0]        f_base;   // its slot's and the row's first entry
-    logic [SW-1:0]        f_shift;  // bank B takes logical entry (B + f_shift) mod L
+    logic [Ports-1:0]     active;   // the ports popped
   } beat_t;
 
-  // --- Fill: attention's beats into the tile buffer --------------------------
-
-  logic [Slots-1:0]      tile_full_q;   // per slot: filled, not yet stepped
-  logic [Slots-1:0]      tile_ready_q;  // per slot: its writes landed, not yet stepped
-  logic [Slots-1:0]      tile_fill, tile_free;
-  logic [Slots-1:0]      land_q[LandLat];
-  logic [SlotW-1:0]            fill_slot_q;
-  logic                  fill_busy_q, fill_head_q;
-  logic [$clog2(TileRows)-1:0] fill_row_q;       // the tile's row
-  logic [DW-1:0]         fill_beat_q;   // the row's beat
-  unit_t                 fill_unit_q;
-  logic                  fill_fire, fill_row_end, fill_tile_end, fill_unit_end, step_mv_end;
-  logic                  fill_mv_q;     // a MATVEC whose beats step still reads
-  logic                  step_load;     // step takes a command (below)
-  logic                  dma_ok;        // a beat from every port checked (below)
-  logic [TW-1:0]         fill_base;
-  logic [SW-1:0]         fill_shift;
-
-  // A slot freed this cycle takes writes at once: its last reads come first.
-  assign fill_fire     = fill_busy_q && (!tile_full_q[fill_slot_q] || tile_free[fill_slot_q])
-                         && dma_ok;
-  assign fill_row_end  = fill_fire && 32'(fill_beat_q) + 1 == 32'(dim(fill_unit_q)) / BeatValues;
-  assign fill_tile_end = fill_row_end && 32'(fill_row_q) == TileRows - 1;  // a head's tile
-  assign fill_unit_end = fill_tile_end && 2'(fill_head_q) + 2'd1 == unit_heads(fill_unit_q);
-  assign tile_fill     = fill_unit_end ? Slots'(1) << fill_slot_q : '0;
-  // A MATVEC's beats go to step: fill takes it off its queue when step takes
-  // it, and starts the next attention command once step has read them.
-  assign q_pop[1]      = q_valid[1] && !fill_busy_q
-                         && (q_head[1].op == OpMatvec
-                             ? step_load && q_head[2].op == OpMatvec  // the same one: in order
-                             : !fill_mv_q || step_mv_end);
-
-  always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
-      fill_busy_q  <= 1'b0;
-      fill_mv_q    <= 1'b0;
-      fill_slot_q  <= '0;
-      tile_full_q  <= '0;
-      tile_ready_q <= '0;
-      for (int unsigned i = 0; i < LandLat; i++) land_q[i] <= '0;
-    end else begin
-      tile_full_q  <= (tile_full_q | tile_fill) & ~tile_free;
-      land_q[0]    <= tile_fill;
-      for (int unsigned i = 1; i < LandLat; i++) land_q[i] <= land_q[i-1];
-      tile_ready_q <= (tile_ready_q | land_q[LandLat-1]) & ~tile_free;
-      if (step_mv_end) fill_mv_q <= 1'b0;
-      if (q_pop[1] && q_head[1].op == OpMatvec) fill_mv_q <= 1'b1;
-      if (q_pop[1] && q_head[1].op != OpMatvec) begin
-        fill_busy_q <= 1'b1;
-        fill_unit_q <= unit_init(q_head[1]);
-        fill_head_q <= 1'b0;
-        fill_row_q  <= '0;
-        fill_beat_q <= '0;
-      end else begin
-        if (fill_fire) fill_beat_q <= fill_row_end ? '0 : fill_beat_q + 1'b1;
-        if (fill_row_end) fill_row_q <= fill_row_q + 1'b1;  // wraps at TileRows
-        if (fill_tile_end) fill_head_q <= fill_unit_end ? 1'b0 : !fill_head_q;
-        if (fill_unit_end) begin
-          fill_slot_q <= next_slot(fill_slot_q);
-          fill_unit_q <= unit_next(fill_unit_q);
-          if (last_unit(fill_unit_q)) fill_busy_q <= 1'b0;
-        end
-      end
-    end
-  end
-
-  // Port c's beat holds position c + row * Ports, entries u = head * d / E +
-  // beat * 4 + w: logical entry c + Ports * w goes to bank (c + Ports * w +
-  // rot) mod L, rot = row * Ports + E * alpha(u - w) (= row * Ports + u - w),
-  // at fill_base + w; bank B takes logical entry (B + L - rot) mod L.
-  always_comb begin
-    int unsigned u0, rot;
-    u0         = 32'(fill_head_q) * 32'(dim(fill_unit_q)) / E + 4 * 32'(fill_beat_q);
-    rot        = (32'(fill_row_q) * Ports + u0) % L;
-    fill_shift = SW'((L - rot) % L);
-    fill_base  = TW'(32'(fill_slot_q) * SlotDepth + u0);
-  end
+  logic dma_ok;  // a beat from every port checked (below)
 
   // --- Step: one beat to every lane --------------------------------------------
   //
@@ -603,27 +501,20 @@ module engine
   logic                step_last_cyc_q;   // step_cyc_q + 1 == step_cycles_q
   logic                step_last_tile_q;  // last_tile(step_unit_q)
   logic                step_last_unit_q;  // last_unit(step_unit_q)
-  logic [SlotW-1:0]          step_slot_q;
-  logic                tile_ok_q;
-  logic                fire, step_end, step_go, unit_end, last_beat, room_ok;
+  logic                fire, step_end, step_go, step_load, unit_end, last_beat, room_ok;
   logic [CW-1:0]       credits_q;      // go_i pulses not yet spent
-  logic [SlotW-1:0]          slot_n;
   unit_t               unit_init_c, unit_next_c, unit_n;
   logic [RowWidth-1:0] cyc_n;
   logic [E-1:0]        values_mask;    // positions of this cycle before t
 
   assign last_beat     = step_last_cyc_q && (!step_unit_q.values || step_last_tile_q);
-  assign fire          = step_busy_q && (step_unit_q.matvec ? dma_ok : tile_ok_q)
-                         && (!last_beat || room_ok);
+  assign fire          = step_busy_q && dma_ok && (!last_beat || room_ok);
   assign unit_end      = fire && step_last_cyc_q;
   assign step_end      = unit_end && step_last_unit_q;
-  assign step_mv_end   = step_end && step_unit_q.matvec;
-  assign step_go       = !q_head[2].wait_go || credits_q != '0;
-  assign step_load     = q_valid[2] && (!step_busy_q || step_end) && step_go;
-  assign q_pop[2]      = step_load;
-  // The slot's reads are all decided; fill's writes to it land after them.
-  assign tile_free     = unit_end && !step_unit_q.matvec ? Slots'(1) << step_slot_q : '0;
-  assign unit_init_c   = unit_init(q_head[2]);
+  assign step_go       = !q_head[1].wait_go || credits_q != '0;
+  assign step_load     = q_valid[1] && (!step_busy_q || step_end) && step_go;
+  assign q_pop[1]      = step_load;
+  assign unit_init_c   = unit_init(q_head[1]);
   assign unit_next_c   = unit_next(step_unit_q);
 
   for (genvar e = 0; e < E; e++) begin : gen_values_mask
@@ -631,7 +522,6 @@ module engine
   end
 
   always_comb begin
-    slot_n = unit_end && !step_unit_q.matvec ? next_slot(step_slot_q) : step_slot_q;
     unit_n = step_load ? unit_init_c : unit_end ? unit_next_c : step_unit_q;
     cyc_n  = step_load || unit_end ? '0 : fire ? step_cyc_q + 1'b1 : step_cyc_q;
   end
@@ -639,16 +529,11 @@ module engine
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       step_busy_q <= 1'b0;
-      step_slot_q <= '0;
-      tile_ok_q   <= 1'b0;
       credits_q   <= '0;
     end else begin
-      step_slot_q <= slot_n;
       step_unit_q <= unit_n;
       step_cyc_q  <= cyc_n;
-      // The slot stepped next cycle: its writes landed by this one.
-      tile_ok_q   <= tile_ready_q[slot_n];
-      credits_q   <= credits_q + CW'(go_i) - CW'(step_load && q_head[2].wait_go);
+      credits_q   <= credits_q + CW'(go_i) - CW'(step_load && q_head[1].wait_go);
       if (step_load) begin
         step_cycles_q    <= unit_cycles(unit_init_c);
         step_active_q    <= unit_ports(unit_init_c);
@@ -666,10 +551,10 @@ module engine
       end
       if (step_load) begin
         step_busy_q   <= 1'b1;
-        step_buf_q    <= q_head[2].a;
+        step_buf_q    <= q_head[1].a;
         for (int unsigned e = 0; e < E; e++) begin
-          step_mask_q[e] <= q_head[2].cols % ColWidth'(E) == '0
-                            || ColWidth'(e) < q_head[2].cols % ColWidth'(E);
+          step_mask_q[e] <= q_head[1].cols % ColWidth'(E) == '0
+                            || ColWidth'(e) < q_head[1].cols % ColWidth'(E);
         end
       end else if (step_end) begin
         step_busy_q <= 1'b0;
@@ -677,7 +562,7 @@ module engine
     end
   end
 
-  // --- What fill and step have not seen: estimates ----------------------------
+  // --- What step has not seen: estimates ---------------------------------------
   //
   // DMA beats: each port's FIFO count, of the ports checked (chk; a
   // MATVEC's last pass leaves ports out), as a min per group and over the
@@ -708,10 +593,10 @@ module engine
   logic signed [CrW+1:0]        est_q;   // beats certainly in every port covered
   logic [RW-1:0]                room_q;  // reservations a lane may have, at most
 
-  assign chk_d    = fill_busy_q ? '1 : step_active_q;
+  assign chk_d    = step_active_q;
   assign dma_ok   = est_q > 0 && !(|(chk_d & ~cover_q[SeenRegs+1]));
   assign room_ok  = room_q < RW'(LaneBanks);
-  assign pop_now  = (fire && step_unit_q.matvec) || fill_fire;
+  assign pop_now  = fire;
   assign last_now = fire && last_beat;
 
   for (genvar g = 0; g < NG; g++) begin : gen_seen
@@ -764,14 +649,13 @@ module engine
     end
   end
 
-  // --- The beat's way: descriptor, x, tile buffer, DMAs, lanes ----------------
+  // --- The beat's way: descriptor, x, DMAs, lanes ------------------------------
 
   beat_t beat_d, beat_q;  // the decision, its central register
 
   always_comb begin
     beat_d         = '0;
     beat_d.valid   = fire;
-    beat_d.matvec  = step_unit_q.matvec;
     beat_d.values  = step_unit_q.values;
     beat_d.last    = last_beat;
     beat_d.mask    = step_unit_q.matvec ? (step_last_cyc_q ? step_mask_q : '1)
@@ -779,15 +663,6 @@ module engine
     beat_d.lanes   = res_lanes(step_unit_q);
     beat_d.dlog    = step_unit_q.dlog;
     beat_d.active  = step_active_q;
-    beat_d.slot    = step_slot_q;
-    beat_d.cyc     = CycW'(step_cyc_q);
-    // SCORES reads entry cyc of every position; VALUES the 4 positions
-    // E*cyc ... of every entry.
-    beat_d.rot     = !step_unit_q.values ? SW'(E * alpha(32'(step_cyc_q)))
-                                         : SW'(E * 32'(step_cyc_q));
-    beat_d.fill    = fill_fire;
-    beat_d.f_base  = fill_base;
-    beat_d.f_shift = fill_shift;
   end
 
   // x: the address from the decision, presented at stage 2, so x_data_i
@@ -814,94 +689,30 @@ module engine
     x_addr_o <= x_addr_q;
     x_buf_o  <= x_buf_q;
     x_data_q <= x_data_i;
-    if (!rst_ni) begin
-      beat_q.valid <= 1'b0;
-      beat_q.fill  <= 1'b0;
-    end
+    if (!rst_ni) beat_q.valid <= 1'b0;
   end
 
-  logic [NG*RotCopies-1:0][SW-1:0] rd_rot, wr_shift;
-  logic [L-1:0][TW-1:0]        tile_addr, fill_addr;
-  logic [L-1:0]                fill_valid;
-  logic [L-1:0][EntryBits-1:0] fill_data;
-  logic [L-1:0][EntryBits-1:0] tile_data;
-  beat_t [NG-1:0]              beat_at;   // each group's beat at PopLat
+  beat_t [NG-1:0]                        beat_at;  // each group's beat at PopLat
   logic [NG-1:0][Heads-1:0][E-1:0][15:0] x_at;
 
   for (genvar g = 0; g < NG; g++) begin : gen_group
     beat_t pipe_q[PopLat-1];  // stages 2 .. PopLat
     logic [Heads-1:0][E-1:0][15:0] x_q[PopLat-XLat];  // stages XLat + 1 .. PopLat
-    logic [RotCopies-1:0][SW-1:0]  shift_q;           // the fill's, at PopLat
     always_ff @(posedge clk_i) begin
       pipe_q[0] <= beat_q;
       for (int unsigned s = 1; s < PopLat - 1; s++) pipe_q[s] <= pipe_q[s-1];
       x_q[0] <= x_data_q;
       for (int unsigned s = 1; s < PopLat - XLat; s++) x_q[s] <= x_q[s-1];
-      for (int unsigned k = 0; k < RotCopies; k++) shift_q[k] <= pipe_q[PopLat-3].f_shift;
       if (!rst_ni) begin
-        for (int unsigned s = 0; s < PopLat - 1; s++) begin
-          pipe_q[s].valid <= 1'b0;
-          pipe_q[s].fill  <= 1'b0;
-        end
+        for (int unsigned s = 0; s < PopLat - 1; s++) pipe_q[s].valid <= 1'b0;
       end
     end
     assign beat_at[g] = pipe_q[PopLat-2];
     assign x_at[g]    = x_q[PopLat-XLat-1];
-    for (genvar k = 0; k < RotCopies; k++) begin : gen_rot
-      assign rd_rot[g*RotCopies+k]   = pipe_q[RdStage-2].rot;
-      assign wr_shift[g*RotCopies+k] = shift_q[k];
-    end
-    // Each bank's read address, a stage ahead, in its own register: physical
-    // bank B holds logical entry (B - rot) mod L. SCORES: entry cyc in every
-    // bank; VALUES: logical entry i's alpha_inv(i / E), i / E = (B / E -
-    // cyc) mod Ports.
-    for (genvar b = GL * g; b < GL * (g + 1); b++) begin : gen_bank
-      logic [SlotW-1:0]      slot;
-      logic [CycW-1:0] cyc;
-      logic            values;
-      int unsigned     q;
-      logic [TW-1:0]   addr_q;
-      assign slot   = pipe_q[RdStage-3].slot;
-      assign cyc    = pipe_q[RdStage-3].cyc;
-      assign values = pipe_q[RdStage-3].values;
-      assign q      = (b / E + Ports - 32'(cyc) % Ports) % Ports;
-      always_ff @(posedge clk_i) begin
-        addr_q <= !values ? TW'(32'(slot) * SlotDepth + 32'(cyc))
-                          : TW'(32'(slot) * SlotDepth + alpha_inv(q));
-      end
-      assign tile_addr[b] = addr_q;
-      // The fill's write: bank B takes logical entry i = (B + f_shift) mod
-      // L, port i mod Ports's word i / Ports, at f_base + i / Ports.
-      assign fill_valid[b] = beat_at[g].fill;
-      assign fill_addr[b]  = beat_at[g].f_base
-                             + TW'((b + 32'(beat_at[g].f_shift)) % L / Ports);
-    end
-    // The fill's logical entries c + Ports * w in this group: port c's word w.
-    for (genvar i = GL * g; i < GL * (g + 1); i++) begin : gen_fill
-      assign fill_data[i] = dma_out_data[i % Ports][(i / Ports)*EntryBits +: EntryBits];
-    end
     for (genvar p = GP * g; p < GP * (g + 1); p++) begin : gen_pop
-      assign dma_out_ready[p] = (beat_at[g].valid && beat_at[g].matvec && beat_at[g].active[p])
-                                || beat_at[g].fill;
+      assign dma_out_ready[p] = beat_at[g].valid && beat_at[g].active[p];
     end
   end
-
-  tile_buffer_pipe #(
-    .N     (L),
-    .Depth (Slots * SlotDepth),
-    .W     (EntryBits),
-    .Regs  (RotRegs),
-    .Groups(NG * RotCopies)
-  ) u_tile (
-    .clk_i,
-    .wr_valid_i(fill_valid),
-    .wr_addr_i (fill_addr),
-    .wr_data_i (fill_data),
-    .wr_shift_i(wr_shift),
-    .rd_addr_i (tile_addr),
-    .rd_rot_i  (rd_rot),
-    .rd_data_o (tile_data)
-  );
 
   // --- Lanes -------------------------------------------------------------------
 
@@ -911,29 +722,17 @@ module engine
 
   for (genvar l = 0; l < L; l++) begin : gen_lane
     localparam int unsigned P = l / LanesPerPort, I = l % LanesPerPort;
-    localparam int unsigned G = E * alpha(l / E);  // VALUES: the lane's entries
     // verilator lint_off UNUSEDSIGNAL
-    beat_t              bt;  // a lane takes the fields of its beat, not the tile's or the fill's
+    beat_t              bt;  // a lane takes the fields of its beat, not the ports'
     // verilator lint_on UNUSEDSIGNAL
-    logic [E-1:0][15:0] w, x, vw;
+    logic [E-1:0][15:0] w, x;
     logic               second;
     assign bt = beat_at[l/GL];
-    for (genvar e = 0; e < E; e++) begin : gen_vw
-      assign vw[e] = tile_data[G + e][(l % E)*16 +: 16];
-    end
+    assign w  = dma_out_data[P][I*E*16 +: E*16];
     always_comb begin
       second = (l >> bt.dlog) == 1;  // VALUES: the pass's second head
       lane_in_valid[l] = bt.valid && l < 32'(bt.lanes);
-      if (bt.matvec) begin
-        w = dma_out_data[P][I*E*16 +: E*16];
-        x = x_at[l/GL][0];
-      end else if (!bt.values) begin
-        w = tile_data[l];
-        x = x_at[l/GL][0];
-      end else begin
-        w = vw;
-        x = x_at[l/GL][second];
-      end
+      x = x_at[l/GL][bt.values && second];
     end
     dot_lane #(
       .E    (E),
@@ -961,7 +760,6 @@ module engine
     if (rst_ni) begin
       if (|(dma_out_ready & ~dma_out_valid)) $error("engine: a pop from an empty DMA FIFO");
       if (|(lane_in_valid & ~lane_in_ready)) $error("engine: a lane refused a beat");
-      if ((fire && step_unit_q.matvec) && fill_fire) $error("engine: fill and step pop at once");
     end
   end
 `endif
@@ -993,7 +791,7 @@ module engine
 
   assign lanes_with_result = RowWidth'(res_lanes(drain_unit_q));
   assign pass_row          = res_row(drain_unit_q);
-  assign drain_next        = !drain_busy_q || drain_end ? to_last_tile(unit_init(q_head[3]))
+  assign drain_next        = !drain_busy_q || drain_end ? to_last_tile(unit_init(q_head[2]))
                                                         : to_last_tile(unit_next(drain_unit_q));
   assign next_lanes        = RowWidth'(res_lanes(drain_next));
   for (genvar s = 0; s < Writes; s++) begin : gen_slot
@@ -1016,8 +814,8 @@ module engine
   assign go     = drain_busy_q && ok && !recent;
   assign pass_end   = go && RowWidth'(drain_grp_q + 1'b1) * RowWidth'(Writes) >= lanes_with_result;
   assign drain_end  = pass_end && last_unit(drain_unit_q);
-  assign drain_load = q_valid[3] && (!drain_busy_q || drain_end);
-  assign q_pop[3]   = drain_load;
+  assign drain_load = q_valid[2] && (!drain_busy_q || drain_end);
+  assign q_pop[2]   = drain_load;
 
   always_ff @(posedge clk_i) begin
     for (int unsigned l = 0; l < L; l++) begin
@@ -1043,9 +841,9 @@ module engine
       drain_busy_q   <= 1'b1;
       drain_grp_q    <= '0;
       drain_unit_q   <= drain_next;
-      drain_buf_q    <= q_head[3].dst;
-      drain_bf16_q   <= q_head[3].bf16;
-      drain_scale_q  <= q_head[3].op == OpScores ? q_head[3].scale : Fp32One;
+      drain_buf_q    <= q_head[2].dst;
+      drain_bf16_q   <= q_head[2].bf16;
+      drain_scale_q  <= q_head[2].op == OpScores ? q_head[2].scale : Fp32One;
     end else if (drain_end) begin
       drain_busy_q <= 1'b0;
     end else if (pass_end) begin

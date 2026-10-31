@@ -424,7 +424,7 @@ def test_attention_back_to_back(ports: int) -> None:
     """Three SCORES, then three VALUES, t a whole number of tiles, the memory
     at full rate: after the first of each kind, each takes its perf-model
     cycles plus at most 1 (the command boundary): units leave no gap, the
-    next tile fills while the current one steps."""
+    next tile's beats read while the current one steps."""
     gen = torch.Generator().manual_seed(SEED)
     lanes = ports * LANES_PER_PORT
     d_scores, d_values = BALANCED[ports]
