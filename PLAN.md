@@ -1063,6 +1063,11 @@ iteration, at most 3 placed builds.
    family. What it names decides the next step: DSPs for the lanes'
    arithmetic (16 of 9,024 used), floorplanning, or neighbour chains for
    the x broadcast and the drain.
+   D-062's engine side done on `m6/kv-lane-order`: SCORES and VALUES
+   stream from the lanes' order like a MATVEC, the tile buffer and fill
+   gone, each port's FIFO split per lane; every engine test passes with
+   the same bits, unchanged (110, and 30 at 128 lanes). `KV_STORE`'s new
+   layout is the next PR; build 2 runs on this one.
 4. Stop when the worst slack is >= 0 at 250 MHz. If the third build is
    still worse than about -0.5 ns, stop tinkering: target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%

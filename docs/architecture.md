@@ -28,8 +28,8 @@ reads only cache entries `0…p`, so stale entries need no clearing.
 | Engine | matrix-vector products and attention's two dot products, in BF16 × BF16 → FP32 (numerics.md, section 3) |
 | Vector unit | RMSNorm, softmax, RoPE, SwiGLU, residual adds, the BF16 roundings before each product (section 4) |
 | Controller | reads the command list and starts each operation on the engine, the vector unit and the memory front end |
-| Memory front end | the 32 HBM ports: streams weights into the engine, moves KV tiles between HBM and on-chip buffers; the vector unit's own AXI port for `LOAD` and `KV_STORE` |
-| On-chip buffers | activations (the current vector, partial results), KV tiles, the command list |
+| Memory front end | the 32 HBM ports: streams weights and the KV cache into the engine; the vector unit's own AXI port for `LOAD` and `KV_STORE` |
+| On-chip buffers | activations (the current vector, partial results), the command list |
 | Host interface | AXI-Lite registers on the shell's OCL port (control); the shell's PCIS port to write HBM from the host (loading) |
 
 The core exposes AXI-Lite and AXI only (D-004). Everything F2-specific (the
@@ -102,16 +102,15 @@ after the controller's `go`, sent when the command it depends on is done.
 Only the lanes' pipeline remains between the go and the results (about 50
 cycles at 128 lanes), not the memory's latency.
 
-**Step control (D-051, built in M6).** Fill and step decide each beat from
+**Step control (D-051, built in M6).** Step decides each beat from
 registered estimates: the DMA FIFOs' counts and the lanes' level-1
 reservations, less the beats decided since they were seen. A beat then
-reaches the DMAs, the lanes and the tile buffer 6 cycles later, through
-copies per group of 4 ports (16 lanes, 16 banks); the lanes never refuse
-it. Each bank has its own read and write address registers, and the tile
-buffer's rotations go through 2 registers, before their two longest hops.
-The drain takes each write group's state from registers at the group. So
-no one-cycle signal spans the 128 lanes. It costs 8 cycles of start-up per
-waiting command (72, measured, 64 before) and a third tile slot (below). Keeping each `SCORES` row's max in
+reaches the DMAs and the lanes 6 cycles later, through copies per group of
+4 ports (16 lanes); the lanes never refuse it. Each port's FIFO is 4
+FIFOs of 64 bits, one per lane, each with its own pointers (D-062). The
+drain takes each write group's state from registers at the group. So no
+one-cycle signal spans the 128 lanes. It costs 8 cycles of start-up per
+waiting command (72, measured, 64 before). Keeping each `SCORES` row's max in
 the drain, so softmax has no `MAX` command (D-054), waits for a working
 core (D-057).
 
@@ -185,7 +184,6 @@ carries it to the other channels (to verify, M8).
 | KV cache | HBM, spread over all 32 channels | grows with the position; read every token |
 | Command list | on chip, next to the controller | small (below, "One token as commands"); fetched with no HBM latency |
 | Activations | on chip | small, used constantly; no HBM traffic (perf.md's assumption) |
-| KV tiles | on chip | a block of K or V positions, staged for the engine (below) |
 | DDR4 | unused in v0 | 27× slower than HBM (f2.md) |
 
 **HBM ports.** The F2's HBM has 32 ports, each attached to its own memory
@@ -202,34 +200,39 @@ channel at the command's `addr`: the same offset in every channel, each
 reserving the largest share (D-040). The host writes weights in this layout
 at load time (it is a reordering, not a conversion: D-015).
 
-**KV cache layout.** K and V are stored as written: one row per position,
-`head_dim` BF16 values per KV head and layer, spread over the ports by
-position: position `p` is row `p div 32` of its head's region in channel
-`p mod 32`, the region at the same offset in every channel (D-043). A
-128-position tile is then 4 adjacent rows, one 16-beat read, per port. A
-token writes one row of K and one of V per KV head and layer.
-For attention, the engine loads a tile of `L` positions of one KV head
-(128 × 64 × 2 B = 16 KiB for SmolLM2) into an on-chip tile buffer and reads
-it from there:
-- q·K (`SCORES`): lane `q` takes position `q` of the tile, 4 elements of
-  its K row per cycle; x is the query head's q. A pass is one head and one
-  tile; the result is multiplied by `scale` on its way out.
-- p·V (`VALUES`): one lane per output dimension, 4 positions of that
-  dimension per cycle, with x the head's probabilities: the buffer is read
-  across positions, so V needs no transposed copy in HBM (Q-11). A pass is
-  `min(2, L / d)` heads (2 for SmolLM2: 128 lanes = 2 × 64; `d ≤ L`); a
-  lane's row runs over all positions, through every tile.
-- Every tile is loaded for one query head and used once: no tile is shared
-  by the heads of a group, so a GQA model reads K and V once per query
-  head (Q-27). Simple, and free while the memory keeps up with the engine.
+**KV cache layout (D-062).** K and V are stored in the lanes' order, like
+the weights, so each port streams its own lanes' data and nothing crosses
+the engine. Each KV head and layer has a region at the same offset in
+every channel.
+- K: a matrix of `cap` rows (the positions) and `head_dim` columns in the
+  weight layout: in the tile of positions `128j` to `128j+127`, port `p`
+  holds positions `128j+4p` to `128j+4p+3`, one beat per 4 columns
+  (`head_dim / 4` beats, 16 for SmolLM2). `SCORES`: lane `q` takes position
+  `q` of the tile, 4 elements of its K row per cycle; x is the query head's
+  q. A pass is one head and one tile; the result is multiplied by `scale`
+  on its way out.
+- V: transposed, a matrix of `head_dim` rows (the dimensions) and `cap`
+  columns in the weight layout: port `p` holds dimensions `4p` to `4p+3`,
+  one beat per 4 positions. `VALUES`: one lane per output dimension, 4
+  positions of that dimension per cycle, with x the head's
+  probabilities. A pass is `min(2, L / d)` heads (2 for SmolLM2: 128 lanes
+  = 2 × 64; `d ≤ L`), the second on ports `d / 4` and up; with GQA a KV
+  head can be either, so V is stored once per head of a pass (2 copies
+  for SmolLM2: HBM space only, the reads are the same). A lane's row runs
+  over all positions; a unit is a pass and a tile of 128 positions.
+- `KV_STORE` writes a K row as a burst of `head_dim / 4` beats and a V row
+  as one beat per channel and copy, 8 bytes of each enabled (AXI write
+  strobes). Until it does (M6, next step), it writes D-043's layout.
+- Every query head reads its KV head's K and V: nothing is shared by the
+  heads of a group, so a GQA model reads K and V once per query head
+  (Q-27). Simple, and free while the memory keeps up with the engine.
 - The engine reads the cache, ahead of its go, only after the `KV_STORE`
   that writes it is done (D-044).
 - Positions at or past the position count are left out of a row, not
   multiplied by zero: the cache and P hold stale data there.
-- The cache's `cap` is a multiple of `L`, so every tile is 4 whole rows in
-  every channel; the head dimension is a power of two from 16 to 128. The
-  whole engine needs the port count a multiple of 4 (the banks' mapping,
-  below), checked at elaboration.
+- The cache's `cap` is a multiple of `L`; the head dimension is a power of
+  two from 16 to 128. The engine needs the port count a multiple of 4 (its
+  groups of 4 ports), checked at elaboration.
 - Scores and probabilities: head h's row at `h·stride` in S and P, the
   STRIDE register (D-049): `SCORES` writes there, `VALUES` reads there,
   and softmax's commands (`LEN_T`) read and write rows of t there. A row
@@ -239,19 +242,6 @@ it from there:
   16-element groups (and on p·V's groups of E), and is independent of
   `cap` (the host may run a shorter cache with S and P sized for the
   full context).
-
-**Tile buffer banks.** `L` banks, each 4 BF16 values wide, one write and
-one read per cycle. The 4 values `u` (elements `4u` to `4u+3`) of position
-`q` sit in bank `(q + 4·α(u)) mod L`, at address `u` (plus the tile slot and
-the head slot), `α(u) = (P/4)·(u mod 4) + u div 4` (mod `P`, the port
-count). Each access is then a rotation of an `L`-wide vector: q·K reads
-one `u` from every bank; p·V reads 4 positions × the pass's `u`s; a fill
-writes one beat (4 entries) from every port. The three patterns are
-conflict-free for port counts that are multiples of 4 from 4 to 68, head dimensions 16 to 256 and up to 4
-heads per pass (checked exhaustively: `verif/tests/test_tile_banks.py`).
-Three tile slots: the next tiles fill while the engine reads the current
-one. The third keeps fill a unit ahead now that a slot's last reads, and a
-filled tile's first, come a few cycles after their decisions (D-051, D-061).
 
 ## Clocks (D-028)
 
