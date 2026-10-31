@@ -23,8 +23,11 @@ close $f
 foreach harness [glob $repo/platforms/f2/timing/*.sv] {read_verilog -sv $harness}
 read_xdc -mode out_of_context $repo/platforms/f2/timing/timing.xdc
 
+# -keep_equivalent_registers: the engine copies its control registers per
+# group of lanes and banks for the fan-out (D-051); merged, they would be
+# one register driving the whole engine again.
 synth_design -top $top -part $part -mode out_of_context \
-  -generic $param=$value \
+  -generic $param=$value -keep_equivalent_registers \
   -global_retiming [expr {$retime ? "on" : "off"}]
 opt_design
 place_design

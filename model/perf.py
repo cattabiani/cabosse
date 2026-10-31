@@ -79,9 +79,12 @@ ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
 FLAGS = ("softmax_fused", "max_in_drain", "kv_tiles_shared")
 VALUES_HEADS = 2  # heads per p.V pass, at most (rtl/engine.sv's Heads)
 TILE_SLOTS = 3  # rtl/engine.sv's Slots (D-051)
-# A filled tile reaches step's reads 6 cycles of 4 cols after fill's last
-# beat (rtl/engine.sv: LandLat + 2, from the RTL's register stages).
-TILE_LAND_COLS = 24
+# A filled tile reaches step's reads this many cycles after fill's last
+# beat (rtl/engine.sv: LandLat + 2, from the RTL's register stages), in
+# cols at v0's 4 per cycle: scenarios with other macs_per_lane reuse it
+# (estimate, off by a few cycles per unit that waits).
+TILE_LAND_CYCLES = 6
+TILE_LAND_COLS = TILE_LAND_CYCLES * 4
 
 
 @dataclass(frozen=True)

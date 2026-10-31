@@ -1257,6 +1257,12 @@ synthesis drops the fields a stage never reads, or narrow them. Two
 changes wait for that run: `port_dma`'s burst length registered a cycle
 ahead (M5), and `fp_add`'s significand compare beside the alignment
 shifter (M3; +142 Yosys cells), only if those paths limit.
+The full build synthesizes with `-keep_equivalent_registers`, as
+platforms/f2/timing/timing.tcl does: the engine's per-group copies of its
+control registers (D-051) would otherwise merge back into one. An option
+if the lanes' room estimate ever goes stale: dot_lane exports its free
+last-beat credits instead of `reserved_o`, so the engine stops modelling
+the lane's ready rule (review of D-051, 2026-10-31).
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
