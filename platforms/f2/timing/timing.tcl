@@ -36,13 +36,30 @@ route_design
 
 report_timing_summary -no_header -file timing_summary.rpt
 report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
-# Every family of failing paths, not only the worst: grouped by start and end
-# point, logic levels per path, and the nets with the most loads.
-report_design_analysis -timing -max_paths 1000 -file path_families.rpt
+# Logic levels per path, and the nets with the most loads (the failing
+# paths' families: below).
 report_design_analysis -logic_level_distribution -max_paths 10000 -file logic_levels.rpt
 report_high_fanout_nets -timing -max_nets 50 -file fanout.rpt
 report_utilization -file utilization.rpt
 report_utilization -hierarchical -hierarchical_depth 4 -file utilization_hier.rpt
+report_design_analysis -congestion -file congestion.rpt
+
+# Every failing path's family, compactly: start and end cells with their
+# indices dropped, the paths of each, and the worst slack.
+set families [dict create]
+foreach p [get_timing_paths -setup -max_paths 100000 -nworst 1 -slack_lesser_than 0] {
+  set key "[regsub -all {\[[0-9]+\]} [get_property STARTPOINT_PIN $p] {[*]}] -> [regsub -all {\[[0-9]+\]} [get_property ENDPOINT_PIN $p] {[*]}]"
+  set slack [get_property SLACK $p]
+  if {[dict exists $families $key]} {
+    lassign [dict get $families $key] n worst
+    dict set families $key [list [expr {$n + 1}] [expr {min($worst, $slack)}]]
+  } else {
+    dict set families $key [list 1 $slack]
+  }
+}
+set f [open families.rpt w]
+foreach {key v} $families {puts $f "[lindex $v 1] [lindex $v 0] $key"}
+close $f
 set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
 puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime wns_ns=$wns"
 # A design that misses 250 MHz must not pass as measured (PLAN.md, M8 notes).
