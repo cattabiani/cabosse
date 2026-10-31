@@ -47,7 +47,8 @@ one is wrong, say so and explain why, and let the owner decide.
 1. **Commit freely; push only to branches, never to `main`.** Commits are
    fine whenever they make sense: small, one logical change each, with a
    clear message. Pushing a branch other than `main` needs no OK; `main`
-   changes only through pull requests the owner merges. Creating or changing
+   changes only through pull requests, merged by the agent after its own
+   review (REVIEW.md) and the tests pass. Creating or changing
    remotes needs explicit consent. Do not rewrite history that has already
    been pushed.
 2. **Never run `sudo`.** If something needs it, print the exact command and
@@ -86,7 +87,9 @@ one is wrong, say so and explain why, and let the owner decide.
   each with a recommendation. Wait for the owner's answers.
 - Prefer small, reviewable changes. One logical change per commit.
 - Each step of a milestone goes on its own branch and ends in a pull request
-  that the owner reviews and merges. Merging does not wait for CI: check the
+  that the agent reviews (REVIEW.md) and merges, with a plain summary to the
+  owner of what changed, what was measured and what is open. Decisions,
+  cloud use and dependencies still need the owner. Merging does not wait for CI: check the
   result on the next push, and fix any failure in a new pull request.
 - CI is a broad, shallow check across platforms. It never runs the real model
   or downloads weights. Deep checks (SmolLM2, fixtures, full comparisons) are
