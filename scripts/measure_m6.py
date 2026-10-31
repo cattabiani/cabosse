@@ -101,8 +101,8 @@ def latencies(steps: tuple[perf.Step, ...], got: list[int]) -> dict[str, collect
         if s.kind in perf.REDUCTION_KINDS and s.stops and s.walk[0] == 1:
             found["reduction_tail_cycles"][x - startup] += 1
         elif s.kind in perf.STORE_KINDS and s.stops:  # the writer free
-            beats = s.kv_write_bytes / perf.commands.BEAT_BYTES
-            found["kv_store_latency_cycles"][x + issue[i][1] - startup - beats] += 1
+            beats = s.kv_write_bytes // perf.commands.BEAT_BYTES
+            found["kv_store_latency_cycles"][got[i] - startup - beats] += 1
         elif s.kind == "load" and not s.stops and (on_time[i - 1] or p.kind == "load"):
             found["load_latency_cycles"][x] += 1
     tail = mode(found["reduction_tail_cycles"])

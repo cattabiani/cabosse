@@ -52,7 +52,8 @@
 // and a multiple of Lanes, V_STORE's at most L = KvPorts * LanesPerPort;
 // cap a multiple of L; the cache's addr 128-byte aligned) write a K or a V
 // cache in the order the engine's ports read it (D-062: KvPorts ports of
-// LanesPerPort lanes, E values a lane a beat, commands.kv_lane_order): each
+// LanesPerPort lanes, E values a lane a beat, commands.kv_lane_order; the
+// engine's beat is 256 bits, so its layout only at Lanes = 16): each
 // KV head's region after the last, the same offset in every channel, at the
 // global address channel * 2^ChanW + addr + offset. A group (Lanes values of
 // a head's row) is read only when its beat has a place in the queue, and

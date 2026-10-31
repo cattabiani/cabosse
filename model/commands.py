@@ -399,8 +399,8 @@ def lane_order(w: torch.Tensor, lanes: int) -> list[torch.Tensor]:
     the matrix's end in a port's last group, are zeros (the lanes mask or
     ignore them); a port with no rows in a pass streams nothing for it.
     Returns each port's beats [n_beats, LANES_PER_PORT * E], in w's dtype
-    (BF16; any other moves alike, as the tests' indices)."""
-    assert w.dim() == 2, w.shape
+    (BF16, or the tests' int32 indices, which move alike)."""
+    assert w.dim() == 2 and w.dtype in (BF16, torch.int32), (w.shape, w.dtype)
     assert lanes > 0 and lanes % LANES_PER_PORT == 0, lanes
     n, m = w.shape
     ports, n_groups, n_cols = lanes // LANES_PER_PORT, -(-n // LANES_PER_PORT), -(-m // E)
@@ -433,7 +433,7 @@ def kv_lane_order(cache: torch.Tensor, values: bool, lanes: int) -> list[torch.T
     both in lane_order. A channel with no rows of a head holds zeros there.
     Returns each port's beats [n_beats, LANES_PER_PORT * E], in the cache's
     dtype (as lane_order)."""
-    assert cache.dim() == 3, cache.shape
+    assert cache.dim() == 3 and cache.dtype in (BF16, torch.int32), (cache.shape, cache.dtype)
     kv_heads, cap, d = cache.shape
     ports = lanes // LANES_PER_PORT
     copies = values_heads(d, lanes) if values else 1

@@ -473,7 +473,9 @@ def vector_cycles(steps: tuple[Step, ...], design: dict[str, float]) -> list[flo
     store's beats go a cycle each (at least a group's), from
     `vector_startup_cycles` after its start (its groups through the chain)
     or once the writer is done with the last store's, and it is done
-    `kv_store_latency_cycles` after its last beat (its writes answered); a reduction
+    `kv_store_latency_cycles` after its last beat (its writes answered; the
+    walk is not held back by a full store queue, MemDepth groups, which
+    SmolLM2's stores do not fill); a reduction
     `reduction_tail_cycles` later (its last row's tree), whose rows end at
     least `reduction_row_cycles` apart; the next step starts once a
     reduction is done. Dones come in order, one a cycle at most."""
@@ -493,7 +495,9 @@ def vector_cycles(steps: tuple[Step, ...], design: dict[str, float]) -> list[flo
             latency += design["reduction_tail_cycles"]
         elif s.kind in STORE_KINDS:
             issued = start + issue
-            written = max(start + latency, written) + s.kv_write_bytes / commands.BEAT_BYTES
+            written = max(start + latency, written) + max(
+                s.kv_write_bytes / commands.BEAT_BYTES, issue
+            )
             latency = written - issued + design["kv_store_latency_cycles"]
         else:
             issued = start + issue

@@ -674,9 +674,8 @@ different for d < L/2 (rtl/engine.sv, `commands.kv_lane_order`).
   (perf model, 0.705 → 0.720 ms of vector time; 523 → 519 tokens/s in
   order).
 - The vector unit keeps up to 128 write bursts in flight
-  (`WrOutstanding`): with fewer, V's one-beat bursts wait for answers at a
-  write latency of 70 cycles (with 32, and half-rate addresses, SmolLM2's
-  `V_STORE` took 213 cycles against 135 at 128). F2's limit on
+  (`WrOutstanding`): a beat a cycle at a write latency of 70 cycles needs
+  more than 70, and V's bursts are one beat each. F2's limit on
   outstanding writes, and how its HBM controller handles partial writes,
   are to verify in M8.
 - A K row may be any power of two from 16 values up (a burst per group, so

@@ -128,6 +128,9 @@ def write_cache(
     address 0) in the store's layout, from its offset in each channel, in
     place: all of it, or only its rows at `position`. The elements between
     its rows are left alone."""
+    lanes = kv_ports * commands.LANES_PER_PORT  # the engine's: the stores need these
+    assert cmd.cap % lanes == 0 and cmd.m % LANES == 0 and cmd.m & (cmd.m - 1) == 0, cmd
+    assert cmd.op != Op.V_STORE or cmd.m <= lanes, cmd
     slots = cache_slots(cmd.op == Op.V_STORE, cmd.n, cmd.cap, cmd.m, kv_ports)
     channels = mem.view(np.uint16)[: (kv_ports << chan_w) // 2].reshape(kv_ports, -1)
     view = channels[:, cmd.addr // 2 : cmd.addr // 2 + slots.shape[1]]
