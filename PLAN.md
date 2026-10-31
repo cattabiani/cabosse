@@ -982,9 +982,13 @@ iteration, at most 3 placed builds.
    paths, not only the worst 3: the failing paths grouped by endpoint,
    and the logic-level distribution.
    Done on `m6/step-pipeline`: the engine tests pass unchanged (226,
-   and the 30 at 128 lanes); `engine_startup_cycles` 64 → 69 (measured,
-   reports/data/M5-engine.json); SmolLM2's commands within -0.8% to +1.7%
-   of the perf model, the first one apart. Predictions for its placed
+   and the 30 at 128 lanes); `engine_startup_cycles` 64 → 72 (measured,
+   reports/data/M5-engine.json); SmolLM2's commands within -4.5% to +1.7%
+   of the perf model, the first one apart. A review before the first
+   build (2026-10-31) found that Vivado would merge the per-group copies
+   (timing.tcl now keeps them) and long paths left in the rotations, the
+   per-bank addresses, the min of the FIFO counts, step's next unit and
+   the drain; fixed before the build, which was stopped after 12 minutes. Predictions for its placed
    build, written before it: the worst slack better than -1 ns; the step
    to tile-address path gone; most of the 288,260 failing endpoints gone
    (they hang off that path's nets); what may remain: the drain's `go`

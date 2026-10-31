@@ -105,12 +105,13 @@ cycles at 128 lanes), not the memory's latency.
 **Step control (D-051, built in M6).** Fill and step decide each beat from
 registered estimates: the DMA FIFOs' counts and the lanes' level-1
 reservations, less the beats decided since they were seen. A beat then
-reaches the DMAs, the lanes and the tile buffer 5 cycles later, through
+reaches the DMAs, the lanes and the tile buffer 6 cycles later, through
 copies per group of 4 ports (16 lanes, 16 banks); the lanes never refuse
-it. Each bank computes its own read address, and the tile buffer's
-rotations go through 2 registers. So no one-cycle signal spans the 128
-lanes. It costs 5 cycles of start-up per waiting command (69, measured)
-and a third tile slot (below). Keeping each `SCORES` row's max in
+it. Each bank has its own read and write address registers, and the tile
+buffer's rotations go through 2 registers, before their two longest hops.
+The drain takes each write group's state from registers at the group. So
+no one-cycle signal spans the 128 lanes. It costs 8 cycles of start-up per
+waiting command (72, measured, 64 before) and a third tile slot (below). Keeping each `SCORES` row's max in
 the drain, so softmax has no `MAX` command (D-054), waits for a working
 core (D-057).
 
