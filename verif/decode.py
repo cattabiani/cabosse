@@ -34,7 +34,10 @@ SMOLLM2_CHAN_W = 24  # 16 MiB: at 8191, the caches' 8.8 MiB a channel
 # F2's read latency for both of the unit's AXI channels (its write latency
 # is not documented: to measure in M8), and as many writes in flight as the
 # unit sends (WrOutstanding; F2's limit to verify in M8).
-F2_MEMORY = eng.F2_MEMORY | {"wlatency": eng.F2_LATENCY_CYCLES, "woutstanding": 128}
+F2_MEMORY = eng.F2_MEMORY | {
+    "wlatency": eng.F2_LATENCY_CYCLES,
+    "woutstanding": vector.WR_OUTSTANDING,
+}
 
 
 def cache_bytes(cmd: Command, kv_ports: int) -> int:

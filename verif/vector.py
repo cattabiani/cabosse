@@ -6,6 +6,7 @@ verif/bulk/vec_unit.cpp run on commands, and the bit-exact comparison of
 every buffer and of the memory afterwards (rtl/vec_unit.sv). An EngineStep
 stands in for an engine command among the commands."""
 
+import functools
 from dataclasses import dataclass
 
 import bulk
@@ -19,9 +20,11 @@ from golden import arith, tiny
 
 LANES = 16  # rtl/vec_unit.sv's default
 # The memory's channels in the tests: KV_PORTS of 2^CHAN_W bytes (F2: 32 of
-# 512 MiB), one byte array from address 0; KV_PORTS the engine's ports, so
-# L = 32 lanes (a V cache of head dimension 16 in 2 copies, D-062).
+# 512 MiB), one byte array from address 0; KV_PORTS the engine's ports, of
+# L lanes (a V cache of head dimension 16 in 2 copies, D-062).
 KV_PORTS, CHAN_W = 8, 14
+L = KV_PORTS * commands.LANES_PER_PORT
+WR_OUTSTANDING = 128  # rtl/vec_unit.sv's WrOutstanding
 MEM_WORDS = (KV_PORTS << CHAN_W) // 4
 CMD_WORDS = 16  # a command's words in the driver's input
 WRITE_WORDS = 3 + LANES  # an ext write's: buffer, first element, mask, data
@@ -100,33 +103,17 @@ def tensor_at(mem: np.ndarray, at: int, shape: tuple[int, ...], dtype: torch.dty
     return torch.from_numpy(raw).view(dtype).reshape(shape)
 
 
-def cache_slots(cmd: Command, kv_ports: int) -> np.ndarray:
-    """Where a KV_STORE's or V_STORE's cache is in each channel's region
-    (commands.kv_lane_order, D-062): per channel and BF16 element of the
-    region, the element of the cache [n, cap, m] (its flat index) there, or
-    -1 where no element is (the store leaves it alone)."""
-    shape = (cmd.n, cmd.cap, cmd.m)
-    index = torch.arange(1, cmd.n * cmd.cap * cmd.m + 1, dtype=torch.int32).reshape(shape)
-    lanes = kv_ports * commands.LANES_PER_PORT
-    per_port = commands.kv_lane_order(index, cmd.op == Op.V_STORE, lanes)
-    return torch.stack(per_port).reshape(kv_ports, -1).numpy() - 1
-
-
-def cache_view(mem: np.ndarray, cmd: Command, kv_ports: int, chan_w: int, n: int) -> np.ndarray:
-    """The n BF16 elements from the cache's offset in each of the channels
-    (the memory's image from address 0), [kv_ports, n]: a view, writes go
-    to the memory."""
-    channels = mem.view(np.uint16)[: (kv_ports << chan_w) // 2].reshape(kv_ports, -1)
-    return channels[:, cmd.addr // 2 : cmd.addr // 2 + n]
-
-
-def read_cache(mem: np.ndarray, cmd: Command, kv_ports: int, chan_w: int) -> np.ndarray:
-    """The store's cache from the memory, BF16 bits [n, cap, m]."""
-    slots = cache_slots(cmd, kv_ports)
-    view, here = cache_view(mem, cmd, kv_ports, chan_w, slots.shape[1]), slots >= 0
-    out = np.zeros(cmd.n * cmd.cap * cmd.m, dtype=np.uint16)
-    out[slots[here]] = view[here]  # of V's copies, the last
-    return out.reshape(cmd.n, cmd.cap, cmd.m)
+@functools.cache
+def cache_slots(values: bool, n: int, cap: int, m: int, kv_ports: int) -> np.ndarray:
+    """Where a KV_STORE's (values: V_STORE's) cache [n, cap, m] is in each
+    channel's region (commands.kv_lane_order, D-062): per channel and BF16
+    element of the region, the cache's element there (its flat index), or
+    -1 where none is (the store leaves it alone). Read-only."""
+    index = torch.arange(1, n * cap * m + 1, dtype=torch.int32).reshape(n, cap, m)
+    per_port = commands.kv_lane_order(index, values, kv_ports * commands.LANES_PER_PORT)
+    slots = torch.stack(per_port).reshape(kv_ports, -1).numpy() - 1
+    slots.flags.writeable = False
+    return slots
 
 
 def write_cache(
@@ -137,11 +124,14 @@ def write_cache(
     chan_w: int,
     position: int | None = None,
 ) -> None:
-    """The cache (BF16 bits [n, cap, m]) into the memory in the store's
-    layout, in place, or only its rows at `position`; the elements between
-    its rows left alone."""
-    slots = cache_slots(cmd, kv_ports)
-    view, here = cache_view(mem, cmd, kv_ports, chan_w, slots.shape[1]), slots >= 0
+    """The cache (BF16 bits [n, cap, m]) into the memory's image (from
+    address 0) in the store's layout, from its offset in each channel, in
+    place: all of it, or only its rows at `position`. The elements between
+    its rows are left alone."""
+    slots = cache_slots(cmd.op == Op.V_STORE, cmd.n, cmd.cap, cmd.m, kv_ports)
+    channels = mem.view(np.uint16)[: (kv_ports << chan_w) // 2].reshape(kv_ports, -1)
+    view = channels[:, cmd.addr // 2 : cmd.addr // 2 + slots.shape[1]]
+    here = slots >= 0
     if position is not None:
         here &= slots // cmd.m % cmd.cap == position
     view[here] = cache.ravel()[slots[here]]
@@ -166,8 +156,8 @@ def memory_command(
         commands.load_command(c, buf, tensor, s.token, position)
         return
     assert base == 0, base  # the cache's channels start at address 0
-    bits = read_cache(mem, c, kv_ports, chan_w)
-    cache = torch.from_numpy(bits.astype(np.int16)).view(commands.BF16)
+    # Only the position's rows change: the rest of the cache need not be read.
+    cache = torch.zeros(c.n, c.cap, c.m, dtype=commands.BF16)
     commands.kv_store_command(c, buf, cache, position)
     rows = cache.view(torch.int16).numpy().view(np.uint16)
     write_cache(mem, c, rows, kv_ports, chan_w, position)
@@ -350,13 +340,14 @@ def check(
     mem: np.ndarray | None = None,
     base: int = 0,
     kv_ports: int = KV_PORTS,
+    chan_w: int = CHAN_W,
     **plusargs: int,
 ) -> Result:
     """Run, then compare every buffer and the memory (zeros by default) with
     golden()."""
     mem = zero_memory() if mem is None else mem
-    result = run(steps, start, length, mem, base, kv_ports, **plusargs)
-    want_buf, want_mem = golden(steps, start, mem, base, kv_ports)
+    result = run(steps, start, length, mem, base, kv_ports, chan_w, **plusargs)
+    want_buf, want_mem = golden(steps, start, mem, base, kv_ports, chan_w)
     assert_same(result.buffers, want_buf, label)
     bad = np.flatnonzero(result.mem != want_mem)
     assert not len(bad), (

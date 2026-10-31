@@ -667,16 +667,18 @@ different for d < L/2 (rtl/engine.sv, `commands.kv_lane_order`).
 - A V cache is written by a new opcode, `V_STORE` (17), not a flag:
   the FLAGS byte's 8 bits are all taken. `KV_STORE` now writes K only.
 - The writer sends a burst per group of 16 values for K (4 beats) and
-  a one-beat burst per channel and copy for V; its address side starts at
-  the walk, its beats once the values leave the chain. SmolLM2 at position
-  0 on the RTL: 180,523 cycles for the vector unit's whole step against
-  the perf model's 180,463 (it models both sides, `write_burst_cycles` =
-  2); the stores add about 22 µs a token at 250 MHz (perf model).
+  a one-beat burst per channel and copy for V, a beat a cycle (port_wdma's
+  address channel now takes a burst a cycle, two deep). SmolLM2 at
+  position 0 on the RTL: 179,893 cycles for the vector unit's whole step,
+  the perf model's exactly; the stores add about 15 µs a token at 250 MHz
+  (perf model, 0.705 → 0.720 ms of vector time; 523 → 519 tokens/s in
+  order).
 - The vector unit keeps up to 128 write bursts in flight
   (`WrOutstanding`): with fewer, V's one-beat bursts wait for answers at a
-  write latency of 70 cycles (with 32, SmolLM2's `V_STORE` took 213
-  cycles against 135). F2's limit on outstanding writes, and how its HBM
-  controller handles partial writes, are to verify in M8.
+  write latency of 70 cycles (with 32, and half-rate addresses, SmolLM2's
+  `V_STORE` took 213 cycles against 135 at 128). F2's limit on
+  outstanding writes, and how its HBM controller handles partial writes,
+  are to verify in M8.
 - A K row may be any power of two from 16 values up (a burst per group, so
   no AXI3 limit on `d`); `V_STORE` needs `d` <= L.
 

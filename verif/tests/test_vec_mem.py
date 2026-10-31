@@ -29,8 +29,7 @@ import rtl
 
 LOAD_ADDR = 0x400  # channel 0, below the cache's offset
 CACHE_ADDR = 0x2000  # the KV cache's offset in every channel
-LANES = vector.KV_PORTS * commands.LANES_PER_PORT  # the engine's L: 32
-CAP = LANES  # cache rows per head: one tile
+CAP = vector.L  # cache rows per head: one tile
 SLOW = {"latency": 30, "rate": 600, "pause": 20, "pause_max": 6}
 SLOW_WRITES = {"wlatency": 40, "wrate": 600, "wpause": 20, "wpause_max": 6, "waw_after_w": 1}
 
@@ -59,8 +58,7 @@ def n_bursts(cmd: Command) -> int:
     groups = cmd.n * cmd.m // vector.LANES
     if cmd.op == Op.KV_STORE:
         return groups
-    copies = 2 if 2 * cmd.m <= LANES else 1
-    return groups * commands.E * copies
+    return groups * commands.E * commands.values_heads(cmd.m, vector.L)
 
 
 # m: a beat (BF16: 16, FP32: 8), whole groups, a partial FP32 group, a long row.

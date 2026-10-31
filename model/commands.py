@@ -412,6 +412,12 @@ def lane_order(w: torch.Tensor, lanes: int) -> list[torch.Tensor]:
     return [beats[p::ports].reshape(-1, LANES_PER_PORT * E) for p in range(ports)]
 
 
+def values_heads(d: int, lanes: int) -> int:
+    """The heads a VALUES pass takes on `lanes` lanes (rtl/engine.sv's
+    Heads, at most VALUES_HEADS), so the copies of V (D-062)."""
+    return max(1, min(VALUES_HEADS, lanes // d))
+
+
 def kv_region_beats(cap: int, d: int, values: bool, lanes: int) -> int:
     """The beats of one KV head's region in each channel (kv_lane_order):
     K's cap / lanes tiles of ceil(d / E) beats, or V's cap / E."""
@@ -430,7 +436,7 @@ def kv_lane_order(cache: torch.Tensor, values: bool, lanes: int) -> list[torch.T
     assert cache.dim() == 3, cache.shape
     kv_heads, cap, d = cache.shape
     ports = lanes // LANES_PER_PORT
-    copies = max(1, min(VALUES_HEADS, lanes // d)) if values else 1
+    copies = values_heads(d, lanes) if values else 1
     region = kv_region_beats(cap, d, values, lanes)
     out = torch.zeros(ports, kv_heads, region, LANES_PER_PORT * E, dtype=cache.dtype)
     for kv in range(kv_heads):

@@ -174,8 +174,7 @@ module vec_unit
   localparam int unsigned EW = $clog2(E);
   localparam int unsigned LanesPerPort = Lanes / E;    // the engine's lanes a port: a beat's chunks
   localparam int unsigned PpW = $clog2(LanesPerPort);
-  localparam int unsigned KvBurst = LanesPerPort;      // K: a group's beats
-  localparam int unsigned LenW = $clog2(KvBurst + 1);
+  localparam int unsigned LenW = $clog2(LanesPerPort + 1);  // a burst's beats: K's group
   localparam int unsigned MW = $clog2(MemDepth + 1);
   localparam int unsigned DoneW = $clog2(Dones + 1);
   localparam int unsigned Depth = (Len + Lanes - 1) / Lanes;  // a bank's entries
@@ -196,7 +195,7 @@ module vec_unit
   if (KvPorts != 2 ** KvW || MemAddrW < ChanW + KvW) begin : gen_mem_check
     $error("KvPorts must be a power of two, MemAddrW hold its channels");
   end
-  if (Lanes < 2 * E || KvBurst > 16) begin : gen_kv_check
+  if (Lanes < 2 * E || LanesPerPort > 16) begin : gen_kv_check
     $error("Lanes must be 2 * E to 16 * E: a beat's chunks, a K burst (AXI3)");
   end
 
@@ -283,7 +282,7 @@ module vec_unit
   logic             red_q;   // a reduction runs: no command is taken until its last row is written
   logic             pend_q;  // a row's last group went, its partials not yet in the tree
   logic             tree_busy, stall;
-  logic             is_load, is_kv, is_v, ld_issue_q, ld_ready, kv_room;
+  logic             is_load, is_store, is_k, is_v, ld_issue_q, ld_ready, kv_room;
   logic [MW-1:0]    kv_credit_q;  // the stores' queue: places no group read so far will take
   logic             prep_q;       // a LOAD or store taken last cycle: its addresses next
   logic             tags_ready;   // a done tag has a place: fewer than Dones commands open
@@ -292,8 +291,9 @@ module vec_unit
   logic [MemAddrW-1:0] mbase_q, region_q, kv_off_q;
 
   assign is_load = cur_q.op == OpLoad;
-  assign is_kv   = store(cur_q.op);
-  assign is_v    = cur_q.op == OpVStore;
+  assign is_store = store(cur_q.op);
+  assign is_k     = cur_q.op == OpKvStore;
+  assign is_v     = cur_q.op == OpVStore;
 
   always_comb begin
     half       = cur_q.len >> 1;
@@ -319,7 +319,7 @@ module vec_unit
   // A reduction row's last group waits for the tree, a LOAD group for its
   // beats, a store's group for a place in the queue.
   assign stall = reduction(grp.is.op) && row_end && (pend_q || tree_busy)
-              || is_load && !ld_ready || is_kv && (prep_q || !kv_room);
+              || is_load && !ld_ready || is_store && (prep_q || !kv_room);
   assign grp_fire    = active_q && !stall;
   assign cmd_ready_o = !red_q && (!active_q || grp.is.last && grp_fire) && tags_ready;
 
@@ -359,14 +359,14 @@ module vec_unit
   assign row_beats = ld_bf16 ? cur_q.len >> LW : cur_q.len >> (LW - 1);
   assign k_cols    = cur_q.len >> EW;           // K: a row's beats
   assign k_pass    = cur_q.mrow >> (PpW + KvW);  // K: q / L
-  assign mul_a     = is_kv ? k_pass : cur_q.mrow;
-  assign mul_b     = is_kv ? k_cols : row_beats;
+  assign mul_a     = is_k ? k_pass : cur_q.mrow;
+  assign mul_b     = is_k ? k_cols : row_beats;
   assign region_beats = is_v ? cur_q.cap >> EW : (cur_q.cap >> (PpW + KvW)) * k_cols;
 
   always_ff @(posedge clk_i) begin
     prep_q <= rst_ni && cmd_valid_i && cmd_ready_o && (cmd_op_i == OpLoad || store(cmd_op_i));
     if (prep_q) begin
-      mbase_q  <= (is_kv && !is_v ? MemAddrW'(cur_q.mrow[PpW+:KvW]) << ChanW : '0) + cur_q.addr
+      mbase_q  <= (is_k ? MemAddrW'(cur_q.mrow[PpW+:KvW]) << ChanW : '0) + cur_q.addr
                 + (is_v ? MemAddrW'(cur_q.mrow >> EW) << BeatW
                         : MemAddrW'(mul_a) * MemAddrW'(mul_b) << BeatW);
       region_q <= MemAddrW'(region_beats) << BeatW;
@@ -468,19 +468,20 @@ module vec_unit
     logic [LW-1:0] pos;  // q mod Lanes: K's slot, V's element in its chunk
   } kv_fmt_t;
 
-  localparam int unsigned BiW = (PpW > EW ? PpW : EW) + 1;  // a beat or burst of a group
+  localparam int unsigned BiW = (PpW > EW ? PpW : EW) + 1;  // a group's beat: V's chunk, copy
   kv_burst_t            kb_in, kb;
   kv_fmt_t              kf_in, kf;
   logic                 kv_push, kv_beat_valid, q_valid, q_take, kb_valid, kb_go, kb_last;
   logic                 wr_ready, in_ready, beat_go, wb_last, wr_done, wr_done_tag;
   logic [DataWidth-1:0] kv_beat, q_beat, kv_w_data;
   logic [Lanes*2-1:0]   kv_w_strb;
-  logic [BiW-1:0]       kb_q, wb_q;  // the group's burst, beat: V's chunk, its copy at bit EW
+  logic [EW:0]          kb_q;  // the group's burst: V's chunk, its copy at bit EW
+  logic [BiW-1:0]       wb_q;  // the group's beat: K's chunk; V's as kb_q
   // verilator lint_off UNUSEDSIGNAL
-  logic                 unused_ready, unused_kf_valid;
+  logic                 unused_ready, unused_kb_ready, unused_kf_ready, unused_kf_valid;
   // verilator lint_on UNUSEDSIGNAL
   assign kv_room = kv_credit_q != '0;
-  assign kv_push = grp_fire && is_kv;
+  assign kv_push = grp_fire && is_store;
   assign kb_in   = '{addr: mbase_q + kv_off_q + (is_v ? MemAddrW'(g_q >> PpW) << ChanW
                                                       : MemAddrW'(g_q >> EW) << BeatW),
                      v: is_v, two: is_v && cur_q.len <= AddrW'(KvPorts * LanesPerPort / 2),
@@ -505,9 +506,7 @@ module vec_unit
     .clk_i,
     .rst_ni,
     .in_valid_i (kv_push),
-    // verilator lint_off PINCONNECTEMPTY
-    .in_ready_o (),
-    // verilator lint_on PINCONNECTEMPTY
+    .in_ready_o (unused_kb_ready),
     .in_data_i  (kb_in),
     .out_valid_o(kb_valid),
     .out_ready_i(kb_go && kb_last),
@@ -521,9 +520,7 @@ module vec_unit
     .clk_i,
     .rst_ni,
     .in_valid_i (kv_push),
-    // verilator lint_off PINCONNECTEMPTY
-    .in_ready_o (),
-    // verilator lint_on PINCONNECTEMPTY
+    .in_ready_o (unused_kf_ready),
     .in_data_i  (kf_in),
     .out_valid_o(unused_kf_valid),  // with the group's beat
     .out_ready_i(q_take),
@@ -533,9 +530,14 @@ module vec_unit
     // verilator lint_on PINCONNECTEMPTY
   );
 
-  // A group's bursts: K's one of KvBurst beats; V's E of one beat, then the
-  // copy's. Its last carries the command's last group's tag.
-  assign kb_last = !kb.v || kb_q[EW-1:0] == EW'(E - 1) && kb_q[EW] == kb.two;
+  // V's last burst or beat of a group: its last chunk, of the last copy.
+  function automatic logic v_group_end(logic [EW:0] i, logic two);
+    return i[EW-1:0] == EW'(E - 1) && i[EW] == two;
+  endfunction
+
+  // A group's bursts: K's one of LanesPerPort beats; V's E of one beat,
+  // then the copy's. Its last carries the command's last group's tag.
+  assign kb_last = !kb.v || v_group_end(kb_q, kb.two);
   assign kb_go   = kb_valid && wr_ready;
 
   always_ff @(posedge clk_i) begin
@@ -547,8 +549,7 @@ module vec_unit
   // slot, V's chunk of LanesPerPort dimensions each E times (dimension i of
   // the chunk in elements E * i to E * i + E - 1); the strobes pick K's slot,
   // V's element of each.
-  assign wb_last = kf.v ? wb_q[EW-1:0] == EW'(E - 1) && wb_q[EW] == kf.two
-                        : wb_q[PpW-1:0] == PpW'(LanesPerPort - 1);
+  assign wb_last = kf.v ? v_group_end(wb_q[EW:0], kf.two) : wb_q[PpW-1:0] == PpW'(LanesPerPort - 1);
   assign beat_go = q_valid && in_ready;
   assign q_take  = beat_go && wb_last;
 
@@ -571,7 +572,7 @@ module vec_unit
   port_wdma #(
     .AddrWidth  (MemAddrW),
     .DataWidth  (DataWidth),
-    .MaxBurst   (KvBurst),
+    .MaxBurst   (LanesPerPort),
     .Outstanding(WrOutstanding)
   ) u_wr (
     .clk_i,
@@ -580,7 +581,7 @@ module vec_unit
     .cmd_ready_o(wr_ready),
     .cmd_addr_i (kb.addr + (kb.v ? MemAddrW'(kb_q[EW-1:0]) + (kb_q[EW] ? MemAddrW'(kb.step) : '0)
                                    << ChanW : '0)),
-    .cmd_beats_i(kb.v ? LenW'(1) : LenW'(KvBurst)),
+    .cmd_beats_i(kb.v ? LenW'(1) : LenW'(LanesPerPort)),
     .cmd_tag_i  (kb.last && kb_last),
     .in_valid_i (q_valid),
     .in_ready_o (in_ready),

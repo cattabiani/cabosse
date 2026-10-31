@@ -41,7 +41,6 @@ DESIGN = {
     "reduction_row_cycles": 6,
     "load_latency_cycles": 30,
     "kv_store_latency_cycles": 40,
-    "write_burst_cycles": 2,
     "softmax_fused": 0,
     "max_in_drain": 0,
     "kv_tiles_shared": 0,
@@ -180,19 +179,17 @@ VECTOR_CASES = [
     # A LOAD a beat (32 bytes) a cycle after its latency.
     ([vector_step("load", (1, 64), weight_bytes=128)], [30 + 4 + 10]),
     # A store's writes answered later; a step after it waits for its done.
-    ([vector_step("kv_store", (2, 8)), vector_step("add", (1, 8))], [4 + 10 + 40, 1]),
-    # Its writer past its groups: 12 beats a cycle from the start-up on;
-    # 24 bursts 2 apart from its start.
-    ([vector_step("kv_store", (2, 8), kv_write_bytes=12 * 32)], [10 + 12 + 40]),
-    ([vector_step("v_store", (2, 8), kv_write_bytes=12 * 32, write_bursts=24)], [48 + 40]),
-    # The writer's sides are shared: the second store's address waits for
-    # the first's (to 48), its 48 beats for the first's 12 (to 10 + 12).
+    ([vector_step("kv_store", (2, 8), kv_write_bytes=4 * 32), vector_step("add", (1, 8))], [54, 1]),
+    # Its writer past its groups: 12 beats a cycle from the start-up on.
+    ([vector_step("v_store", (2, 8), kv_write_bytes=12 * 32)], [10 + 12 + 40]),
+    # The writer is shared: the second store's 48 beats wait for the
+    # first's 12 (to 10 + 12), not for its own start-up (4 + 10).
     (
         [
-            vector_step("v_store", (2, 8), kv_write_bytes=12 * 32, write_bursts=24),
-            vector_step("kv_store", (2, 8), kv_write_bytes=48 * 32, write_bursts=1),
+            vector_step("v_store", (2, 8), kv_write_bytes=12 * 32),
+            vector_step("kv_store", (2, 8), kv_write_bytes=48 * 32),
         ],
-        [48 + 40, (22 + 48 + 40) - 88],
+        [10 + 12 + 40, (22 + 48 + 40) - 62],
     ),
 ]
 

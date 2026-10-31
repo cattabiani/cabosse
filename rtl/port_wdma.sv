@@ -68,34 +68,38 @@ module port_wdma #(
     $error("port_wdma: DataWidth must be a power of two, 8 to 1024 bits");
   end
 
-  // The address channel holds one burst; its length waits in lens for its
-  // data from the command's take, its tag in tags for its response. sent_q
-  // counts bursts sent and not yet answered.
-  logic [AddrWidth-1:0] addr_q;
-  logic [LenW-1:0]      beats_q, lens_out, beat_q;
-  logic                 aw_q, aw_fire, lens_valid, lens_ready, tags_ready, cmd_fire, w_fire;
+  // The address channel holds two bursts, so it takes one a cycle; a
+  // burst's length waits in lens for its data from the command's take, its
+  // tag in tags for its response. sent_q counts bursts sent and not yet
+  // answered.
+  logic [AddrWidth-1:0] aw_addr;
+  logic [LenW-1:0]      aw_beats, lens_out, beat_q;
+  logic                 aw_ready, aw_valid, aw_fire, lens_valid, lens_ready, tags_ready;
+  logic                 cmd_fire, w_fire;
   logic [OW-1:0]        sent_q;
 
-  assign cmd_ready_o = !aw_q && lens_ready && tags_ready;
+  assign cmd_ready_o = aw_ready && lens_ready && tags_ready;
   assign cmd_fire    = cmd_valid_i && cmd_ready_o;
-  assign aw_valid_o  = aw_q && sent_q != OW'(Outstanding);
+  assign aw_valid_o  = aw_valid && sent_q != OW'(Outstanding);
   assign aw_fire     = aw_valid_o && aw_ready_i;
-  assign aw_addr_o   = addr_q;
-  assign aw_len_o    = 8'(beats_q - 1'b1);
+  assign aw_addr_o   = aw_addr;
+  assign aw_len_o    = 8'(aw_beats - 1'b1);
   assign aw_size_o   = 3'($clog2(BeatBytes));
   assign aw_burst_o  = Incr;
 
-  always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
-      aw_q <= 1'b0;
-    end else if (cmd_fire) begin
-      aw_q    <= 1'b1;
-      addr_q  <= cmd_addr_i;
-      beats_q <= cmd_beats_i;
-    end else if (aw_fire) begin
-      aw_q <= 1'b0;
-    end
-  end
+  stream_fifo #(.Width(AddrWidth + LenW), .Depth(2)) u_aw (
+    .clk_i,
+    .rst_ni,
+    .in_valid_i (cmd_fire),
+    .in_ready_o (aw_ready),
+    .in_data_i  ({cmd_addr_i, cmd_beats_i}),
+    .out_valid_o(aw_valid),
+    .out_ready_i(aw_fire),
+    .out_data_o ({aw_addr, aw_beats}),
+    // verilator lint_off PINCONNECTEMPTY
+    .count_o    ()
+    // verilator lint_on PINCONNECTEMPTY
+  );
 
   stream_fifo #(.Width(LenW), .Depth(Outstanding)) u_lens (
     .clk_i,
@@ -111,11 +115,11 @@ module port_wdma #(
     // verilator lint_on PINCONNECTEMPTY
   );
 
-  // Taken and not yet answered: Outstanding sent, one in the address channel.
+  // Taken and not yet answered: Outstanding sent, two in the address channel.
   // verilator lint_off UNUSEDSIGNAL
   logic unused_tag_valid;
   // verilator lint_on UNUSEDSIGNAL
-  stream_fifo #(.Width(1), .Depth(Outstanding + 1)) u_tags (
+  stream_fifo #(.Width(1), .Depth(Outstanding + 2)) u_tags (
     .clk_i,
     .rst_ni,
     .in_valid_i (cmd_fire),

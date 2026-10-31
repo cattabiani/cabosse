@@ -28,8 +28,8 @@ the golden model's decode step). Four times follow from the work:
   stops at (it reads a result not yet written, D-045) starts at the done
   before it and adds `vector_startup_cycles`; the others start behind the
   previous command's groups, so their latencies overlap. A `LOAD` adds
-  `load_latency_cycles`; a store (`KV_STORE`, `V_STORE`) its writes past
-  its groups, a beat a cycle and a burst every `write_burst_cycles`, then
+  `load_latency_cycles`; a store (`KV_STORE`, `V_STORE`) its beats past
+  its groups, a beat a cycle on a writer the stores share, then
   `kv_store_latency_cycles` to its done (D-044); a reduction its tree
   (`reduction_tail_cycles`, and rows at least `reduction_row_cycles`
   apart). The latencies are measured on the
@@ -103,7 +103,6 @@ v0: first-order design choices (M2), from `model/designs/v0.json`:
 | `reduction_row_cycles` | 159 cycles | measured by us | a reduction's rows end at least this far apart: a row's last group waits for the tree to take the row before; measured as vector_startup_cycles |
 | `load_latency_cycles` | 74 cycles | measured by us | from LOAD's start to its first beat: the address registered, F2's HBM read latency (70 cycles, docs/f2.md; our path's waits for M8; scenarios with another clock reuse it, an estimate: the memory's latency is in ns); measured as vector_startup_cycles |
 | `kv_store_latency_cycles` | 72 cycles | measured by us | from KV_STORE's last beat leaving the chain to its last write answered (D-044), at the memory model's write latency of 70 cycles (F2's is not documented; M8; reused by scenarios with another clock, an estimate); measured as vector_startup_cycles |
-| `write_burst_cycles` | 2 cycles/burst | choice | rtl/port_wdma.sv: its address channel takes a burst every other cycle (one register), so V_STORE's one-beat bursts (D-062) go at half rate |
 | `softmax_fused` | 0 flag | choice | D-054: softmax's subtraction, exp and sum in one vector pass, with an FP32 adder before and after each slot's chain; deferred (D-057) |
 | `max_in_drain` | 0 flag | choice | D-054: the engine keeps each score row's max as it writes it, so softmax has no MAX pass; deferred (D-057) |
 | `kv_tiles_shared` | 0 flag | choice | Q-27: a K or V tile serves every query head of its group; not planned |
@@ -161,30 +160,30 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: predictions -->
 | scenario | position | tokens/s | in order | limited by | memory (ms) | engine (ms) | vector (ms) | commands (ms) |
 |---|---|---|---|---|---|---|---|---|
-| as planned | 0 | 326–843 | 518 | engine | 1.138 | 1.187 | 0.722 | 0.021 |
-| as planned | 1023 | 260–689 | 414 | engine | 1.435 | 1.452 | 0.941 | 0.021 |
-| as planned | 8191 | 98–283 | 149 | memory | 3.528 | 3.495 | 3.178 | 0.021 |
+| as planned | 0 | 326–843 | 519 | engine | 1.138 | 1.187 | 0.720 | 0.021 |
+| as planned | 1023 | 260–689 | 415 | engine | 1.435 | 1.452 | 0.939 | 0.021 |
+| as planned | 8191 | 98–283 | 149 | memory | 3.528 | 3.495 | 3.176 | 0.021 |
 | 64 lanes x 8, A = 32 | 0 | 329–855 | 525 | engine | 1.138 | 1.170 | 0.714 | 0.021 |
 | 64 lanes x 8, A = 32 | 1023 | 240–563 | 366 | engine | 1.435 | 1.777 | 0.933 | 0.021 |
 | 64 lanes x 8, A = 32 | 8191 | 76–154 | 103 | engine | 3.527 | 6.494 | 3.170 | 0.021 |
-| 512 lanes x 1, A = 4 | 0 | 292–648 | 438 | engine | 1.138 | 1.542 | 0.722 | 0.021 |
-| 512 lanes x 1, A = 4 | 1023 | 216–450 | 314 | engine | 1.435 | 2.224 | 0.941 | 0.021 |
-| 512 lanes x 1, A = 4 | 8191 | 70–133 | 94 | engine | 3.528 | 7.493 | 3.178 | 0.021 |
-| core at 125 MHz | 0 | 200–421 | 259 | engine | 1.138 | 2.373 | 1.444 | 0.043 |
-| core at 125 MHz | 1023 | 160–344 | 207 | engine | 1.435 | 2.904 | 1.882 | 0.043 |
-| core at 125 MHz | 8191 | 59–143 | 75 | engine | 3.528 | 6.990 | 6.356 | 0.043 |
-| 256 lanes, HBM at 450 MHz | 0 | 488–1385 | 706 | vector | 0.632 | 0.673 | 0.722 | 0.021 |
-| 256 lanes, HBM at 450 MHz | 1023 | 380–1063 | 546 | vector | 0.797 | 0.869 | 0.941 | 0.021 |
-| 256 lanes, HBM at 450 MHz | 8191 | 132–315 | 178 | vector | 1.960 | 2.428 | 3.178 | 0.021 |
-| fused softmax, max in drain | 0 | 368–843 | 634 | engine | 1.138 | 1.187 | 0.370 | 0.020 |
-| fused softmax, max in drain | 1023 | 293–689 | 505 | engine | 1.435 | 1.452 | 0.507 | 0.020 |
-| fused softmax, max in drain | 8191 | 117–283 | 199 | memory | 3.528 | 3.495 | 1.474 | 0.020 |
-| KV tiles shared | 0 | 326–843 | 518 | engine | 1.137 | 1.187 | 0.722 | 0.021 |
-| KV tiles shared | 1023 | 274–689 | 414 | engine | 1.236 | 1.452 | 0.941 | 0.021 |
-| KV tiles shared | 8191 | 116–286 | 149 | engine | 1.934 | 3.495 | 3.178 | 0.021 |
-| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 0 | 590–1486 | 941 | engine | 0.632 | 0.673 | 0.370 | 0.020 |
-| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 1023 | 456–1150 | 716 | engine | 0.797 | 0.869 | 0.507 | 0.020 |
-| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 8191 | 170–412 | 255 | engine | 1.960 | 2.428 | 1.474 | 0.020 |
+| 512 lanes x 1, A = 4 | 0 | 292–648 | 438 | engine | 1.138 | 1.542 | 0.720 | 0.021 |
+| 512 lanes x 1, A = 4 | 1023 | 216–450 | 314 | engine | 1.435 | 2.224 | 0.939 | 0.021 |
+| 512 lanes x 1, A = 4 | 8191 | 70–133 | 94 | engine | 3.528 | 7.493 | 3.176 | 0.021 |
+| core at 125 MHz | 0 | 200–421 | 259 | engine | 1.138 | 2.373 | 1.439 | 0.043 |
+| core at 125 MHz | 1023 | 160–344 | 207 | engine | 1.435 | 2.904 | 1.878 | 0.043 |
+| core at 125 MHz | 8191 | 59–143 | 75 | engine | 3.528 | 6.990 | 6.351 | 0.043 |
+| 256 lanes, HBM at 450 MHz | 0 | 489–1390 | 707 | vector | 0.632 | 0.673 | 0.720 | 0.021 |
+| 256 lanes, HBM at 450 MHz | 1023 | 381–1065 | 547 | vector | 0.797 | 0.869 | 0.939 | 0.021 |
+| 256 lanes, HBM at 450 MHz | 8191 | 132–315 | 178 | vector | 1.960 | 2.428 | 3.176 | 0.021 |
+| fused softmax, max in drain | 0 | 369–843 | 635 | engine | 1.138 | 1.187 | 0.368 | 0.020 |
+| fused softmax, max in drain | 1023 | 293–689 | 506 | engine | 1.435 | 1.452 | 0.504 | 0.020 |
+| fused softmax, max in drain | 8191 | 117–283 | 199 | memory | 3.528 | 3.495 | 1.472 | 0.020 |
+| KV tiles shared | 0 | 326–843 | 519 | engine | 1.137 | 1.187 | 0.720 | 0.021 |
+| KV tiles shared | 1023 | 274–689 | 415 | engine | 1.236 | 1.452 | 0.939 | 0.021 |
+| KV tiles shared | 8191 | 116–286 | 149 | engine | 1.934 | 3.495 | 3.176 | 0.021 |
+| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 0 | 591–1486 | 943 | engine | 0.632 | 0.673 | 0.368 | 0.020 |
+| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 1023 | 456–1150 | 718 | engine | 0.797 | 0.869 | 0.504 | 0.020 |
+| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 8191 | 170–412 | 255 | engine | 1.960 | 2.428 | 1.472 | 0.020 |
 <!-- end: predictions -->
 
 ## Sensitivity
@@ -196,7 +195,7 @@ Tokens/s (overlapped) at position 1023, with the input scaled ×0.5 / ×1 / ×2:
 
 | input | as planned | 64 lanes x 8, A = 32 | 512 lanes x 1, A = 4 | core at 125 MHz | 256 lanes, HBM at 450 MHz | fused softmax, max in drain | KV tiles shared | 256 lanes, HBM at 450 MHz, fused softmax, max in drain |
 |---|---|---|---|---|---|---|---|---|
-| `hbm_port_bytes` (to verify) | 377 / 689 / 689 | 377 / 563 / 563 | 377 / 450 / 450 | 344 / 344 / 344 | 678 / 1063 / 1063 | 377 / 689 / 689 | 437 / 689 / 689 | 678 / 1150 / 1150 |
-| `hbm_read_bytes_per_s` (measured by AWS) | 348 / 689 / 689 | 348 / 563 / 563 | 348 / 450 / 450 | 344 / 344 / 344 | 627 / 1063 / 1063 | 348 / 689 / 689 | 404 / 689 / 689 | 627 / 1150 / 1150 |
-| `issue_cycles` (guess) | 689 / 689 / 689 | 563 / 563 / 563 | 450 / 450 / 450 | 344 / 344 / 344 | 1063 / 1063 / 1063 | 689 / 689 / 689 | 689 / 689 / 689 | 1150 / 1150 / 1150 |
+| `hbm_port_bytes` (to verify) | 377 / 689 / 689 | 377 / 563 / 563 | 377 / 450 / 450 | 344 / 344 / 344 | 678 / 1065 / 1065 | 377 / 689 / 689 | 437 / 689 / 689 | 678 / 1150 / 1150 |
+| `hbm_read_bytes_per_s` (measured by AWS) | 348 / 689 / 689 | 348 / 563 / 563 | 348 / 450 / 450 | 344 / 344 / 344 | 627 / 1065 / 1065 | 348 / 689 / 689 | 404 / 689 / 689 | 627 / 1150 / 1150 |
+| `issue_cycles` (guess) | 689 / 689 / 689 | 563 / 563 / 563 | 450 / 450 / 450 | 344 / 344 / 344 | 1065 / 1065 / 1065 | 689 / 689 / 689 | 689 / 689 / 689 | 1150 / 1150 / 1150 |
 <!-- end: sensitivity -->

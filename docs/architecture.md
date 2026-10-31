@@ -225,9 +225,8 @@ every channel.
 - `KV_STORE` writes a K row as `head_dim / 4` beats on one channel, a
   burst per 4; `V_STORE` writes a V row as one one-beat burst per channel
   and copy. Each beat has the row's 8 bytes enabled (AXI write strobes).
-  For SmolLM2 a token's stores take about 240 cycles a layer on the
-  writer: V's 96 bursts at one address every 2 cycles (`port_wdma`), K's
-  48 beats.
+  The writer sends a beat a cycle: for SmolLM2 a layer's stores are 144
+  beats (K's 48, V's 96).
 - Every query head reads its KV head's K and V: nothing is shared by the
   heads of a group, so a GQA model reads K and V once per query head
   (Q-27). Simple, and free while the memory keeps up with the engine.

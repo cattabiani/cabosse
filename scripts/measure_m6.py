@@ -77,7 +77,7 @@ def latencies(steps: tuple[perf.Step, ...], got: list[int]) -> dict[str, collect
     command that stops; reduction_tail_cycles past the start-up for a
     reduction of one row that stops; reduction_row_cycles for one of more
     rows, each shorter than that; kv_store_latency_cycles past the start-up
-    and the writes past its groups (perf.store_writes) for a store
+    and its beats past its groups (a beat a cycle) for a store
     that stops; load_latency_cycles for a LOAD right behind a LOAD or an
     elementwise command done on time (the latency the two share is the
     start-up; after a reduction or a store it starts later)."""
@@ -101,11 +101,8 @@ def latencies(steps: tuple[perf.Step, ...], got: list[int]) -> dict[str, collect
         if s.kind in perf.REDUCTION_KINDS and s.stops and s.walk[0] == 1:
             found["reduction_tail_cycles"][x - startup] += 1
         elif s.kind in perf.STORE_KINDS and s.stops:  # the writer free
-            addresses, beats = perf.store_writes(s, DESIGN)
-            n = issue[i][1]
-            found["kv_store_latency_cycles"][
-                x + n - max(addresses, startup + beats, n + startup)
-            ] += 1
+            beats = s.kv_write_bytes / perf.commands.BEAT_BYTES
+            found["kv_store_latency_cycles"][x + issue[i][1] - startup - beats] += 1
         elif s.kind == "load" and not s.stops and (on_time[i - 1] or p.kind == "load"):
             found["load_latency_cycles"][x] += 1
     tail = mode(found["reduction_tail_cycles"])
