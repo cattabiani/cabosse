@@ -74,17 +74,17 @@ def test_a_token_reads_every_weight_once(tied: bool) -> None:
 
 
 @pytest.mark.parametrize("shared", [False, True])
-@pytest.mark.parametrize(("position", "tiles"), [(0, 1), (7, 1), (8, 2), (20, 3)])
-def test_kv_traffic_in_whole_tiles(position: int, tiles: int, shared: bool) -> None:
-    """A token reads K and V in whole tiles of 8 positions on 8 lanes, per
-    query head and layer (no tile shared between heads), or per KV head with
-    kv_tiles_shared (Q-27), which changes nothing else; it writes one row of
+@pytest.mark.parametrize(("position", "read"), [(0, 4), (3, 4), (4, 8), (20, 24)])
+def test_kv_traffic_in_groups_of_four(position: int, read: int, shared: bool) -> None:
+    """A token reads K and V for its positions rounded up to 4 (D-062), per
+    query head and layer, or per KV head with kv_tiles_shared (Q-27), which
+    changes nothing else; it writes one row of
     K and one of V per KV head and layer."""
     c = tiny.tiny_config(n_kv_heads=2)
     row = c.num_hidden_layers * c.head_dim * perf.BF16_BYTES
     work = perf.Work.of(perf.ops(c, position, 8, kv_tiles_shared=shared))
     readers = c.num_key_value_heads if shared else c.num_attention_heads
-    assert work.kv_read_bytes == 2 * readers * tiles * 8 * row
+    assert work.kv_read_bytes == 2 * readers * read * row
     assert work.kv_write_bytes == 2 * c.num_key_value_heads * row
     alone = perf.Work.of(perf.ops(c, position, 8))
     assert dataclasses.replace(work, kv_read_bytes=alone.kv_read_bytes) == alone
@@ -131,24 +131,6 @@ def test_values_passes_of_two_heads() -> None:
     one_pass = perf.engine_cycles(((128, 100),), design)
     assert perf.engine_cycles(perf.attention(cmd, 100, 256).engine_shapes, design) == 5 * one_pass
     assert len(perf.attention(cmd, 100, 64).engine_shapes) == 9
-
-
-def test_tile_wait_by_hand() -> None:
-    """Three slots, the first three full at the go: a unit after them waits
-    when its fill and landing (24 cols) are longer than the steps since its
-    slot was freed. SmolLM2's p.V at 64 positions on 128 lanes: 4 passes of
-    2 heads and 1 of 1 (fills of 128, 128, 128, 128 and 64 cols, steps of
-    64): the fourth fills from 64 to 192 and steps at 216, 24 cols late; the
-    fifth fills by 256 and steps at 280, on time. Balanced units, and SCORES
-    (d to fill, d to step), never wait."""
-    units = [(128, 64)] * 4 + [(64, 64)]
-    assert perf.tile_wait_cols(units) == 24
-    assert perf.tile_wait_cols([(128, 128)] * 9) == 0
-    values = commands.Command(commands.Op.VALUES, n=9, m=64, kv_heads=3)
-    assert perf.attention(values, 64, 128).fill_cols == 24
-    assert perf.attention(values, 1024, 128).fill_cols == 0
-    scores = commands.Command(commands.Op.SCORES, n=9, m=64, kv_heads=3)
-    assert perf.attention(scores, 64, 128).fill_cols == 0
 
 
 def test_seconds_by_hand() -> None:
