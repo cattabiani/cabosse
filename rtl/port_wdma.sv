@@ -101,7 +101,10 @@ module port_wdma #(
     .in_data_i  (cmd_beats_i),
     .out_valid_o(lens_valid),
     .out_ready_i(w_fire && w_last_o),
-    .out_data_o (lens_out)
+    .out_data_o (lens_out),
+    // verilator lint_off PINCONNECTEMPTY
+    .count_o    ()
+    // verilator lint_on PINCONNECTEMPTY
   );
 
   assign w_valid_o  = lens_valid && in_valid_i;

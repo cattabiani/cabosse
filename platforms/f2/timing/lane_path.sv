@@ -52,7 +52,10 @@ module lane_path #(
     .last_i     (last_q),
     .out_valid_o(out_valid),
     .out_ready_i(out_ready_q),
-    .out_o      (out)
+    .out_o      (out),
+    // verilator lint_off PINCONNECTEMPTY
+    .reserved_o ()
+    // verilator lint_on PINCONNECTEMPTY
   );
 
   always_ff @(posedge clk_i) begin

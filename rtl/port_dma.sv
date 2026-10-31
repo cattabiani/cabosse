@@ -27,7 +27,8 @@ module port_dma #(
   parameter  int unsigned CountWidth = 24,   // beats per command: Qwen2.5's classifier needs 19
   parameter  int unsigned MaxBurst   = 16,   // beats per burst: AXI3's longest
   parameter  int unsigned Depth      = 64,   // data FIFO, beats
-  localparam int unsigned BeatBytes  = DataWidth / 8
+  localparam int unsigned BeatBytes  = DataWidth / 8,
+  localparam int unsigned CrW        = $clog2(Depth + 1)  // a count of beats 0 .. Depth
 ) (
   input  logic                  clk_i,
   input  logic                  rst_ni,
@@ -40,6 +41,7 @@ module port_dma #(
   output logic                  out_valid_o,
   input  logic                  out_ready_i,
   output logic [DataWidth-1:0]  out_data_o,
+  output logic [CrW-1:0]        out_count_o,  // beats in the data FIFO
   // AXI read address channel
   output logic                  ar_valid_o,
   input  logic                  ar_ready_i,
@@ -61,7 +63,6 @@ module port_dma #(
   localparam int unsigned PageW     = $clog2(PageBytes);
   localparam int unsigned IdxW      = PageW - OffW;          // a beat's index in its page
   localparam int unsigned LenW      = $clog2(MaxBurst + 1);  // a burst's beats
-  localparam int unsigned CrW       = $clog2(Depth + 1);
   localparam logic [1:0]  Incr      = 2'b01;
 
   if (MaxBurst < 1 || MaxBurst > 16) begin : gen_bad_burst
@@ -130,7 +131,8 @@ module port_dma #(
     .in_data_i  (r_data_i),
     .out_valid_o,
     .out_ready_i,
-    .out_data_o
+    .out_data_o,
+    .count_o    (out_count_o)
   );
 
   assign out_fire = out_valid_o && out_ready_i;

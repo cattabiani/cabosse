@@ -45,6 +45,9 @@ BAD_SHAPES = [
     # dot_lane: E = 8 leaves each unit A / E = 2 partial sums for a 4-cycle
     # loop; a group would read a sum still in the adder.
     ("dot_lane", (("E", 8),), "A / E >= 4"),
+    # dot_lane: one level-1 buffer leaves no room for a row's final sum
+    # while the next row ends (and a 0-bit buffer pointer).
+    ("dot_lane", (("Banks", 1),), "Banks must be at least 2"),
     # port_dma: longer bursts than AXI3 allows, a FIFO smaller than a burst,
     # a data width that is not a power of two, a count narrower than a burst.
     ("port_dma", (("MaxBurst", 17),), "MaxBurst"),

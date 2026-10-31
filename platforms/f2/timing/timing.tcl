@@ -23,8 +23,11 @@ close $f
 foreach harness [glob $repo/platforms/f2/timing/*.sv] {read_verilog -sv $harness}
 read_xdc -mode out_of_context $repo/platforms/f2/timing/timing.xdc
 
+# -keep_equivalent_registers: the engine copies its control registers per
+# group of lanes and banks for the fan-out (D-051); merged, they would be
+# one register driving the whole engine again.
 synth_design -top $top -part $part -mode out_of_context \
-  -generic $param=$value \
+  -generic $param=$value -keep_equivalent_registers \
   -global_retiming [expr {$retime ? "on" : "off"}]
 opt_design
 place_design
@@ -33,6 +36,11 @@ route_design
 
 report_timing_summary -no_header -file timing_summary.rpt
 report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+# Every family of failing paths, not only the worst: grouped by start and end
+# point, logic levels per path, and the nets with the most loads.
+report_design_analysis -timing -max_paths 1000 -file path_families.rpt
+report_design_analysis -logic_level_distribution -max_paths 10000 -file logic_levels.rpt
+report_high_fanout_nets -timing -max_nets 50 -file fanout.rpt
 report_utilization -file utilization.rpt
 report_utilization -hierarchical -hierarchical_depth 4 -file utilization_hier.rpt
 set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]

@@ -610,6 +610,57 @@ pattern fixed by register stages. 200 MHz alone does not help: the worst
 path is 8.68 ns, about 115 MHz. The cap keeps the tinkering from eating
 the path to F2 (D-058).
 
+**D-061 (2026-10-31) — Three tile slots** (owner, 2026-10-31; for
+D-051). The engine's tile buffer has three slots, not two: its banks are
+96 entries deep instead of 64, about double the tile buffer's LUT RAM
+(roughly 20,000 to 30,000 LUTs, about 2% of the part; estimate). *Why:*
+with the step decided ahead, a slot's last reads come a few cycles after
+the decision that frees it, and a filled tile reaches step a few cycles
+after its last write; with two slots fill would fall behind by those
+cycles on every unit, about 25% on SmolLM2's attention (estimate). Two
+slots and the bubbles was the alternative.
+
+**D-062 (2026-10-31) — The KV cache in the lanes' order; no tile buffer**
+(owner, 2026-10-31; revises D-028 and D-043, replaces D-061; for D-060).
+K and V are stored the way weights are, so port `p` feeds its own lanes
+`4p` to `4p+3` on attention too, and `SCORES` and `VALUES` stream from
+HBM like a `MATVEC`:
+- K: in the tile of positions `128j` to `128j+127` of a KV head, channel
+  `c` holds positions `128j+4c` to `128j+4c+3`; for `k` = 0, 4, …, it
+  holds the beat `K[q][k…k+3]` for those 4 positions. `SCORES`: lane `q`
+  takes position `q`, as now. A tile is still `d/4` sequential beats per
+  port (16 for SmolLM2).
+- V: stored as `Vᵀ`, rows the head's dimensions, columns the positions.
+  Channel `p` holds dimensions `4p` to `4p+3`, beat by beat over the
+  positions. `VALUES`: lane `j` takes output dimension `j`, as now. A pass
+  of two heads (`d` ≤ `L/2`) puts its second head on ports `L/8` and up,
+  and with GQA a KV head can be either, so V is stored once per such half
+  (2 copies for SmolLM2: 94 → 189 MB at 8192 positions, estimate; reads
+  unchanged).
+- `KV_STORE` writes a K row as one burst of `d/4` beats, and a V row as
+  one beat per channel and copy, each with 8 bytes enabled (AXI write
+  strobes). For SmolLM2 about 7,200 cycles per token against about 700
+  now, about 2% at position 1023 if not hidden (estimate; a one-beat
+  write at half rate, as the memory model's reads).
+- Gone: the tile buffer, its rotations, fill, the tile slots (D-061) and
+  the bank mapping. Each port's 256-bit FIFO becomes 4 FIFOs of 64 bits,
+  one per lane, each with its own pointers.
+- Same numerics: `SCORES` sums over `d`, `VALUES` over the positions, 4 at
+  a time in the same order as now (to confirm with the tests).
+- To verify: the HBM controller's handling of partial writes (strobes);
+  the first full build (M8) measures their rate.
+
+*Why:* the first placed build after D-051 (-3.096 ns) fails on wires, not
+logic: about 145 of the 177 worst paths are the tile buffer's rotations
+and addresses, two 8,192-bit crossbars that exist only because the cache
+was stored by position. With K and V in the lanes' order no data crosses
+the engine, and about 85,000 to 100,000 LUTs go (estimate: the tile's LUT
+RAM and the rotations), mostly from the fullest SLR. D-028's reason for
+the tile buffer was V without a second copy; a copy costs HBM space only,
+which is plentiful. A one-head `VALUES` pass instead of the copy halves
+`VALUES`' rate (about 10% more engine time at 1023, estimate); pairing
+passes by KV head does not balance with SmolLM2's 3 KV heads.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -961,19 +1012,57 @@ report.
 
 **The timing loop (D-060, owner 2026-10-30):** one branch and PR per
 iteration, at most 3 placed builds.
-1. Build D-051's pipelined step control in `rtl/engine.sv`: no global
+1. ✅ (2026-10-31, D-061) Build D-051's pipelined step control in `rtl/engine.sv`: no global
    stall (the lanes take every step; the step is decided a few cycles
    ahead from what the FIFOs and the command's shape already tell), and
    the step, the x broadcast and the tile buffer's read addresses reach
    the lanes and banks through register stages, copied per group of lanes
    or banks. Same bits (every engine test passes unchanged); cycle counts
    re-measured, the perf model's `engine_startup_cycles` updated.
-2. `platforms/f2/timing/timing.tcl` reports every family of failing
+2. ✅ `platforms/f2/timing/timing.tcl` reports every family of failing
    paths, not only the worst 3: the failing paths grouped by endpoint,
    and the logic-level distribution.
+   Done on `m6/step-pipeline`: the engine tests pass (226, and the 30 at
+   128 lanes) with the same bits, one limit raised: `STARTUP_CYCLES`
+   (a command's first result) 70 → 80, as it measures 73 at 128 lanes, 62
+   before; `engine_startup_cycles` 64 → 72 (measured,
+   reports/data/M5-engine.json); SmolLM2's commands within -4.5% to +1.7%
+   of the perf model, the first one apart. A review before the first
+   build (2026-10-31) found that Vivado would merge the per-group copies
+   (timing.tcl now keeps them) and long paths left in the rotations, the
+   per-bank addresses, the min of the FIFO counts, step's next unit and
+   the drain; fixed before the build, which was stopped after 12 minutes. Predictions for its placed
+   build, written before it: the worst slack better than -1 ns; the step
+   to tile-address path gone; most of the 288,260 failing endpoints gone
+   (they hang off that path's nets); what may remain: the drain's `go`
+   (lane outputs to the drain and back), issue's handshake over the 32
+   ports, the VALUES read data's cross-chip wires after the rotation,
+   and step's own counter adders.
 3. Placed build of `engine_path` (scripts/f2/time_loops.sh; c6i.4xlarge
    is enough: the first build peaked at 16.5 GB), with the owner's go and
    a time limit for each launch. Fix the paths it names; repeat.
+   Build 1 (2026-10-31, commit 6dbfdae,
+   reports/data/f2/2026-10-31-engine-placed.txt): worst slack -3.096 ns
+   (-4.698 before), 177,270 of 1,110,481 endpoints failing (288,260 of
+   986,478 before). Against the predictions: the step-to-tile-address
+   path is gone; the slack is not better than -1 ns; 39% fewer failing
+   endpoints, not most. The failing paths are now short wires, not deep
+   logic: the worst is a bank's own read-address register to its LUT RAM,
+   2 levels, 6.45 ns of a single net (fan-out 128, 104 rows away). Among
+   the 177 worst paths the log kept, 0 to 3 levels each (one has 5), are the tile
+   buffer's rotations (read rotation 71, shift copies 37 and their `_rep`
+   ones, write side), the per-bank addresses (12), and the DMA FIFOs' own
+   write pointers to their LUT RAM (`stream_fifo` `count_q`/`wr_q`,
+   fan-out 674, up to -2.97 ns; code this step did not change). The
+   middle SLR holds most of the LUT RAM (47,369 of 58,214 LUTs as memory)
+   and is 76% full in LUTs. Cost of builds 0 and 1: about $2 (estimate,
+   2.6 h of c6i.4xlarge).
+   Next (owner, 2026-10-31): D-062 (KV cache in the lanes' order, no tile
+   buffer, per-lane FIFOs), then build 2, which prints the full
+   per-module utilization, a congestion report and every failing path
+   family. What it names decides the next step: DSPs for the lanes'
+   arithmetic (16 of 9,024 used), floorplanning, or neighbour chains for
+   the x broadcast and the drain.
 4. Stop when the worst slack is >= 0 at 250 MHz. If the third build is
    still worse than about -0.5 ns, stop tinkering: target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%
@@ -1237,6 +1326,12 @@ synthesis drops the fields a stage never reads, or narrow them. Two
 changes wait for that run: `port_dma`'s burst length registered a cycle
 ahead (M5), and `fp_add`'s significand compare beside the alignment
 shifter (M3; +142 Yosys cells), only if those paths limit.
+The full build synthesizes with `-keep_equivalent_registers`, as
+platforms/f2/timing/timing.tcl does: the engine's per-group copies of its
+control registers (D-051) would otherwise merge back into one. An option
+if the lanes' room estimate ever goes stale: dot_lane exports its free
+last-beat credits instead of `reserved_o`, so the engine stops modelling
+the lane's ready rule (review of D-051, 2026-10-31).
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over

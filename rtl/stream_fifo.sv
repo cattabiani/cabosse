@@ -5,7 +5,7 @@
 // valid/ready on both sides. Push and pop may happen in the same cycle; a
 // full queue takes no push, even if it pops in that cycle. The output reads
 // the storage directly (no output register), so data pushed in one cycle can
-// leave in the next.
+// leave in the next. count_o is how many entries it holds.
 
 module stream_fifo #(
   parameter  int unsigned Width = 32,
@@ -20,7 +20,8 @@ module stream_fifo #(
   input  logic [Width-1:0] in_data_i,
   output logic             out_valid_o,
   input  logic             out_ready_i,
-  output logic [Width-1:0] out_data_o
+  output logic [Width-1:0] out_data_o,
+  output logic [CW-1:0]    count_o
 );
 
   if (Depth == 0) begin : gen_bad_depth
@@ -35,6 +36,7 @@ module stream_fifo #(
   assign in_ready_o  = count_q != CW'(Depth);
   assign out_valid_o = count_q != '0;
   assign out_data_o  = mem_q[rd_q];
+  assign count_o     = count_q;
   assign push        = in_valid_i && in_ready_o;
   assign pop         = out_valid_o && out_ready_i;
 
