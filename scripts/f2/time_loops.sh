@@ -86,11 +86,16 @@ for run in $RUNS; do
   grep -h "CABOSSE-RESULT" vivado.log
   grep -E "^(ERROR|CRITICAL WARNING)" vivado.log | head -20
   sed -n '/Design Timing Summary/,/^$/p;/WNS(ns)/,+3p' timing_summary.rpt 2>/dev/null | head -12
-  cat worst_paths.rpt 2>/dev/null | head -150
-  cat path_families.rpt logic_levels.rpt 2>/dev/null | head -200
+  cat worst_paths.rpt 2>/dev/null | head -60
+  echo "families (worst slack, paths, start -> end):"
+  sort -n families.rpt 2>/dev/null | head -60 | cut -c1-220
+  cat logic_levels.rpt 2>/dev/null | head -60
   cat fanout.rpt 2>/dev/null | head -70
   grep -E "^\| (CLB LUTs|CLB Registers|CARRY8|DSPs|  LUT as) " utilization.rpt 2>/dev/null
-  sed -n '/Utilization by Hierarchy/,$p' utilization_hier.rpt 2>/dev/null | head -60
+  # The engine's own modules and one of each repeated block, columns cut.
+  sed -n '/Utilization by Hierarchy/,$p' utilization_hier.rpt 2>/dev/null \
+    | grep -vE '\[([1-9]|[1-9][0-9]+)\]' | cut -c1-140 | head -70
+  sed -n '/Congestion/,$p' congestion.rpt 2>/dev/null | head -40
   done_ "run$i $run"
 done
 

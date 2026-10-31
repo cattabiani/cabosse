@@ -171,7 +171,7 @@
  },
  "real": {
   "provenance": {
-   "commit": "d27f12ff46fb412546234447430460ef0808513b",
+   "commit": "b02a3e7ab94906729c3efc64231d36860eb4d275",
    "dirty": false,
    "date": "2026-10-31",
    "machine": "Linux x86_64"
@@ -194,7 +194,7 @@
      ],
      "wait": true,
      "cycles": 855,
-     "model": 789.0,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -217,7 +217,7 @@
       576
      ],
      "wait": false,
-     "cycles": 293,
+     "cycles": 298,
      "model": 288.0,
      "engine": 288.0
     },
@@ -230,8 +230,8 @@
       64
      ],
      "wait": true,
-     "cycles": 208,
-     "model": 213.0,
+     "cycles": 213,
+     "model": 216.0,
      "engine": 144.0
     },
     {
@@ -243,9 +243,9 @@
       64
      ],
      "wait": true,
-     "cycles": 148,
-     "model": 155.0,
-     "engine": 86.0
+     "cycles": 149,
+     "model": 152.0,
+     "engine": 80.0
     },
     {
      "name": "layers.0.o",
@@ -255,8 +255,8 @@
       576
      ],
      "wait": true,
-     "cycles": 781,
-     "model": 789.0,
+     "cycles": 786,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -268,7 +268,7 @@
      ],
      "wait": true,
      "cycles": 1797,
-     "model": 1797.0,
+     "model": 1800.0,
      "engine": 1728.0
     },
     {
@@ -292,7 +292,7 @@
      ],
      "wait": true,
      "cycles": 1981,
-     "model": 1989.0,
+     "model": 1992.0,
      "engine": 1920.0
     },
     {
@@ -304,7 +304,7 @@
      ],
      "wait": true,
      "cycles": 781,
-     "model": 789.0,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -327,7 +327,7 @@
       576
      ],
      "wait": false,
-     "cycles": 293,
+     "cycles": 298,
      "model": 288.0,
      "engine": 288.0
     },
@@ -340,8 +340,8 @@
       64
      ],
      "wait": true,
-     "cycles": 208,
-     "model": 213.0,
+     "cycles": 213,
+     "model": 216.0,
      "engine": 144.0
     },
     {
@@ -353,9 +353,9 @@
       64
      ],
      "wait": true,
-     "cycles": 148,
-     "model": 155.0,
-     "engine": 86.0
+     "cycles": 149,
+     "model": 152.0,
+     "engine": 80.0
     },
     {
      "name": "layers.29.o",
@@ -365,8 +365,8 @@
       576
      ],
      "wait": true,
-     "cycles": 781,
-     "model": 789.0,
+     "cycles": 786,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -378,7 +378,7 @@
      ],
      "wait": true,
      "cycles": 1797,
-     "model": 1797.0,
+     "model": 1800.0,
      "engine": 1728.0
     },
     {
@@ -402,7 +402,7 @@
      ],
      "wait": true,
      "cycles": 1981,
-     "model": 1989.0,
+     "model": 1992.0,
      "engine": 1920.0
     },
     {
@@ -414,7 +414,7 @@
      ],
      "wait": true,
      "cycles": 55365,
-     "model": 55365.0,
+     "model": 55368.0,
      "engine": 55296.0
     }
    ],
@@ -428,7 +428,7 @@
      ],
      "wait": true,
      "cycles": 855,
-     "model": 789.0,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -465,7 +465,7 @@
      ],
      "wait": true,
      "cycles": 1224,
-     "model": 1221.0,
+     "model": 1224.0,
      "engine": 1152.0
     },
     {
@@ -478,7 +478,7 @@
      ],
      "wait": true,
      "cycles": 1341,
-     "model": 1349.0,
+     "model": 1352.0,
      "engine": 1280.0
     },
     {
@@ -489,8 +489,8 @@
       576
      ],
      "wait": true,
-     "cycles": 781,
-     "model": 789.0,
+     "cycles": 786,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -502,7 +502,7 @@
      ],
      "wait": true,
      "cycles": 1797,
-     "model": 1797.0,
+     "model": 1800.0,
      "engine": 1728.0
     },
     {
@@ -526,7 +526,7 @@
      ],
      "wait": true,
      "cycles": 1981,
-     "model": 1989.0,
+     "model": 1992.0,
      "engine": 1920.0
     },
     {
@@ -538,7 +538,7 @@
      ],
      "wait": true,
      "cycles": 781,
-     "model": 789.0,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -575,7 +575,7 @@
      ],
      "wait": true,
      "cycles": 1224,
-     "model": 1221.0,
+     "model": 1224.0,
      "engine": 1152.0
     },
     {
@@ -588,7 +588,7 @@
      ],
      "wait": true,
      "cycles": 1341,
-     "model": 1349.0,
+     "model": 1352.0,
      "engine": 1280.0
     },
     {
@@ -599,8 +599,8 @@
       576
      ],
      "wait": true,
-     "cycles": 781,
-     "model": 789.0,
+     "cycles": 786,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -612,7 +612,7 @@
      ],
      "wait": true,
      "cycles": 1797,
-     "model": 1797.0,
+     "model": 1800.0,
      "engine": 1728.0
     },
     {
@@ -636,7 +636,7 @@
      ],
      "wait": true,
      "cycles": 1981,
-     "model": 1989.0,
+     "model": 1992.0,
      "engine": 1920.0
     },
     {
@@ -648,7 +648,7 @@
      ],
      "wait": true,
      "cycles": 55365,
-     "model": 55365.0,
+     "model": 55368.0,
      "engine": 55296.0
     }
    ],
@@ -662,7 +662,7 @@
      ],
      "wait": true,
      "cycles": 855,
-     "model": 789.0,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -699,7 +699,7 @@
      ],
      "wait": true,
      "cycles": 9288,
-     "model": 9285.0,
+     "model": 9288.0,
      "engine": 9216.0
     },
     {
@@ -712,7 +712,7 @@
      ],
      "wait": true,
      "cycles": 10301,
-     "model": 10309.0,
+     "model": 10312.0,
      "engine": 10240.0
     },
     {
@@ -723,8 +723,8 @@
       576
      ],
      "wait": true,
-     "cycles": 781,
-     "model": 789.0,
+     "cycles": 786,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -736,7 +736,7 @@
      ],
      "wait": true,
      "cycles": 1797,
-     "model": 1797.0,
+     "model": 1800.0,
      "engine": 1728.0
     },
     {
@@ -760,7 +760,7 @@
      ],
      "wait": true,
      "cycles": 1981,
-     "model": 1989.0,
+     "model": 1992.0,
      "engine": 1920.0
     },
     {
@@ -772,7 +772,7 @@
      ],
      "wait": true,
      "cycles": 781,
-     "model": 789.0,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -809,7 +809,7 @@
      ],
      "wait": true,
      "cycles": 9288,
-     "model": 9285.0,
+     "model": 9288.0,
      "engine": 9216.0
     },
     {
@@ -822,7 +822,7 @@
      ],
      "wait": true,
      "cycles": 10301,
-     "model": 10309.0,
+     "model": 10312.0,
      "engine": 10240.0
     },
     {
@@ -833,8 +833,8 @@
       576
      ],
      "wait": true,
-     "cycles": 781,
-     "model": 789.0,
+     "cycles": 786,
+     "model": 792.0,
      "engine": 720.0
     },
     {
@@ -846,7 +846,7 @@
      ],
      "wait": true,
      "cycles": 1797,
-     "model": 1797.0,
+     "model": 1800.0,
      "engine": 1728.0
     },
     {
@@ -870,7 +870,7 @@
      ],
      "wait": true,
      "cycles": 1981,
-     "model": 1989.0,
+     "model": 1992.0,
      "engine": 1920.0
     },
     {
@@ -882,7 +882,7 @@
      ],
      "wait": true,
      "cycles": 55365,
-     "model": 55365.0,
+     "model": 55368.0,
      "engine": 55296.0
     }
    ]

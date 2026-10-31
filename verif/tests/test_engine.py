@@ -424,7 +424,7 @@ def test_attention_back_to_back(ports: int) -> None:
     """Three SCORES, then three VALUES, t a whole number of tiles, the memory
     at full rate: after the first of each kind, each takes its perf-model
     cycles plus at most 1 (the command boundary): units leave no gap, the
-    next tile fills while the current one steps."""
+    next tile's beats read while the current one steps."""
     gen = torch.Generator().manual_seed(SEED)
     lanes = ports * LANES_PER_PORT
     d_scores, d_values = BALANCED[ports]
@@ -475,13 +475,11 @@ def test_attention_outside_the_engine_s_shapes(change: dict, message: str) -> No
 
 
 @rtl.needs_verilator
-def test_attention_fill_order() -> None:
-    """Fill runs ahead of step: a short SCORES (one unit) fills while step is
-    still on a long one (short rows: step waits for the lanes' final sums,
-    fill does not), so fill reaches the MATVECs after it before step does.
-    Fill must pass each MATVEC only when step takes that one, and start the
-    next attention command only once step has read the MATVECs' beats (they
-    come first in the ports' FIFOs)."""
+def test_attention_matvec_order() -> None:
+    """Issue runs ahead of step: a long SCORES, a short one (one unit, a
+    partial tile), two MATVECs and another SCORES, the memory fast, so the
+    ports' FIFOs hold several commands' beats at once, and step must take
+    them in order, each port's beats to its own lanes."""
     gen, ports = torch.Generator().manual_seed(SEED), 4
     lanes = ports * LANES_PER_PORT
     shapes = [(False, 6, 3, 16, 4 * lanes), (False, 1, 1, 16, lanes - 1)]

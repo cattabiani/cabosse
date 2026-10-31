@@ -660,6 +660,9 @@ the tile buffer was V without a second copy; a copy costs HBM space only,
 which is plentiful. A one-head `VALUES` pass instead of the copy halves
 `VALUES`' rate (about 10% more engine time at 1023, estimate); pairing
 passes by KV head does not balance with SmolLM2's 3 KV heads.
+*Correction (2026-10-31):* the second head of a pass reads ports `d / 4`
+and up (its lanes `d` and up), not `L/8`: the same for SmolLM2 (d = 64),
+different for d < L/2 (rtl/engine.sv, `commands.kv_lane_order`).
 
 ## Milestones
 
@@ -1063,6 +1066,11 @@ iteration, at most 3 placed builds.
    family. What it names decides the next step: DSPs for the lanes'
    arithmetic (16 of 9,024 used), floorplanning, or neighbour chains for
    the x broadcast and the drain.
+   D-062's engine side done on `m6/kv-lane-order`: SCORES and VALUES
+   stream from the lanes' order like a MATVEC, the tile buffer and fill
+   gone, each port's FIFO split per lane; every engine test passes with
+   the same bits, unchanged (110, and 30 at 128 lanes). `KV_STORE`'s new
+   layout is the next PR; build 2 runs on this one.
 4. Stop when the worst slack is >= 0 at 250 MHz. If the third build is
    still worse than about -0.5 ns, stop tinkering: target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%

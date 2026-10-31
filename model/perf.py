@@ -77,14 +77,7 @@ REDUCTION_KINDS = tuple(op.name.lower() for op in commands.REDUCE)
 ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
 # Design values that are on (1) or off (0); see ops().
 FLAGS = ("softmax_fused", "max_in_drain", "kv_tiles_shared")
-VALUES_HEADS = 2  # heads per p.V pass, at most (rtl/engine.sv's Heads)
-TILE_SLOTS = 3  # rtl/engine.sv's Slots (D-051)
-# A filled tile reaches step's reads this many cycles after fill's last
-# beat (rtl/engine.sv: LandLat + 2, from the RTL's register stages), in
-# cols at v0's 4 per cycle: scenarios with other macs_per_lane reuse it
-# (estimate, off by a few cycles per unit that waits).
-TILE_LAND_CYCLES = 6
-TILE_LAND_COLS = TILE_LAND_CYCLES * 4
+VALUES_HEADS = commands.VALUES_HEADS
 
 
 @dataclass(frozen=True)
@@ -106,9 +99,6 @@ class Step:
     # empty off the engine.
     engine_shapes: tuple[tuple[int, int], ...] = ()
     waits: bool = False  # on the engine, steps only after an earlier result (D-042)
-    # Attention: cols' worth of cycles the engine waits for its tiles
-    # (tile_wait_cols).
-    fill_cols: int = 0
     # On the vector unit (its commands, LOAD, KV_STORE): (rows, length) as
     # it walks them (vector_walk), and whether the controller stops at it
     # (commands.stops).
@@ -260,54 +250,35 @@ def load_config(name: str) -> LlamaConfig:
     return LlamaConfig.from_json_file(paths.CONFIGS / f"{name}.json")
 
 
-def tile_wait_cols(units: list[tuple[int, int]]) -> int:
-    """How long the engine waits for its tile buffer over these units (a
-    pass and a tile each: cols to fill, cols to step; a cycle is
-    `macs_per_lane` cols of either). Fill reads at the engine's rate, one
-    unit at a time, into TILE_SLOTS slots, a slot refilled once its unit is
-    stepped, and a filled unit is stepped TILE_LAND_COLS after its fill;
-    read ahead (D-042, D-044), the first TILE_SLOTS are full at the go."""
-    fill_end = step_end = 0
-    ends: list[int] = []  # each unit's step end
-    for u, (fill, step) in enumerate(units):
-        if u >= TILE_SLOTS:
-            fill_end = max(fill_end, ends[u - TILE_SLOTS]) + fill
-            step_end = max(step_end, fill_end + TILE_LAND_COLS)
-        step_end += step
-        ends.append(step_end)
-    return step_end - sum(step for _, step in units)
-
-
 def attention(
     cmd: commands.Command, positions: int, lanes: int, tiles_shared: bool = False
 ) -> Step:
     """q.K (SCORES) or p.V (VALUES) over `positions` cache rows, as the engine
-    runs it (architecture.md, KV cache layout): K or V read in whole tiles of
-    `lanes` positions, once per query head (no tile shared between heads;
-    Q-27), or once per KV head with `tiles_shared`: the best case, as p.V's
-    passes of two heads cross groups of an odd size, and the tile waits
-    are kept as unshared. Scores have a row per position, a pass
-    per head and tile; p.V a row per head and output dimension, in passes
-    of up to VALUES_HEADS heads (one if two do not fit the lanes)."""
+    runs it (architecture.md, KV cache layout): K and V stream from HBM in
+    the lanes' order (D-062), the positions read rounded up to 4,
+    once per query head (Q-27), or once per KV head with `tiles_shared`: the
+    best case, as p.V's passes of two heads cross groups of an odd size.
+    Scores have a row per position; p.V a row per head and output
+    dimension, in passes of up to VALUES_HEADS heads (one if two do not fit
+    the lanes)."""
     heads, d = cmd.n, cmd.m
-    tiles = math.ceil(positions / lanes)
-    if cmd.op == commands.Op.SCORES:  # a unit fills d cols and steps d
+    if cmd.op == commands.Op.SCORES:
         shapes = ((positions, d),) * heads
-        units = [(d, d)] * heads * tiles
-    else:  # a unit fills its heads' d values per position, steps its positions
+    else:
         per_pass = max(1, min(VALUES_HEADS, lanes // d))
         passes = [min(per_pass, heads - h) for h in range(0, heads, per_pass)]
         shapes = tuple((n * d, positions) for n in passes)
-        in_tile = [min(lanes, positions - j * lanes) for j in range(tiles)]
-        units = [(n * d, p) for n in passes for p in in_tile]
     readers = cmd.kv_heads if tiles_shared else heads
+    # Each port reads its 4 positions per beat (D-062): v0's lanes per port
+    # and E; other scenarios reuse the rounding (estimate, off by under a
+    # beat per port and head).
+    read_positions = math.ceil(positions / commands.LANES_PER_PORT) * commands.LANES_PER_PORT
     return Step(
         cmd.op.name.lower(),
         (heads, positions, d),
         heads * positions * d,
-        kv_read_bytes=readers * tiles * lanes * d * BF16_BYTES,
+        kv_read_bytes=readers * read_positions * d * BF16_BYTES,
         engine_shapes=shapes,
-        fill_cols=tile_wait_cols(units),
     )
 
 
@@ -363,7 +334,7 @@ def ops(
 ) -> list[Step]:
     """The work of one decode step at `position` (0-based: it attends to
     position + 1 cache rows), one entry per command, on an engine of
-    `lanes` lanes (attention reads whole tiles of that many positions),
+    `lanes` lanes,
     with the design flags (module docstring). The softmax flags drop
     softmax's commands here: commands.build() has neither the fused
     command nor the engine's max (D-054, deferred by D-057). Waits and
@@ -410,7 +381,6 @@ class Work:
     commands: int
     engine_shapes: tuple[tuple[int, int], ...]  # (rows, cols) per engine op
     engine_waits: int  # engine ops that wait for an earlier result
-    engine_fill_cols: tuple[int, ...] = ()  # Step.fill_cols of each engine op
     vector_steps: tuple[Step, ...] = ()  # the vector unit's, in order (vector_cycles)
 
     @property
@@ -436,7 +406,6 @@ class Work:
             commands=len(op_list),
             engine_shapes=tuple(shape for o in op_list for shape in o.engine_shapes),
             engine_waits=total("waits"),
-            engine_fill_cols=tuple(o.fill_cols for o in op_list if o.engine_shapes),
             vector_steps=tuple(o for o in op_list if o.walk is not None),
         )
 
@@ -453,22 +422,16 @@ def engine_cycles(
     shapes: tuple[tuple[int, int], ...],
     design: dict[str, float],
     waits: int = 0,
-    fill_cols: tuple[int, ...] = (),
 ) -> float:
     """Cycles of the engine for these (rows, cols), of which `waits` commands
     wait for an earlier result: rows in passes of `lanes` (a partial pass
     leaves lanes idle); a row takes cols / `macs_per_lane` cycles, but at
     least the `accumulators` - 1 adds of its final sum, which run during the
-    next row; each waiting command adds `engine_startup_cycles` (D-042), and
-    each command's tile wait its fill_cols / `macs_per_lane` (Step.fill_cols)."""
+    next row; each waiting command adds `engine_startup_cycles` (D-042)."""
     lanes, per_lane = int(design["lanes"]), int(design["macs_per_lane"])
     tree = int(design["accumulators"]) - 1
-    return (
-        waits * design["engine_startup_cycles"]
-        + sum(math.ceil(f / per_lane) for f in fill_cols)
-        + sum(
-            math.ceil(rows / lanes) * max(math.ceil(cols / per_lane), tree) for rows, cols in shapes
-        )
+    return waits * design["engine_startup_cycles"] + sum(
+        math.ceil(rows / lanes) * max(math.ceil(cols / per_lane), tree) for rows, cols in shapes
     )
 
 
@@ -519,12 +482,9 @@ def vector_cycles(steps: tuple[Step, ...], design: dict[str, float]) -> list[flo
     return out
 
 
-def engine_use(
-    shapes: tuple[tuple[int, int], ...], design: dict[str, float], fill_cols: tuple[int, ...] = ()
-) -> float:
-    """Share of the engine's multiply-add slots that do work (tile waits
-    count as idle)."""
-    slots = design["lanes"] * design["macs_per_lane"] * engine_cycles(shapes, design, 0, fill_cols)
+def engine_use(shapes: tuple[tuple[int, int], ...], design: dict[str, float]) -> float:
+    """Share of the engine's multiply-add slots that do work."""
+    slots = design["lanes"] * design["macs_per_lane"] * engine_cycles(shapes, design)
     return sum(rows * cols for rows, cols in shapes) / slots
 
 
@@ -533,10 +493,7 @@ def seconds(work: Work, platform: dict[str, float], design: dict[str, float]) ->
     clock = design["clock_hz"]
     return {
         "memory": work.memory_bytes / hbm_bytes_per_s(platform, design),
-        "engine": engine_cycles(
-            work.engine_shapes, design, work.engine_waits, work.engine_fill_cols
-        )
-        / clock,
+        "engine": engine_cycles(work.engine_shapes, design, work.engine_waits) / clock,
         "vector": sum(vector_cycles(work.vector_steps, design)) / clock,
         "commands": work.commands * design["issue_cycles"] / clock,
     }
