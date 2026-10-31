@@ -981,8 +981,10 @@ iteration, at most 3 placed builds.
 2. ✅ `platforms/f2/timing/timing.tcl` reports every family of failing
    paths, not only the worst 3: the failing paths grouped by endpoint,
    and the logic-level distribution.
-   Done on `m6/step-pipeline`: the engine tests pass unchanged (226,
-   and the 30 at 128 lanes); `engine_startup_cycles` 64 → 72 (measured,
+   Done on `m6/step-pipeline`: the engine tests pass (226, and the 30 at
+   128 lanes) with the same bits, one limit raised: `STARTUP_CYCLES`
+   (a command's first result) 70 → 80, as it measures 73 at 128 lanes, 62
+   before; `engine_startup_cycles` 64 → 72 (measured,
    reports/data/M5-engine.json); SmolLM2's commands within -4.5% to +1.7%
    of the perf model, the first one apart. A review before the first
    build (2026-10-31) found that Vivado would merge the per-group copies

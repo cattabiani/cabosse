@@ -2,7 +2,7 @@
 # Copyright 2026 The Cabosse Authors
 """rtl/stream_fifo.sv (PLAN.md, M5) against a Python queue, cycle by cycle:
 in_ready_o low exactly when full, out_valid_o high exactly when not empty,
-the head's data (so it holds while out_ready_i is low), order. Cases: fill
+count_o the number held, the head's data (so it holds while out_ready_i is low), order. Cases: fill
 to full and drain to empty; random push and pop patterns that fill, drain,
 and push and pop together both when full and when empty; push and pop every
 cycle (one item per cycle from depth 2, every other cycle at depth 1, where
@@ -71,6 +71,7 @@ class Bench:
         pushed, popped = push and bool(dut.in_ready_o.value), pop and bool(dut.out_valid_o.value)
         assert bool(dut.in_ready_o.value) == (n < self.depth), self.where()
         assert bool(dut.out_valid_o.value) == (n > 0), self.where()
+        assert int(dut.count_o.value) == n, self.where()
         if n:
             assert int(dut.out_data_o.value) == self.queue[0], self.where()
         state = "full" if n == self.depth else "empty" if n == 0 else "partial"

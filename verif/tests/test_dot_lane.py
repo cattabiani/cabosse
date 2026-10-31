@@ -27,6 +27,7 @@ import rtl
 SEED = 20261008
 BUBBLE_ROW_LEN = 64  # 16 beats: each slot of the rotation 4 times
 MAX_CYCLES = 1_000_000  # a hung handshake fails instead of running forever
+BANKS = 2  # rtl/dot_lane.sv's default level-1 buffers
 # dot_lane's product registers: the same bits and handshake either way.
 PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (), "mulregs2": (("MulRegs", 2),)}
 
@@ -131,6 +132,12 @@ async def run(
         dut.w_i.value, dut.x_i.value, dut.mask_i.value, dut.last_i.value = w, x, mask, last
         dut.out_ready_i.value = out_ready(cycle)
         await ReadOnly()
+        # reserved_o, which the engine's room estimate reads (D-051): at
+        # most Banks, and a last beat refused exactly when it is Banks.
+        reserved = int(dut.reserved_o.value)
+        assert reserved <= BANKS, (cycle, reserved)
+        if valid and last:
+            assert bool(dut.in_ready_o.value) == (reserved < BANKS), (cycle, reserved)
         if valid:
             if dut.in_ready_o.value:
                 i, idle, holding = i + 1, 0, False
@@ -140,6 +147,7 @@ async def run(
             results.append(int(dut.out_o.value))
         cycle += 1
         assert cycle < MAX_CYCLES, f"hung after {len(results)} of {len(rows)} results"
+    assert int(dut.reserved_o.value) == 0, "rows still reserved after their results"
     return Run(results, stalls, cycle)
 
 

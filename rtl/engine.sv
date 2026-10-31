@@ -144,6 +144,7 @@ module engine
   localparam int unsigned SlotWidest = Heads * MaxD < L ? Heads * MaxD : L;
   localparam int unsigned SlotDepth = (MaxD > SlotWidest ? MaxD : SlotWidest) / E;
   localparam int unsigned Slots     = 3;  // a unit filling, one full, one stepping (D-051)
+  localparam int unsigned SlotW     = $clog2(Slots);  // a slot's index
   localparam int unsigned TW        = $clog2(Slots * SlotDepth);  // a tile buffer address
   localparam int unsigned EntryBits = E * 16;
   localparam int unsigned BeatValues = DataWidth / 16;     // BF16 values per beat
@@ -335,8 +336,8 @@ module engine
   function automatic int unsigned alpha_inv(int unsigned g);  // g < Ports
     return 4 * (g % Quarter) + g / Quarter;
   endfunction
-  function automatic logic [1:0] next_slot(logic [1:0] s);
-    return s == 2'(Slots - 1) ? '0 : s + 1'b1;
+  function automatic logic [SlotW-1:0] next_slot(logic [SlotW-1:0] s);
+    return s == SlotW'(Slots - 1) ? '0 : s + 1'b1;
   endfunction
 
   // --- Command queues --------------------------------------------------------
@@ -468,7 +469,8 @@ module engine
   // The tile buffer's read addresses are presented at stage RdStage, from a
   // register per bank; its writes enter at PopLat.
 
-  localparam int unsigned NG       = Ports / 4;  // groups
+  localparam int unsigned GP       = 4;          // ports per group
+  localparam int unsigned NG       = Ports / GP; // groups
   localparam int unsigned GL       = L / NG;     // lanes and banks per group
   localparam int unsigned PopLat   = 6;
   localparam int unsigned RotRegs  = 2;          // the tile buffer's rotations
@@ -499,7 +501,7 @@ module engine
     logic [LW-1:0]        lanes;    // the lanes with a row
     logic [2:0]           dlog;
     logic [Ports-1:0]     active;   // MATVEC: the ports popped
-    logic [1:0]           slot;     // the tile read
+    logic [SlotW-1:0]           slot;     // the tile read
     logic [CycW-1:0]      cyc;
     logic [SW-1:0]        rot;
     logic                 fill;     // a fill beat, from every port
@@ -509,11 +511,11 @@ module engine
 
   // --- Fill: attention's beats into the tile buffer --------------------------
 
-  logic [Slots-1:0]      tile_full_q;   // per slot: being filled or full, not yet stepped
+  logic [Slots-1:0]      tile_full_q;   // per slot: filled, not yet stepped
   logic [Slots-1:0]      tile_ready_q;  // per slot: its writes landed, not yet stepped
   logic [Slots-1:0]      tile_fill, tile_free;
   logic [Slots-1:0]      land_q[LandLat];
-  logic [1:0]            fill_slot_q;
+  logic [SlotW-1:0]            fill_slot_q;
   logic                  fill_busy_q, fill_head_q;
   logic [$clog2(TileRows)-1:0] fill_row_q;       // the tile's row
   logic [DW-1:0]         fill_beat_q;   // the row's beat
@@ -601,11 +603,11 @@ module engine
   logic                step_last_cyc_q;   // step_cyc_q + 1 == step_cycles_q
   logic                step_last_tile_q;  // last_tile(step_unit_q)
   logic                step_last_unit_q;  // last_unit(step_unit_q)
-  logic [1:0]          step_slot_q;
+  logic [SlotW-1:0]          step_slot_q;
   logic                tile_ok_q;
   logic                fire, step_end, step_go, unit_end, last_beat, room_ok;
   logic [CW-1:0]       credits_q;      // go_i pulses not yet spent
-  logic [1:0]          slot_n;
+  logic [SlotW-1:0]          slot_n;
   unit_t               unit_init_c, unit_next_c, unit_n;
   logic [RowWidth-1:0] cyc_n;
   logic [E-1:0]        values_mask;    // positions of this cycle before t
@@ -686,8 +688,8 @@ module engine
   // and over the groups (the most any lane has), plus the last beats of the
   // last Window decisions; a last beat needs fewer than LaneBanks.
 
-  // The min of n counts, as a balanced tree.
-  function automatic logic [CrW-1:0] min_tree(logic [NG*4-1:0][CrW-1:0] v, int unsigned n);
+  // The min of v[0 .. n-1], as a balanced tree.
+  function automatic logic [CrW-1:0] min_tree(logic [Ports-1:0][CrW-1:0] v, int unsigned n);
     for (int unsigned w = 1; w < n; w *= 2) begin
       for (int unsigned i = 0; i + w < n; i += 2 * w) if (v[i+w] < v[i]) v[i] = v[i+w];
     end
@@ -713,25 +715,25 @@ module engine
   assign last_now = fire && last_beat;
 
   for (genvar g = 0; g < NG; g++) begin : gen_seen
-    logic [3:0]                 mask_q;  // chk_q's, for this group's ports
-    logic [NG*4-1:0][CrW-1:0]   counts;
+    logic [GP-1:0]              mask_q;  // chk_q's, for this group's ports
+    logic [Ports-1:0][CrW-1:0]  counts;
     logic [LaneBanks-1:0]       r;
     always_comb begin
       counts = '1;
-      for (int unsigned p = 0; p < 4; p++) if (mask_q[p]) counts[p] = dma_out_count[4*g+p];
+      for (int unsigned p = 0; p < GP; p++) if (mask_q[p]) counts[p] = dma_out_count[GP*g+p];
       r = '0;
       for (int unsigned l = GL * g; l < GL * (g + 1); l++) begin
         for (int unsigned k = 0; k < LaneBanks; k++) r[k] = r[k] | (32'(lane_reserved[l]) > k);
       end
     end
     always_ff @(posedge clk_i) begin
-      mask_q       <= chk_q[4*g +: 4];
-      grp_min_q[g] <= min_tree(counts, 4);
+      mask_q       <= chk_q[GP*g +: GP];
+      grp_min_q[g] <= min_tree(counts, GP);
       grp_res_q[g] <= r;
     end
   end
 
-  logic [NG*4-1:0][CrW-1:0] grp_mins;
+  logic [Ports-1:0][CrW-1:0] grp_mins;
   logic [LaneBanks-1:0]     all_res;
   always_comb begin
     grp_mins = '1;
@@ -854,7 +856,7 @@ module engine
     // bank; VALUES: logical entry i's alpha_inv(i / E), i / E = (B / E -
     // cyc) mod Ports.
     for (genvar b = GL * g; b < GL * (g + 1); b++) begin : gen_bank
-      logic [1:0]      slot;
+      logic [SlotW-1:0]      slot;
       logic [CycW-1:0] cyc;
       logic            values;
       int unsigned     q;
@@ -878,7 +880,7 @@ module engine
     for (genvar i = GL * g; i < GL * (g + 1); i++) begin : gen_fill
       assign fill_data[i] = dma_out_data[i % Ports][(i / Ports)*EntryBits +: EntryBits];
     end
-    for (genvar p = 4 * g; p < 4 * g + 4; p++) begin : gen_pop
+    for (genvar p = GP * g; p < GP * (g + 1); p++) begin : gen_pop
       assign dma_out_ready[p] = (beat_at[g].valid && beat_at[g].matvec && beat_at[g].active[p])
                                 || beat_at[g].fill;
     end

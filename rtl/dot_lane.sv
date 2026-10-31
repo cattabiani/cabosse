@@ -80,6 +80,9 @@ module dot_lane
   if (A < 4 || (A & (A - 1)) != 0) begin : gen_bad_a
     $error("dot_lane: A must be a power of two, at least 4");
   end
+  if (Banks < 2) begin : gen_bad_banks
+    $error("dot_lane: Banks must be at least 2 (a row's final sum while the next one ends)");
+  end
   if (E == 0 || A % E != 0 || S < LoopCycles) begin : gen_bad_e
     $error("dot_lane: E must divide A with A / E >= 4, the accumulate loop's cycles");
   end
