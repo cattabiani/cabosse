@@ -1,0 +1,462 @@
+i-0da4351d170c9882d	| 4.000       | 4.515      | 2.034(46%)  | 2.481(54%) | -0.008     | -0.534 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(9)-LUT6-(61)-LUT5-(1)-LUT6-(1)-LUT6-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[4].ok_next_q_reg[4]/D                    |
+| Path #4     | 4.000       | 4.510      | 2.041(46%)  | 2.469(54%) | -0.007     | -0.527 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(1)-LUT6-(53)-LUT2-(6)-LUT6-(1)-LUT5-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[2].ok_next_q_reg[2]/D                    |
+| Path #5     | 4.000       | 4.505      | 1.872(42%)  | 2.633(58%) | -0.007     | -0.522 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(7)-LUT6-(3)-LUT6-(4)-LUT6-(1)-LUT6-(1)-FDRE/D  | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[0].ok_next_q_reg[0]/D                    |
+| Path #6     | 4.000       | 4.503      | 2.054(46%)  | 2.449(54%) | -0.008     | -0.522 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(9)-LUT6-(61)-LUT2-(3)-LUT6-(1)-LUT6-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[13].ok_next_q_reg[13]/D                  |
+| Path #7     | 4.000       | 4.488      | 2.119(48%)  | 2.369(52%) | -0.007     | -0.505 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(9)-LUT6-(61)-LUT6-(1)-LUT6-(1)-LUT6-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[14].ok_next_q_reg[14]/D                  |
+| Path #8     | 4.000       | 4.484      | 2.003(45%)  | 2.481(55%) | -0.008     | -0.503 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(1)-LUT6-(53)-LUT3-(4)-LUT6-(1)-LUT6-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[12].ok_next_q_reg[12]/D                  |
+| Path #9     | 4.000       | 4.471      | 1.987(45%)  | 2.484(55%) | -0.008     | -0.489 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(9)-LUT6-(61)-LUT2-(2)-LUT6-(1)-LUT6-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[10].ok_next_q_reg[10]/D                  |
+| Path #10    | 4.000       | 4.469      | 1.994(45%)  | 2.475(55%) | -0.008     | -0.487 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(9)-LUT5-(29)-LUT6-(1)-LUT6-(1)-LUT5-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[15].ok_next_q_reg[15]/D                  |
+| Path #11    | 4.000       | 4.466      | 1.898(43%)  | 2.568(57%) | -0.008     | -0.484 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(9)-LUT5-(29)-LUT3-(4)-LUT6-(1)-LUT6-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[8].ok_next_q_reg[8]/D                    |
+| Path #12    | 4.000       | 4.463      | 1.988(45%)  | 2.475(55%) | -0.008     | -0.481 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(9)-LUT5-(29)-LUT3-(7)-LUT6-(1)-LUT6-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[11].ok_next_q_reg[11]/D                  |
+| Path #13    | 4.000       | 4.463      | 1.955(44%)  | 2.508(56%) | -0.008     | -0.481 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(7)-LUT6-(3)-LUT6-(14)-LUT3-(1)-LUT6-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[6].ok_next_q_reg[6]/D                    |
+| Path #14    | 4.000       | 4.457      | 1.943(44%)  | 2.514(56%) | -0.008     | -0.475 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(7)-LUT6-(3)-LUT6-(15)-LUT5-(1)-LUT5-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[3].ok_next_q_reg[3]/D                    |
+| Path #15    | 4.000       | 4.450      | 1.838(42%)  | 2.612(58%) | -0.008     | -0.468 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(9)-LUT5-(29)-LUT3-(7)-LUT6-(1)-LUT6-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[7].ok_next_q_reg[7]/D                    |
+| Path #16    | 4.000       | 4.445      | 1.923(44%)  | 2.522(56%) | -0.008     | -0.464 | 0.035             | Timed                     | Same Clock        | 20           | 16     | FDRE/C-(5)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(24)-LUT2-(5)-LUT6-(12)-LUT2-(16)-CARRY8-(7)-LUT6-(79)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(1)-LUT6-(3)-LUT6-(9)-LUT6-(61)-LUT4-(1)-LUT6-(1)-LUT6-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 79          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | drain_unit_q_reg[pos][9]/C                     | gen_wgroup[9].ok_next_q_reg[9]/D                    |
+| Path #17    | 4.000       | 4.427      | 1.124(26%)  | 3.303(74%) | -0.009     | -0.446 | 0.035             | Timed                     | Same Clock        | 11           | 9      | FDRE/C-(1)-LUT2-(3)-LUT6-(3)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(38)-LUT6-(2)-LUT6-(1)-LUT6-(1)-LUT6-(1)-FDRE/D                                                                                        | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 38          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].file_q_reg[2][23]/C                | s1_q_reg[lo][0]/D                                   |
+| Path #18    | 4.000       | 4.424      | 1.431(33%)  | 2.993(67%) | -0.008     | -0.442 | 0.035             | Timed                     | Same Clock        | 13           | 11     | FDRE/C-(257)-LUT5-(1)-LUT6-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(38)-LUT6-(2)-LUT6-(1)-LUT6-(1)
+CABOSSE-REPLAY 02
+-LUT6-(1)-LUT6-(1)-FDRE/D                                                                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 257         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[1].tag_q_reg[2][slot][0]/C             | s1_q_reg[lo][0]/D                                   |
+| Path #19    | 4.000       | 4.418      | 1.122(26%)  | 3.296(74%) | -0.009     | -0.438 | 0.035             | Timed                     | Same Clock        | 11           | 9      | FDRE/C-(257)-LUT5-(1)-LUT6-(7)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(8)-LUT6-(1)-LUT6-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                                                                       | clk               | clk             | None      | None-None     | 1            | 0             | 0       | 257         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[0].tag_q_reg[1][slot][0]_srl2_srlopt/C | s1_q_reg[lo][10]/D                                  |
+| Path #20    | 4.000       | 4.418      | 1.191(27%)  | 3.227(73%) | -0.008     | -0.436 | 0.035             | Timed                     | Same Clock        | 12           | 11     | FDRE/C-(1)-LUT2-(3)-LUT6-(3)-LUT4-(1)-LUT5-(5)-LUT2-(1)-CARRY8-(58)-LUT5-(5)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT5-(1)-LUT6-(1)-FDRE/D                                                                             | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 58          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].file_q_reg[3][23]/C                | s1_q_reg[lo][0]/D                                   |
+| Path #21    | 4.000       | 4.410      | 1.386(32%)  | 3.024(68%) | -0.010     | -0.431 | 0.035             | Timed                     | Same Clock        | 11           | 9      | FDRE/C-(129)-LUT6-(7)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(35)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT5-(1)-LUT6-(1)-FDRE/D                                                                                      | clk               | clk             | None      | None-None     | 1            | 0             | 0       | 129         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[0].tag_q_reg[1][slot][1]_srl2_srlopt/C | s1_q_reg[lo][0]/D                                   |
+| Path #22    | 4.000       | 4.406      | 1.379(32%)  | 3.027(68%) | -0.009     | -0.425 | 0.035             | Timed                     | Same Clock        | 11           | 10     | FDRE/C-(33)-LUT2-(3)-LUT6-(7)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(9)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                                                                        | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 33          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].written_q_reg[2]/C                 | s1_q_reg[lo][1]/D                                   |
+| Path #23    | 4.000       | 4.406      | 0.960(22%)  | 3.446(78%) | -0.008     | -0.424 | 0.035             | Timed                     | Same Clock        | 11           | 10     | FDRE/C-(33)-LUT2-(3)-LUT6-(7)-LUT5-(4)-CARRY8-(1)-CARRY8-LUT5-(11)-LUT5-(1)-LUT6-(1)-LUT5-(2)-LUT5-(1)-LUT6-(1)-FDRE/D                                                                                       | clk               | clk             | None      | None-None     | 5            | 0             | 0       | 33          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].written_q_reg[3]/C                 | s1_q_reg[lo][0]/D                                   |
+| Path #24    | 4.000       | 4.402      | 1.046(24%)  | 3.356(76%) | -0.010     | -0.423 | 0.035             | Timed                     | Same Clock        | 11           | 9      | FDRE/C-(257)-LUT5-(1)-LUT6-(7)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(8)-LUT6-(1)-LUT6-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                                                                       | clk               | clk             | None      | None-None     | 1            | 0             | 0       | 257         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[0].tag_q_reg[1][slot][0]_srl2_srlopt/C | s1_q_reg[lo][13]/D                                  |
+| Path #25    | 4.000       | 4.403      | 1.334(31%)  | 3.069(69%) | -0.007     | -0.420 | 0.035             | Timed                     | Same Clock        | 12           | 11     | FDRE/C-(257)-LUT5-(1)-LUT6-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(5)-LUT5-(2)-LUT5-(3)-LUT5-(2)-LUT5-(1)-FDRE/D                                                                              | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 257         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[0].tag_q_reg[1][slot][0]_srl2_srlopt/C | s1_q_reg[lo][1]/D                                   |
+| Path #26    | 4.000       | 4.398      | 1.471(34%)  | 2.927(66%) | -0.008     | -0.417 | 0.035             | Timed                     | Same Clock        | 12           | 10     | FDRE/C-(65)-LUT5-(1)-LUT6-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(3)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                                                               | clk               | clk             | None      | None-None     | 3            | 0             | 0       | 65          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[2].written_q_reg[0]/C                 | s1_q_reg[lo][3]/D                                   |
+| Path #27    | 4.000       | 4.397      | 1.281(30%)  | 3.116(70%) | -0.009     | -0.416 | 0.035             | Timed                     | Same Clock        | 12           | 11     | FDRE/C-(33)-LUT2-(3)-LUT6-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(4)-LUT5-(1)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                                                               | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 33          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[2]/C                 | s1_q_reg[lo][1]/D                                   |
+| Path #28    | 4.000       | 4.334      | 0.079(2%)   | 4.255(98%) | 0.013      | -0.416 | 0.035             | Timed                     | Same Clock        | 0            | 1      | FDRE/C-(16)-SRL16E/D                                                                                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 16          | 0         | 0          | 0          | FDRE/C                    | SRL16E/D                | gen_group[3].pipe_q_reg[4][mask][3]/C          | gen_tag[0].tag_q_reg[1][mask][3]_srl2/D             |
+| Path #29    | 4.000       | 4.396      | 1.154(27%)  | 3.242(73%) | -0.009     | -0.416 | 0.035             | Timed                     | Same Clock        | 11           | 10     | FDRE/C-(65)-LUT5-(1)-LUT6-(7)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(6)-LUT5-(2)-LUT5-(3)-LUT5-(2)-LUT5-(1)-FDRE/D                                                                                        | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 65          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[1]/C                 | s1_q_reg[lo][1]/D                                   |
+| Path #30    | 4.000       | 4.394      | 1.153(27%)  | 3.241(73%) | -0.009     | -0.413 | 0.035             | Timed                     | Same Clock        | 10           | 9      | FDRE/C-(257)-LUT5-(1)-LUT6-(5)-LUT4-(1)-CARRY8-(1)-CARRY8-LUT3-(8)-LUT6-(1)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                                                                                | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 257         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[1].tag_q_reg[2][slot][0]/C             | s1_q_reg[lo][1]/D                                   |
+| Path #31    | 4.000       | 4.393      | 1.284(30%)  | 3.109(70%) | -0.010     | -0.413 | 0.035             | Timed                     | Same Clock        | 12           | 11     | FDRE/C-(257)-LUT5-(1)-LUT6-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(8)-LUT6-(1)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                                                              | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 257         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[0].tag_q_reg[1][slot][0]_srl2_srlopt/C | s1_q_reg[lo][1]/D                                   |
+| Path #32    | 4.000       | 4.391      | 1.058(25%)  | 3.333(75%) | -0.010     | -0.412 | 0.035             | Timed                     | Same Clock        | 12           | 11     | FDRE/C-(257)-LUT5-(1)-LUT6-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(35)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                                                             | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 257         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[1].tag_q_reg[2][slot][0]/C             | s1_q_reg[lo][1]/D                                   |
+| Path #33    | 4.000       | 4.391      | 1.387(32%)  | 3.004(68%) | -0.009     | -0.411 | 0.035             | Timed                     | Same Clock        | 12           | 11     | FDRE/C-(257)-LUT5-(1)-LUT6-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(25)-LUT6-(1)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                                                             | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 257         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[0].tag_q_reg[1][slot][0]_srl2_srlopt/C | s1_q_reg[lo][1]/D                                   |
+| Path #34    | 4.000       | 4.390      | 1.293(30%)  | 3.097(70%) | -0.010     | -0.410 | 0.035             | Timed                     | Same Clock        | 12           | 10     | FDRE/C-(257)-LUT5-(1)-LUT6-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(6)-LUT5-(2)-LUT6-(2)-LUT5-(2)-LUT6-(1)-FDRE/D                                                                              | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 257         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[0].tag_q_reg[1][slot][0]_srl2_srlopt/C | s1_q_reg[lo][8]/D                                   |
+| Path #35    | 4.000       | 4.287      | 0.485(12%)  | 3.802(88%) | -0.009     | -0.409 | 0.035             | Timed                     | Same Clock        | 5            | 6      | FDRE/C-(2)-LUT5-(1)-LUT6-(1)-LUT6-(2)-LUT6-(2)-LUT3-(32)-FDRE/R                                                                                                                                              | clk               | clk             | None      | None-None     | 0            | 3             | 0       | 32          | 0         | 0          | 0          | FDRE/C                    | FDRE/R                  | iss_ports_q_reg[1][3]/C                        | iss_taken_q_reg[0]/R                                |
+| Path #36    | 4.000       | 4.287      | 0.485(12%)  | 3.802(88%) | -0.009     | -0.409 | 0.035             | Timed                     | Same Clock        | 5            | 6      | FDRE/C-(2)-LUT5-(1)-LUT6-(1)-LUT6-(2)-LUT6-(2)-LUT3-(32)-FDRE/R                                                                                                                                              | clk               | clk             | None      | None-None     | 0            | 3             | 0       | 32          | 0         | 0          | 0          | FDRE/C                    | FDRE/R                  | iss_ports_q_reg[1][3]/C                        | iss_taken_q_reg[10]/R                               |
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Sat Oct 31 23:05:56 2026
+| Host         : ip-172-31-38-138 running 64-bit Ubuntu 24.04.1 LTS
+| Command      : report_high_fanout_nets -timing -max_nets 50 -file fanout.rpt
+| Design       : engine_path
+| Device       : xcvu47p
+| Design State : Routed
+---------------------------------------------------------------------------------------------------------------------------------------------
+High Fan-out Nets Information
+1. Summary
+----------
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| Net Name                                               | Fanout | Driver Type | Worst Slack(ns) | Worst Delay(ns) |
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| u_engine/gen_lane[0].u_lane/bank_q[0][0][31]_i_1_n_0   |    512 | LUT3        |           0.353 |           1.341 |
+| u_engine/gen_lane[0].u_lane/bank_q[1][0][31]_i_1_n_0   |    512 | LUT3        |           0.309 |           1.370 |
+| u_engine/gen_lane[100].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.233 |           1.776 |
+| u_engine/gen_lane[100].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.652 |           1.343 |
+| u_engine/gen_lane[101].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.951 |           2.061 |
+| u_engine/gen_lane[101].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.978 |           2.021 |
+| u_engine/gen_lane[102].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.966 |           1.872 |
+| u_engine/gen_lane[102].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.948 |           1.876 |
+| u_engine/gen_lane[103].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.114 |           1.987 |
+| u_engine/gen_lane[103].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.651 |           2.436 |
+| u_engine/gen_lane[104].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.025 |           2.152 |
+| u_engine/gen_lane[104].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.805 |           2.360 |
+| u_engine/gen_lane[105].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.844 |           2.177 |
+| u_engine/gen_lane[105].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.031 |           1.978 |
+| u_engine/gen_lane[106].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.118 |           1.945 |
+| u_engine/gen_lane[106].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.141 |           1.901 |
+| u_engine/gen_lane[107].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.063 |           1.888 |
+| u_engine/gen_lane[107].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3 
+CABOSSE-REPLAY 03
+       |           1.167 |           1.772 |
+| u_engine/gen_lane[108].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.214 |           1.856 |
+| u_engine/gen_lane[108].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.006 |           2.048 |
+| u_engine/gen_lane[109].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.155 |           1.650 |
+| u_engine/gen_lane[109].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.078 |           1.708 |
+| u_engine/gen_lane[10].u_lane/bank_q[0][0][31]_i_1_n_0  |    512 | LUT3        |           0.942 |           1.527 |
+| u_engine/gen_lane[10].u_lane/bank_q[1][0][31]_i_1_n_0  |    512 | LUT3        |           0.878 |           1.573 |
+| u_engine/gen_lane[110].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.899 |           2.101 |
+| u_engine/gen_lane[110].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.391 |           1.583 |
+| u_engine/gen_lane[111].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.195 |           2.021 |
+| u_engine/gen_lane[111].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.626 |           2.576 |
+| u_engine/gen_lane[112].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.485 |           1.810 |
+| u_engine/gen_lane[112].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.318 |           1.969 |
+| u_engine/gen_lane[113].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.613 |           2.074 |
+| u_engine/gen_lane[113].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.976 |           1.697 |
+| u_engine/gen_lane[114].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.789 |           1.772 |
+| u_engine/gen_lane[114].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.703 |           1.840 |
+| u_engine/gen_lane[115].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.970 |           2.084 |
+| u_engine/gen_lane[115].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.798 |           2.239 |
+| u_engine/gen_lane[116].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.189 |           1.779 |
+| u_engine/gen_lane[116].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.241 |           1.715 |
+| u_engine/gen_lane[117].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.203 |           1.740 |
+| u_engine/gen_lane[117].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.917 |           2.012 |
+| u_engine/gen_lane[118].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.899 |           1.721 |
+| u_engine/gen_lane[118].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.776 |           1.832 |
+| u_engine/gen_lane[119].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.004 |           2.450 |
+| u_engine/gen_lane[119].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.284 |           2.150 |
+| u_engine/gen_lane[11].u_lane/bank_q[0][0][31]_i_1_n_0  |    512 | LUT3        |           1.072 |           2.312 |
+| u_engine/gen_lane[11].u_lane/bank_q[1][0][31]_i_1_n_0  |    512 | LUT3        |           0.751 |           2.622 |
+| u_engine/gen_lane[120].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.436 |           1.893 |
+| u_engine/gen_lane[120].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.978 |           2.341 |
+| u_engine/gen_lane[121].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.194 |           2.104 |
+| u_engine/gen_lane[121].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.287 |           1.998 |
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| CLB LUTs                   | 555726 |     0 |          0 |   1303680 | 42.63 |
+|   LUT as Logic             | 516843 |     0 |          0 |   1303680 | 39.64 |
+|   LUT as Memory            |  38883 |     0 |          0 |    600960 |  6.47 |
+| CLB Registers              | 382777 |     0 |          0 |   2607360 | 14.68 |
+| CARRY8                     |  14123 |     0 |          0 |    162960 |  8.67 |
+|   LUT as Distributed RAM                   |  37088 |     0 |            |           |       |
+|   LUT as Shift Register                    |   1795 |     0 |            |           |       |
+| CLB Registers                              | 382777 |     0 |          0 |   2607360 | 14.68 |
+| DSPs           |   16 |     0 |          0 |      9024 |  0.18 |
+| CARRY8   |  14123 |                 CLB |
+| CLB LUTs                   | 135865 | 293899 | 125962 |  30.90 |  68.03 |  29.16 |
+|   LUT as Logic             | 126229 | 273682 | 116932 |  28.71 |  63.35 |  27.07 |
+|   LUT as Memory            |   9636 |  20217 |   9030 |   4.69 |  10.22 |   4.57 |
+| CLB Registers              |  93906 | 200308 |  88563 |  10.68 |  23.18 |  10.25 |
+| CARRY8                     |   3458 |   7485 |   3180 |   6.29 |  13.86 |   5.89 |
+| DSPs                       |      0 |     16 |      0 |   0.00 |   0.52 |   0.00 |
+1. Utilization by Hierarchy
+1. Utilization by Hierarchy
+---------------------------
++------------------------------+----------------------------------+------------+------------+---------+------+--------+--------+--------+---
+|           Instance           |              Module              | Total LUTs | Logic LUTs | LUTRAMs | SRLs |   FFs  | RAMB36 | RAMB18 | UR
++------------------------------+----------------------------------+------------+------------+---------+------+--------+--------+--------+---
+| engine_path                  |                            (top) |     555726 |     516843 |   37088 | 1795 | 382777 |      0 |      0 |   
+|   (engine_path)              |                            (top) |          0 |          0 |       0 |    0 |  10534 |      0 |      0 |   
+|   u_engine                   |                           engine |     555726 |     516843 |   37088 | 1795 | 372243 |      0 |      0 |   
+|     (u_engine)               |                           engine |       1235 |       1000 |       0 |  235 |   4241 |      0 |      0 |   
+|     gen_dma[0].u_dma         |                         port_dma |        960 |        368 |     592 |    0 |    175 |      0 |      0 |   
+|       (gen_dma[0].u_dma)     |                         port_dma |         91 |         91 |       0 |    0 |     59 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1461 |        251 |        103 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1457 |        231 |         83 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1453 |        223 |         75 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1449 |        252 |        104 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1445 |        220 |         72 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1441 |        231 |         83 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1437 |        224 |         76 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1433 |        254 |        106 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1429 |        219 |         71 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1425 |        230 |         82 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1421 |        221 |         73 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1417 |        219 |         71 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1413 |        254 |        106 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1409 |        219 |         71 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1405 |        231 |         83 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1401 |        223 |         75 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1397 |        250 |        102 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1393 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1389 |        229 |         81 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1385 |        221 |         73 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1381 |        250 |        102 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1377 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1373 |        230 |         82 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1369 |        229 |         81 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1365 |        225 |         77 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1361 |        223 |         75 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1357 |        251 |        103 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1353 |        219 |         71 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1349 |        231 |         83 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1345 |        223 |         75 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1341 |        251 |        103 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    |      stream_fifo__parameterized0 |        219 |         71 |     148 |    0 |     29 |      0 |      0 |   
+|     gen_lane[0].u_lane       |                         dot_lane |       4042 |       3890 |     140 |   12 |   2810 |      0 |      0 |   
+|       (gen_lane[0].u_lane)   |                         dot_lane |       1403 |       1251 |     140 |   12 |   1968 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1329 |        356 |        356 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1330 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1337 |        344 |        344 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1320 |        380 |        380 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1321 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1328 |        344 |        344 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1311 |        354 |        354 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1312 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1319 |        344 |        344 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1302 |        386 |        386 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1303 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1310 |        344 |        344 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1293 |        359 |        359 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1294 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1301 |        344 |        344 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1284 |        352 |        352 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1285 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1292 |        344 |        344 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1275 |        368 |        368 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1276 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1283 |        344 |        344 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1266 |        352 |        352 |       0 |    0 |    147 |      0 |      0 |   
+1. Placer Final Level Congestion Reporting
+2. Router Initial Congestion
+1. Placer Final Level Congestion Reporting
+------------------------------------------
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+
+| Direction | Type | Level | Window | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL | Cell Names |
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+
+* No congestion windows are found above level 5
+2. Router Initial Congestion
+----------------------------
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+-------------+
+| Direction | Type | Level | Window | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL | Cell Names | Sub Windows |
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+-------------+
+* No effective congestion windows are found above level 5
+CABOSSE-END run1 engine_path:MulRegs:2:0:0
+         Starting [0;1;39msysstat-collect.service[0m - system activity accounting tool...
+[[0;32m  OK  [0m] Finished [0;1;39msysstat-collect.service[0m - system activity accounting tool.
+CABOSSE-FINISHED
+ci-info: no authorized SSH keys fingerprints found for user ubuntu.
+[[0;32m  OK  [0m] Removed slice [0;1;39msystem-modprobe.slice[0m - Slice /system/modprobe.
+[[0;32m  OK  [0m] Stopped target [0;1;39mgraphical.target[0m - Graphical Interface.
+[[0;32m  OK  [0m] Stopped target [0;1;39mnss-lookup.target[0m - Host and Network Name Lookups.
+[[0;32m  OK  [0m] Stopped target [0;1;39mtimers.target[0m - Timer Units.
+[[0;32m  OK  [0m] Stopped [0;1;39mapt-daily-upgrade.timer[0m - …y apt upgrade and clean activities.
+[[0;32m  OK  [0m] Stopped [0;1;39mdpkg-db-backup.timer[0m - Daily dpkg database backup timer.
+[[0;32m  OK  [0m] Stopped [0;1;39me2scrub_all.timer[0m - Period…Metadata Check for All Filesystems.
+[[0;32m  OK  [0m] Stopped [0;1;39mfstrim.timer[0m - Discard unused filesystem blocks once a week.
+[[0;32m  OK  [0m] Stopped [0;1;39mfwupd-refresh.timer[0m - Refresh fwupd metadata regularly.
+[[0;32m  OK  [0m] Stopped [0;1;39mlogrotate.timer[0m - Daily rotation of log files.
+[[0;32m  OK  [0m] Stopped [0;1;39mman-db.timer[0m - Daily man-db regeneration.
+[[0;32m  OK  [0m] Stopped [0;1;39mmotd-news.timer[0m - Message of the Day.
+[[0;32m  OK  [0m] Stopped [0;1;39msysstat-collect.timer[0m - Ru…y accounting tool every 10 minutes.
+[[0;32m  OK  [0m] Stopped [0;1;39msysstat-summary.timer[0m - Ge… of yesterday's process accounting.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-tmpfiles-clean.tim…[0my Cleanup of Temporary Directories.
+[[0;32m  OK  [0m] Stopped [0;1;39mupdate-notifier-download.t…[0mhat failed at package install time.
+[[0;32m  OK  [0m] Stopped [0;1;39mupdate-notifier-motd.timer[0m… a new version of Ubuntu available.
+[[0;32m  OK  [0m] Closed [0;1;39mcloud-init-hotplugd.socket[0m - cloud-init hotplug hook socket.
+[[0;32m  OK  [0m] Closed [0;1;39mlvm2-lvmpolld.socket[0m - LVM2 poll daemon socket.
+[[0;32m  OK  [0m] Closed [0;1;39msystemd-rfkill.socket[0m - Loa…ll Switch Status /dev/rfkill Watch.
+         Unmounting [0;1;39mhome-ubuntu-src-project…[0m - /home/ubuntu/src/project_data...
+         Stopping [0;1;39macpid.service[0m - ACPI event daemon...
+[[0;32m  OK  [0m] Stopped [0;1;39mapt-daily.timer[0m - Daily apt download activities.
+         Stopping [0;1;39mblk-availability.service[0m - Availability of block devices...
+         Stopping [0;1;39mfinalrd.service[0m - Create …time dir for shutdown pivot root...
+         Stopping [0;1;39mfwupd.service[0m - Firmware update daemon...
+         Stopping [0;1;39msystemd-random-seed.service[0m - Load/Save OS Random Seed...
+         Stopping [0;1;39mudisks2.service[0m - Disk Manager...
+[[0;32m  OK  [0m] Unmounted [0;1;39mhome-ubuntu-src-project_…nt[0m - /home/ubuntu/src/project_data.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-random-seed.service[0m - Load/Save OS Random Seed.
+[[0;32m  OK  [0m] Stopped [0;1;39macpid.service[0m - ACPI event daemon.
+Cloud-init 24.4-0ubuntu1~24.04.2 received SIGTERM, exiting...
+  Filename: /usr/lib/python3.12/selectors.py
+  Function: select
+  Line number: 415
+    Filename: /usr/lib/python3.12/subprocess.py
+    Function: _communicate
+    Line number: 2115
+      Filename: /usr/lib/python3.12/subprocess.py
+      Function: communicate
+      Line number: 1209
+[ 5731.119265] cloud-init[1160]: Cloud-init 24.4-0ubuntu1~24.04.2 received SIGTERM, exiting...
+[ 5731.119539] cloud-init[1160]:   Filename: /usr/lib/python3.12/selectors.py
+[ 5731.119697] cloud-init[1160]:   Function: select
+[ 5731.119878] cloud-init[1160]:   Line number: 415
+[ 5731.120229] cloud-init[1160]:     Filename: /usr/lib/python3.12/subprocess.py
+[ 5731.120254] cloud-init[1160]:     Function: _communicate
+[ 5731.120284] cloud-init[1160]:     Line number: 2115
+[ 5731.120308] cloud-init[1160]:       Filename: /usr/lib/python3.12/subprocess.py
+[ 5731.120336] cloud-init[1160]:       Function: communicate
+[ 5731.120359] cloud-init[1160]:       Line number: 1209
+[ 5731.120394] cloud-init[1160]: 2026-10-31 23:10:58,153 - log_util.py[ERROR]: Cloud-init 24.4-0ubuntu1~24.04.2 received SIGTERM, exiting...
+[ 5731.120420] cloud-init[1160]:   Filename: /usr/lib/python3.12/selectors.py
+[ 5731.120444] cloud-init[1160]:   Function: select
+[ 5731.120469] cloud-init[1160]:   Line number: 415
+[ 5731.120502] cloud-init[1160]:     Filename: /usr/lib/python3.12/subprocess.py
+[ 5731.120525] cloud-init[1160]:     Function: _communicate
+[ 5731.120547] cloud-init[1160]:     Line number: 2115
+[ 5731.120570] cloud-init[1160]:       Filename: /usr/lib/python3.12/subprocess.py
+[ 5731.120592] cloud-init[1160]:       Function: communicate
+[ 5731.120614] cloud-init[1160]:       Line number: 1209
+[[0;32m  OK  [0m] Stopped [0;1;39mudisks2.service[0m - Disk Manager.
+[ 5731.124495] cloud-init[1160]: 2026-10-31 23:10:58,153 - main.py[ERROR]: failed stage modules-final
+[ 5731.124530] cloud-init[1160]: Traceback (most recent call last):
+[ 5731.124562] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/cmd/main.py", line 922, in status_wrapper
+[ 5731.124587] cloud-init[1160]:     ret = functor(name, args)
+[ 5731.124616] cloud-init[1160]:           ^^^^^^^^^^^^^^^^^^^
+[ 5731.124640] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/cmd/main.py", line 762, in main_modules
+[ 5731.124668] cloud-init[1160]:     return run_module_section(mods, name, name)
+[ 5731.124692] cloud-init[1160]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.124719] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/cmd/main.py", line 140, in run_module_section
+[ 5731.124745] cloud-init[1160]:     (which_ran, failures) = mods.run_section(full_section_name)
+[ 5731.124771] cloud-init[1160]:                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.124798] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/config/modules.py", line 379, in run_section
+[ 5731.124821] cloud-init[1160]:     return self._run_modules(active_mods)
+[ 5731.124844] cloud-init[1160]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.124870] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/config/modules.py", line 295, in _run_modules
+[ 5731.124893] cloud-init[1160]:     ran, _r = cc.run(
+[ 5731.124919] cloud-init[1160]:               ^^^^^^^
+[ 5731.124945] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/cloud.py", line 71, in run
+[ 5731.124971] cloud-init[1160]:     return self._runners.run(name, functor, args, freq, clear_on_fail)
+[ 5731.125012] cloud-init[1160]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.125046] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/helpers.py", line 156, in run
+[ 5731.125074] cloud-init[1160]:     results = functor(**args)
+[ 5731.125113] cloud-init[1160]:               ^^^^^^^^^^^^^^^
+[ 5731.125300] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/config/cc_keys_to_console.py", line 67, in handle
+[ 5731.125482] cloud-init[1160]:     (stdout, _stderr) = subp.subp(cmd)
+[ 5731.125662] cloud-init[1160]:                         ^^^^^^^^^^^^^^
+[ 5731.125840] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/subp.py", line 272, in subp
+[ 5731.126197] cloud-init[1160]:     out, err = sp.communicate(data, timeout=timeout)
+[ 5731.126223] cloud-init[1160]:                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[[0;32m  OK  [0m] Stopped [0;1;39mfwupd.service[0m - Firmware update daemon.
+[ 5731.203366] cloud-init[1160]:   File "/usr/lib/python3.12/subprocess.py", line 1209, in communicate
+[ 5731.203509] cloud-init[1160]:     stdout, stderr = self._communicate(input, endtime, timeout)
+[ 5731.203677] cloud-init[1160]:                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.203708] cloud-init[1160]:   File "/usr/lib/python3.12/subprocess.py", line 2115, in _communicate
+[ 5731.203736] cloud-init[1160]:     ready = selector.select(timeout)
+[ 5731.203927] cloud-init[1160]:             ^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.204105] cloud-init[1160]:   File "/usr/lib/python3.12/selectors.py", line 415, in select
+[ 5731.204124] cloud-init[1160]:     fd_event_list = self._selector.poll(timeout)
+[ 5731.204289] cloud-init[1160]:                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.204311] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/signal_handler.py", line 48, in _handle_exit
+[ 5731.204331] cloud-init[1160]:     sys.exit(rc)
+[ 5731.204516] cloud-init[1160]: SystemExit: 1
+[ 5731.204533] cloud-init[1160]: failed run of stage modules-final
+[ 5731.204685] cloud-init[1160]: ------------------------------------------------------------
+[ 5731.204705] cloud-init[1160]: Traceback (most recent call last):
+[ 5731.204722] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/cmd/main.py", line 922, in status_wrapper
+[ 5731.204740] cloud-init[1160]:     ret = functor(name, args)
+[ 5731.204904] cloud-init[1160]:           ^^^^^^^^^^^^^^^^^^^
+[ 5731.204921] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/cmd/main.py", line 762, in main_modules
+[ 5731.204936] cloud-init[1160]:     return run_module_section(mods, name, name)
+[ 5731.205130] cloud-init[1160]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.205292] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/cmd/main.py", line 140, in run_module_section
+[ 5731.205313] cloud-init[1160]:     (which_ran, failures) = mods.run_section(full_section_name)
+[ 5731.205332] cloud-init[1160]:                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.205349] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/config/modules.py", line 379, in run_section
+[ 5731.205537] cloud-init[1160]:     return self._run_modules(active_mods)
+[ 5731.205552] cloud-init[1160]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.205734] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/config/modules.py", line 295, in _run_modules
+[ 5731.205761] cloud-init[1160]:     ran, _r = cc.run(
+[ 5731.205924] cloud-init[1160]:               ^^^^^^^
+[ 5731.205939] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/cloud.py", line 71, in run
+[ 5731.205956] cloud-init[1160]:     return self._runners.run(name, functor, args, freq, clear_on_fail)
+[ 5731.205970] cloud-init[1160]:            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.205992] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/helpers.py", line 156, in run
+[ 5731.206036] cloud-init[1160]:     results = functor(**args)
+[ 5731.206059] cloud-init[1160]:               ^^^^^^^^^^^^^^^
+[ 5731.206076] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/config/cc_keys_to_console.py", line 67, in handle
+[ 5731.206094] cloud-init[1160]:     (stdout, _stderr) = subp.subp(cmd)
+[[0;32m  OK  [0m] Stopped [0;1;39mcloud-final.service[0m - Cloud-init: Final Stage.
+[ 5731.206114] cloud-init[1160]:                         ^^^^^^^^^^^^^^
+[ 5731.206131] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/subp.py", line 272, in subp
+[ 5731.206157] cloud-init[1160]:     out, err = sp.communicate(data, timeout=timeout)
+[ 5731.206187] cloud-init[1160]:                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.206333] cloud-init[1160]:   File "/usr/lib/python3.12/subprocess.py", line 1209, in communicate
+[[0;32m  OK  [0m] Stopped [0;1;39mblk-availability.service[0m - Availability of block devices.
+[ 5731.282308] cloud-init[1160]:     stdout, stderr = self._communicate(input, endtime, timeout)
+[ 5731.282473] cloud-init[1160]:                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.282645] cloud-init[1160]:   File "/usr/lib/python3.12/subprocess.py", line 2115, in _communicate
+[ 5731.282673] cloud-init[1160]:     ready = selector.select(timeout)
+[ 5731.282703] cloud-init[1160]:             ^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.282872] cloud-init[1160]:   File "/usr/lib/python3.12/selectors.py", line 415, in select
+[ 5731.283064] cloud-init[1160]:     fd_event_list = self._selector.poll(timeout)
+[ 5731.283088] cloud-init[1160]:                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[ 5731.283105] cloud-init[1160]:   File "/usr/lib/python3/dist-packages/cloudinit/si         Stopping [0;1;39mserial-getty@ttyS0.service[0m - Serial Getty on ttyS0...
+[[0;32m  OK  [0m] Stopped [0;1;39msnapd.seeded.service[0m - Wait until snapd is fully seeded.
+         Stopping [0;1;39msnapd.service[0m - Snap Daemon...
+[[0;32m  OK  [0m] Stopped [0;1;39msysstat.service[0m - Resets System Activity Logs.
+         Stopping [0;1;39msystemd-logind.service[0m - User Login Management...
+[[0;32m  OK  [0m] Stopped [0;1;39mirqbalance.service[0m - irqbalance daemon.
+[[0;32m  OK  [0m] Stopped [0;1;39mnetworkd-dispatcher.servic…[0matcher daemon for systemd-networkd.
+[[0;32m  OK  [0m] Stopped [0;1;39mrsyslog.service[0m - System Logging Service.
+[[0;32m  OK  [0m] Stopped [0;1;39mcron.service[0m - Regular background program processing daemon.
+[[0;32m  OK  [0m] Stopped [0;1;39mserial-getty@ttyS0.service[0m - Serial Getty on ttyS0.
+[[0;32m  OK  [0m] Stopped [0;1;39mgetty@tty1.service[0m - Getty on tty1.
+[[0;32m  OK  [0m] Stopped [0;1;39mModemManager.service[0m - Modem Manager.
+[[0;32m  OK  [0m] Stopped [0;1;39mchrony.service[0m - chrony, an NTP client/server.
+[[0;32m  OK  [0m] Removed slice [0;1;39msystem-getty.slice[0m - Slice /system/getty.
+[[0;32m  OK  [0m] Removed slice [0;1;39msystem-serial\x2dget…slice[0m - Slice /system/serial-getty.
+[[0;32m  OK  [0m] Stopped target [0;1;39mgetty-pre.target[0m - Preparation for Logins.
+[[0;32m  OK  [0m] Stopped [0;1;39mplymouth-quit-wait.service[0m…old until boot process finishes up.
+         Starting [0;1;39mplymouth-switch-root-init…[0mll Plymouth To Jump To initramfs...
+         Stopping [0;1;39mpolkit.service[0m - Authorization Manager...
+         Stopping [0;1;39msystemd-user-sessions.service[0m - Permit User Sessions...
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-logind.service[0m - User Login Management.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-user-sessions.service[0m - Permit User Sessions.
+[[0;32m  OK  [0m] Stopped [0;1;39mpolkit.service[0m - Authorization Manager.
+[[0;32m  OK  [0m] Finished [0;1;39mplymouth-switch-root-init…[0mTell Plymouth To Jump To initramfs.
+[[0;32m  OK  [0m] Stopped [0;1;39mapport.service[0m - automatic crash report generation.
+[[0;32m  OK  [0m] Stopped target [0;1;39mremote-fs.target[0m - Remote File Systems.
+[[0;32m  OK  [0m] Stopped target [0;1;39mremote-fs-pre.targe…[0mreparation for Remote File Systems.
+[[0;32m  OK  [0m] Stopped [0;1;39mfinalrd.service[0m - Create f…untime dir for shutdown pivot root.
+[[0;32m  OK  [0m] Stopped [0;1;39msnapd.service[0m - Snap Daemon.
+[[0;32m  OK  [0m] Stopped target [0;1;39mtime-set.target[0m - System Time Set.
+[[0;1;31m*[0m[0;31m*    [0m] Job amazon-ssm-agent.service/stop running (5s / 1min 30s)
+M[K[[0m[0;31m*     [0m] Job amazon-ssm-agent.service/stop running (5s / 1min 30s)
+M[K[[0;1;31m*[0m[0;31m*    [0m] Job amazon-ssm-agent.service/stop running (6s / 1min 30s)
+M[K[[0;31m*[0;1;31m*[0m[0;31m*   [0m] Job amazon-ssm-agent.service/stop running (6s / 1min 30s)
+M[K[ [0;31m*[0;1;31m*[0m[0;31m*  [0m] Job amazon-ssm-agent.service/stop running (7s / 1min 30s)
+M[K[[0;32m  OK  [0m] Stopped [0;1;39mamazon-ssm-agent.service[0m - amazon-ssm-agent.
+[K[[0;32m  OK  [0m] Stopped target [0;1;39mbasic.target[0m - Basic System.
+[[0;32m  OK  [0m] Stopped target [0;1;39mnetwork-online.target[0m - Network is Online.
+[[0;32m  OK  [0m] Stopped target [0;1;39mnetwork.target[0m - Network.
+[[0;32m  OK  [0m] Stopped target [0;1;39mpaths.target[0m - Path Units.
+[[0;32m  OK  [0m] Stopped [0;1;39macpid.path[0m - ACPI Events Check.
+[[0;32m  OK  [0m] Stopped target [0;1;39mslices.target[0m - Slice Units.
+[[0;32m  OK  [0m] Removed slice [0;1;39muser.slice[0m - User and Session Slice.
+[[0;32m  OK  [0m] Stopped target [0;1;39msockets.target[0m - Socket Units.
+[[0;32m  OK  [0m] Closed [0;1;39macpid.socket[0m - ACPID Listen Socket.
+[[0;32m  OK  [0m] Closed [0;1;39miscsid.socket[0m - Open-iSCSI iscsid Socket.
+[[0;32m  OK  [0m] Closed [0;1;39mlxd-installer.socket[0m - Helper to install lxd snap on demand.
+[[0;32m  OK  [0m] Closed [0;1;39msnapd.socket[0m - Socket activation for snappy daemon.
+[[0;32m  OK  [0m] Closed [0;1;39mssh.socket[0m - OpenBSD Secure Shell server socket.
+[[0;32m  OK  [0m] Closed [0;1;39msyslog.socket[0m - Syslog Socket.
+[[0;32m  OK  [0m] Closed [0;1;39muuidd.socket[0m - UUID daemon activation socket.
+[[0;32m  OK  [0m] Stopped target [0;1;39msysinit.target[0m - System Initialization.
+[[0;32m  OK  [0m] Stopped target [0;1;39mcryptsetup.target[0m - Local Encrypted Volumes.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-ask-password-conso…[0mequests to Console Directory Watch.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-ask-password-wall.…[0md Requests to Wall Directory Watch.
+[[0;32m  OK  [0m] Stopped target [0;1;39mintegritysetup.targ…[0m Local Integrity Protected Volumes.
+[[0;32m  OK  [0m] Stopped target [0;1;39mswap.target[0m - Swaps.
+[[0;32m  OK  [0m] Stopped target [0;1;39mveritysetup.target[0m - Local Verity Protected Volumes.
+         Deactivating swap [0;1;39mswapfile.swap[0m - /swapfile...
+[[0;32m  OK  [0m] Stopped [0;1;39mcloud-init.service[0m - Cloud-init: Network Stage.
+         Stopping [0;1;39msystemd-binfmt.service[0m - Set Up Additional Binary Formats...
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-networkd-wait-onli…[0m Wait for Network to be Configured.
+         Stopping [0;1;39msystemd-networkd.service[0m - Network Configuration...
+         Stopping [0;1;39msystemd-resolved.service[0m - Network Name Resolution...
+         Stopping [0;1;39msystemd-update-utmp.servi…[0mord System Boot/Shutdown in UTMP...
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-binfmt.service[0m - Set Up Additional Binary Formats.
+[[0;32m  OK  [0m] Unset automount [0;1;39mproc-sys-fs-binfmt…[0mormats File System Automount Point.
+[[0;32m  OK  [0m] Deactivated swap [0;1;39mswapfile.swap[0m - /swapfile.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-update-utmp.servic…[0mecord System Boot/Shutdown in UTMP.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-resolved.service[0m - Network Name Resolution.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-tmpfiles-setup.ser…[0mate Volatile Files and Directories.
+[[0;32m  OK  [0m] Stopped target [0;1;39mlocal-fs.target[0m - Local File Systems.
+[[0;32m  OK  [0m] Stopped target [0;1;39msnapd.mounts.target[0m - Mounted snaps.
+         Unmounting [0;1;39mboot-efi.mount[0m - /boot/efi...
+         Unmounting [0;1;39msnap-core22-1722.mount[0m …t unit for core22, revision 1722...
+         Unmounting [0;1;39msnap-snapd-23545.mount[0m …t unit for snapd, revision 23545...
+         Unmounting [0;1;39msnap-snapd-28254.mount[0m …t unit for snapd, revision 28254...
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-networkd.service[0m - Network Configuration.
+[[0;32m  OK  [0m] Unmounted [0;1;39mboot-efi.mount[0m - /boot/efi.
+[[0;32m  OK  [0m] Unmounted [0;1;39msnap-core22-1722.mount[0m -…unt unit for core22, revision 1722.
+[[0;32m  OK  [0m] Unmounted [0;1;39msnap-snapd-23545.mount[0m -…unt unit for snapd, revision 23545.
+[[0;32m  OK  [0m] Stopped target [0;1;39mnetwork-pre.target[0m - Preparation for Network.
+[[0;32m  OK  [0m] Closed [0;1;39msystemd-networkd.socket[0m - Network Service Netlink Socket.
+         Unmounting [0;1;39mboot.mount[0m - /boot...
+[[0;32m  OK  [0m] Stopped [0;1;39mcloud-init-local.service[0m -…ud-init: Local Stage (pre-network).
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-fsck@dev-disk-by\x…[0mm Check on /dev/disk/by-label/UEFI.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-sysctl.service[0m - Apply Kernel Variables.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-modules-load.service[0m - Load Kernel Modules.
+[[0;32m  OK  [0m] Unmounted [0;1;39msnap-snapd-28254.mount[0m -…unt unit for snapd, revision 28254.
+[[0;32m  OK  [0m] Stopped target [0;1;39msnapd.mounts-pre.target[0m - Mounting snaps.
+[[0;32m  OK  [0m] Unmounted [0;1;39mboot.mount[0m - /boot.
+[[0;32m  OK  [0m] Reached target [0;1;39mumount.target[0m - Unmount All Filesystems.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-fsck@dev-disk-by\x…[0mm Check on /dev/disk/by-label/BOOT.
+[[0;32m  OK  [0m] Removed slice [0;1;39msystem-systemd\x2dfs…slice[0m - Slice /system/systemd-fsck.
+[[0;32m  OK  [0m] Stopped target [0;1;39mlocal-fs-pre.target[0m…Preparation for Local File Systems.
+         Stopping [0;1;39mlvm2-monitor.service[0m - Mo…ing dmeventd or progress polling...
+         Stopping [0;1;39mmultipathd.service[0m - Devi…pper Multipath Device Controller...
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-tmpfiles-setup-dev…[0mCreate Static Device Nodes in /dev.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-tmpfiles-setup-dev…[0mic Device Nodes in /dev gracefully.
+[[0;32m  OK  [0m] Stopped [0;1;39mlvm2-monitor.service[0m - Mon…using dmeventd or progress polling.
+[[0;32m  OK  [0m] Stopped [0;1;39mmultipathd.service[0m - Devic…Mapper Multipath Device Controller.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-remount-fs.service[0m…mount Root and Kernel File Systems.
+[[0;32m  OK  [0m] Stopped [0;1;39msystemd-fsck-root.service[0m - File System Check on Root Device.
+[[0;32m  OK  [0m] Reached target [0;1;39mshutdown.target[0m - System Shutdown.
+[[0;32m  OK  [0m] Reached target [0;1;39mfinal.target[0m - Late Shutdown Services.
+[[0;32m  OK  [0m] Finished [0;1;39msystemd-poweroff.service[0m - System Power Off.
+[[0;32m  OK  [0m] Reached target [0;1;39mpoweroff.target[0m - System Power Off.
+[ 5738.509409] reboot: Power down
+	2026-10-31T23:18:26+00:00
