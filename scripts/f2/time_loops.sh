@@ -14,12 +14,13 @@
 REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga, for the part name
 FALLBACK_PART=xcvu47p-fsvh2892-2-e
-# top:param:value:cycles:retime (timing.tcl). mac_loop is the lanes' unit
+# top:param:value:cycles:retime[:flow] (timing.tcl). mac_loop is the lanes' unit
 # (D-038) and fma_path the vector unit's fma (D-039), measured on
 # 2026-10-07 and 2026-10-08 (reports/data/f2/); lane_path is the whole lane
 # (M4), its loop 4 cycles.
 RUNS="lane_path:MulRegs:1:4:0 lane_path:MulRegs:1:4:1 lane_path:MulRegs:2:4:0"
 DEADLINE_MIN=110               # safety net: power off even if something hangs
+DCP_S3=                        # s3://bucket/prefix: keep each run's routed checkpoint there
 
 shutdown -h +$DEADLINE_MIN
 export HOME=/root  # cloud-init runs this without HOME; Vivado needs it
@@ -71,6 +72,9 @@ for run in $RUNS; do
     status=$?
     echo "run$i ($run) exit $status $(date -u +%T)"
     [ $status -eq 0 ] || tail -30 vivado.out
+    if [ -n "$DCP_S3" ] && [ -f routed.dcp ]; then
+      aws s3 cp --only-show-errors routed.dcp "$DCP_S3/run$i.dcp" && echo "run$i dcp $DCP_S3/run$i.dcp"
+    fi
   ) &
   pids+=($!)
 done
