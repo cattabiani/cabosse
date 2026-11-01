@@ -382,25 +382,25 @@ module engine
   // --- Issue: DMA commands -------------------------------------------------------
 
   logic                 iss_busy_q, iss_head_q;  // iss_head_q: the unit's head
+  logic                 iss_done_q;  // every port took the DMA command (registered, D-051)
   logic [AddrWidth-1:0] iss_addr_q;   // the matrix's or the cache's
   logic [Ports-1:0]     iss_taken_q;  // this DMA command's ports already taken
   logic [Ports-1:0]     iss_ports_q[Heads];  // head_ports(iss_unit_q, a), registered for timing
   unit_t                iss_unit_q;
-  logic [Ports-1:0]     iss_taken, iss_active;
-  logic                 iss_done, iss_last_head;
+  logic [Ports-1:0]     iss_active;
+  logic                 iss_last_head;
 
   assign iss_active    = iss_ports_q[iss_head_q];
   assign dma_cmd_valid = {Ports{iss_busy_q}} & iss_active & ~iss_taken_q;
   assign dma_addr      = iss_addr_q + kv_offset(iss_unit_q, iss_head_q) + iss_unit_q.unit_off;
   assign dma_beats     = iss_unit_q.beats;
-  assign iss_taken     = iss_taken_q | dma_cmd_ready;
-  assign iss_done      = iss_busy_q && &(iss_taken | ~iss_active);  // this DMA command's
   assign iss_last_head = 2'(iss_head_q) + 2'd1 == unit_heads(iss_unit_q);
   assign q_pop[0]      = !iss_busy_q && q_valid[0];
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       iss_busy_q  <= 1'b0;
+      iss_done_q  <= 1'b0;
       iss_taken_q <= '0;
     end else if (q_pop[0]) begin
       iss_busy_q   <= 1'b1;
@@ -410,7 +410,8 @@ module engine
       // mux of the two units before unit_ports would lengthen the path.
       iss_unit_q   <= unit_init(q_head[0]);
       for (int unsigned a = 0; a < Heads; a++) iss_ports_q[a] <= head_ports(unit_init(q_head[0]), 1'(a));
-    end else if (iss_done) begin
+    end else if (iss_done_q) begin
+      iss_done_q  <= 1'b0;
       iss_taken_q <= '0;
       if (!iss_last_head) begin
         iss_head_q <= 1'b1;
@@ -421,7 +422,8 @@ module engine
         if (last_unit(iss_unit_q)) iss_busy_q <= 1'b0;
       end
     end else if (iss_busy_q) begin
-      iss_taken_q <= iss_taken;
+      iss_taken_q <= iss_taken_q | dma_cmd_ready;
+      iss_done_q  <= &(iss_taken_q | ~iss_active);
     end
   end
 
@@ -730,10 +732,18 @@ module engine
   //
   // No one-cycle loop across the lanes (D-051): each write group's "every
   // lane with a result has one" is registered at the group, for the unit
-  // draining and the one after it (the cycle after a unit's end reads that
-  // one); a group's lanes pop the cycle after its go, so the group waits two
-  // cycles before its next go (its registered state is the pop's by then);
-  // its results go to the multiply through a register.
+  // draining, the one after it and the queue's next command's first unit
+  // (the cycle after a unit's end reads one of the last two); a group's
+  // lanes pop the cycle after its go, so the group waits two cycles before
+  // its next go (its registered state is the pop's by then); its results go
+  // to the multiply through a register.
+  //
+  // Nothing in a go is computed from a unit in the same cycle: the unit
+  // after the one draining (aft) and the queue head's first unit (ini) are
+  // registered, then their lane counts and flags, two cycles after their
+  // source changes. A pass ends, or a command loads, only once its
+  // successor's are there; a unit takes at least three cycles anyway (one
+  // group waits two cycles between its goes).
 
   localparam int unsigned WrLat = DrainLat + 1;  // the results' register, then fp32_fma
 
@@ -742,42 +752,69 @@ module engine
   logic [31:0]              drain_scale_q;
   logic [GW-1:0]            drain_grp_q;  // the write group
   unit_t                    drain_unit_q; // the unit whose results drain
-  unit_t                    drain_next;   // the unit after it
-  logic [RowWidth-1:0]      lanes_with_result, next_lanes, pass_row;
+  logic [LW-1:0]            cur_lanes_q;  // res_lanes(drain_unit_q)
+  logic                     cur_last_q;   // last_unit(drain_unit_q)
+  logic                     cur_end_q;    // drain_grp_q is the pass's last group
+  unit_t                    aft_unit_q, ini_unit_q;    // unit_next(drain_unit_q); unit_init(q_head[2])
+  logic [LW-1:0]            aft_lanes_q, ini_lanes_q;  // their res_lanes,
+  logic                     aft_last_q, ini_last_q;    // last_unit,
+  logic                     aft_end_q, ini_end_q;      // and whether group 0 is the last
+  logic [1:0]               aft_age_q, ini_age_q;      // cycles since their source changed, to 2
+  logic [RowWidth-1:0]      pass_row;
   logic [Writes-1:0]        has;
-  logic [Groups-1:0]        ok_q, ok_next_q;  // per write group: its results are there
+  logic [Groups-1:0]        ok_q, ok_aft_q, ok_ini_q;  // per write group: its results are there
   logic                     unit_new_q;       // drain_unit_q changed last cycle
+  logic                     from_ini_q;       // ... to a command's first unit
   logic [1:0]               gone_q;           // a go in each of the last two cycles
   logic [GW-1:0]            gone_grp_q[2];
-  logic                     go, pass_end, drain_end, drain_load, ok, recent;
+  logic                     go, pass_end, drain_end, drain_load, unit_load, ok, recent;
+  logic                     aft_ready, ini_ready;
 
-  assign lanes_with_result = RowWidth'(res_lanes(drain_unit_q));
-  assign pass_row          = res_row(drain_unit_q);
-  assign drain_next        = !drain_busy_q || drain_end ? unit_init(q_head[2])
-                                                        : unit_next(drain_unit_q);
-  assign next_lanes        = RowWidth'(res_lanes(drain_next));
+  assign pass_row = res_row(drain_unit_q);
   for (genvar s = 0; s < Writes; s++) begin : gen_slot
-    assign has[s] = RowWidth'(drain_grp_q) * RowWidth'(Writes) + RowWidth'(s) < lanes_with_result;
+    assign has[s] = RowWidth'(drain_grp_q) * RowWidth'(Writes) + RowWidth'(s) < RowWidth'(cur_lanes_q);
   end
   for (genvar k = 0; k < Groups; k++) begin : gen_wgroup
-    logic [Writes-1:0] cur, nxt;  // per lane: has its result, or has none to give
+    logic [Writes-1:0] cur, aft, ini;  // per lane: has its result, or has none to give
     for (genvar s = 0; s < Writes; s++) begin : gen_lane_ok
-      assign cur[s] = lane_out_valid[k*Writes+s] || k * Writes + s >= 32'(lanes_with_result);
-      assign nxt[s] = lane_out_valid[k*Writes+s] || k * Writes + s >= 32'(next_lanes);
+      assign cur[s] = lane_out_valid[k*Writes+s] || k * Writes + s >= 32'(cur_lanes_q);
+      assign aft[s] = lane_out_valid[k*Writes+s] || k * Writes + s >= 32'(aft_lanes_q);
+      assign ini[s] = lane_out_valid[k*Writes+s] || k * Writes + s >= 32'(ini_lanes_q);
     end
     always_ff @(posedge clk_i) begin
-      ok_q[k]      <= &cur;
-      ok_next_q[k] <= &nxt;
+      ok_q[k]     <= &cur;
+      ok_aft_q[k] <= &aft;
+      ok_ini_q[k] <= &ini;
     end
   end
-  assign ok     = unit_new_q ? ok_next_q[drain_grp_q] : ok_q[drain_grp_q];
-  assign recent = (gone_q[0] && gone_grp_q[0] == drain_grp_q)
-                  || (gone_q[1] && gone_grp_q[1] == drain_grp_q);
-  assign go     = drain_busy_q && ok && !recent;
-  assign pass_end   = go && RowWidth'(drain_grp_q + 1'b1) * RowWidth'(Writes) >= lanes_with_result;
-  assign drain_end  = pass_end && last_unit(drain_unit_q);
-  assign drain_load = q_valid[2] && (!drain_busy_q || drain_end);
+  assign ok         = !unit_new_q ? ok_q[drain_grp_q]
+                    : from_ini_q  ? ok_ini_q[drain_grp_q] : ok_aft_q[drain_grp_q];
+  assign recent     = (gone_q[0] && gone_grp_q[0] == drain_grp_q)
+                      || (gone_q[1] && gone_grp_q[1] == drain_grp_q);
+  assign aft_ready  = aft_age_q == 2'd2;
+  assign ini_ready  = ini_age_q == 2'd2;
+  assign go         = drain_busy_q && ok && !recent && (!cur_end_q || cur_last_q || aft_ready);
+  assign pass_end   = go && cur_end_q;
+  assign drain_end  = pass_end && cur_last_q;
+  assign drain_load = q_valid[2] && ini_ready && (!drain_busy_q || drain_end);
+  assign unit_load  = drain_load || (pass_end && !drain_end);
   assign q_pop[2]   = drain_load;
+
+  // The successors: the unit, then its count and flags from the register.
+  always_ff @(posedge clk_i) begin
+    aft_unit_q  <= unit_next(drain_unit_q);
+    aft_lanes_q <= res_lanes(aft_unit_q);
+    aft_last_q  <= last_unit(aft_unit_q);
+    aft_end_q   <= 32'(Writes) >= 32'(res_lanes(aft_unit_q));
+    ini_unit_q  <= unit_init(q_head[2]);
+    ini_lanes_q <= res_lanes(ini_unit_q);
+    ini_last_q  <= last_unit(ini_unit_q);
+    ini_end_q   <= 32'(Writes) >= 32'(res_lanes(ini_unit_q));
+    if (!rst_ni || unit_load) aft_age_q <= '0;
+    else if (!aft_ready) aft_age_q <= aft_age_q + 1'b1;
+    if (!rst_ni || q_pop[2] || !q_valid[2]) ini_age_q <= '0;
+    else if (!ini_ready) ini_age_q <= ini_age_q + 1'b1;
+  end
 
   always_ff @(posedge clk_i) begin
     for (int unsigned l = 0; l < L; l++) begin
@@ -785,6 +822,7 @@ module engine
     end
     gone_grp_q[0] <= drain_grp_q;
     gone_grp_q[1] <= gone_grp_q[0];
+    from_ini_q    <= drain_load;
     if (!rst_ni) begin
       lane_out_ready <= '0;
       gone_q         <= '0;
@@ -802,7 +840,10 @@ module engine
     end else if (drain_load) begin
       drain_busy_q   <= 1'b1;
       drain_grp_q    <= '0;
-      drain_unit_q   <= drain_next;
+      drain_unit_q   <= ini_unit_q;
+      cur_lanes_q    <= ini_lanes_q;
+      cur_last_q     <= ini_last_q;
+      cur_end_q      <= ini_end_q;
       drain_buf_q    <= q_head[2].dst;
       drain_bf16_q   <= q_head[2].bf16;
       drain_scale_q  <= q_head[2].op == OpScores ? q_head[2].scale : Fp32One;
@@ -810,9 +851,13 @@ module engine
       drain_busy_q <= 1'b0;
     end else if (pass_end) begin
       drain_grp_q    <= '0;
-      drain_unit_q   <= drain_next;
+      drain_unit_q   <= aft_unit_q;
+      cur_lanes_q    <= aft_lanes_q;
+      cur_last_q     <= aft_last_q;
+      cur_end_q      <= aft_end_q;
     end else if (go) begin
       drain_grp_q <= drain_grp_q + 1'b1;
+      cur_end_q   <= (32'(drain_grp_q) + 2) * Writes >= 32'(cur_lanes_q);
     end
   end
 
