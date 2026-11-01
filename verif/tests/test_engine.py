@@ -42,9 +42,10 @@ PORTS = (4, 8, 20)  # the smallest, plain, and a factor 5 (owner, 2026-10-15)
 WIDE = 32  # 128 lanes, SmolLM2's engine
 ALL_PORTS = (*PORTS, pytest.param(WIDE, marks=pytest.mark.wide))
 # A command's last result after its start, past its engine cycles and the
-# memory's latency: 73 at 128 lanes (measured; 6 of them the scale's
-# multiply on the write path; 62 before D-051's pipelined step and drain),
-# with margin.
+# memory's latency: 73 at 128 lanes before M6 round 4, which adds a
+# register to the lane's product and one to the scale's multiply (7 cycles
+# now on the write path); 62 before D-051's pipelined step and drain. With
+# margin.
 STARTUP_CYCLES = 80
 # Around a beat and the lane's shortest full-rate row.
 COLS = (1, 3, 4, 5, FULL_RATE_LEN - 1, FULL_RATE_LEN, FULL_RATE_LEN + 1, 64, 130)

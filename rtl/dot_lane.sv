@@ -74,7 +74,8 @@ module dot_lane
   localparam int unsigned OutDepth   = 2;
   localparam int unsigned OW         = $clog2(OutDepth);
   // Stages of a beat's tag: 0 is the input register; it enters fp_add at
-  // Rd, leaves it at Wr, and its row's sums are copied at Snap.
+  // Rd, leaves it at Wr, and its row's sums are copied at Snap (snap, a
+  // register of its own, from stage Snap - 1).
   localparam int unsigned Rd         = MulRegs + 1;
   localparam int unsigned Wr         = Rd + 3;
   localparam int unsigned Snap       = Wr + 1;
@@ -118,7 +119,7 @@ module dot_lane
     logic [E-1:0]  mask;
   } tag_t;
 
-  tag_t              tag_d, tag_q[Snap+1];
+  tag_t              tag_d, tag_q[Snap];
   logic [E-1:0][15:0] w_q, x_q;
   assign tag_d = '{valid: fire, last: last_i, first: first_q, slot: slot_q, mask: mask_i};
   always_ff @(posedge clk_i) begin
@@ -127,14 +128,14 @@ module dot_lane
     x_q      <= x_i;
     if (!rst_ni) tag_q[0].valid <= 1'b0;
   end
-  for (genvar i = 0; i < Snap; i++) begin : gen_tag
+  for (genvar i = 0; i < Snap - 1; i++) begin : gen_tag
     always_ff @(posedge clk_i) begin
       tag_q[i+1] <= tag_q[i];
       if (!rst_ni) tag_q[i+1].valid <= 1'b0;
     end
   end
 
-  logic snap;  // copy the row's sums into a context this cycle: tag_q[Snap]'s last, a register
+  logic snap;  // copy the row's sums into a context this cycle: stage Snap's beat is a last
   always_ff @(posedge clk_i) snap <= rst_ni && tag_q[Snap-1].valid && tag_q[Snap-1].last;
 
   // --- Units: product, add, accumulator file ---------------------------------

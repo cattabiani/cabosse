@@ -721,9 +721,9 @@ module engine
   logic [Ports-1:0][E-1:0][15:0] x_at;    // each port's x at PopLat
 
   // A port's lanes take one head: VALUES' lane l takes the pass's second
-  // head when l >> dlog == 1, the same for a port's lanes since d >= 16 >=
-  // LanesPerPort (gen_bad_maxd, gen_bad_lpp); the other commands read the
-  // same x on both ports.
+  // head when l >> dlog == 1, the same for a port's lanes since d >= 16
+  // (the attention commands' precondition, above) >= LanesPerPort
+  // (gen_bad_lpp); the other commands read the same x on both ports.
   for (genvar g = 0; g < NG; g++) begin : gen_group
     beat_t pipe_q[PopLat-1];  // stages 2 .. PopLat
     logic [Heads-1:0][E-1:0][15:0] x_q[PopLat-XLat-1];  // stages XLat + 1 .. PopLat - 1
