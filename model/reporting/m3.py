@@ -39,7 +39,7 @@ DEFAULT_TOP = "acc_loop"  # the logs before `top` was printed
 CLOCK_NS = 4.0  # 250 MHz (D-027), the harnesses' clock
 
 RESULT = re.compile(r"^CABOSSE-RESULT (.*)$", re.M)
-BEGIN_RUN = re.compile(r"^CABOSSE-BEGIN run\d+ \w+:(\w+):(\d+):\d+:\d$", re.M)
+BEGIN_RUN = re.compile(r"^CABOSSE-BEGIN run\d+ \w+:(\w+):(\d+):\d+:\d(?::\w+)?$", re.M)
 KEY_VALUES = re.compile(r"(\w+)=(\S+)")
 
 

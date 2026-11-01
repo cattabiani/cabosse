@@ -17,6 +17,7 @@
 
 lassign $argv repo part top param value loop retime flow
 if {$flow eq ""} {set flow default}
+if {$flow ni {default explore}} {error "timing.tcl: unknown flow $flow"}
 set explore [expr {$flow eq "explore"}]
 set_param general.maxThreads [expr {[info exists env(CABOSSE_THREADS)] ? $env(CABOSSE_THREADS) : 4}]
 
@@ -53,7 +54,7 @@ if {$explore} {
   route_design
 }
 # The routed design, for reports without a rebuild (time_loops.sh keeps it).
-if {[info exists env(CABOSSE_DCP)]} {write_checkpoint -force routed.dcp}
+if {[info exists env(CABOSSE_DCP)] && $env(CABOSSE_DCP) eq "1"} {write_checkpoint -force routed.dcp}
 
 report_timing_summary -no_header -file timing_summary.rpt
 report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
