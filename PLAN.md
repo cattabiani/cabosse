@@ -681,6 +681,14 @@ different for d < L/2 (rtl/engine.sv, `commands.kv_lane_order`).
 - A K row may be any power of two from 16 values up (a burst per group, so
   no AXI3 limit on `d`); `V_STORE` needs `d` <= L.
 
+**D-063 (2026-11-01) — A few placed builds, not at most 3** (owner,
+2026-11-01; revises D-060). The timing loop is no longer capped at 3
+placed builds: it takes a few, each with the owner's go and a time
+limit, while each one closes a named family of paths. The owner decides
+when to stop and fall back to 200 MHz. *Why:* build 2 is at about
+-0.53 ns with three small, named families left (the timing loop, step
+3); a hard cap would force the 200 MHz fallback with fixes in hand.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1030,8 +1038,8 @@ engine's placed Vivado build, then its pipelined step control only if
 timing fails (D-059; it failed: the timing loop below, D-060); checkpoint
 report.
 
-**The timing loop (D-060, owner 2026-10-30):** one branch and PR per
-iteration, at most 3 placed builds.
+**The timing loop (D-060, owner 2026-10-30; D-063):** one branch and PR per
+iteration, a few placed builds, each with the owner's go.
 1. ✅ (2026-10-31, D-061) Build D-051's pipelined step control in `rtl/engine.sv`: no global
    stall (the lanes take every step; the step is decided a few cycles
    ahead from what the FIFOs and the command's shape already tell), and
@@ -1092,8 +1100,31 @@ iteration, at most 3 placed builds.
    `V_STORE` write the lanes' order with strobes (rtl/vec_unit.sv), checked
    bit for bit on the whole memory, SmolLM2's whole step included. See
    D-062's implementation note (2026-10-31).
-4. Stop when the worst slack is >= 0 at 250 MHz. If the third build is
-   still worse than about -0.5 ns, stop tinkering: target 200 MHz (5 ns),
+   Build 2 (2026-10-31, commit 4fc7ca1, D-062's engine side,
+   reports/data/f2/2026-10-31-engine-placed-build2.txt): only the console's
+   tail survives, so the WNS line, the count of failing endpoints and
+   the first rows of the path table are lost. The worst surviving path
+   is -0.534 ns (-3.096 before). The 36 surviving rows (-0.534 to
+   -0.409 ns) form three families, all logic, not wires:
+   - The drain's look-ahead (14 rows, -0.534 to -0.464, 20 levels, 54%
+     route): `drain_unit_q` → `unit_next` → `res_lanes` → the per-lane
+     compare → `gen_wgroup[k].ok_next_q`, for 14 of the 16 write groups.
+   - The lane's accumulator loop (16 rows, -0.446 to -0.410, 10 to 12
+     levels, about 70% route): the slot's tag, `written_q` and `file_q`
+     → the addend mux → `fp_add`'s first stage (`s1_q.lo`). The lane
+     alone met 250 MHz (+0.17 ns, M4); in the full chip it misses.
+   - Issue (2 rows, -0.409, 5 levels, 88% route): `iss_ports_q` → the
+     AND over the 32 ports' `dma_cmd_ready` → the reset of `iss_taken_q`.
+   One more row is a wire: the step's mask copy to a lane's tag
+   (`pipe_q` → `tag_q` SRL, 0 levels, 98% route, -0.416). Paths better
+   than -0.409 ns are not in the log. Size: 555,726 LUTs (was about
+   641,000), middle SLR at 68% of LUTs (was 76%), 38,883 LUTs as memory,
+   16 DSPs; no congestion window above level 5.
+   Next (proposed, owner to confirm): register stages for the three
+   families, then build 3. time_loops.sh now prints the WNS and the
+   families again at the very end, so the console's tail holds them.
+4. Stop when the worst slack is >= 0 at 250 MHz. If the builds stop
+   closing named families (the owner decides, D-063), target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%
    fewer tokens/s where the engine bounds them). Floorplanning (SLRs,
    the HBM side) waits for the full build inside the shell (M8, M9).
