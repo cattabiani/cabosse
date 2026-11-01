@@ -30,11 +30,13 @@ module stream_fifo #(
 
   logic [Width-1:0] mem_q[Depth];
   logic [PW-1:0]    rd_q, wr_q;
-  logic [CW-1:0]    count_q;
+  logic [CW-1:0]    count_q, count_d;
+  logic             full_q, empty_q;  // count_q == Depth, == 0: a register each, for the
+                                      // memory's write enable and the output's valid
   logic             push, pop;
 
-  assign in_ready_o  = count_q != CW'(Depth);
-  assign out_valid_o = count_q != '0;
+  assign in_ready_o  = !full_q;
+  assign out_valid_o = !empty_q;
   assign out_data_o  = mem_q[rd_q];
   assign count_o     = count_q;
   assign push        = in_valid_i && in_ready_o;
@@ -44,15 +46,21 @@ module stream_fifo #(
     return slot == PW'(Depth - 1) ? '0 : slot + 1'b1;
   endfunction
 
+  assign count_d = count_q + CW'(push) - CW'(pop);
+
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
       rd_q    <= '0;
       wr_q    <= '0;
       count_q <= '0;
+      full_q  <= 1'b0;
+      empty_q <= 1'b1;
     end else begin
       if (push) wr_q <= next_slot(wr_q);
       if (pop) rd_q <= next_slot(rd_q);
-      count_q <= count_q + CW'(push) - CW'(pop);
+      count_q <= count_d;
+      full_q  <= count_d == CW'(Depth);
+      empty_q <= count_d == '0;
     end
   end
 

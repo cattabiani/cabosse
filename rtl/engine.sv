@@ -75,7 +75,7 @@ module engine
   parameter  int unsigned E            = 4,    // pairs per lane per cycle
   parameter  int unsigned A            = 16,   // partial sums per row (D-027)
   parameter  int unsigned MaxD         = 128,  // largest head dimension
-  parameter  int unsigned MulRegs      = 2,    // registers in the scale's multiply (fp32_fma)
+  parameter  int unsigned MulRegs      = 3,    // registers in the scale's multiply (fp32_fma)
   localparam int unsigned LanesPerPort = DataWidth / (16 * E),  // a beat holds E weights each
   localparam int unsigned L            = Ports * LanesPerPort,
   localparam int unsigned Groups       = L / Writes,  // write groups per pass
@@ -381,12 +381,18 @@ module engine
 
   // --- Issue: DMA commands -------------------------------------------------------
 
+  localparam int unsigned GP = 4;           // ports per group (issue, step)
+  localparam int unsigned NG = Ports / GP;  // groups
+
   logic                 iss_busy_q, iss_head_q;  // iss_head_q: the unit's head
   logic                 iss_done_q;  // every port took the DMA command (registered, D-051)
   logic [AddrWidth-1:0] iss_addr_q;   // the matrix's or the cache's
   logic [Ports-1:0]     iss_taken_q;  // this DMA command's ports already taken
   logic [Ports-1:0]     iss_ports_q[Heads];  // head_ports(iss_unit_q, a), registered for timing
   unit_t                iss_unit_q;
+  unit_t                iss_next_q;  // unit_next(iss_unit_q), a cycle late
+  logic [Ports-1:0]     iss_next_ports_q[Heads];  // head_ports(iss_next_q, a), a cycle late
+  logic [NG-1:0]        iss_grp_done_q;  // per group of GP ports: each took it
   logic [Ports-1:0]     iss_active;
   logic                 iss_last_head;
 
@@ -396,6 +402,22 @@ module engine
   assign dma_beats     = iss_unit_q.beats;
   assign iss_last_head = 2'(iss_head_q) + 2'd1 == unit_heads(iss_unit_q);
   assign q_pop[0]      = !iss_busy_q && q_valid[0];
+
+  // "Every port took it" is an AND per group of GP ports, then over the
+  // groups, a register each: a DMA command takes at least 4 cycles, and
+  // the next unit and its ports, registered from iss_unit_q, are there by
+  // its end (a unit lasts that long since it changed).
+  always_ff @(posedge clk_i) begin
+    iss_next_q <= unit_next(iss_unit_q);
+    for (int unsigned a = 0; a < Heads; a++) iss_next_ports_q[a] <= head_ports(iss_next_q, 1'(a));
+    if (!rst_ni || q_pop[0] || iss_done_q) begin
+      iss_grp_done_q <= '0;
+    end else begin
+      for (int unsigned g = 0; g < NG; g++) begin
+        iss_grp_done_q[g] <= &(iss_taken_q[GP*g +: GP] | ~iss_active[GP*g +: GP]);
+      end
+    end
+  end
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -417,15 +439,26 @@ module engine
         iss_head_q <= 1'b1;
       end else begin
         iss_head_q   <= 1'b0;
-        iss_unit_q   <= unit_next(iss_unit_q);
-        for (int unsigned a = 0; a < Heads; a++) iss_ports_q[a] <= head_ports(unit_next(iss_unit_q), 1'(a));
+        iss_unit_q   <= iss_next_q;
+        iss_ports_q  <= iss_next_ports_q;
         if (last_unit(iss_unit_q)) iss_busy_q <= 1'b0;
       end
     end else if (iss_busy_q) begin
       iss_taken_q <= iss_taken_q | dma_cmd_ready;
-      iss_done_q  <= &(iss_taken_q | ~iss_active);
+      iss_done_q  <= &iss_grp_done_q;
     end
   end
+
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && iss_done_q && iss_last_head && !last_unit(iss_unit_q)
+        && (iss_next_q != unit_next(iss_unit_q)
+            || iss_next_ports_q[0] != head_ports(unit_next(iss_unit_q), 1'b0)
+            || iss_next_ports_q[1] != head_ports(unit_next(iss_unit_q), 1'b1))) begin
+      $error("engine: issue's next unit not ready at the end of its unit");
+    end
+  end
+`endif
 
   // --- Beats: decided ahead, delivered through registers (D-051) ---------------
   //
@@ -436,10 +469,10 @@ module engine
   // central register and PopLat - 1 more in copies per group of 4 ports (16
   // lanes): PopLat cycles after its decision the beat pops the DMAs and
   // reaches the lanes, which never refuse it (a lane's ready drops only on
-  // a last beat, and a last beat is decided only with room for it).
+  // a last beat, and a last beat is decided only with room for it). x goes
+  // the same way, its last register a copy per port holding the head its
+  // lanes take.
 
-  localparam int unsigned GP       = 4;          // ports per group
-  localparam int unsigned NG       = Ports / GP; // groups
   localparam int unsigned GL       = L / NG;     // lanes per group
   localparam int unsigned PopLat   = 6;
   localparam int unsigned XLat     = 4;  // x_data at stage 3, its central register at 4
@@ -449,10 +482,11 @@ module engine
   // register.
   localparam int unsigned Window   = PopLat + SeenRegs + 1;
   localparam int unsigned LaneBanks = 2;  // dot_lane's level-1 buffers
+  localparam int unsigned LaneMulRegs = 2;  // registers in a lane's product (fp_product)
   localparam int unsigned RW       = $clog2(LaneBanks + Window + 1);
 
-  if (PopLat <= XLat) begin : gen_bad_lat
-    $error("engine: PopLat must leave the x path a group register");
+  if (PopLat < XLat + 2) begin : gen_bad_lat
+    $error("engine: PopLat must leave the x path a group register and a port register");
   end
 
   typedef struct packed {
@@ -470,7 +504,9 @@ module engine
   //
   // What step's decision reads of its unit is registered: for the next
   // unit, from each candidate's own copy (the command taken, the unit after
-  // this one), muxed at the end, as issue does.
+  // this one), muxed at the end, as issue does. The next unit's ports come
+  // from registers, two cycles after the unit changed: a unit's last beat
+  // waits for them (units of fewer than 3 beats only).
 
   logic                step_busy_q;
   logic [E-1:0]        step_mask_q;    // a row's last beat's elements
@@ -480,6 +516,10 @@ module engine
   logic [RowWidth-1:0] step_cyc_q;     // the unit's cycle: the row's beat
   logic                step_last_cyc_q;   // step_cyc_q + 1 == step_unit_q.beats
   logic                step_last_unit_q;  // last_unit(step_unit_q)
+  unit_t               step_next_q;       // unit_next(step_unit_q), a cycle late
+  logic [Ports-1:0]    step_next_ports_q; // unit_ports(step_next_q), a cycle late
+  logic [1:0]          step_age_q;        // cycles since step_unit_q changed, to 2
+  logic                next_ready;
   logic                fire, step_end, step_go, step_load, unit_end, last_beat, room_ok;
   logic [CW-1:0]       credits_q;      // go_i pulses not yet spent
   unit_t               unit_init_c, unit_next_c, unit_n;
@@ -487,7 +527,8 @@ module engine
   logic [ColWidth-1:0] row_len;        // the command's row length: cols, VALUES t
 
   assign last_beat     = step_last_cyc_q;  // every unit ends its lanes' rows
-  assign fire          = step_busy_q && dma_ok && (!last_beat || room_ok);
+  assign next_ready    = step_last_unit_q || step_age_q == 2'd2;
+  assign fire          = step_busy_q && dma_ok && (!last_beat || (room_ok && next_ready));
   assign unit_end      = fire && step_last_cyc_q;
   assign step_end      = unit_end && step_last_unit_q;
   assign step_go       = !q_head[1].wait_go || credits_q != '0;
@@ -516,7 +557,7 @@ module engine
         step_last_cyc_q  <= unit_init_c.beats == ColWidth'(1);
         step_last_unit_q <= last_unit(unit_init_c);
       end else if (unit_end) begin
-        step_active_q    <= unit_ports(unit_next_c);
+        step_active_q    <= step_next_ports_q;
         step_last_cyc_q  <= unit_next_c.beats == ColWidth'(1);
         step_last_unit_q <= last_unit(unit_next_c);
       end else if (fire) begin
@@ -533,6 +574,21 @@ module engine
       end
     end
   end
+
+  always_ff @(posedge clk_i) begin
+    step_next_q       <= unit_next_c;
+    step_next_ports_q <= unit_ports(step_next_q);
+    if (!rst_ni || step_load || unit_end) step_age_q <= '0;
+    else if (step_age_q != 2'd2) step_age_q <= step_age_q + 1'b1;
+  end
+
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && unit_end && !step_last_unit_q && step_next_ports_q != unit_ports(unit_next_c)) begin
+      $error("engine: step's next unit's ports not ready at the end of its unit");
+    end
+  end
+`endif
 
   // --- What step has not seen: estimates ---------------------------------------
   //
@@ -656,24 +712,31 @@ module engine
     if (!rst_ni) beat_q.valid <= 1'b0;
   end
 
-  beat_t [NG-1:0]                        beat_at;  // each group's beat at PopLat
-  logic [NG-1:0][Heads-1:0][E-1:0][15:0] x_at;
+  beat_t [NG-1:0]              beat_at;  // each group's beat at PopLat
+  logic [Ports-1:0][E-1:0][15:0] x_at;    // each port's x at PopLat
 
+  // A port's lanes take one head: VALUES' lane l takes the pass's second
+  // head when l >> dlog == 1, the same for a port's lanes since d >=
+  // LanesPerPort; the other commands read the same x on both ports.
   for (genvar g = 0; g < NG; g++) begin : gen_group
     beat_t pipe_q[PopLat-1];  // stages 2 .. PopLat
-    logic [Heads-1:0][E-1:0][15:0] x_q[PopLat-XLat];  // stages XLat + 1 .. PopLat
+    logic [Heads-1:0][E-1:0][15:0] x_q[PopLat-XLat-1];  // stages XLat + 1 .. PopLat - 1
     always_ff @(posedge clk_i) begin
       pipe_q[0] <= beat_q;
       for (int unsigned s = 1; s < PopLat - 1; s++) pipe_q[s] <= pipe_q[s-1];
       x_q[0] <= x_data_q;
-      for (int unsigned s = 1; s < PopLat - XLat; s++) x_q[s] <= x_q[s-1];
+      for (int unsigned s = 1; s < PopLat - XLat - 1; s++) x_q[s] <= x_q[s-1];
       if (!rst_ni) begin
         for (int unsigned s = 0; s < PopLat - 1; s++) pipe_q[s].valid <= 1'b0;
       end
     end
     assign beat_at[g] = pipe_q[PopLat-2];
-    assign x_at[g]    = x_q[PopLat-XLat-1];
-    for (genvar p = GP * g; p < GP * (g + 1); p++) begin : gen_pop
+    for (genvar p = GP * g; p < GP * (g + 1); p++) begin : gen_port
+      logic second_q;  // at PopLat - 1, from the beat at PopLat - 2
+      always_ff @(posedge clk_i) begin
+        second_q <= (p * LanesPerPort) >> pipe_q[PopLat-4].dlog == 1;
+        x_at[p]  <= x_q[PopLat-XLat-2][second_q];
+      end
       assign dma_out_ready[p] = beat_at[g].valid && beat_at[g].active[p];
     end
   end
@@ -689,26 +752,22 @@ module engine
     // verilator lint_off UNUSEDSIGNAL
     beat_t              bt;  // a lane takes the fields of its beat, not the ports'
     // verilator lint_on UNUSEDSIGNAL
-    logic [E-1:0][15:0] w, x;
-    logic               second;
+    logic [E-1:0][15:0] w;
     assign bt = beat_at[l/GL];
     assign w  = dma_out_data[P][I*E*16 +: E*16];
-    always_comb begin
-      second = (l >> bt.dlog) == 1;  // VALUES: the pass's second head
-      lane_in_valid[l] = bt.valid && l < 32'(bt.lanes);
-      x = x_at[l/GL][second];
-    end
+    assign lane_in_valid[l] = bt.valid && l < 32'(bt.lanes);
     dot_lane #(
-      .E    (E),
-      .A    (A),
-      .Banks(LaneBanks)
+      .E      (E),
+      .A      (A),
+      .MulRegs(LaneMulRegs),
+      .Banks  (LaneBanks)
     ) u_lane (
       .clk_i,
       .rst_ni,
       .in_valid_i (lane_in_valid[l]),
       .in_ready_o (lane_in_ready[l]),
       .w_i        (w),
-      .x_i        (x),
+      .x_i        (x_at[P]),
       .mask_i     (bt.mask),
       .last_i     (bt.last),
       .out_valid_o(lane_out_valid[l]),

@@ -15,9 +15,11 @@
 //
 // Units: unit e takes element e of each beat, so the S = A / E partial sums
 // e, e + E, e + 2E, ... are its own. Group g of a row (its g-th beat) adds
-// to sum slot g mod S, kept in the unit's accumulator file: read when the
-// product enters fp_add, written back when the sum leaves, so the loop is
-// fp_add's 3 registers plus the file, LoopCycles cycles. Group g + S reads
+// to sum slot g mod S, kept in the unit's accumulator file: read the cycle
+// before the product enters fp_add, into a register that fp_add takes (the
+// sum written in that cycle bypasses the file), and written back when the
+// sum leaves, so the loop is fp_add's 3 registers plus that one, LoopCycles
+// cycles. Group g + S reads
 // that slot at least S cycles later, so S >= LoopCycles makes any pattern of
 // bubbles safe. A row's first S groups add to +0 instead of the file, which
 // still holds the previous row's sums; so does a later group whose slot no
@@ -64,7 +66,7 @@ module dot_lane
 );
 
   localparam int unsigned W          = prod_sig_w(8);
-  localparam int unsigned LoopCycles = 4;  // fp_add's 3 registers, then the file
+  localparam int unsigned LoopCycles = 4;  // fp_add's 3 registers, then the addend's
   localparam int unsigned SW         = $clog2(S);
   localparam int unsigned Levels     = $clog2(A);  // of the tree; level i here is i + 1 there
   localparam int unsigned LW         = $clog2(Levels);
@@ -116,10 +118,11 @@ module dot_lane
     logic [E-1:0]  mask;
   } tag_t;
 
-  tag_t              tag_q[Snap+1];
+  tag_t              tag_d, tag_q[Snap+1];
   logic [E-1:0][15:0] w_q, x_q;
+  assign tag_d = '{valid: fire, last: last_i, first: first_q, slot: slot_q, mask: mask_i};
   always_ff @(posedge clk_i) begin
-    tag_q[0] <= '{valid: fire, last: last_i, first: first_q, slot: slot_q, mask: mask_i};
+    tag_q[0] <= tag_d;
     w_q      <= w_i;
     x_q      <= x_i;
     if (!rst_ni) tag_q[0].valid <= 1'b0;
@@ -153,23 +156,36 @@ module dot_lane
     );
     always_ff @(posedge clk_i) p_q <= p_d;
 
-    // The unit's own copies of the read and write stages' tags: one tag's
-    // slot would select the file's words in every unit (a fan-out of about
-    // 260, the lane's worst path in the full engine).
-    logic          rd_valid_q, rd_first_q;
-    logic [SW-1:0] rd_slot_q, wr_slot_q;
+    // The unit's own copies of the tags of the read stage, the one before
+    // it (the file's read) and the write stage: one tag's slot would select
+    // the file's words in every unit (a fan-out of about 260, the lane's
+    // worst path in the full engine).
+    logic          pre_first, rd_valid_q, pre_first_q;  // pre: tag_q[Rd-2]'s
+    logic [SW-1:0] pre_slot, pre_slot_q, wr_slot_q;
+    if (Rd >= 2) begin : gen_pre
+      assign {pre_first, pre_slot} = {tag_q[Rd-2].first, tag_q[Rd-2].slot};
+    end else begin : gen_pre_in
+      assign {pre_first, pre_slot} = {tag_d.first, tag_d.slot};
+    end
     always_ff @(posedge clk_i) begin
-      rd_valid_q <= rst_ni && tag_q[Rd-1].valid && tag_q[Rd-1].mask[e];
-      rd_first_q <= tag_q[Rd-1].first;
-      rd_slot_q  <= tag_q[Rd-1].slot;
-      wr_slot_q  <= tag_q[Wr-1].slot;
+      rd_valid_q  <= rst_ni && tag_q[Rd-1].valid && tag_q[Rd-1].mask[e];
+      pre_first_q <= pre_first;
+      pre_slot_q  <= pre_slot;
+      wr_slot_q   <= tag_q[Wr-1].slot;
     end
 
     logic [31:0] file_q[S];
     logic [S-1:0] written_q;
-    logic [31:0] addend, sum;
-    logic        sum_valid;
-    assign addend = (rd_first_q || !written_q[rd_slot_q]) ? 32'h0 : file_q[rd_slot_q];
+    logic [31:0] addend_q, sum;
+    logic        sum_valid, hit;
+    // The addend as the file and its flags will be in the read stage: this
+    // cycle's write (the bypass) and the copy's clearing of the flags, both
+    // as the always_ff blocks below apply them.
+    assign hit = sum_valid && wr_slot_q == pre_slot_q;
+    always_ff @(posedge clk_i) begin
+      if (pre_first_q || !(hit || (!snap && written_q[pre_slot_q]))) addend_q <= 32'h0;
+      else addend_q <= hit ? sum : file_q[pre_slot_q];
+    end
 
     fp_add #(
       .W  (W),
@@ -179,7 +195,7 @@ module dot_lane
       .rst_ni,
       .valid_i(rd_valid_q),
       .a_i    (p_q),
-      .b_i    (addend),
+      .b_i    (addend_q),
       .valid_o(sum_valid),
       .y_o    (sum)
     );
@@ -297,8 +313,15 @@ module dot_lane
     .y_o    (tree_sum)
   );
 
-  logic root_result;  // the row's result
-  assign root_result = tree_valid && tree_lvl_q[2] == LW'(Levels - 1);
+  // The row's result: root_issue through the issue register and fp_add's,
+  // as a register of its own (the output FIFO's write enable).
+  logic root_q[AddLatency+1];
+  logic root_result;
+  always_ff @(posedge clk_i) begin
+    root_q[0] <= rst_ni && root_issue;
+    for (int unsigned i = 1; i <= AddLatency; i++) root_q[i] <= rst_ni && root_q[i-1];
+  end
+  assign root_result = root_q[AddLatency];
   assign room[Levels-1] = out_room;
 
   // Levels 2 and up: a queue each, one row's items deep (A >> i), counting
