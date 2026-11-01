@@ -432,7 +432,7 @@ def test_command_list_has_no_hazards(write_after_reads: bool) -> None:
 
 def test_hazards_found_without_a_rule() -> None:
     """Each rule is needed: SCORES given without wait (D-044's first draft)
-    reads q before RoPE writes it; without the KV_STORE handover, SCORES and
+    reads q before RoPE writes it; without the stores' handover, SCORES and
     VALUES read the newest cache row before it is written."""
     for name, cmds in hazard_lists():
         layers = sum(cmd.op == commands.Op.SCORES for cmd in cmds)
@@ -446,7 +446,7 @@ def test_hazards_found_without_a_rule() -> None:
         found = commands.hazards(cmds, kv_after=[None] * len(cmds))
         readers = {cmds[h.cmd[1]].op for h in found}
         assert readers == {commands.Op.SCORES, commands.Op.VALUES}, name
-        assert all(cmds[h.earlier[1]].op == commands.Op.KV_STORE for h in found), name
+        assert all(cmds[h.earlier[1]].op in commands.STORE_OPS for h in found), name
         assert len(found) == 2 * 2 * layers, name
 
 
@@ -490,12 +490,14 @@ def test_read_port_hazard() -> None:
 
 
 def test_kv_waits() -> None:
-    """SCORES and VALUES are given after the KV_STORE of the cache they read."""
+    """SCORES is given after the KV_STORE of the K cache it reads, VALUES
+    after the V_STORE of its V cache."""
     layout = commands.Layout.of(tiny.tiny_config(), cap=8)
     cmds = commands.build(layout)
+    store = {commands.Op.SCORES: commands.Op.KV_STORE, commands.Op.VALUES: commands.Op.V_STORE}
     for cmd, after in zip(cmds, commands.kv_waits(cmds), strict=True):
-        if cmd.op in (commands.Op.SCORES, commands.Op.VALUES):
-            assert cmds[after].op == commands.Op.KV_STORE and cmds[after].addr == cmd.addr
+        if cmd.op in store:
+            assert cmds[after].op == store[cmd.op] and cmds[after].addr == cmd.addr
         else:
             assert after is None
 

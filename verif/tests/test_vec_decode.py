@@ -2,12 +2,12 @@
 # Copyright 2026 The Cabosse Authors
 """A whole decode step on rtl/vec_unit.sv (verif/decode.py): the tiny config
 (GQA) in CI, SmolLM2's at the real-data positions (slow, one at a time: its
-memory is up to 512 MiB).
+memory is up to about 600 MiB).
 
 Checked bit for bit against commands.run(): what each engine command reads
 (so a divergence shows at the first engine command after it), every buffer
-at the end, and the whole memory: the KV cache in channel order (D-043),
-every other byte unchanged. An engine step waits for every earlier command,
+at the end, and the whole memory: the KV cache in the engine's order
+(D-062), every other byte unchanged. An engine step waits for every earlier command,
 so the engine never overlaps the vector unit here (on shared buffers: M7).
 Both start from the same buffers, all NaN (commands.empty_buffers), so a
 read of an element no command wrote shows. SmolLM2's commands also take
@@ -18,6 +18,7 @@ import engine as eng
 import paths
 import pytest
 import torch
+import vector
 from golden import decoder, tiny
 
 import rtl
@@ -28,9 +29,9 @@ LENGTH = 256  # elements of every buffer: the largest, LOGITS
 CHAN_W = 17  # 128 KiB channels
 
 
-# (position, cap, stride): position 0, and position 5 after a prompt with a
-# cache of 8 rows and S and P's rows at 32.
-CASES = [(0, 16, 16), (5, 8, 32)]
+# (position, cap, stride): position 0, and position 5 after a prompt, with
+# a cache of L = 32 rows (vector.KV_PORTS), S and P's rows at 32 and 48.
+CASES = [(0, 32, 32), (5, 32, 48)]
 
 
 @rtl.needs_verilator
@@ -44,7 +45,9 @@ def test_decode_step(position: int, cap: int, stride: int) -> None:
     if position:
         decoder.step(model, cache, tokens[:-1])
     label = f"position {position}, token seed {seed}"
-    decode.decode_step(model, cache, tokens[-1], cap, stride, LENGTH, CHAN_W, label)
+    decode.decode_step(
+        model, cache, tokens[-1], cap, stride, LENGTH, vector.KV_PORTS, CHAN_W, label
+    )
 
 
 @pytest.mark.slow

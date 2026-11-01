@@ -162,15 +162,6 @@ def place(mats: Sequence[Command], ports: int, gaps: Sequence[int] | None = None
     return addrs
 
 
-def cache_by_channel(rows: np.ndarray, ports: int) -> np.ndarray:
-    """A KV cache [kv, cap, d] as D-043 spreads it, as KV_STORE still writes
-    it (the engine reads D-062's, channel_images): [ports, kv, cap // ports,
-    d], position i of a KV head on channel i mod ports, row i div ports of
-    its region."""
-    kv_heads, cap, d = rows.shape
-    return rows.reshape(kv_heads, cap // ports, ports, d).transpose(2, 0, 1, 3)
-
-
 def channel_images(mats: Sequence[Command], addrs: Sequence[int], ports: int) -> np.ndarray:
     """Every port's channel, uint32 [ports, words]: each matrix and cache in
     the lanes' order (commands.lane_order, commands.kv_lane_order), at its

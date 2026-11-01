@@ -164,16 +164,17 @@ can widen without a numerics change. Online softmax changes the spec.
 recip and rsqrt; sums, sums of squares and maxima per row; RoPE's half
 rotation; loads from HBM. Each is one pass over its rows ("Commands").
 
-**`LOAD` and `KV_STORE` (M6).** Both run in the vector unit's pipeline, in
-order with its other commands, so no write meets another's and the buffers
-need no arbitration. They use one AXI master of the vector unit's own (read
-and write, 256 bits, global HBM addresses: channel and offset). `LOAD`'s
-beats take the place of a buffer read and pass the chain unchanged.
-`KV_STORE` reads its rows, rounds them to BF16 and writes a burst per KV
-head where D-043 puts the position. It is done after its last write
-response; later commands run meanwhile, and their dones wait behind it. On
-F2 the wrapper merges this port into one HBM port, and the HBM switch
-carries it to the other channels (to verify, M8).
+**`LOAD`, `KV_STORE` and `V_STORE` (M6).** All three run in the vector
+unit's pipeline, in order with its other commands, so no write meets
+another's and the buffers need no arbitration. They use one AXI master of
+the vector unit's own (read and write, 256 bits, global HBM addresses:
+channel and offset). `LOAD`'s beats take the place of a buffer read and
+pass the chain unchanged. `KV_STORE` (into a K cache) and `V_STORE` (into a
+V cache) read their rows, round them to BF16 and queue them; the writer
+sends them in the cache's layout (below), with write strobes. A store is
+done after its last write response; later commands run meanwhile, and their
+dones wait behind it. On F2 the wrapper merges this port into one HBM port,
+and the HBM switch carries it to the other channels (to verify, M8).
 
 ## Memory (D-028)
 
@@ -221,14 +222,16 @@ every channel.
   for SmolLM2: HBM space only, the reads are the same). A lane's row runs
   over all positions: a pass is one unit, like a MATVEC pass of `t`
   columns.
-- `KV_STORE` writes a K row as a burst of `head_dim / 4` beats and a V row
-  as one beat per channel and copy, 8 bytes of each enabled (AXI write
-  strobes). Until it does (M6, next step), it writes D-043's layout.
+- `KV_STORE` writes a K row as `head_dim / 4` beats on one channel, a
+  burst per 4; `V_STORE` writes a V row as one one-beat burst per channel
+  and copy. Each beat has the row's 8 bytes enabled (AXI write strobes).
+  The writer sends a beat a cycle: for SmolLM2 a layer's stores are 144
+  beats (K's 48, V's 96).
 - Every query head reads its KV head's K and V: nothing is shared by the
   heads of a group, so a GQA model reads K and V once per query head
   (Q-27). Simple, and free while the memory keeps up with the engine.
-- The engine reads the cache, ahead of its go, only after the `KV_STORE`
-  that writes it is done (D-044).
+- The engine reads the cache, ahead of its go, only after the store that
+  writes it is done (D-044).
 - Positions at or past the position count are left out of a row, not
   multiplied by zero: the cache and P hold stale data there.
 - The cache's `cap` is a multiple of `L`; the head dimension is a power of
@@ -289,7 +292,7 @@ mid-token.
 | 0 | `END` | token done: set STATUS done, raise the interrupt; the last command |  |
 | 1 | `LOAD` | dst = up(tensor at addr), m elements | BY_TOKEN BY_POSITION SRC_BF16 |
 | 2 | `MATVEC` | dst = W·a, W at addr: n rows × m columns |  |
-| 3 | `KV_STORE` | cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head |  |
+| 3 | `KV_STORE` | K cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head |  |
 | 4 | `SCORES` | dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t (rows at STRIDE) |  |
 | 5 | `VALUES` | dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t (rows of a at STRIDE) |  |
 | 6 | `OUTPUT` | a (n FP32) to host memory at LOGITS_HI:LOGITS_LO |  |
@@ -303,6 +306,7 @@ mid-token.
 | 14 | `SUMSQ` | dst[r] = sum of squares of row r of a | LEN_T |
 | 15 | `MAX` | dst[r] = max of row r of a | LEN_T |
 | 16 | `ROTATE_HALF` | each row of a: (-second half, first half) |  |
+| 17 | `V_STORE` | as KV_STORE, into a V cache (stored as Vᵀ, D-062) |  |
 <!-- end: opcodes -->
 
 The engine gets one command per matrix product (MATVEC, SCORES, VALUES).
@@ -347,15 +351,15 @@ and every MATVEC input is already BF16.
 |---|---|---|---|---|
 | 0 | 1 | `op` | opcode | all |
 | 1 | 1 | `dst` | destination buffer | LOAD, MATVEC, SCORES, VALUES, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
-| 2 | 1 | `a` | first source buffer | MATVEC, KV_STORE, SCORES, VALUES, OUTPUT, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
+| 2 | 1 | `a` | first source buffer | MATVEC, KV_STORE, SCORES, VALUES, OUTPUT, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF, V_STORE |
 | 3 | 1 | `b` | second source buffer | ADD, MUL, FMA |
 | 4 | 1 | `c` | third source buffer | FMA |
 | 5 | 1 | `flags` | modifiers (flags table) | LOAD, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
 | 6 | 2 | `kv_heads` | KV heads | SCORES, VALUES |
-| 8 | 4 | `n` | rows or heads | MATVEC, KV_STORE, SCORES, VALUES, OUTPUT, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
-| 12 | 4 | `m` | columns, row length or elements | LOAD, MATVEC, KV_STORE, SCORES, VALUES, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF |
-| 16 | 4 | `cap` | KV cache rows per head | KV_STORE, SCORES, VALUES |
-| 20 | 8 | `addr` | HBM byte address | LOAD, MATVEC, KV_STORE, SCORES, VALUES |
+| 8 | 4 | `n` | rows or heads | MATVEC, KV_STORE, SCORES, VALUES, OUTPUT, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF, V_STORE |
+| 12 | 4 | `m` | columns, row length or elements | LOAD, MATVEC, KV_STORE, SCORES, VALUES, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF, V_STORE |
+| 16 | 4 | `cap` | KV cache rows per head | KV_STORE, SCORES, VALUES, V_STORE |
+| 20 | 8 | `addr` | HBM byte address | LOAD, MATVEC, KV_STORE, SCORES, VALUES, V_STORE |
 | 28 | 4 | `scalar` | FP32 bits: a constant (scale, 1/n, eps, 1) | SCORES, ADD, MUL |
 
 32 bytes per command, little-endian; unused fields are zero.
@@ -464,7 +468,7 @@ SmolLM2-135M-Instruct, cache of 8192 positions:
 | 14 | MUL | KR | KR | SIN |  | 3 | 64 | B_ROW |  |  |
 | 15 | FMA | KR | K | COS | KR | 3 | 64 | B_ROW |  |  |
 | 16 | KV_STORE |  | KR |  |  | 3 | 64 |  |  | 0x40C2000 |
-| 17 | KV_STORE |  | V |  |  | 3 | 64 |  |  | 0x43C2000 |
+| 17 | V_STORE |  | V |  |  | 3 | 64 |  |  | 0x43C2000 |
 | 18 | ROTATE_HALF | QT | Q |  |  | 9 | 64 |  |  |  |
 | 19 | MUL | QT | QT | SIN |  | 9 | 64 | B_ROW |  |  |
 | 20 | FMA | QR | Q | COS | QT | 9 | 64 | B_ROW |  |  |

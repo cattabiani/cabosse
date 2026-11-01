@@ -73,6 +73,7 @@ UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 # Ops on the matrix-vector engine that are attention, not weights.
 ATTENTION_KINDS = ("scores", "values")
 REDUCTION_KINDS = tuple(op.name.lower() for op in commands.REDUCE)
+STORE_KINDS = tuple(op.name.lower() for op in commands.STORE_OPS)
 # Design values that are counts: whole numbers (Design checks).
 ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
 # Design values that are on (1) or off (0); see ops().
@@ -99,7 +100,7 @@ class Step:
     # empty off the engine.
     engine_shapes: tuple[tuple[int, int], ...] = ()
     waits: bool = False  # on the engine, steps only after an earlier result (D-042)
-    # On the vector unit (its commands, LOAD, KV_STORE): (rows, length) as
+    # On the vector unit (its commands, LOAD, the stores): (rows, length) as
     # it walks them (vector_walk), and whether the controller stops at it
     # (commands.stops).
     walk: tuple[int, int] | None = None
@@ -265,7 +266,7 @@ def attention(
     if cmd.op == commands.Op.SCORES:
         shapes = ((positions, d),) * heads
     else:
-        per_pass = max(1, min(VALUES_HEADS, lanes // d))
+        per_pass = commands.values_heads(d, lanes)
         passes = [min(per_pass, heads - h) for h in range(0, heads, per_pass)]
         shapes = tuple((n * d, positions) for n in passes)
     readers = cmd.kv_heads if tiles_shared else heads
@@ -294,6 +295,23 @@ def vector_walk(cmd: commands.Command, length: int) -> tuple[int, int]:
     return 1, cmd.n * length
 
 
+def store(cmd: commands.Command, lanes: int) -> Step:
+    """A KV_STORE or V_STORE in the engine's order (rtl/vec_unit.sv, D-062),
+    on an engine of `lanes` lanes: K's rows in beats of E dimensions, V's
+    in beats of LANES_PER_PORT dimensions, once per copy. Its bytes are the
+    beats' on the bus (each beat 8 bytes written, the rest strobed off)."""
+    if cmd.op == commands.Op.KV_STORE:
+        beats = cmd.n * cmd.m // commands.E
+    else:
+        beats = cmd.n * cmd.m // commands.LANES_PER_PORT * commands.values_heads(cmd.m, lanes)
+    return Step(
+        cmd.op.name.lower(),
+        (cmd.n, cmd.m),
+        kv_write_bytes=beats * commands.BEAT_BYTES,
+        walk=(cmd.n, cmd.m),
+    )
+
+
 def step(cmd: commands.Command, t: int, lanes: int, tiles_shared: bool) -> Step:
     """The work of one command when attention reads t positions, on an
     engine of `lanes` lanes (tiles_shared: attention())."""
@@ -307,9 +325,8 @@ def step(cmd: commands.Command, t: int, lanes: int, tiles_shared: bool) -> Step:
             dtype = commands.BF16 if cmd.flags & commands.Flag.SRC_BF16 else commands.F32
             n_bytes = commands.n_bytes(cmd.m, dtype)
             return Step("load", (cmd.m,), weight_bytes=n_bytes, walk=(1, cmd.m))
-        case commands.Op.KV_STORE:
-            n_bytes = cmd.n * cmd.m * BF16_BYTES
-            return Step("kv_store", (cmd.n, cmd.m), kv_write_bytes=n_bytes, walk=(cmd.n, cmd.m))
+        case commands.Op.KV_STORE | commands.Op.V_STORE:
+            return store(cmd, lanes)
         case commands.Op.SCORES | commands.Op.VALUES:
             return attention(cmd, t, lanes, tiles_shared)
         case commands.Op.OUTPUT | commands.Op.END:  # OUTPUT goes over PCIe, not HBM
@@ -452,13 +469,19 @@ def vector_cycles(steps: tuple[Step, ...], design: dict[str, float]) -> list[flo
     once the unit has issued the previous step's groups, so their latencies
     overlap. The unit issues a group (`vector_elems_per_cycle` elements of a
     row) a cycle; a LOAD a beat a cycle, `load_latency_cycles` after it
-    starts. A step is done `vector_startup_cycles` after its last group, a
-    KV_STORE `kv_store_latency_cycles` later (its writes answered), a
-    reduction `reduction_tail_cycles` later (its last row's tree), whose rows
-    end at least `reduction_row_cycles` apart; the next step starts once a
+    starts. A step is done `vector_startup_cycles` after its last group; a
+    store's beats go a cycle each (at least a group's), from
+    `vector_startup_cycles` after its start (its groups through the chain)
+    or once the writer is done with the last store's, and it is done
+    `kv_store_latency_cycles` after its last beat (its writes answered; the
+    walk is not held back by a full store queue, MemDepth groups, which
+    SmolLM2's stores do not fill); a reduction
+    `reduction_tail_cycles` later (its last row's tree), whose rows end at
+    least `reduction_row_cycles` apart; the next step starts once a
     reduction is done. Dones come in order, one a cycle at most."""
     lanes = design["vector_elems_per_cycle"]
     issued = done = 0.0  # the cycle the unit has issued the last group by; the last done
+    written = 0.0  # the cycle the writer sends the last store's last beat by
     out = []
     for s in steps:
         row_groups, issue = vector_issue(s, lanes)
@@ -470,10 +493,14 @@ def vector_cycles(steps: tuple[Step, ...], design: dict[str, float]) -> list[flo
             row = max(row_groups, design["reduction_row_cycles"])
             issued = start + row_groups + (s.walk[0] - 1) * row
             latency += design["reduction_tail_cycles"]
+        elif s.kind in STORE_KINDS:
+            issued = start + issue
+            written = max(start + latency, written) + max(
+                s.kv_write_bytes / commands.BEAT_BYTES, issue
+            )
+            latency = written - issued + design["kv_store_latency_cycles"]
         else:
             issued = start + issue
-            if s.kind == "kv_store":
-                latency += design["kv_store_latency_cycles"]
         finish = max(done + 1, issued + latency)
         out.append(finish - done)
         done = finish

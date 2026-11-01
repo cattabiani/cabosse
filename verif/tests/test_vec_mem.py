@@ -1,19 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""rtl/vec_unit.sv's LOAD and KV_STORE through its AXI port, against
-commands.load_command and kv_store_command: every buffer and the whole memory
-bit for bit afterwards (so a write past a row, or into the wrong channel,
-shows), with the memory model's own checks (verif/bulk/axi_mem.h).
+"""rtl/vec_unit.sv's LOAD, KV_STORE and V_STORE through its AXI port,
+against commands.load_command and kv_store_command: every buffer and the
+whole memory bit for bit afterwards, the caches in the engine's order
+(vector.write_cache, D-062; so a write past a row, into the wrong channel or
+the wrong bytes of a beat shows), with the memory model's own checks
+(verif/bulk/axi_mem.h).
 
 LOAD in every row mode (the tensor, its row token, its row position), from
 BF16 and FP32, into FP32 and BF16 buffers, rows of one beat and many;
-KV_STORE for several heads and positions in every channel, its done after
-its last write response while later commands run; random sequences of both
-mixed with the other commands, with slow and pausing memories; error
-responses."""
+KV_STORE and V_STORE (one copy and two) for several heads and positions in
+every channel, done after the last write response while later commands
+run; random sequences of all three mixed with the other commands, with slow
+and pausing memories; error responses."""
 
 import dataclasses
 
+import commands
 import numpy as np
 import pytest
 import vector
@@ -26,7 +29,7 @@ import rtl
 
 LOAD_ADDR = 0x400  # channel 0, below the cache's offset
 CACHE_ADDR = 0x2000  # the KV cache's offset in every channel
-CAP = 16  # cache rows per head: 4 a channel
+CAP = vector.L  # cache rows per head: one tile
 SLOW = {"latency": 30, "rate": 600, "pause": 20, "pause_max": 6}
 SLOW_WRITES = {"wlatency": 40, "wrate": 600, "wpause": 20, "wpause_max": 6, "waw_after_w": 1}
 
@@ -45,8 +48,17 @@ def load(dst: Buf, m: int, flags: Flag) -> Command:
     return Command(Op.LOAD, dst, m=m, flags=flags, addr=LOAD_ADDR)
 
 
-def kv_store(a: Buf, n: int, m: int) -> Command:
-    return Command(Op.KV_STORE, a=a, n=n, m=m, cap=CAP, addr=CACHE_ADDR)
+def kv_store(a: Buf, n: int, m: int, op: Op = Op.KV_STORE) -> Command:
+    return Command(op, a=a, n=n, m=m, cap=CAP, addr=CACHE_ADDR)
+
+
+def n_bursts(cmd: Command) -> int:
+    """A store's write bursts: one a group of K, a beat per channel and copy
+    for V (rtl/vec_unit.sv's header)."""
+    groups = cmd.n * cmd.m // vector.LANES
+    if cmd.op == Op.KV_STORE:
+        return groups
+    return groups * commands.E * commands.values_heads(cmd.m, vector.L)
 
 
 # m: a beat (BF16: 16, FP32: 8), whole groups, a partial FP32 group, a long row.
@@ -128,25 +140,29 @@ def test_load_speed() -> None:
     assert took <= groups + 70, took  # the reader's start, the chain's 50 cycles, the done queue
 
 
+# K: a group, a row of 4 and 8 groups; V: 2 copies, 1 (m = L).
+STORE_CASES = [(Op.KV_STORE, m) for m in (16, 64, 128)] + [(Op.V_STORE, m) for m in (16, 32)]
+
+
 @rtl.needs_verilator
-@pytest.mark.parametrize("m", [16, 64, 128])
-@pytest.mark.parametrize("position", [0, 5, 6, 7, CAP - 1])
-def test_kv_store(m: int, position: int) -> None:
+@pytest.mark.parametrize(("op", "m"), STORE_CASES)
+@pytest.mark.parametrize("position", [0, 5, 6, 7, 13, CAP - 1])
+def test_store(op: Op, m: int, position: int) -> None:
     """Up to 3 heads at a position, from a slow, pausing memory: the right
-    rows of the right channel (every other byte unchanged), done after the
-    last write response."""
+    bytes of the right beats and channels (every other byte unchanged),
+    done after the last write response."""
     rng = np.random.default_rng(SEED + m + position)
     heads = min(3, LENGTH // m)
-    step = Step(kv_store(Buf.KR, heads, m), t=position + 1)
+    cmd = kv_store(Buf.KR, heads, m, op)
     result = vector.check(
-        [step],
+        [Step(cmd, t=position + 1)],
         vector.random_buffers(rng, LENGTH),
         LENGTH,
-        f"m {m}, position {position}",
+        f"{op.name} m {m}, position {position}",
         random_memory(rng),
         **SLOW_WRITES,
     )
-    assert len(result.answers) == heads, result.answers
+    assert len(result.answers) == n_bursts(cmd), result.answers
     assert result.done[0] > result.answers.max(), (result.done, result.answers)
 
 
@@ -155,7 +171,7 @@ def test_kv_store_into_a_slave_that_waits_for_data() -> None:
     """A write port that takes an address only once its burst's data is in
     (AXI allows it): the unit's data must not wait for the address."""
     rng = np.random.default_rng(SEED)
-    steps = [Step(kv_store(Buf.KR, 3, 64), t=7), Step(kv_store(Buf.V, 3, 64), t=7)]
+    steps = [Step(kv_store(Buf.KR, 3, 64), t=7), Step(kv_store(Buf.V, 3, 16, Op.V_STORE), t=7)]
     vector.check(
         steps,
         vector.random_buffers(rng, LENGTH),
@@ -168,12 +184,12 @@ def test_kv_store_into_a_slave_that_waits_for_data() -> None:
 
 @rtl.needs_verilator
 def test_kv_store_lets_later_commands_run() -> None:
-    """With slow write responses, the commands after a KV_STORE run while it
+    """With slow write responses, the commands after a store run while it
     waits (taken before its done), and their dones come after its, in order."""
     rng = np.random.default_rng(SEED)
     steps = [
         Step(kv_store(Buf.KR, 3, 64), t=4),
-        Step(kv_store(Buf.V, 3, 64), t=4),
+        Step(kv_store(Buf.V, 3, 16, Op.V_STORE), t=4),
         Step(Command(Op.ROTATE_HALF, Buf.QT, Buf.Q, n=4, m=16)),
         Step(Command(Op.MUL, Buf.T, Buf.G, Buf.U, n=1, m=64)),
     ]
@@ -191,8 +207,8 @@ def test_kv_store_lets_later_commands_run() -> None:
 
 
 def random_memory_command(rng: np.random.Generator) -> Step:
-    """A random LOAD (into an FP32 buffer, so later commands may read it) or
-    KV_STORE."""
+    """A random LOAD (into an FP32 buffer, so later commands may read it),
+    KV_STORE or V_STORE."""
     if rng.random() < 0.5:
         src = Flag.SRC_BF16 if rng.random() < 0.5 else Flag.NONE
         row = Flag(int(rng.choice([Flag.NONE, Flag.BY_TOKEN, Flag.BY_POSITION])))
@@ -200,14 +216,15 @@ def random_memory_command(rng: np.random.Generator) -> Step:
         dst = Buf(rng.choice(vector.FP32_BUFS))
         return Step(load(dst, m, src | row), t=int(rng.integers(1, 6)), token=int(rng.integers(6)))
     a = Buf(rng.choice(vector.FP32_BUFS))
-    n, m = int(rng.integers(1, 4)), int(rng.choice([16, 32, 64]))
-    return Step(kv_store(a, n, m), t=int(rng.integers(1, CAP + 1)))
+    op = Op.V_STORE if rng.random() < 0.5 else Op.KV_STORE
+    n, m = int(rng.integers(1, 4)), int(rng.choice([16, 32] if op == Op.V_STORE else [16, 32, 64]))
+    return Step(kv_store(a, n, m, op), t=int(rng.integers(1, CAP + 1)))
 
 
 @rtl.needs_verilator
 @pytest.mark.parametrize("seed", range(4))
 def test_random_sequences(seed: int) -> None:
-    """60 commands, a third of them LOAD and KV_STORE: dependent ones wait,
+    """60 commands, a third of them LOAD and the stores: dependent ones wait,
     the rest run back to back, with slow memories in half of the runs and
     commands offered at random cycles in the other half."""
     rng = np.random.default_rng(SEED + 100 + seed)
@@ -245,12 +262,12 @@ def test_error_responses(which: str) -> None:
 @rtl.needs_verilator
 def test_kv_queue_fills() -> None:
     """KV_STOREs of 4 heads of 256 back to back into a write port that takes
-    a beat in 20 cycles: the writer holds 9 bursts of 16 beats, more than the
-    queue's 64, so groups wait for a place."""
+    a beat in 20 cycles: 192 groups, more than the queue's 64, so groups
+    wait for a place."""
     length = 1024
     rng = np.random.default_rng(SEED)
     steps = [Step(kv_store(Buf.KR if i % 2 else Buf.V, 4, 256), t=i + 1) for i in range(3)]
     result = vector.check(
         steps, vector.random_buffers(rng, length), length, "queue", random_memory(rng), wrate=50
     )
-    assert len(result.answers) == 12, result.answers
+    assert len(result.answers) == sum(n_bursts(s.cmd) for s in steps), result.answers

@@ -21,20 +21,20 @@
  },
  "latency": {
   "provenance": {
-   "commit": "d4445d1bda148058e83868c020971591f5990c72",
+   "commit": "1cefc6297ca2b3bdb372fbb295c31f020d951a65",
    "dirty": false,
-   "date": "2026-10-30",
+   "date": "2026-11-01",
    "machine": "Linux x86_64"
   },
   "0": {
-   "cycles": 176323,
-   "model_cycles": 176293.0,
+   "cycles": 179893,
+   "model_cycles": 179893.0,
    "worst": {
-    "index": 14,
-    "kind": "kv_store",
-    "cycles": 13,
-    "model_cycles": 12.0,
-    "off": 0.08333333333333326
+    "index": 0,
+    "kind": "load",
+    "cycles": 163,
+    "model_cycles": 163.0,
+    "off": 0.0
    },
    "cycles_by_kind": {
     "load": 7037,
@@ -44,7 +44,8 @@
     "rsqrt": 3294,
     "rotate_half": 1980,
     "fma": 4620,
-    "kv_store": 4500,
+    "kv_store": 5190,
+    "v_store": 2880,
     "max": 42990,
     "exp": 6330,
     "sum": 42990,
@@ -69,14 +70,14 @@
    }
   },
   "63": {
-   "cycles": 178933,
-   "model_cycles": 178903.0,
+   "cycles": 182503,
+   "model_cycles": 182503.0,
    "worst": {
-    "index": 14,
-    "kind": "kv_store",
-    "cycles": 13,
-    "model_cycles": 12.0,
-    "off": 0.08333333333333326
+    "index": 0,
+    "kind": "load",
+    "cycles": 163,
+    "model_cycles": 163.0,
+    "off": 0.0
    },
    "cycles_by_kind": {
     "load": 7037,
@@ -86,7 +87,8 @@
     "rsqrt": 3294,
     "rotate_half": 1980,
     "fma": 4620,
-    "kv_store": 4500,
+    "kv_store": 5190,
+    "v_store": 2880,
     "max": 43080,
     "exp": 7140,
     "sum": 43080,
@@ -111,14 +113,14 @@
    }
   },
   "1023": {
-   "cycles": 231133,
-   "model_cycles": 231103.0,
+   "cycles": 234703,
+   "model_cycles": 234703.0,
    "worst": {
-    "index": 14,
-    "kind": "kv_store",
-    "cycles": 13,
-    "model_cycles": 12.0,
-    "off": 0.08333333333333326
+    "index": 0,
+    "kind": "load",
+    "cycles": 163,
+    "model_cycles": 163.0,
+    "off": 0.0
    },
    "cycles_by_kind": {
     "load": 7037,
@@ -128,7 +130,8 @@
     "rsqrt": 3294,
     "rotate_half": 1980,
     "fma": 4620,
-    "kv_store": 4500,
+    "kv_store": 5190,
+    "v_store": 2880,
     "max": 44880,
     "exp": 23340,
     "sum": 44880,
@@ -153,14 +156,14 @@
    }
   },
   "8191": {
-   "cycles": 790333,
-   "model_cycles": 790303.0,
+   "cycles": 793903,
+   "model_cycles": 793903.0,
    "worst": {
-    "index": 14,
-    "kind": "kv_store",
-    "cycles": 13,
-    "model_cycles": 12.0,
-    "off": 0.08333333333333326
+    "index": 0,
+    "kind": "load",
+    "cycles": 163,
+    "model_cycles": 163.0,
+    "off": 0.0
    },
    "cycles_by_kind": {
     "load": 7037,
@@ -170,7 +173,8 @@
     "rsqrt": 3294,
     "rotate_half": 1980,
     "fma": 4620,
-    "kv_store": 4500,
+    "kv_store": 5190,
+    "v_store": 2880,
     "max": 143040,
     "exp": 144300,
     "sum": 143040,

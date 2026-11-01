@@ -62,9 +62,11 @@ class Op(enum.IntEnum):
     SUMSQ = 14
     MAX = 15
     ROTATE_HALF = 16
+    V_STORE = 17
 
 
 ENGINE_OPS = frozenset({Op.MATVEC, Op.SCORES, Op.VALUES})  # the rest is the vector unit's
+STORE_OPS = frozenset({Op.KV_STORE, Op.V_STORE})  # write a KV cache: K's, V's (D-062)
 
 
 class Flag(enum.IntFlag):
@@ -123,7 +125,7 @@ OPS = {
     Op.LOAD: ("dst = up(tensor at addr), m elements", ("dst", "m", "flags", "addr")),
     Op.MATVEC: ("dst = W·a, W at addr: n rows × m columns", ("dst", "a", "n", "m", "addr")),
     Op.KV_STORE: (
-        "cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head",
+        "K cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head",
         ("a", "n", "m", "cap", "addr"),
     ),
     Op.SCORES: (
@@ -145,6 +147,10 @@ OPS = {
     Op.SUMSQ: ("dst[r] = sum of squares of row r of a", ("dst", "a", *ROWS)),
     Op.MAX: ("dst[r] = max of row r of a", ("dst", "a", *ROWS)),
     Op.ROTATE_HALF: ("each row of a: (-second half, first half)", ("dst", "a", *ROWS)),
+    Op.V_STORE: (
+        "as KV_STORE, into a V cache (stored as Vᵀ, D-062)",
+        ("a", "n", "m", "cap", "addr"),
+    ),
 }
 
 
@@ -392,17 +398,24 @@ def lane_order(w: torch.Tensor, lanes: int) -> list[torch.Tensor]:
     beat, row by row within the beat. Columns past a row's end, and rows past
     the matrix's end in a port's last group, are zeros (the lanes mask or
     ignore them); a port with no rows in a pass streams nothing for it.
-    Returns each port's beats, BF16 [n_beats, LANES_PER_PORT * E]."""
-    assert w.dim() == 2 and w.dtype == BF16, (w.shape, w.dtype)
+    Returns each port's beats [n_beats, LANES_PER_PORT * E], in w's dtype
+    (BF16, or the tests' int32 indices, which move alike)."""
+    assert w.dim() == 2 and w.dtype in (BF16, torch.int32), (w.shape, w.dtype)
     assert lanes > 0 and lanes % LANES_PER_PORT == 0, lanes
     n, m = w.shape
     ports, n_groups, n_cols = lanes // LANES_PER_PORT, -(-n // LANES_PER_PORT), -(-m // E)
-    padded = torch.zeros(n_groups * LANES_PER_PORT, n_cols * E, dtype=BF16)
+    padded = torch.zeros(n_groups * LANES_PER_PORT, n_cols * E, dtype=w.dtype)
     padded[:n, :m] = w
     # Group g (rows 4g ... 4g + 3) is port g % ports's in pass g // ports.
     beats = padded.reshape(n_groups, LANES_PER_PORT, n_cols, E).transpose(1, 2)
     beats = beats.reshape(n_groups, n_cols, LANES_PER_PORT * E)
     return [beats[p::ports].reshape(-1, LANES_PER_PORT * E) for p in range(ports)]
+
+
+def values_heads(d: int, lanes: int) -> int:
+    """The heads a VALUES pass takes on `lanes` lanes (rtl/engine.sv's
+    Heads, at most VALUES_HEADS), so the copies of V (D-062)."""
+    return max(1, min(VALUES_HEADS, lanes // d))
 
 
 def kv_region_beats(cap: int, d: int, values: bool, lanes: int) -> int:
@@ -418,13 +431,14 @@ def kv_lane_order(cache: torch.Tensor, values: bool, lanes: int) -> list[torch.T
     transposed (d rows, cap columns) and stacked once per head of a VALUES
     pass (up to VALUES_HEADS: the pass's second head reads ports d / 4 ...),
     both in lane_order. A channel with no rows of a head holds zeros there.
-    Returns each port's beats, BF16 [n_beats, LANES_PER_PORT * E]."""
-    assert cache.dim() == 3 and cache.dtype == BF16, (cache.shape, cache.dtype)
+    Returns each port's beats [n_beats, LANES_PER_PORT * E], in the cache's
+    dtype (as lane_order)."""
+    assert cache.dim() == 3 and cache.dtype in (BF16, torch.int32), (cache.shape, cache.dtype)
     kv_heads, cap, d = cache.shape
     ports = lanes // LANES_PER_PORT
-    copies = max(1, min(VALUES_HEADS, lanes // d)) if values else 1
+    copies = values_heads(d, lanes) if values else 1
     region = kv_region_beats(cap, d, values, lanes)
-    out = torch.zeros(ports, kv_heads, region, LANES_PER_PORT * E, dtype=BF16)
+    out = torch.zeros(ports, kv_heads, region, LANES_PER_PORT * E, dtype=cache.dtype)
     for kv in range(kv_heads):
         w = torch.cat([cache[kv].T] * copies) if values else cache[kv]
         for p, beats in enumerate(lane_order(w.contiguous(), lanes)):
@@ -512,8 +526,8 @@ def layer_commands(layout: Layout, i: int) -> list[Command]:
     p = f"layers.{i}."
     attention = dict(n=heads, m=d, kv_heads=kv_heads, cap=layout.cap)
 
-    def kv_store(name: str, a: Buf) -> Command:
-        return Command(Op.KV_STORE, a=a, n=kv_heads, m=d, cap=layout.cap, addr=layout.addr(name))
+    def kv_store(op: Op, name: str, a: Buf) -> Command:
+        return Command(op, a=a, n=kv_heads, m=d, cap=layout.cap, addr=layout.addr(name))
 
     scale = f32_bits(host.attention_scale(d))
     residual = Command(Op.ADD, Buf.H, Buf.H, Buf.T, n=1, m=c.hidden_size)
@@ -523,8 +537,8 @@ def layer_commands(layout: Layout, i: int) -> list[Command]:
         matvec(layout, Buf.K, p + "k", Buf.X),
         matvec(layout, Buf.V, p + "v", Buf.X),
         *rope(Buf.KR, Buf.K, Buf.KR, kv_heads, d),
-        kv_store(p + "k_cache", Buf.KR),
-        kv_store(p + "v_cache", Buf.V),
+        kv_store(Op.KV_STORE, p + "k_cache", Buf.KR),
+        kv_store(Op.V_STORE, p + "v_cache", Buf.V),
         *rope(Buf.QR, Buf.Q, Buf.QT, heads, d),
         Command(
             Op.SCORES, Buf.S, Buf.QR, addr=layout.addr(p + "k_cache"), scalar=scale, **attention
@@ -605,14 +619,14 @@ def stops(commands: list[Command]) -> list[bool]:
 
 
 def kv_waits(commands: list[Command]) -> list[int | None]:
-    """Per command, the KV_STORE an engine command is given after (D-044):
-    the last one before it that writes the cache it reads. None for the
-    rest."""
-    last_store: dict[int, int] = {}  # cache addr -> KV_STORE
+    """Per command, the KV_STORE or V_STORE an engine command is given after
+    (D-044): the last one before it that writes the cache it reads. None for
+    the rest."""
+    last_store: dict[int, int] = {}  # cache addr -> its store
     after: list[int | None] = []
     for i, cmd in enumerate(commands):
         after.append(last_store.get(cmd.addr) if cmd.op in ENGINE_OPS else None)
-        if cmd.op == Op.KV_STORE:
+        if cmd.op in STORE_OPS:
             last_store[cmd.addr] = i
     return after
 
@@ -714,7 +728,7 @@ def hazards(
                 for j in range(i):
                     edge(node(token * n + j, done), h)
             writes: list[Resource] = [cmd.dst] if cmd.dst != Buf.NONE else []
-            if cmd.op == Op.KV_STORE:
+            if cmd.op in STORE_OPS:
                 writes.append((cmd.addr, token))
             for what, at in reads:
                 if what in writer:
@@ -779,7 +793,7 @@ def engine_spans(cmd: Command, stride: int) -> tuple[int, int]:
     raise AssertionError(f"not an engine command: {cmd.op!r}")
 
 
-VECTOR_OPS = frozenset(OPS) - ENGINE_OPS - {Op.LOAD, Op.KV_STORE, Op.OUTPUT, Op.END}
+VECTOR_OPS = frozenset(OPS) - ENGINE_OPS - STORE_OPS - {Op.LOAD, Op.OUTPUT, Op.END}
 UNARY = {Op.EXP: funcs.exp, Op.RECIP: funcs.recip, Op.RSQRT: funcs.rsqrt}
 BINARY = {Op.ADD: arith.add, Op.MUL: arith.mul}
 REDUCE = {Op.SUM: vector.reduce_sum, Op.SUMSQ: vector.reduce_sum_squares, Op.MAX: vector.reduce_max}
@@ -886,9 +900,10 @@ def load_command(
 def kv_store_command(
     cmd: Command, buf: dict[Buf, torch.Tensor], mem: torch.Tensor, position: int
 ) -> None:
-    """KV_STORE: row `position` of each of the n heads of the cache `mem`
-    (n × cap × m, BF16) = a's n rows of m, rounded. m (the head dimension)
-    is a power of two: a row is one burst inside a 4 KB page (D-043)."""
+    """KV_STORE or V_STORE: row `position` of each of the n heads of the
+    cache `mem` (n × cap × m, BF16) = a's n rows of m, rounded. m (the head
+    dimension) is a power of two. In HBM the cache is in the engine's order
+    (kv_lane_order, D-062)."""
     assert mem.shape == (cmd.n, cmd.cap, cmd.m) and buf[cmd.a].dtype == F32, (mem.shape, cmd)
     assert cmd.m & (cmd.m - 1) == 0, cmd
     mem[:, position] = arith.bf16(buffer_span(buf[cmd.a], cmd.n, cmd.m))
@@ -933,7 +948,7 @@ def run(
             case Op.MATVEC:
                 assert mem.shape == (cmd.n, cmd.m) and a.dtype == BF16, (mem.shape, a.dtype)
                 store(span(cmd.dst, 1, cmd.n), dot.matvec(mem, span(cmd.a, 1, cmd.m)))  # one vector
-            case Op.KV_STORE:
+            case Op.KV_STORE | Op.V_STORE:
                 kv_store_command(cmd, buf, mem, position)
             case Op.SCORES:
                 q = span(cmd.a, cmd.n, cmd.m).reshape(cmd.kv_heads, -1, cmd.m)  # KV head h // group

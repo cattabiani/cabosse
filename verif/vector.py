@@ -6,6 +6,7 @@ verif/bulk/vec_unit.cpp run on commands, and the bit-exact comparison of
 every buffer and of the memory afterwards (rtl/vec_unit.sv). An EngineStep
 stands in for an engine command among the commands."""
 
+import functools
 from dataclasses import dataclass
 
 import bulk
@@ -13,15 +14,17 @@ import commands
 import numpy as np
 import torch
 from commands import Buf, Command, Flag, Op
-from engine import cache_by_channel
 from engine import port_bits as bits  # a buffer's raw bits: the engine's write port's
 from fp_inputs import random_bits, with_exponents
 from golden import arith, tiny
 
 LANES = 16  # rtl/vec_unit.sv's default
 # The memory's channels in the tests: KV_PORTS of 2^CHAN_W bytes (F2: 32 of
-# 512 MiB), one byte array from address 0.
-KV_PORTS, CHAN_W = 4, 14
+# 512 MiB), one byte array from address 0; KV_PORTS the engine's ports, of
+# L lanes (a V cache of head dimension 16 in 2 copies, D-062).
+KV_PORTS, CHAN_W = 8, 14
+L = KV_PORTS * commands.LANES_PER_PORT
+WR_OUTSTANDING = 128  # rtl/vec_unit.sv's WrOutstanding
 MEM_WORDS = (KV_PORTS << CHAN_W) // 4
 CMD_WORDS = 16  # a command's words in the driver's input
 WRITE_WORDS = 3 + LANES  # an ext write's: buffer, first element, mask, data
@@ -100,20 +103,48 @@ def tensor_at(mem: np.ndarray, at: int, shape: tuple[int, ...], dtype: torch.dty
     return torch.from_numpy(raw).view(dtype).reshape(shape)
 
 
-def cache_view(mem: np.ndarray, cmd: Command) -> np.ndarray:
-    """KV_STORE's cache in the memory's image (from address 0), as BF16 bits
-    [KV_PORTS, n, cap / KV_PORTS, m] (engine.cache_by_channel's order): the
-    same offset in every channel (D-043). A view: writes go to the memory."""
-    assert cmd.cap % KV_PORTS == 0, cmd  # whole rows in every channel, as the unit needs
-    channels = mem.view(np.uint16).reshape(KV_PORTS, -1)
-    rows = cmd.n * cmd.cap // KV_PORTS * cmd.m
-    region = channels[:, cmd.addr // 2 : cmd.addr // 2 + rows]
-    return region.reshape(KV_PORTS, cmd.n, cmd.cap // KV_PORTS, cmd.m)
+@functools.cache
+def cache_slots(values: bool, n: int, cap: int, m: int, kv_ports: int) -> np.ndarray:
+    """Where a KV_STORE's (values: V_STORE's) cache [n, cap, m] is in each
+    channel's region (commands.kv_lane_order, D-062): per channel and BF16
+    element of the region, the cache's element there (its flat index), or
+    -1 where none is (the store leaves it alone). Read-only."""
+    index = torch.arange(1, n * cap * m + 1, dtype=torch.int32).reshape(n, cap, m)
+    per_port = commands.kv_lane_order(index, values, kv_ports * commands.LANES_PER_PORT)
+    slots = torch.stack(per_port).reshape(kv_ports, -1).numpy() - 1
+    slots.flags.writeable = False
+    return slots
 
 
-def memory_command(s: Step, buf: dict[Buf, torch.Tensor], mem: np.ndarray, base: int) -> None:
-    """LOAD or KV_STORE on the buffers and the memory's words (an image of
-    the bytes from `base`), in place, by commands.load_command and
+def write_cache(
+    mem: np.ndarray,
+    cmd: Command,
+    cache: np.ndarray,
+    kv_ports: int,
+    chan_w: int,
+    position: int | None = None,
+) -> None:
+    """The cache (BF16 bits [n, cap, m]) into the memory's image (from
+    address 0) in the store's layout, from its offset in each channel, in
+    place: all of it, or only its rows at `position`. The elements between
+    its rows are left alone."""
+    lanes = kv_ports * commands.LANES_PER_PORT  # the engine's: the stores need these
+    assert cmd.cap % lanes == 0 and cmd.m % LANES == 0 and cmd.m & (cmd.m - 1) == 0, cmd
+    assert cmd.op != Op.V_STORE or cmd.m <= lanes, cmd
+    slots = cache_slots(cmd.op == Op.V_STORE, cmd.n, cmd.cap, cmd.m, kv_ports)
+    channels = mem.view(np.uint16)[: (kv_ports << chan_w) // 2].reshape(kv_ports, -1)
+    view = channels[:, cmd.addr // 2 : cmd.addr // 2 + slots.shape[1]]
+    here = slots >= 0
+    if position is not None:
+        here &= slots // cmd.m % cmd.cap == position
+    view[here] = cache.ravel()[slots[here]]
+
+
+def memory_command(
+    s: Step, buf: dict[Buf, torch.Tensor], mem: np.ndarray, base: int, kv_ports: int, chan_w: int
+) -> None:
+    """LOAD, KV_STORE or V_STORE on the buffers and the memory's words (an
+    image of the bytes from `base`), in place, by commands.load_command and
     kv_store_command."""
     c, position = s.cmd, s.t - 1
     if c.op == Op.LOAD:
@@ -128,22 +159,27 @@ def memory_command(s: Step, buf: dict[Buf, torch.Tensor], mem: np.ndarray, base:
         commands.load_command(c, buf, tensor, s.token, position)
         return
     assert base == 0, base  # the cache's channels start at address 0
-    view = cache_view(mem, c)
-    bits = view.transpose(1, 2, 0, 3).reshape(c.n, c.cap, c.m)  # back to [n, cap, m]
-    cache = torch.from_numpy(bits.astype(np.int16)).view(commands.BF16)
+    # Only the position's rows change: the rest of the cache need not be read.
+    cache = torch.zeros(c.n, c.cap, c.m, dtype=commands.BF16)
     commands.kv_store_command(c, buf, cache, position)
-    view[...] = cache_by_channel(cache.view(torch.int16).numpy().view(np.uint16), KV_PORTS)
+    rows = cache.view(torch.int16).numpy().view(np.uint16)
+    write_cache(mem, c, rows, kv_ports, chan_w, position)
 
 
 def golden(
-    steps: list[Step], start: dict[Buf, torch.Tensor], mem: np.ndarray, base: int = 0
+    steps: list[Step],
+    start: dict[Buf, torch.Tensor],
+    mem: np.ndarray,
+    base: int = 0,
+    kv_ports: int = KV_PORTS,
+    chan_w: int = CHAN_W,
 ) -> tuple[dict[Buf, np.ndarray], np.ndarray]:
     """The buffers (raw bits) and the memory's words after the commands."""
     buf = {b: x.clone() for b, x in start.items()}
     mem = mem.copy()
     for s in steps:
-        if s.cmd.op in (Op.LOAD, Op.KV_STORE):
-            memory_command(s, buf, mem, base)
+        if s.cmd.op == Op.LOAD or s.cmd.op in commands.STORE_OPS:
+            memory_command(s, buf, mem, base, kv_ports, chan_w)
         else:
             commands.vector_command(s.cmd, buf, s.t, s.stride)
     return {b: bits(x) for b, x in buf.items()}, mem
@@ -238,8 +274,8 @@ def with_waits(steps: list[Step]) -> list[Step]:
     return steps
 
 
-def params(length: int, chan_w: int = CHAN_W) -> tuple[tuple[str, int], ...]:
-    return (("Len", length), ("Bf16Mask", BF16_MASK), ("KvPorts", KV_PORTS), ("ChanW", chan_w))
+def params(length: int, kv_ports: int, chan_w: int) -> tuple[tuple[str, int], ...]:
+    return (("Len", length), ("Bf16Mask", BF16_MASK), ("KvPorts", kv_ports), ("ChanW", chan_w))
 
 
 def zero_memory() -> np.ndarray:
@@ -252,15 +288,16 @@ def run(
     length: int,
     mem: np.ndarray,
     base: int = 0,
+    kv_ports: int = KV_PORTS,
     chan_w: int = CHAN_W,
     **plusargs: int,
 ) -> Result:
     """The commands and engine steps on the unit, every buffer filled with
-    `start` first and the memory (an image from byte `base`, channels of
-    2^chan_w bytes) with `mem`'s words."""
+    `start` first and the memory (an image from byte `base`, kv_ports
+    channels of 2^chan_w bytes from address 0) with `mem`'s words."""
     argv = words(steps, start, length, mem)
     plusargs = {"base": base, **plusargs} if base else plusargs
-    result = bulk.run_driver("vec_unit", argv, params(length, chan_w), **plusargs)
+    result = bulk.run_driver("vec_unit", argv, params(length, kv_ports, chan_w), **plusargs)
     assert result.returncode == 0, result.stderr.decode()
     out = np.frombuffer(result.stdout, dtype="<u4")
     at = 2 * sum(isinstance(s, Step) for s in steps)
@@ -305,13 +342,15 @@ def check(
     label: str,
     mem: np.ndarray | None = None,
     base: int = 0,
+    kv_ports: int = KV_PORTS,
+    chan_w: int = CHAN_W,
     **plusargs: int,
 ) -> Result:
     """Run, then compare every buffer and the memory (zeros by default) with
     golden()."""
     mem = zero_memory() if mem is None else mem
-    result = run(steps, start, length, mem, base, **plusargs)
-    want_buf, want_mem = golden(steps, start, mem, base)
+    result = run(steps, start, length, mem, base, kv_ports, chan_w, **plusargs)
+    want_buf, want_mem = golden(steps, start, mem, base, kv_ports, chan_w)
     assert_same(result.buffers, want_buf, label)
     bad = np.flatnonzero(result.mem != want_mem)
     assert not len(bad), (
