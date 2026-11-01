@@ -403,18 +403,21 @@ module engine
   assign iss_last_head = 2'(iss_head_q) + 2'd1 == unit_heads(iss_unit_q);
   assign q_pop[0]      = !iss_busy_q && q_valid[0];
 
-  // "Every port took it" is an AND per group of GP ports, then over the
-  // groups, a register each: a DMA command takes at least 4 cycles, and
-  // the next unit and its ports, registered from iss_unit_q, are there by
-  // its end (a unit lasts that long since it changed).
+  // "Every port took it" is an AND per group of GP ports, of the ports
+  // taken by the end of this cycle, then over the groups, a register each:
+  // as before, iss_done_q comes 2 cycles after the last port takes it. The
+  // next unit's ports, registered from iss_unit_q through 2 registers, are
+  // there by a done: a port takes the command in its unit's first cycle at
+  // the soonest, so a done comes 2 cycles after the unit changed or later.
   always_ff @(posedge clk_i) begin
     iss_next_q <= unit_next(iss_unit_q);
     for (int unsigned a = 0; a < Heads; a++) iss_next_ports_q[a] <= head_ports(iss_next_q, 1'(a));
     if (!rst_ni || q_pop[0] || iss_done_q) begin
       iss_grp_done_q <= '0;
-    end else begin
+    end else if (iss_busy_q) begin
       for (int unsigned g = 0; g < NG; g++) begin
-        iss_grp_done_q[g] <= &(iss_taken_q[GP*g +: GP] | ~iss_active[GP*g +: GP]);
+        iss_grp_done_q[g] <= &(iss_taken_q[GP*g +: GP] | dma_cmd_ready[GP*g +: GP]
+                               | ~iss_active[GP*g +: GP]);
       end
     end
   end
@@ -451,11 +454,13 @@ module engine
 
 `ifndef SYNTHESIS
   always_ff @(posedge clk_i) begin
-    if (rst_ni && iss_done_q && iss_last_head && !last_unit(iss_unit_q)
-        && (iss_next_q != unit_next(iss_unit_q)
-            || iss_next_ports_q[0] != head_ports(unit_next(iss_unit_q), 1'b0)
-            || iss_next_ports_q[1] != head_ports(unit_next(iss_unit_q), 1'b1))) begin
-      $error("engine: issue's next unit not ready at the end of its unit");
+    if (rst_ni && iss_done_q && iss_last_head && !last_unit(iss_unit_q)) begin
+      if (iss_next_q != unit_next(iss_unit_q)) $error("engine: issue's next unit not ready");
+      for (int unsigned a = 0; a < Heads; a++) begin
+        if (iss_next_ports_q[a] != head_ports(unit_next(iss_unit_q), 1'(a))) begin
+          $error("engine: issue's next unit's ports not ready");
+        end
+      end
     end
   end
 `endif
@@ -716,8 +721,9 @@ module engine
   logic [Ports-1:0][E-1:0][15:0] x_at;    // each port's x at PopLat
 
   // A port's lanes take one head: VALUES' lane l takes the pass's second
-  // head when l >> dlog == 1, the same for a port's lanes since d >=
-  // LanesPerPort; the other commands read the same x on both ports.
+  // head when l >> dlog == 1, the same for a port's lanes since d >= 16 >=
+  // LanesPerPort (gen_bad_maxd, gen_bad_lpp); the other commands read the
+  // same x on both ports.
   for (genvar g = 0; g < NG; g++) begin : gen_group
     beat_t pipe_q[PopLat-1];  // stages 2 .. PopLat
     logic [Heads-1:0][E-1:0][15:0] x_q[PopLat-XLat-1];  // stages XLat + 1 .. PopLat - 1
@@ -732,9 +738,9 @@ module engine
     end
     assign beat_at[g] = pipe_q[PopLat-2];
     for (genvar p = GP * g; p < GP * (g + 1); p++) begin : gen_port
-      logic second_q;  // at PopLat - 1, from the beat at PopLat - 2
+      logic second_q;  // at PopLat - 1, from the beat at PopLat - 2 (pipe_q[s] is stage s + 2)
       always_ff @(posedge clk_i) begin
-        second_q <= (p * LanesPerPort) >> pipe_q[PopLat-4].dlog == 1;
+        second_q <= (p * LanesPerPort) >> pipe_q[(PopLat-2)-2].dlog == 1;
         x_at[p]  <= x_q[PopLat-XLat-2][second_q];
       end
       assign dma_out_ready[p] = beat_at[g].valid && beat_at[g].active[p];

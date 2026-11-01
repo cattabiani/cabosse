@@ -45,7 +45,7 @@ module dot_lane
 #(
   parameter  int unsigned E       = 4,     // pairs per cycle (multiply-add units)
   parameter  int unsigned A       = 16,    // partial sums per row (D-027)
-  parameter  int unsigned MulRegs = 1,     // registers inside each product (bf16_mac)
+  parameter  int unsigned MulRegs = 1,     // registers inside each product (fp_product; the engine takes 2)
   parameter  bit          Ftz     = 1'b0,  // flush-to-zero variant (fp_mul_add)
   parameter  int unsigned Banks   = 2,     // level-1 buffers
   localparam int unsigned S       = A / E, // partial sums per unit
@@ -134,8 +134,8 @@ module dot_lane
     end
   end
 
-  logic snap;  // copy the row's sums into a context this cycle
-  assign snap = tag_q[Snap].valid && tag_q[Snap].last;
+  logic snap;  // copy the row's sums into a context this cycle: tag_q[Snap]'s last, a register
+  always_ff @(posedge clk_i) snap <= rst_ni && tag_q[Snap-1].valid && tag_q[Snap-1].last;
 
   // --- Units: product, add, accumulator file ---------------------------------
 
@@ -281,23 +281,30 @@ module dot_lane
   end
 
   // The adder, after an issue register.
-  logic          iss_valid_q;
+  logic          iss_valid_q, iss_root_q;
   logic [LW-1:0] iss_lvl_q;
   logic [31:0]   op_a_q, op_b_q;
   always_ff @(posedge clk_i) begin
     iss_valid_q <= rst_ni && pick;
+    iss_root_q  <= rst_ni && root_issue;
     iss_lvl_q   <= pick_lvl;
     op_a_q      <= front_a[pick_lvl];
     op_b_q      <= front_b[pick_lvl];
   end
 
-  logic [LW-1:0] tree_lvl_q[3];  // iss_lvl_q through fp_add's registers
+  // iss_lvl_q and iss_root_q through fp_add's registers; the root's flag is
+  // the output FIFO's write enable, a register of its own.
+  logic [LW-1:0] tree_lvl_q[AddLatency];
+  logic          tree_root_q[AddLatency];
   logic          tree_valid;
   logic [31:0]   tree_sum;
   always_ff @(posedge clk_i) begin
-    tree_lvl_q[0] <= iss_lvl_q;
-    tree_lvl_q[1] <= tree_lvl_q[0];
-    tree_lvl_q[2] <= tree_lvl_q[1];
+    tree_lvl_q[0]  <= iss_lvl_q;
+    tree_root_q[0] <= rst_ni && iss_root_q;
+    for (int unsigned i = 1; i < AddLatency; i++) begin
+      tree_lvl_q[i]  <= tree_lvl_q[i-1];
+      tree_root_q[i] <= rst_ni && tree_root_q[i-1];
+    end
   end
 
   fp_add #(
@@ -313,15 +320,8 @@ module dot_lane
     .y_o    (tree_sum)
   );
 
-  // The row's result: root_issue through the issue register and fp_add's,
-  // as a register of its own (the output FIFO's write enable).
-  logic root_q[AddLatency+1];
-  logic root_result;
-  always_ff @(posedge clk_i) begin
-    root_q[0] <= rst_ni && root_issue;
-    for (int unsigned i = 1; i <= AddLatency; i++) root_q[i] <= rst_ni && root_q[i-1];
-  end
-  assign root_result = root_q[AddLatency];
+  logic root_result;  // the row's result
+  assign root_result = tree_root_q[AddLatency-1];
   assign room[Levels-1] = out_room;
 
   // Levels 2 and up: a queue each, one row's items deep (A >> i), counting
@@ -333,7 +333,7 @@ module dot_lane
     logic [QW-1:0] rd_q, wr_q;
     logic [QW:0]   count_q, flying_q;  // items held, results on their way
     logic          push, pop2, issue_below;
-    assign push        = tree_valid && tree_lvl_q[2] == LW'(i - 1);
+    assign push        = tree_valid && tree_lvl_q[AddLatency-1] == LW'(i - 1);
     assign pop2        = pick && pick_lvl == LW'(i);
     assign issue_below = pick && pick_lvl == LW'(i - 1);
     assign has_pair[i] = count_q >= 2;
