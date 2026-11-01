@@ -153,12 +153,23 @@ module dot_lane
     );
     always_ff @(posedge clk_i) p_q <= p_d;
 
+    // The unit's own copies of the read and write stages' tags: one tag's
+    // slot would select the file's words in every unit (a fan-out of about
+    // 260, the lane's worst path in the full engine).
+    logic          rd_valid_q, rd_first_q;
+    logic [SW-1:0] rd_slot_q, wr_slot_q;
+    always_ff @(posedge clk_i) begin
+      rd_valid_q <= rst_ni && tag_q[Rd-1].valid && tag_q[Rd-1].mask[e];
+      rd_first_q <= tag_q[Rd-1].first;
+      rd_slot_q  <= tag_q[Rd-1].slot;
+      wr_slot_q  <= tag_q[Wr-1].slot;
+    end
+
     logic [31:0] file_q[S];
     logic [S-1:0] written_q;
     logic [31:0] addend, sum;
     logic        sum_valid;
-    assign addend = (tag_q[Rd].first || !written_q[tag_q[Rd].slot]) ? 32'h0
-                    : file_q[tag_q[Rd].slot];
+    assign addend = (rd_first_q || !written_q[rd_slot_q]) ? 32'h0 : file_q[rd_slot_q];
 
     fp_add #(
       .W  (W),
@@ -166,7 +177,7 @@ module dot_lane
     ) u_add (
       .clk_i,
       .rst_ni,
-      .valid_i(tag_q[Rd].valid && tag_q[Rd].mask[e]),
+      .valid_i(rd_valid_q),
       .a_i    (p_q),
       .b_i    (addend),
       .valid_o(sum_valid),
@@ -174,7 +185,7 @@ module dot_lane
     );
 
     always_ff @(posedge clk_i) begin
-      if (sum_valid) file_q[tag_q[Wr].slot] <= sum;
+      if (sum_valid) file_q[wr_slot_q] <= sum;
     end
     // The copy clears the flags in the cycle the next row's first sum may be
     // written; that write sets its flag (the later assignment wins).
@@ -182,7 +193,7 @@ module dot_lane
       if (!rst_ni) written_q <= '0;
       else begin
         if (snap) written_q <= '0;
-        if (sum_valid) written_q[tag_q[Wr].slot] <= 1'b1;
+        if (sum_valid) written_q[wr_slot_q] <= 1'b1;
       end
     end
 

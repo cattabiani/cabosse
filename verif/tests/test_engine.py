@@ -418,6 +418,29 @@ def test_attention_go(ports: int, go_early: int, go_delay: int) -> None:
 BALANCED = {8: (64, 16), WIDE: (64, 64)}
 
 
+# Heads ending in a tile of 1, 8 or 9 positions (one or two write groups
+# of Writes = 8) after a full tile, more heads after them: with d = 16 (4
+# beats a tile) the drain runs behind the step, and the short tile's end
+# waits for the drain's successor, ready two cycles after a unit loads.
+SHORT_TILES = (1, 8, 9)
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize("ports", ALL_PORTS)
+def test_short_units(ports: int) -> None:
+    """SCORES whose heads end in a short tile, back to back, no gap."""
+    seed = SEED + 3000 + ports
+    gen = torch.Generator().manual_seed(seed)
+    lanes = ports * LANES_PER_PORT
+    cmds: list[eng.Command] = []
+    xs: dict[int, torch.Tensor] = {}
+    for i, r in enumerate(SHORT_TILES):
+        kw = dict(a=i, dst=2 + i % 3, bf16=i % 2 == 1, scale=SCALES[i % 2], lanes=lanes)
+        c, xs[i] = stale_attention(False, 4, 2, 16, lanes + r, gen, **kw)
+        cmds.append(c)
+    check_bits(cmds, xs, eng.fetch(cmds, xs, ports, latency=1), f"short units, seed {seed}")
+
+
 @rtl.needs_verilator
 @pytest.mark.parametrize("ports", (8, pytest.param(WIDE, marks=pytest.mark.wide)))
 def test_attention_back_to_back(ports: int) -> None:

@@ -1123,6 +1123,22 @@ iteration, a few placed builds, each with the owner's go.
    Next (proposed, owner to confirm): register stages for the three
    families, then build 3. time_loops.sh now prints the WNS and the
    families again at the very end, so the console's tail holds them.
+   Round 3 (owner, 2026-11-01), on `m6/timing-round3`: the drain's
+   successors (the unit after, the queue head's first unit) registered
+   with their lane counts two cycles ahead, their "results are there" for
+   group 0 only; each lane unit's own copy of the read and write tags;
+   issue's "every port took it" registered (2 cycles more per DMA
+   command); no SRLs (`-shreg_min_size 16`). Same bits, and SmolLM2's
+   engine cycles unchanged (reports/data/M5-engine.json). Build 3 runs
+   the default flow and an `explore` flow (timing directives) side by
+   side; the default flow is the gate, since the shell build (M8) runs
+   it. Left for build 3 to confirm, from the review: the lane rows that
+   start at `file_q` (-0.446) keep their logic, so the lane family may
+   stay (then: read the file a cycle early, with a bypass of the sum);
+   issue's gather and its reset broadcast still cross the chip, a cycle
+   each (then: an AND per group of ports, as step's minimum); the
+   drain's `go` (16 groups' ok to 128 lanes' ready) and the current
+   unit's lane count to 128 compares are central broadcasts.
 4. Stop when the worst slack is >= 0 at 250 MHz. If the builds stop
    closing named families (the owner decides, D-063), target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%
@@ -1386,9 +1402,11 @@ synthesis drops the fields a stage never reads, or narrow them. Two
 changes wait for that run: `port_dma`'s burst length registered a cycle
 ahead (M5), and `fp_add`'s significand compare beside the alignment
 shifter (M3; +142 Yosys cells), only if those paths limit.
-The full build synthesizes with `-keep_equivalent_registers`, as
-platforms/f2/timing/timing.tcl does: the engine's per-group copies of its
-control registers (D-051) would otherwise merge back into one. An option
+The full build synthesizes with `-keep_equivalent_registers` and
+`-shreg_min_size 16`, as platforms/f2/timing/timing.tcl does: the
+engine's per-group copies of its control registers (D-051) and the lane
+units' tag copies would otherwise merge back into one, and the short
+copy pipelines become SRLs, whose output is slow. An option
 if the lanes' room estimate ever goes stale: dot_lane exports its free
 last-beat credits instead of `reserved_o`, so the engine stops modelling
 the lane's ready rule (review of D-051, 2026-10-31).
