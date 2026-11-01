@@ -663,7 +663,7 @@ passes by KV head does not balance with SmolLM2's 3 KV heads.
 *Correction (2026-10-31):* the second head of a pass reads ports `d / 4`
 and up (its lanes `d` and up), not `L/8`: the same for SmolLM2 (d = 64),
 different for d < L/2 (rtl/engine.sv, `commands.kv_lane_order`).
-*Implementation note (2026-10-31, proposed; owner to confirm):*
+*Implementation note (2026-10-31; confirmed by the owner 2026-11-01):*
 - A V cache is written by a new opcode, `V_STORE` (17), not a flag:
   the FLAGS byte's 8 bits are all taken. `KV_STORE` now writes K only.
 - The writer sends a burst per group of 16 values for K (4 beats) and
@@ -1469,6 +1469,12 @@ copy pipelines become SRLs, whose output is slow. An option
 if the lanes' room estimate ever goes stale: dot_lane exports its free
 last-beat credits instead of `reserved_o`, so the engine stops modelling
 the lane's ready rule (review of D-051, 2026-10-31).
+The vector unit's KV writes (D-062's implementation note) need two
+measurements here: how many outstanding writes the shell's interconnect
+accepts (below `WrOutstanding` = 128 it only slows the stores), and what
+a one-beat partial write costs in the memory that holds the V cache
+(read-modify-write or not). If V's one-beat bursts are slow, gather V
+rows on chip into longer bursts; only after measuring.
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
