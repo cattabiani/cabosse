@@ -7,14 +7,18 @@
 # Usage: vivado -mode batch -source timing.tcl -tclargs REPO PART TOP PARAM VALUE LOOP RETIME [FLOW]
 # PARAM=VALUE is the harness's length parameter, LOOP the loop's (or the
 # path's) cycles, for the report. RETIME 1 lets Vivado move registers across logic
-# (synthesis and physical optimization). FLOW "explore" runs placement,
-# physical optimization and routing with their timing-driven directives,
-# and a physical optimization after routing; "default" (or none) without.
+# (synthesis and physical optimization; under explore, synthesis only).
+# FLOW "explore" runs placement, physical optimization and routing with
+# their timing-driven directives, and a physical optimization after routing
+# while timing fails; "default" (or none) without. The default flow is the
+# pass/fail gate: the shell build (M8) runs it; explore measures what the
+# directives buy. Environment: CABOSSE_THREADS (default 4) for Vivado's
+# threads, CABOSSE_DCP=1 to write the routed checkpoint.
 
 lassign $argv repo part top param value loop retime flow
 if {$flow eq ""} {set flow default}
 set explore [expr {$flow eq "explore"}]
-set_param general.maxThreads 4
+set_param general.maxThreads [expr {[info exists env(CABOSSE_THREADS)] ? $env(CABOSSE_THREADS) : 4}]
 
 # rtl/sources.f, without its comments; paths are relative to rtl/.
 set f [open $repo/rtl/sources.f]
@@ -38,16 +42,18 @@ synth_design -top $top -part $part -mode out_of_context \
 opt_design
 if {$explore} {
   place_design -directive ExtraTimingOpt
-  phys_opt_design -directive AggressiveExplore
-  route_design -directive AggressiveExplore
-  phys_opt_design -directive AggressiveExplore
+  phys_opt_design -directive Explore
+  route_design -directive Explore
+  if {[get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]] < 0} {
+    phys_opt_design -directive Explore
+  }
 } else {
   place_design
   if {$retime} {phys_opt_design -retime} else {phys_opt_design}
   route_design
 }
 # The routed design, for reports without a rebuild (time_loops.sh keeps it).
-write_checkpoint -force routed.dcp
+if {[info exists env(CABOSSE_DCP)]} {write_checkpoint -force routed.dcp}
 
 report_timing_summary -no_header -file timing_summary.rpt
 report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
