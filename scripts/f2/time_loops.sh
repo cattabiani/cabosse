@@ -110,6 +110,18 @@ for part in /var/log/cabosse-part.*; do
   echo
   sleep 40
 done
+# The key lines again, last, so they stay in the console's buffer even when
+# the replay's first pieces have scrolled out.
+section summary
+i=0
+for run in $RUNS; do
+  i=$((i + 1))
+  echo "run$i $run"
+  grep -h "CABOSSE-RESULT" /root/run$i/vivado.log 2>/dev/null
+  sed -n '/WNS(ns)/,+3p' /root/run$i/timing_summary.rpt 2>/dev/null | head -4
+  sort -n /root/run$i/families.rpt 2>/dev/null | head -25 | cut -c1-200
+done
+done_ summary
 echo "CABOSSE-FINISHED"
 sleep 30  # let the console flush
 shutdown -h now
