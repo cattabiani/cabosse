@@ -113,7 +113,8 @@ dict for {key slacks} $families {
 close $f
 set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
 puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow place=$place wns_ns=$wns"
-# A design that misses 250 MHz must not pass as measured (PLAN.md, M8 notes).
+# A design that misses 250 MHz with the margin must not pass as measured
+# (PLAN.md, M8 notes).
 if {$wns < $MARGIN_NS} {
   puts "CABOSSE-TIMING-FAILED top=$top wns_ns=$wns"
   exit 1
