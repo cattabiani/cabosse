@@ -171,9 +171,9 @@
  },
  "real": {
   "provenance": {
-   "commit": "b02a3e7ab94906729c3efc64231d36860eb4d275",
+   "commit": "190fca6ba169dcec488dee31fad7aa00eba3e30b",
    "dirty": false,
-   "date": "2026-10-31",
+   "date": "2026-11-01",
    "machine": "Linux x86_64"
   },
   "ports": 32,
