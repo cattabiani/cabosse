@@ -1,0 +1,819 @@
+CABOSSE-BEGIN host
+2026-11-01T10:18:08Z
+$ cat /etc/os-release
+PRETTY_NAME="Ubuntu 24.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.1 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+$ nproc
+32
+$ free -b
+               total        used        free      shared  buff/cache   available
+Mem:     66325233664  1110994944 65530810368     2953216   315383808 65214238720
+Swap:    10737414144           0 10737414144
+CABOSSE-END host
+CABOSSE-BEGIN setup
+cabosse 9bd2fafd7e87bbf7d2de37aeea7eaeafc79ff309 2026-11-01T11:14:59+01:00
+aws-fpga c34f88e97eaf8a9b6ea7a3516ab65ee64690ab82 2026-10-16T20:30:15-05:00
+$ which vivado
+/opt/Xilinx/2025.2/Vivado/bin/vivado
+$ vivado -version
+vivado v2025.2 (64-bit)
+Tool Version Limit: 2025.11
+SW Build 6299465 on Fri Nov 14 12:34:56 MST 2025
+IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
+SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+part xcvu47p-fsvh2892-2-e
+CABOSSE-END setup
+CABOSSE-BEGIN vivado
+2026-11-01T10:19:21Z
+run1 (engine_path:MulRegs:2:0:0:default) exit 1 11:45:06
+INFO: [Timing 38-191] Multithreading enabled for timing update using a maximum of 8 CPUs
+INFO: [Timing 38-78] ReportTimingParams: -max_paths 10 -nworst 1 -delay_type max -sort_by slack.
+report_high_fanout_nets: Time (s): cpu = 00:00:53 ; elapsed = 00:00:27 . Memory (MB): peak = 16269.621 ; gain = 0.000 ; free physical = 33274 ; free virtual = 47341
+# report_utilization -file utilization.rpt
+report_utilization: Time (s): cpu = 00:00:43 ; elapsed = 00:00:43 . Memory (MB): peak = 16269.621 ; gain = 0.000 ; free physical = 33287 ; free virtual = 47354
+# report_utilization -hierarchical -hierarchical_depth 4 -file utilization_hier.rpt
+report_utilization: Time (s): cpu = 00:01:08 ; elapsed = 00:01:09 . Memory (MB): peak = 16269.621 ; gain = 0.000 ; free physical = 33299 ; free virtual = 47366
+# report_design_analysis -congestion -file congestion.rpt
+# set paths [get_timing_paths -setup -max_paths 300000 -nworst 1 -slack_lesser_than 0]
+# set families [dict create]
+# if {[llength $paths]} {  # get_property fails on none: a build that meets timing
+#   foreach s [get_property STARTPOINT_PIN $paths] e [get_property ENDPOINT_PIN $paths] \
+#           slack [get_property SLACK $paths] {
+#     dict lappend families "[regsub -all {\[[0-9]+\]} $s {[*]}] -> [regsub -all {\[[0-9]+\]} $e {[*]}]" $slack
+#   }
+# }
+# set f [open families.rpt w]
+# dict for {key slacks} $families {
+#   puts $f "[tcl::mathfunc::min {*}$slacks] [llength $slacks] $key"
+# }
+# close $f
+# set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow wns_ns=$wns"
+CABOSSE-RESULT top=engine_path loop_cycles=0 retime=0 flow=default wns_ns=-0.354
+# if {$wns < 0} {
+#   puts "CABOSSE-TIMING-FAILED top=$top wns_ns=$wns"
+#   exit 1
+# }
+CABOSSE-TIMING-FAILED top=engine_path wns_ns=-0.354
+INFO: [Common 17-206] Exiting Vivado at Sun Nov  1 11:45:05 2026...
+run1 dcp s3://cabosse-builds-628837661672/dcp/2026-11-01-build3/run1.dcp
+run2 (engine_path:MulRegs:2:0:0:explore) exit 1 13:15:06
+INFO: [Timing 38-191] Multithreading enabled for timing update using a maximum of 8 CPUs
+INFO: [Timing 38-78] ReportTimingParams: -max_paths 10 -nworst 1 -delay_type max -sort_by slack.
+report_high_fanout_nets: Time (s): cpu = 00:00:53 ; elapsed = 00:00:28 . Memory (MB): peak = 13106.746 ; gain = 0.000 ; free physical = 46931 ; free virtual = 61312
+# report_utilization -file utilization.rpt
+report_utilization: Time (s): cpu = 00:00:38 ; elapsed = 00:00:38 . Memory (MB): peak = 13106.746 ; gain = 0.000 ; free physical = 46940 ; free virtual = 61320
+# report_utilization -hierarchical -hierarchical_depth 4 -file utilization_hier.rpt
+report_utilization: Time (s): cpu = 00:01:00 ; elapsed = 00:01:00 . Memory (MB): peak = 13106.746 ; gain = 0.000 ; free physical = 46949 ; free virtual = 61329
+# report_design_analysis -congestion -file congestion.rpt
+# set paths [get_timing_paths -setup -max_paths 300000 -nworst 1 -slack_lesser_than 0]
+# set families [dict create]
+# if {[llength $paths]} {  # get_property fails on none: a build that meets timing
+#   foreach s [get_property STARTPOINT_PIN $paths] e [get_property ENDPOINT_PIN $paths] \
+#           slack [get_property SLACK $paths] {
+#     dict lappend families "[regsub -all {\[[0-9]+\]} $s {[*]}] -> [regsub -all {\[[0-9]+\]} $e {[*]}]" $slack
+#   }
+# }
+# set f [open families.rpt w]
+# dict for {key slacks} $families {
+#   puts $f "[tcl::mathfunc::min {*}$slacks] [llength $slacks] $key"
+# }
+# close $f
+# set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow wns_ns=$wns"
+CABOSSE-RESULT top=engine_path loop_cycles=0 retime=0 flow=explore wns_ns=-0.079
+# if {$wns < 0} {
+#   puts "CABOSSE-TIMING-FAILED top=$top wns_ns=$wns"
+#   exit 1
+# }
+CABOSSE-TIMING-FAILED top=engine_path wns_ns=-0.079
+INFO: [Common 17-206] Exiting Vivado at Sun Nov  1 13:15:05 2026...
+run2 dcp s3://cabosse-builds-628837661672/dcp/2026-11-01-build3/run2.dcp
+2026-11-01T13:15:07Z
+CABOSSE-END vivado
+CABOSSE-BEGIN run1 engine_path:MulRegs:2:0:0:default
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow wns_ns=$wns"
+CABOSSE-RESULT top=engine_path loop_cycles=0 retime=0 flow=default wns_ns=-0.354
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+     -0.354     -685.014                   5971              1057920        0.010        0.000                      0              1057920        1.468        0.000                       0                445278  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                -0.354     -685.014                   5971              1057920        0.010        0.000                      0              1057920        1.468        0.000                       0                445278  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Sun Nov  1 11:41:21 2026
+| Host              : ip-172-31-32-48 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : engine_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (VIOLATED) :        -0.354ns  (required time - arrival time)
+  Source:                 u_engine/gen_lane[58].u_lane/gen_unit[0].rd_slot_q_reg[1]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_engine/gen_lane[58].u_lane/gen_unit[0].u_add/s1_q_reg[lo][9]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        4.335ns  (logic 1.255ns (28.951%)  route 3.080ns (71.049%))
+  Logic Levels:           12  (CARRY8=2 LUT2=2 LUT4=1 LUT5=2 LUT6=5)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.030ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.030     0.030    
+    SLICE_X162Y220       FDRE                         0.000     0.030 r  u_engine/gen_lane[58].u_lane/gen_unit[0].rd_slot_q_reg[1]/C
+    SLICE_X162Y220       FDRE (Prop_EFF_SLICEM_C_Q)
+                                                      0.076     0.106 r  u_engine/gen_lane[58].u_lane/gen_unit[0].rd_slot_q_reg[1]/Q
+                         net (fo=23, routed)          0.324     0.430    u_engine/gen_lane[58].u_lane/gen_unit[0].rd_slot_q[1]
+    SLICE_X165Y213                                                    r  u_engine/gen_lane[58].u_lane/i___80_i_2/I3
+    SLICE_X165Y213       LUT6 (Prop_H6LUT_SLICEL_I3_O)
+                                                      0.150     0.580 f  u_engine/gen_lane[58].u_lane/i___80_i_2/O
+                         net (fo=2, routed)           0.282     0.862    u_engine/gen_lane[58].u_lane/gen_unit[0].file_q__0[28]
+    SLICE_X161Y219                                                    f  u_engine/gen_lane[58].u_lane/i___80_i_1/I0
+    SLICE_X161Y219       LUT2 (Prop_F6LUT_SLICEM_I0_O)
+                                                      0.051     0.913 f  u_engine/gen_lane[58].u_lane/i___80_i_1/O
+                         net (fo=7, routed)           0.481     1.394    u_engine/gen_lane[58].u_lane/gen_unit[0].u_add/gen_unit[0].addend[12]
+    SLICE_X154Y220                                                    f  u_engine/gen_lane[58].u_lane/gen_unit[0].u_add/i___298_i_1__57/I0
+    SLICE_X154Y220       LUT4 (Prop_F6LUT_SLICEM_I0_O)
+                                                      0.123     1.517 f  u_engine/gen_lane[58].u_lane/gen_unit[0].u_add/i___298_i_1__57/O
+                         net (fo=1, routed)           0.041     1.558    u_engine/gen_lane[58].u_lane/gen_unit[0].u_add_n_57
+    SLICE_X154Y220                                                    f  u_engine/gen_lane[58].u_lane/i___298/I5
+    SLICE_X154Y220       LUT6 (Prop_G6LUT_SLICEM_I5_O)
+                                                      0.052     1.610 r  u_engine/gen_lane[58].u_lane/i___298/O
+                         net (fo=4, routed)           0.337     1.947    u_engine/gen_lane[58].u_lane/gen_unit[0].u_add/s1_q[lo][9]_i_17__231_n_0
+families (worst slack, paths, start -> end):
+-0.354 179 u_engine/gen_lane[*].u_lane/gen_unit[*].u_mul/gen_mul_q.mul_q_reg[prod][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].p_q_reg[*]/D
+-0.354 2928 u_engine/gen_lane[*].u_lane/gen_unit[*].rd_slot_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+-0.350 339 u_engine/gen_lane[*].u_lane/gen_tag[*].tag_q_reg[*][slot][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+-0.350 946 u_engine/gen_lane[*].u_lane/gen_unit[*].written_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+-0.349 222 u_engine/gen_group[*].pipe_q_reg[*][dlog][*]/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+-0.349 36 u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[exp][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/y_o_reg[*]/D
+-0.340 30 u_engine/step_unit_q_reg[t][*]/C -> u_engine/step_active_q_reg[*]/D
+-0.334 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_63_63/DP/WE
+-0.334 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_63_63/SP/WE
+-0.333 66 u_engine/gen_lane[*].u_lane/gen_unit[*].file_q_reg[*][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+-0.327 47 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_q.mul_q_reg[prod][*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+-0.325 99 u_engine/gen_lane[*].u_lane/gen_unit[*].u_mul/gen_mul_q.mul_q_reg[prod][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].p_q_reg[*]/R
+-0.324 30 u_engine/gen_scale[*].u_mul/u_fma/u_add/s2_q_reg[lz][*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_add/y_o_reg[*]/D
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMA/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMB/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMC/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMD/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAME/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMF/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMG/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMH/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMA/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMB/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMC/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMD/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAME/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMF/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMG/WE
+-0.321 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMH/WE
+-0.311 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_21_27/RAMA/WE
+-0.311 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_
+dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_21_27/RAMB/WE
+-0.311 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_21_27/RAMC/WE
+-0.311 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_21_27/RAMD/WE
+-0.311 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_21_27/RAME/WE
+-0.311 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_21_27/RAMF/WE
+-0.311 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_21_27/RAMG/WE
+-0.311 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_21_27/RAMH/WE
+-0.305 34 u_engine/gen_group[*].pipe_q_reg[*][dlog][*]_rep/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+-0.299 10 u_engine/iss_unit_q_reg[t][*]/C -> u_engine/iss_ports_q_reg[*][*]/D
+-0.296 47 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[exp][*]/D
+-0.288 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMA/WE
+-0.288 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMB/WE
+-0.288 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMC/WE
+-0.288 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMD/WE
+-0.288 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAME/WE
+-0.288 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMF/WE
+-0.288 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMG/WE
+-0.288 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMH/WE
+-0.282 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMA/WE
+-0.282 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMB/WE
+-0.282 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMC/WE
+-0.282 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMD/WE
+-0.282 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAME/WE
+-0.282 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMF/WE
+-0.282 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMG/WE
+-0.282 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMH/WE
+-0.281 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAMA/WE
+-0.281 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAMB/WE
+-0.281 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAMC/WE
+-0.281 3 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAMD/WE
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Sun Nov  1 11:42:35 2026
+| Host         : ip-172-31-32-48 running 64-bit Ubuntu 24.04.1 LTS
+| Command      : report_design_analysis -logic_level_distribution -max_paths 10000 -file logic_levels.rpt
+| Design       : engine_path
+| Device       : xcvu47p
+| Design State : Routed
+---------------------------------------------------------------------------------------------------------------------------------------------
+Report Design Analysis
+Table of Contents
+-----------------
+1. Setup Path Characteristics 1-10000
+2. Logic Level Distribution
+1. Setup Path Characteristics 1-10000
+-------------------------------------
++-------------+-------------+------------+-------------+------------+------------+--------+-------------------+---------------------------+-------------------+--------------+--------+-------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------+-----------------+-----------+---------------+--------------+---------------+---------+-------------+-----------+------------+------------+---------------------------+-------------------------+-------------------------------------------+------------------------------------------+
+|    Paths    | Requirement | Path Delay | Logic Delay |  Net Delay | Clock Skew |  Slack | Clock Uncertainty | Clock Pair Classification | Clock Delay Group | Logic Levels | Routes |                                                                         Logical Path                                                                        | Start Point Clock | End Point Clock | DSP Block | RAM Registers | IO Crossings | SLR Crossings | PBlocks | High Fanout | ASYNC REG | Dont Touch | Mark Debug | Start Point Pin Primitive | End Point Pin Primitive |              Start Point Pin              |               End Point Pin              |
++-------------+-------------+------------+-------------+------------+------------+--------+-------------------+---------------------------+-------------------+--------------+--------+-------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------+-----------------+-----------+---------------+--------------+---------------+---------+-------------+-----------+------------+------------+---------------------------+-------------------------+-------------------------------------------+------------------------------------------+
+| Path #1     | 4.000       | 4.335      | 1.255(29%)  | 3.080(71%) | -0.009     | -0.354 | 0.035             | Timed                     | Same Clock        | 12           | 10     | FDRE/C-(23)-LUT6-(2)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(10)-LUT6-(1)-LUT6-(2)-LUT5-(2)-LUT6-(1)-FDRE/D                             | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 23          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].rd_slot_q_reg[1]/C            | s1_q_reg[lo][9]/D                        |
+| Path #2     | 4.000       | 4.335      | 1.113(26%)  | 3.222(74%) | -0.009     | -0.354 | 0.035             | Timed                     | Same Clock        | 8            | 8      | FDRE/C-(8)-LUT4-(5)-LUT6-(5)-LUT6-(22)-LUT6-(6)-LUT3-(5)-LUT6-(4)-LUT3-(1)-LUT6-(1)-FDRE/D                                                                  | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 22          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_mul_q.mul_q_reg[prod][15]/C           | gen_unit[3].p_q_reg[8]/D                 |
+| Path #3     | 4.000       | 4.334      | 1.359(32%)  | 2.975(68%) | -0.008     | -0.352 | 0.035             | Timed                     | Same Clock        | 14           | 12     | FDRE/C-(36)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT5-(2)-LUT5-(1)-LUT6-(1)-FDRE/D          | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].rd_slot_q_reg[0]/C            | s1_q_reg[lo][0]/D                        |
+| Path #4     | 4.000       | 4.331      | 1.296(30%)  | 3.035(70%) | -0.009     | -0.350 | 0.035             | Timed                     | Same Clock        | 14           | 12     | FDRE/C-(14)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT6-(1)-FDRE/D          | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[1].tag_q_reg[2][slot][0]/C        | s1_q_reg[lo][9]/D                        |
+| Path #5     | 4.000       | 4.333      | 1.611(38%)  | 2.722(62%) | -0.007     | -0.350 | 0.035             | Timed                     | Same Clock        | 13           | 11     | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(8)-LUT6-(1)-LUT6-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                     | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[0]/C            | s1_q_reg[lo][12]/D                       |
+| Path #6     | 4.000       | 4.331      | 1.464(34%)  | 2.867(66%) | -0.008     | -0.349 | 0.035             | Timed                     | Same Clock        | 13           | 11     | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT6-(4)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT6-(1)-FDRE/D                     | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[2].written_q_reg[0]/C            | s1_q_reg[lo][4]/D                        |
+| Path #7     | 4.000       | 4.328      | 0.239(6%)   | 4.089(94%) | -0.008     | -0.349 | 0.035             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(128)-LUT5-(14)-FDRE/D                                                                                                                               | clk               | clk             | None      | None-None     | 1            | 1             | 0       | 128         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_group[3].pipe_q_reg[4][dlog][0]/C     | x_q_reg[2][5]/D                          |
+| Path #8     | 4.000       | 4.329      | 1.576(37%)  | 2.753(63%) | -0.010     | -0.349 | 0.035             | Timed                     | Same Clock        | 14           | 12     | FDRE/C-(33)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D          | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[1]/C            | s1_q_reg[lo][1]/D                        |
+| Path #9     | 4.000       | 4.329      | 1.544(36%)  | 2.785(64%) | -0.010     | -0.349 | 0.035             | Timed                     | Same Clock        | 11           | 8      | FDRE/C-(6)-LUT4-(1)-CARRY8-(29)-LUT6-(38)-LUT4-(1)-LUT6-(2)-LUT6-(2)-LUT5-(1)-CARRY8-(1)-CARRY8-LUT3-(1)-LUT5-(1)-FDSE/D                                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 38          | 0         | 0          | 0          | FDRE/C                    | FDSE/D                  | s2_q_reg[exp][3]/C                        | y_o_reg[30]/D                            |
+| Path #10    | 4.000       | 4.326      | 1.223(29%)  | 3.103(71%) | -0.009     | -0.345 | 0.035             | Timed                     | Same Clock        | 11           | 10     | FDRE/C-(33)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT6-(3)-LUT2-(1)-CARRY8-(58)-LUT3-(10)-LUT6-(1)-LUT5-(2)-LUT5-(1)-LUT6-(1)-FDRE/D                                  | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[0]/C            | s1_q_reg[lo][0]/D                        |
+| Path #11    | 4.000       | 4.325      | 1.217(29%)  | 3.108(71%) | -0.009     | -0.344 | 0.035             | Timed                     | Same Clock        | 11           | 9      | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT3-(1)-CARRY8-(1)-CARRY8-LUT6-(8)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                       | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[1]/C            | s1_q_reg[lo][1]/D                        |
+| Path #12    | 4.000       | 4.326      | 1.504(35%)  | 2.822(65%) | -0.008     | -0.344 | 0.035             | Timed                     | Same Clock        | 14           | 12     | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT6-(1)-FDRE/D           | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[3]/C            | s1_q_reg[lo][8]/D                        |
+| Path #13    | 4.000       | 4.324      | 1.441(34%)  | 2.883(66%) | -0.008     | -0.342 | 0.035             | Timed                     | Same Clock        | 14           | 12     | FDRE/C-(30)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT6-(2)-LUT6-(2)-LUT6-(2)-LUT5-(1)-FDRE/D          | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].rd_slot_q_reg[0]/C            | s1_q_reg[lo][17]/D                       |
+| Path #14    | 4.000       | 4.322      | 1.627(38%)  | 2.695(62%) | -0.010     | -0.342 | 0.035             | Timed                     | Same Clock        | 12           | 10     | FDRE/C-(57)-LUT6-(2)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(8)-LUT5-(2)-LUT6-(2)-LUT5-(1)-LUT6-(1)-FDRE/D                              | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 57          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[1]/C            | s1_q_reg[lo][0]/D                        |
+| Path #15    | 4.000       | 4.321      | 1.477(35%)  | 2.844(65%) | -0.009     | -0.340 | 0.035             | Timed                     | Same 
+Clock        | 14           | 10     | FDRE/C-(8)-LUT1-(1)-CARRY8-(1)-CARRY8-LUT4-(2)-LUT6-(7)-LUT3-(49)-LUT5-(6)-LUT3-(1)-CARRY8-(1)-CARRY8-LUT6-(2)-LUT6-(2)-LUT6-(8)-LUT6-(1)-FDRE/D            | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 49          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | step_unit_q_reg[t][2]/C                   | step_active_q_reg[20]/D                  |
+| Path #16    | 4.000       | 4.321      | 1.365(32%)  | 2.956(68%) | -0.008     | -0.340 | 0.035             | Timed                     | Same Clock        | 14           | 12     | FDRE/C-(20)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT5-(2)-LUT5-(1)-LUT6-(1)-FDRE/D          | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_tag[1].tag_q_reg[2][slot][0]/C        | s1_q_reg[lo][0]/D                        |
+| Path #17    | 4.000       | 4.320      | 1.217(29%)  | 3.103(71%) | -0.009     | -0.339 | 0.035             | Timed                     | Same Clock        | 11           | 9      | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT3-(1)-CARRY8-(1)-CARRY8-LUT6-(8)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                       | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[1]/C            | s1_q_reg[lo][2]/D                        |
+| Path #18    | 4.000       | 4.319      | 1.283(30%)  | 3.036(70%) | -0.009     | -0.338 | 0.035             | Timed                     | Same Clock        | 12           | 10     | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT3-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT6-(1)-FDRE/D                             | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[1]/C            | s1_q_reg[lo][8]/D                        |
+| Path #19    | 4.000       | 4.316      | 1.213(29%)  | 3.103(71%) | -0.010     | -0.336 | 0.035             | Timed                     | Same Clock        | 13           | 11     | FDRE/C-(33)-LUT6-(3)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT6-(1)-FDRE/D                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 33          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[0]/C            | s1_q_reg[lo][4]/D                        |
+| Path #20    | 4.000       | 4.312      | 0.239(6%)   | 4.073(94%) | -0.010     | -0.335 | 0.035             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(128)-LUT5-(14)-FDRE/D                                                                                                                               | clk               | clk             | None      | None-None     | 1            | 1             | 0       | 128         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_group[3].pipe_q_reg[4][dlog][2]/C     | x_q_reg[2][6]/D                          |
+| Path #21    | 4.000       | 4.315      | 1.212(29%)  | 3.103(71%) | -0.010     | -0.335 | 0.035             | Timed                     | Same Clock        | 13           | 11     | FDRE/C-(33)-LUT6-(3)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT5-(1)-FDRE/D                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 33          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[0]/C            | s1_q_reg[lo][3]/D                        |
+| Path #22    | 4.000       | 4.314      | 1.358(32%)  | 2.956(68%) | -0.010     | -0.334 | 0.035             | Timed                     | Same Clock        | 12           | 11     | FDRE/C-(33)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT6-(3)-LUT2-(1)-CARRY8-(58)-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT6-(1)-FDRE/D                         | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[0]/C            | s1_q_reg[lo][8]/D                        |
+| Path #23    | 4.000       | 4.315      | 1.381(33%)  | 2.934(67%) | -0.009     | -0.334 | 0.035             | Timed                     | Same Clock        | 14           | 12     | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT5-(1)-FDRE/D           | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].written_q_reg[3]/C            | s1_q_reg[lo][10]/D                       |
+| Path #24    | 4.000       | 4.125      | 0.299(8%)   | 3.826(92%) | 0.013      | -0.334 | 0.035             | Timed                     | Same Clock        | 3            | 4      | FDRE/C-(6)-LUT2-(1)-LUT6-(5)-LUT4-(74)-RAMD64E/WE                                                                                                           | clk               | clk             | None      | None-None     | 1            | 1             | 0       | 74          | 0         | 0          | 0          | FDRE/C                    | RAMD64E/WE              | count_q_reg[6]/C                          | DP/WE                                    |
+| Path #25    | 4.000       | 4.125      | 0.299(8%)   | 3.826(92%) | 0.013      | -0.334 | 0.035             | Timed                     | Same Clock        | 3            | 4      | FDRE/C-(6)-LUT2-(1)-LUT6-(5)-LUT4-(74)-RAMD64E/WE                                                                                                           | clk               | clk             | None      | None-None     | 1            | 1             | 0       | 74          | 0         | 0          | 0          | FDRE/C                    | RAMD64E/WE              | count_q_reg[6]/C                          | SP/WE                                    |
+| Path #26    | 4.000       | 4.314      | 1.509(35%)  | 2.805(65%) | -0.009     | -0.334 | 0.035             | Timed                     | Same Clock        | 14           | 12     | FDRE/C-(21)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT6-(1)-FDRE/D          | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[2].rd_slot_q_reg[0]/C            | s1_q_reg[lo][9]/D                        |
+| Path #27    | 4.000       | 4.312      | 1.288(30%)  | 3.024(70%) | -0.010     | -0.333 | 0.035             | Timed                     | Same Clock        | 12           | 10     | FDRE/C-(3)-LUT6-(2)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(23)-LUT5-(2)-LUT6-(2)-LUT5-(2)-LUT6-(1)-FDRE/D                              | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 23          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].file_q_reg[2][27]/C           | s1_q_reg[lo][5]/D                        |
+| Path #28    | 4.000       | 4.312      | 1.560(37%)  | 2.752(63%) | -0.010     | -0.332 | 0.035             | Timed                     | Same Clock        | 14           | 12     | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT6-(1)-FDRE/D           | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].written_q_reg[2]/C            | s1_q_reg[lo][9]/D                        |
+| Path #29    | 4.000       | 4.312      | 1.444(34%)  | 2.868(66%) | -0.010     | -0.332 | 0.035             | Timed                     | Same Clock        | 13           | 11     | FDRE/C-(21)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(18)-LUT6-(1)-LUT6-(1)-LUT5-(1)-LUT6-(1)-FDRE/D                   | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[0]/C            | s1_q_reg[lo][0]/D                        |
+| Path #30    | 4.000       | 4.311      | 1.257(30%)  | 3.054(70%) | -0.009     | -0.331 | 0.035             | Timed                     | Same Clock        | 12           | 10     | FDRE/C-(37)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT6-(4)-LUT6-(1)-LUT6-(1)-LUT6-(1)-FDRE/D                             | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[1]/C            | s1_q_reg[lo][0]/D                        |
+| Path #31    | 4.000       | 4.311      | 1.590(37%)  | 2.721(63%) | -0.009     | -0.330 | 0.035             | Timed                     | Same Clock        | 13           | 11     | FDRE/C-(26)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(8)-LUT6-(1)-LUT6-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[2].rd_slot_q_reg[1]/C            | s1_q_reg[lo][11]/D                       |
+| Path #32    | 4.000       | 4.310      | 1.490(35%)  | 2.820(65%) | -0.009     | -0.329 | 0.035             | Timed                     | Same Clock        | 13           | 11     | FDRE/C-(27)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT6-(5)-LUT6-(1)-LUT6-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].rd_slot_q_reg[1]/C            | s1_q_reg[lo][11]/D                       |
+| Path #33    | 4.000       | 4.310      | 1.339(32%)  | 2.971(68%) | -0.009     | -0.329 | 0.035             | Timed                     | Same Clock        | 12           | 10     | FDRE/C-(33)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(39)-LUT6-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                            | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[2].rd_slot_q_reg[0]/C            | s1_q_reg[lo][12]/D                       |
+| Path #34    | 4.000       | 4.309      | 1.476(35%)  | 2.833(65%) | -0.009     | -0.328 | 0.035             | Timed                     | Same Clock        | 13           | 11     | FDRE/C-(33)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(4)-LUT6-(1)-LUT6-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[1]/C            | s1_q_reg[lo][10]/D                       |
+| Path #35    | 4.000       | 4.309      | 1.346(32%)  | 2.963(68%) | -0.008     | -0.328 | 0.035             | Timed                     | Same Clock        | 12           | 10     | FDRE/C-(3)-LUT6-(2)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(2)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT6-(1)-FDRE/D                               | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].file_q_reg[1][28]/C           | s1_q_reg[lo][7]/D                        |
+| Path #36    | 4.000       | 4.309      | 1.301(31%)  | 3.008(69%) | -0.008     | -0.327 | 0.035             | Timed                     | Same Clock        | 13           | 11     | FDRE/C-(31)-LUT6-(2)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT5-(1)-FDRE/D                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 31          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[1]/C            | s1_q_reg[lo][3]/D                        |
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Sun Nov  1 11:43:03 2026
+| Host         : ip-172-31-32-48 running 64-bit Ubuntu 24.04.1 LTS
+| Command      : report_high_fanout_nets -timing -max_nets 50 -file fanout.rpt
+| Design       : engine_path
+| Device       : xcvu47p
+| Design State : Routed
+---------------------------------------------------------------------------------------------------------------------------------------------
+High Fan-out Nets Information
+1. Summary
+----------
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| Net Name                                               | Fanout | Driver Type | Worst Slack(ns) | Worst Delay(ns) |
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| u_engine/gen_lane[0].u_lane/bank_q[0][0][31]_i_1_n_0   |    512 | LUT3        |           0.690 |           1.656 |
+| u_engine/gen_lane[0].u_lane/bank_q[1][0][31]_i_1_n_0   |    512 | LUT3        |           0.727 |           1.602 |
+| u_engine/gen_lane[100].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.586 |           1.975 |
+| u_engine/gen_lane[100].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.587 |           1.960 |
+| u_engine/gen_lane[101].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.963 |           1.970 |
+| u_engine/gen_lane[101].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.228 |           1.695 |
+| u_engine/gen_lane[102].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.958 |           2.133 |
+| u_engine/gen_lane[102].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.961 |           2.118 |
+| u_engine/gen_lane[103].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.721 |           1.711 |
+| u_engine/gen_lane[103].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.314 |           2.104 |
+| u_engine/gen_lane[104].u_lane/bank_q[0][0][31]_i_1_n_0 |
+    512 | LUT3        |           0.869 |           1.532 |
+| u_engine/gen_lane[104].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.961 |           1.430 |
+| u_engine/gen_lane[105].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.165 |           2.131 |
+| u_engine/gen_lane[105].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.288 |           1.991 |
+| u_engine/gen_lane[106].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.100 |           1.775 |
+| u_engine/gen_lane[106].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.122 |           1.739 |
+| u_engine/gen_lane[107].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.369 |           1.747 |
+| u_engine/gen_lane[107].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.462 |           1.641 |
+| u_engine/gen_lane[108].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.082 |           2.078 |
+| u_engine/gen_lane[108].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.295 |           1.852 |
+| u_engine/gen_lane[109].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.146 |           1.817 |
+| u_engine/gen_lane[109].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.182 |           1.785 |
+| u_engine/gen_lane[10].u_lane/bank_q[0][0][31]_i_1_n_0  |    512 | LUT3        |           1.093 |           2.061 |
+| u_engine/gen_lane[10].u_lane/bank_q[1][0][31]_i_1_n_0  |    512 | LUT3        |           0.995 |           2.144 |
+| u_engine/gen_lane[110].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.215 |           1.803 |
+| u_engine/gen_lane[110].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.012 |           1.996 |
+| u_engine/gen_lane[111].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.844 |           2.638 |
+| u_engine/gen_lane[111].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.477 |           1.989 |
+| u_engine/gen_lane[112].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.363 |           1.483 |
+| u_engine/gen_lane[112].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.236 |           1.596 |
+| u_engine/gen_lane[113].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.096 |           1.990 |
+| u_engine/gen_lane[113].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.887 |           2.181 |
+| u_engine/gen_lane[114].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.065 |           2.356 |
+| u_engine/gen_lane[114].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.282 |           2.131 |
+| u_engine/gen_lane[115].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.873 |           2.289 |
+| u_engine/gen_lane[115].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.249 |           1.907 |
+| u_engine/gen_lane[116].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.613 |           1.653 |
+| u_engine/gen_lane[116].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.629 |           1.623 |
+| u_engine/gen_lane[117].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.629 |           1.458 |
+| u_engine/gen_lane[117].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.561 |           1.509 |
+| u_engine/gen_lane[118].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.913 |           1.898 |
+| u_engine/gen_lane[118].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.097 |           1.703 |
+| u_engine/gen_lane[119].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.652 |           1.041 |
+| u_engine/gen_lane[119].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.552 |           1.131 |
+| u_engine/gen_lane[11].u_lane/bank_q[0][0][31]_i_1_n_0  |    512 | LUT3        |           0.449 |           2.617 |
+| u_engine/gen_lane[11].u_lane/bank_q[1][0][31]_i_1_n_0  |    512 | LUT3        |           0.612 |           2.633 |
+| u_engine/gen_lane[120].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.921 |           1.600 |
+| u_engine/gen_lane[120].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.819 |           1.688 |
+| u_engine/gen_lane[121].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.237 |           2.093 |
+| u_engine/gen_lane[121].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.375 |           1.940 |
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| CLB LUTs                   | 517289 |     0 |          0 |   1303680 | 39.68 |
+|   LUT as Logic             | 480201 |     0 |          0 |   1303680 | 36.83 |
+|   LUT as Memory            |  37088 |     0 |          0 |    600960 |  6.17 |
+| CLB Registers              | 390038 |     0 |          0 |   2607360 | 14.96 |
+| CARRY8                     |  14126 |     0 |          0 |    162960 |  8.67 |
+|   LUT as Distributed RAM                   |  37088 |     0 |            |           |       |
+|   LUT as Shift Register                    |      0 |     0 |            |           |       |
+| CLB Registers                              | 390038 |     0 |          0 |   2607360 | 14.96 |
+| DSPs           |   16 |     0 |          0 |      9024 |  0.18 |
+| CARRY8   |  14126 |                 CLB |
+| CLB LUTs                   | 134043 | 283083 | 100163 |  30.49 |  65.53 |  23.19 |
+|   LUT as Logic             | 124251 | 257467 |  98483 |  28.26 |  59.60 |  22.80 |
+|   LUT as Memory            |   9792 |  25616 |   1680 |   4.77 |  12.95 |   0.85 |
+| CLB Registers              | 100312 | 210223 |  79503 |  11.41 |  24.33 |   9.20 |
+| CARRY8                     |   3629 |   7587 |   2910 |   6.60 |  14.05 |   5.39 |
+| DSPs                       |      2 |     14 |      0 |   0.07 |   0.46 |   0.00 |
+1. Utilization by Hierarchy
+1. Utilization by Hierarchy
+---------------------------
++------------------------------+----------------------------------+------------+------------+---------+------+--------+--------+--------+---
+|           Instance           |              Module              | Total LUTs | Logic LUTs | LUTRAMs | SRLs |   FFs  | RAMB36 | RAMB18 | UR
++------------------------------+----------------------------------+------------+------------+---------+------+--------+--------+--------+---
+| engine_path                  |                            (top) |     517289 |     480201 |   37088 |    0 | 390038 |      0 |      0 |   
+|   (engine_path)              |                            (top) |          0 |          0 |       0 |    0 |  10513 |      0 |      0 |   
+|   u_engine                   |                           engine |     517289 |     480201 |   37088 |    0 | 379525 |      0 |      0 |   
+|     (u_engine)               |                           engine |       1062 |       1062 |       0 |    0 |   5347 |      0 |      0 |   
+|     gen_dma[0].u_dma         |                         port_dma |        960 |        368 |     592 |    0 |    175 |      0 |      0 |   
+|       (gen_dma[0].u_dma)     |                         port_dma |         91 |         91 |       0 |    0 |     59 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1461 |        252 |        104 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1457 |        235 |         87 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1453 |        222 |         74 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1449 |        251 |        103 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1445 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1441 |        231 |         83 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1437 |        222 |         74 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1433 |        254 |        106 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1429 |        222 |         74 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1425 |        229 |         81 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1421 |        221 |         73 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1417 |        220 |         72 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1413 |        251 |        103 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1409 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1405 |        230 |         82 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1401 |        222 |         74 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1397 |        251 |        103 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1393 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1389 |        229 |         81 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1385 |        221 |         73 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1381 |        251 |        103 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1377 |        219 |         71 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1373 |        232 |         84 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1369 |        229 |         81 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1365 |        226 |         78 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1361 |        222 |         74 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1357 |        251 |        103 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1353 |        220 |         72 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1349 |        229 |         81 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1345 |        222 |         74 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1341 |        251 |        103 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    |      stream_fifo__parameterized0 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|     gen_lane[0].u_lane       |                         dot_lane |       3729 |       3589 |     140 |    0 |   2855 |      0 |      0 |   
+|       (gen_lane[0].u_lane)   |                         dot_lane |       1204 |       1064 |     140 |    0 |   2013 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1329 |        338 |        338 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1330 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1337 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1320 |        326 |        326 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1321 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1328 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1311 |        335 |        335 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1312 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1319 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1302 |        330 |        330 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1303 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1310 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1293 |        333 |        333 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1294 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1301 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1284 |        328 |        328 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1285 |        215 |        215 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1292 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1275 |        329 |        329 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1276 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1283 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1266 |        329 |        329 |       0 |    0 |    147 |      0 |      0 |   
+1. Placer Final Level Congestion Reporting
+2. Router Initial Congestion
+1. Placer Final Level Congestion Reporting
+------------------------------------------
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+
+| Direction | Type | Level | Window | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL | Cell Names |
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+
+* No congestion windows are found above level 5
+2. Router Initial Congestion
+----------------------------
++-----------+------+-------+-------------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+--------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------
+----------------------------------+
+| Direction | Type | Level |             Window            | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL |                                               Cell Names                                               |                                            Sub Windows                                            |
++-----------+------+-------+-------------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+--------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------+
+| North     | Long |     5 | (CLEM_X120Y572,CLEM_X135Y619) |            1% |          5.561 | 30% |     0% |  15% |   2% |   NA |   NA |  0% |    6% |  0% | u_engine/gen_lane[74].u_lane(45%),u_engine/gen_lane[72].u_lane(32%),u_engine/gen_lane[104].u_lane(20%) | (CLEM_X120Y604,CLEL_R_X135Y619), (CLEM_X120Y588,CLEL_R_X135Y603), (CLEM_X120Y572,CLEL_R_X135Y587) |
++-----------+------+-------+-------------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+--------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------+
+* No effective congestion windows are found above level 5
+CABOSSE-END run1 engine_path:MulRegs:2:0:0:default
+CABOSSE-BEGIN run2 engine_path:MulRegs:2:0:0:explore
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow wns_ns=$wns"
+CABOSSE-RESULT top=engine_path loop_cycles=0 retime=0 flow=explore wns_ns=-0.079
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+CRITICAL WARNING: [Route 35-39] The design did not meet timing requirements. Please run report_timing_summary for detailed reports.
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+     -0.079      -15.474                    586              1058300        0.010        0.000                      0              1058300        1.468        0.000                       0                445617  
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                -0.079      -15.474                    586              1058300        0.010        0.000                      0              1058300        1.468        0.000                       0                445617  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Sun Nov  1 13:12:09 2026
+| Host              : ip-172-31-32-48 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : engine_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Physopt postRoute
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Timing Report
+Slack (VIOLATED) :        -0.079ns  (required time - arrival time)
+  Source:                 u_engine/gen_group[0].x_q_reg[1][1][2][7]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_engine/gen_lane[7].u_lane/x_q_reg[2][7]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        4.057ns  (logic 0.116ns (2.859%)  route 3.941ns (97.141%))
+  Logic Levels:           1  (LUT5=1)
+  Clock Path Skew:        -0.008ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.029ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.035ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+  Inter-SLR Compensation: 0.003ns  (DCD * PF)
+    Destination Clock Delay (DCD):    0.021ns
+    Prorating Factor         (PF):    0.150
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.029     0.029    
+    SLICE_X138Y314       FDRE                         0.000     0.029 r  u_engine/gen_group[0].x_q_reg[1][1][2][7]/C
+    SLICE_X138Y314       FDRE (Prop_FFF2_SLICEL_C_Q)
+                                                      0.081     0.110 r  u_engine/gen_group[0].x_q_reg[1][1][2][7]/Q
+                         net (fo=4, routed)           1.968     2.078    u_engine/gen_lane[4].u_lane/x_q_reg[2][15]_0[7]
+    SLR Crossing[1->0]   
+    SLICE_X138Y145                                                    r  u_engine/gen_lane[4].u_lane/x_q[2][7]_i_1__12/I3
+    SLICE_X138Y145       LUT5 (Prop_F6LUT_SLICEL_I3_O)
+                                                      0.035     2.113 r  u_engine/gen_lane[4].u_lane/x_q[2][7]_i_1__12/O
+                         net (fo=4, routed)           1.973     4.086    u_engine/gen_lane[7].u_lane/x_q_reg[2][15]_0[7]
+    SLICE_X76Y98         FDRE                                         r  u_engine/gen_lane[7].u_lane/x_q_reg[2][7]/D
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        4.000     4.000 r  
+                         propagated clock network latency
+                                                      0.021     4.021    
+                         clock pessimism              0.000     4.021    
+                         inter-SLR compensation      -0.003     4.018    
+families (worst slack, paths, start -> end):
+-0.079 25 u_engine/gen_group[*].x_q_reg[*][*][*][*]/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+-0.079 280 u_engine/gen_lane[*].u_lane/gen_unit[*].rd_slot_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+-0.077 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/D
+-0.075 74 u_engine/gen_lane[*].u_lane/gen_unit[*].written_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+-0.070 4 u_engine/gen_group[*].pipe_q_reg[*][valid]/C -> u_engine/gen_lane[*].u_lane/slot_q_reg[*]/R
+-0.068 26 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+-0.066 18 u_engine/gen_lane[*].u_lane/w_q_reg[*][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_mul/gen_mul_q.mul_q_reg[prod][*]/D
+-0.059 1 u_engine/gen_group[*].pipe_q_reg[*][valid]/C -> u_engine/gen_lane[*].u_lane/tag_q_reg[*][valid]/D
+-0.059 11 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[exp][*]/D
+-0.059 2 u_engine/gen_group[*].pipe_q_reg[*][dlog][*]_replica_5/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+-0.057 11 u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[exp][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/y_o_reg[*]/D
+-0.057 16 u_engine/gen_group[*].pipe_q_reg[*][dlog][*]/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+-0.053 18 u_engine/gen_lane[*].u_lane/gen_tag[*].tag_q_reg[*][slot][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+-0.052 5 u_engine/gen_group[*].pipe_q_reg[*][dlog][*]_replica/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+-0.051 7 u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/u_tree/s1_q_reg[lo][*]/D
+-0.050 13 u_engine/gen_lane[*].u_lane/gen_unit[*].u_mul/gen_mul_q.mul_q_reg[prod][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].p_q_reg[*]/D
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMA/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMA_D1/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMB/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMB_D1/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMC/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMC_D1/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMD/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMD_D1/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAME/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAME_D1/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMF/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMF_D1/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMG/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMG_D1/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMH/WE
+-0.044 1 u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/C -> u_engine/gen_lane[*].u_lane/fifo_q_reg_0_1_0_13/RAMH_D1/WE
+-0.042 1 u_engine/gen_scale[*].u_mul/u_fma/u_add/s2_q_reg[lz][*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_add/y_o_reg[*]/D
+-0.042 3 u_engine/gen_group[*].pipe_q_reg[*][dlog][*]_replica_2/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+-0.037 2 u_engine/gen_group[*].pipe_q_reg[*][valid]/C -> u_engine/gen_lane[*].u_lane/slot_q_reg[*]/CE
+-0.037 2 u_engine/gen_lane[*].u_lane/count_q_reg[*]/C -> u_engine/gen_wgroup[*].ok_q_reg[*]/D
+-0.037 3 u_engine/gen_group[*].pipe_q_reg[*][dlog][*]_replica_1/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+-0.036 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMA/WE
+-0.036 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMB/WE
+-0.036 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMC/WE
+-0.036 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMD/WE
+-0.036 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAME/WE
+-0.036 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMF/WE
+-0.036 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMG/WE
+-0.036 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMH/WE
+-0.036 1 u_engine/gen_lane[*].u_lane/gen_unit[*].u_mul/gen_mul_q.mul_q_reg[prod][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].p_q_reg[*]/R
+-0.033 4 u_engine/gen_dma[*].u_dma/left_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/reserved_q_reg[*]/D
+-0.030 4 u_engine/gen_group[*].pipe_q_reg[*][dlog][*]_rep/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+-0.022 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMA/WE
+-0.022 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMB/WE
+-0.022 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMC/WE
+-0.022 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMD/WE
+-0.022 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAME/WE
+-0.022 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMF/WE
+-0.022 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMG/WE
+-0.022 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMH/WE
+-0.021 2 u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[lz][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/y_o_reg[*]/D
+-0.014 1 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__2_psdsp/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+-0.009 1 u_engine/gen_lane[*].u_lane/gen_unit[*].file_q_reg[*][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+-0.006 1 u_engine/gen_group[*].pipe_q_reg[*][dlog][*]_replica_8/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Sun Nov  1 13:12:53 2026
+| Host         : ip-172-31-32-48 running 64-bit Ubuntu 24.04.1 LTS
+| Command      : report_design_analysis -logic_level_distribution -max_paths 10000 -file logic_levels.rpt
+| Design       : engine_path
+| Device       : xcvu47p
+| Design State : Routed
+-------------------------------------------------------------------------------------------------------
+--------------------------------------
+Report Design Analysis
+Table of Contents
+-----------------
+1. Setup Path Characteristics 1-10000
+2. Logic Level Distribution
+1. Setup Path Characteristics 1-10000
+-------------------------------------
++-------------+-------------+------------+-------------+------------+------------+--------+-------------------+---------------------------+-------------------+--------------+--------+----------------------------------------------------------------------------------------------------------------------------------------------------+-------------------+-----------------+-----------+---------------+--------------+---------------+---------+-------------+-----------+------------+------------+---------------------------+-------------------------+--------------------------------------------------+--------------------------------------------+
+|    Paths    | Requirement | Path Delay | Logic Delay |  Net Delay | Clock Skew |  Slack | Clock Uncertainty | Clock Pair Classification | Clock Delay Group | Logic Levels | Routes |                                                                    Logical Path                                                                    | Start Point Clock | End Point Clock | DSP Block | RAM Registers | IO Crossings | SLR Crossings | PBlocks | High Fanout | ASYNC REG | Dont Touch | Mark Debug | Start Point Pin Primitive | End Point Pin Primitive |                  Start Point Pin                 |                End Point Pin               |
++-------------+-------------+------------+-------------+------------+------------+--------+-------------------+---------------------------+-------------------+--------------+--------+----------------------------------------------------------------------------------------------------------------------------------------------------+-------------------+-----------------+-----------+---------------+--------------+---------------+---------+-------------+-----------+------------+------------+---------------------------+-------------------------+--------------------------------------------------+--------------------------------------------+
+| Path #1     | 4.000       | 4.057      | 0.116(3%)   | 3.941(97%) | -0.008     | -0.079 | 0.035             | Timed                     | Same Clock        | 1            | NA     | FDRE/C-(4)-LUT5-(4)-FDRE/D                                                                                                                         | clk               | clk             | None      | None-None     | 1            | 1             | 0       | 4           | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_group[0].x_q_reg[1][1][2][7]/C               | x_q_reg[2][7]/D                            |
+| Path #2     | 4.000       | 4.059      | 0.966(24%)  | 3.093(76%) | -0.010     | -0.079 | 0.035             | Timed                     | Same Clock        | 14           | NA     | FDRE/C-(33)-LUT6-(1)-LUT2-(93)-LUT2-(6)-LUT5-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(4)-LUT5-(2)-LUT6-(1)-FDRE/D | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 93          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[1]/C                   | s1_q_reg[lo][7]/D                          |
+| Path #3     | 4.000       | 4.059      | 1.308(33%)  | 2.751(67%) | -0.009     | -0.078 | 0.035             | Timed                     | Same Clock        | 13           | NA     | FDRE/C-(43)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(3)-LUT5-(2)-LUT5-(3)-LUT5-(1)-LUT5-(1)-FDRE/D           | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[0]/C                   | s1_q_reg[lo][3]/D                          |
+| Path #4     | 4.000       | 4.057      | 0.542(14%)  | 3.515(86%) | -0.007     | -0.077 | 0.035             | Timed                     | Same Clock        | 5            | NA     | FDRE/C-(12)-LUT6-(5)-LUT3-(24)-LUT5-(3)-LUT4-(2)-LUT4-(1)-FDRE/D                                                                                   | clk               | clk             | None      | None-None     | 0            | 2             | 0       | 24          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | count_q_reg[0]/C                                 | count_q_reg[6]/D                           |
+| Path #5     | 4.000       | 4.057      | 1.218(31%)  | 2.839(69%) | -0.008     | -0.075 | 0.035             | Timed                     | Same Clock        | 14           | NA     | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(6)-LUT5-(1)-LUT5-(1)-FDRE/D  | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[2]/C                   | s1_q_reg[lo][3]/D                          |
+| Path #6     | 4.000       | 4.052      | 0.227(6%)   | 3.825(94%) | -0.010     | -0.075 | 0.035             | Timed                     | Same Clock        | 1            | NA     | FDRE/C-(2)-LUT5-(14)-FDRE/D                                                                                                                        | clk               | clk             | None      | None-None     | 1            | 1             | 0       | 14          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_group[3].x_q_reg[1][0][1][14]/C              | x_q_reg[1][14]/D                           |
+| Path #7     | 4.000       | 4.056      | 1.053(26%)  | 3.003(74%) | -0.008     | -0.075 | 0.035             | Timed                     | Same Clock        | 10           | NA     | FDRE/C-(33)-LUT6-(7)-LUT3-(2)-LUT6-(3)-LUT2-(1)-CARRY8-(58)-LUT6-(5)-LUT5-(2)-LUT5-(1)-LUT5-(1)-LUT6-(1)-FDRE/D                                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 58          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].rd_slot_q_reg[0]/C                   | s1_q_reg[lo][0]/D                          |
+| Path #8     | 4.000       | 4.053      | 1.105(28%)  | 2.948(72%) | -0.009     | -0.073 | 0.035             | Timed                     | Same Clock        | 13           | NA     | FDRE/C-(47)-LUT6-(1)-LUT2-(92)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(10)-LUT6-(1)-LUT6-(3)-LUT5-(1)-LUT5-(1)-FDRE/D          | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 92          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[0]/C                   | s1_q_reg[lo][10]/D                         |
+| Path #9     | 4.000       | 4.052      | 1.250(31%)  | 2.802(69%) | -0.008     | -0.070 | 0.035             | Timed                     | Same Clock        | 14           | NA     | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(6)-LUT5-(1)-LUT6-(1)-FDRE/D  | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[2]/C                   | s1_q_reg[lo][8]/D                          |
+| Path #10    | 4.000       | 4.051      | 1.244(31%)  | 2.807(69%) | -0.009     | -0.070 | 0.035             | Timed                     | Same Clock        | 12           | NA     | FDRE/C-(33)-LUT6-(3)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(6)-LUT5-(2)-LUT6-(2)-LUT5-(2)-LUT6-(1)-FDRE/D                     | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 33          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[2].rd_slot_q_reg[1]/C                   | s1_q_reg[lo][6]/D                          |
+| Path #11    | 4.000       | 3.950      | 0.359(10%)  | 3.591(90%) | -0.007     | -0.070 | 0.035             | Timed                     | Same Clock        | 3            | NA     | FDRE/C-(17)-LUT5-(15)-LUT6-(5)-LUT4-(2)-FDRE/R                                                                                                     | clk               | clk             | None      | None-None     | 2            | 1             | 0       | 17          | 0         | 0          | 0          | FDRE/C                    | FDRE/R                  | gen_group[2].pipe_q_reg[4][valid]/C              | slot_q_reg[0]/R                            |
+| Path #12    | 4.000       | 3.950      | 0.359(10%)  | 3.591(90%) | -0.007     | -0.070 | 0.035             | Timed                     | Same Clock        | 3            | NA     | FDRE/C-(17)-LUT5-(15)-LUT6-(5)-LUT4-(2)-FDRE/R                                                                                                     | clk               | clk             | None      | None-None     | 2            | 1             | 0       | 17          | 0         | 0          | 0          | FDRE/C                    | FDRE/R                  | gen_group[2].pipe_q_reg[4][valid]/C              | slot_q_reg[1]/R                            |
+| Path #13    | 4.000       | 4.018      | 1.306(33%)  | 2.712(67%) | -0.040     | -0.068 | 0.035             | Timed                     | Same Clock        | 9            | NA     | DSP_OUTPUT/CLK-(3)-LUT4-(2)-LUT5-(16)-LUT4-(78)-LUT2-(1)-LUT6-(14)-LUT6-(2)-LUT6-(48)-LUT6-(2)-LUT3-(1)-FDRE/D                                     | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 78          | 0         | 0          | 0          | DSP_OUTPUT/CLK            | FDRE/D                  | DSP_OUTPUT_INST/CLK                              | gen_norm_q.norm_q_reg[sig][29]/D           |
+| Path #14    | 4.000       | 4.048      | 1.209(30%)  | 2.839(70%) | -0.009     | -0.067 | 0.035             | Timed                     | Same Clock        | 11           | NA     | FDRE/C-(44)-LUT6-(2)-LUT2-(7)-LUT6-(3)-LUT2-(1)-CARRY8-(58)-LUT3-(10)-LUT6-(8)-LUT6-(2)-LUT6-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                          | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 58          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].rd_slot_q_reg[1]/C                   | s1_q_reg[lo][14]/D                         |
+| Path #15    | 4.000       | 4.047      | 1.040(26%)  | 3.007(74%) | -0.009     | -0.066 | 0.035             | Timed                     | Same Clock        | 12           | NA     | FDRE/C-(47)-LUT6-(1)-LUT2-(92)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(2)-LUT6-(2)-LUT6-(2)-LUT5-(1)-FDRE/D                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 92          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[0]/C                   | s1_q_reg[lo][1]/D                          |
+| Path #16    | 4.000       | 4.049      | 1.091(27%)  | 2.958(73%) | -0.007     | -0.066 | 0.035             | Timed                     | Same Clock        | 11           | NA     | FDRE/C-(4)-LUT3-(3)-LUT5-(8)-LUT3-(1)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(2)-LUT6-(2)-LUT5-(1)-CARRY8-(1)-CARRY8-FDRE/D                               | clk               | clk             | None      | None-None     | 1            | 0             | 0       | 8           | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | w_q_reg[1][11]/C                                 | gen_mul_q.mul_q_reg[prod][15]/D            |
+| Path #17    | 4.000       | 4.046      | 1.211(30%)  | 2.835(70%) | -0.010     | -0.066 | 0.035             | Timed                     | Same Clock        | 12           | NA     | FDRE/C-(33)-LUT6-(1)-LUT2-(93)-LUT2-(7)-LUT5-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(6)-LUT6-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 93          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].rd_slot_q_reg[1]/C                   | s1_q_reg[lo][15]/D                         |
+| Path #18    | 4.000       | 4.046      | 1.159(29%)  | 2.887(71%) | -0.009     | -0.066 | 0.035             | Timed                     | Same Clock        | 13           | NA     | FDRE/C-(33)-LUT6-(2)-LUT2-(10)-LUT2-(7)-LUT5-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT6-(5)-LUT5-(3)-LUT5-(1)-LUT5-(2)-LUT5-(1)-FDRE/D           | clk               | clk             | None      | None-None     | 2            | 0             | 0       | 33          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].rd_slot_q_reg[1]/C                   | s1_q_reg[lo][2]/D                          |
+| Path #19    | 4.000       | 4.046      | 1.244(31%)  | 2.802(69%) | -0.009     | -0.065 | 0.035             | Timed                     | Same Clock        | 12           | NA     | FDRE/C-(33)-LUT6-(3)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(6)-LUT5-(2)-LUT6-(2)-LUT5-(2)-LUT6-(1)-FDRE/D                     | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 33          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[2].rd_slot_q_reg[1]/C                   | s1_q_reg[lo][7]/D                          |
+| Path #20    | 4.000       | 4.045      | 1.252(31%)  | 2.793(69%) | -0.010     | -0.065 | 0.035             | Timed                     | Same Clock        | 13           | NA     | FDRE/C-(33)-LUT6-(1)-LUT2-(93)-LUT2-(7)-LUT5-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(6)-LUT6-(1)-LUT6-(1)-LUT6-(1)-LUT6-(1)-FDRE/D           | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 93          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].rd_slot_q_reg[1]/C                   | s1_q_reg[lo][0]/D                          |
+| Path #21    | 4.000       | 4.046      | 1.162(29%)  | 2.884(71%) | -0.008     | -0.064 | 0.035             | Timed                     | Same Clock        | 14           | NA     | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT6-(6)-LUT5-(2)-LUT6-(1)-FDRE/D  | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[2]/C                   | s1_q_reg[lo][9]/D                          |
+| Path #22    | 4.000       | 4.044      | 1.088(27%)  | 2.956(73%) | -0.009     | -0.063 | 0.035             | Timed                     | Same Clock        | 13           | NA     | FDRE/C-(33)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(39)-LUT6-(2)-LUT6-(1)-LUT6-(1)-LUT6-(1)-FDRE/D          | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].rd_slot_q_reg[1]/C                   | s1_q_reg[lo][0]/D                          |
+| Path #23    | 4.000       | 4.045      | 1.417(36%)  | 2.628(64%) | -0.008     | -0.063 
+| 0.035             | Timed                     | Same Clock        | 13           | NA     | FDRE/C-(22)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT6-(4)-LUT5-(2)-LUT6-(2)-LUT5-(2)-LUT6-(1)-FDRE/D           | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].rd_slot_q_reg[0]/C                   | s1_q_reg[lo][6]/D                          |
+| Path #24    | 4.000       | 4.046      | 1.087(27%)  | 2.959(73%) | -0.007     | -0.063 | 0.035             | Timed                     | Same Clock        | 11           | NA     | FDRE/C-(4)-LUT3-(3)-LUT5-(8)-LUT3-(1)-LUT6-(1)-CARRY8-(1)-CARRY8-LUT4-(2)-LUT6-(2)-LUT5-(1)-CARRY8-(1)-CARRY8-FDRE/D                               | clk               | clk             | None      | None-None     | 1            | 0             | 0       | 8           | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | w_q_reg[1][11]/C                                 | gen_mul_q.mul_q_reg[prod][14]/D            |
+| Path #25    | 4.000       | 4.046      | 1.420(36%)  | 2.626(64%) | -0.007     | -0.063 | 0.035             | Timed                     | Same Clock        | 13           | NA     | FDRE/C-(32)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT5-(2)-LUT6-(2)-LUT6-(2)-LUT5-(1)-LUT6-(1)-FDRE/D           | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].rd_slot_q_reg[1]/C                   | s1_q_reg[lo][0]/D                          |
+| Path #26    | 4.000       | 4.044      | 1.160(29%)  | 2.884(71%) | -0.008     | -0.063 | 0.035             | Timed                     | Same Clock        | 14           | NA     | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D  | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[2]/C                   | s1_q_reg[lo][2]/D                          |
+| Path #27    | 4.000       | 4.042      | 1.462(37%)  | 2.580(63%) | -0.010     | -0.062 | 0.035             | Timed                     | Same Clock        | 13           | NA     | FDRE/C-(33)-LUT6-(3)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT5-(2)-LUT5-(1)-LUT6-(1)-FDRE/D           | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 33          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].rd_slot_q_reg[1]/C                   | s1_q_reg[lo][0]/D                          |
+| Path #28    | 4.000       | 4.012      | 1.150(29%)  | 2.862(71%) | -0.039     | -0.062 | 0.035             | Timed                     | Same Clock        | 9            | NA     | DSP_OUTPUT/CLK-(5)-LUT4-(2)-LUT5-(16)-LUT6-(3)-LUT6-(14)-LUT6-(1)-LUT6-(6)-LUT6-(61)-LUT6-(2)-LUT3-(1)-FDRE/D                                      | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 61          | 0         | 0          | 0          | DSP_OUTPUT/CLK            | FDRE/D                  | DSP_OUTPUT_INST/CLK                              | gen_norm_q.norm_q_reg[sig][27]/D           |
+| Path #29    | 4.000       | 4.043      | 1.159(29%)  | 2.884(71%) | -0.008     | -0.062 | 0.035             | Timed                     | Same Clock        | 14           | NA     | FDRE/C-(4)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D  | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].written_q_reg[2]/C                   | s1_q_reg[lo][1]/D                          |
+| Path #30    | 4.000       | 4.012      | 1.187(30%)  | 2.825(70%) | -0.039     | -0.061 | 0.035             | Timed                     | Same Clock        | 9            | NA     | DSP_OUTPUT/CLK-(3)-LUT4-(2)-LUT5-(16)-LUT4-(78)-LUT5-(10)-LUT5-(63)-LUT5-(3)-LUT6-(4)-LUT6-(2)-LUT3-(1)-FDRE/D                                     | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 78          | 0         | 0          | 0          | DSP_OUTPUT/CLK            | FDRE/D                  | DSP_OUTPUT_INST/CLK                              | gen_norm_q.norm_q_reg[sig][35]/D           |
+| Path #31    | 4.000       | 4.043      | 1.044(26%)  | 2.999(74%) | -0.008     | -0.061 | 0.035             | Timed                     | Same Clock        | 13           | NA     | FDRE/C-(33)-LUT6-(1)-LUT2-(88)-LUT2-(6)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT3-(10)-LUT6-(8)-LUT6-(1)-LUT6-(1)-LUT6-(1)-FDRE/D          | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].rd_slot_q_reg[0]/C                   | s1_q_reg[lo][0]/D                          |
+| Path #32    | 4.000       | 4.040      | 1.243(31%)  | 2.797(69%) | -0.010     | -0.061 | 0.035             | Timed                     | Same Clock        | 13           | NA     | FDRE/C-(35)-LUT6-(1)-LUT2-(88)-LUT2-(7)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT6-(5)-LUT5-(2)-LUT6-(2)-LUT5-(1)-LUT6-(1)-FDRE/D           | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 88          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].rd_slot_q_reg[0]/C                   | s1_q_reg[lo][0]/D                          |
+| Path #33    | 4.000       | 4.042      | 1.208(30%)  | 2.834(70%) | -0.007     | -0.060 | 0.035             | Timed                     | Same Clock        | 13           | NA     | FDRE/C-(4)-LUT6-(2)-LUT2-(2)-LUT2-(9)-LUT4-(1)-LUT6-(4)-LUT2-(1)-CARRY8-(1)-CARRY8-LUT6-(8)-LUT5-(2)-LUT5-(2)-LUT5-(2)-LUT5-(1)-FDRE/D             | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 9           | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].written_q_reg[2]/C                   | s1_q_reg[lo][2]/D                          |
+| Path #34    | 4.000       | 4.037      | 0.332(9%)   | 3.705(91%) | -0.009     | -0.059 | 0.035             | Timed                     | Same Clock        | 4            | NA     | FDRE/C-(16)-LUT3-(5)-LUT6-(7)-LUT6-(5)-LUT3-(3)-FDRE/D                                                                                             | clk               | clk             | None      | None-None     | 2            | 1             | 0       | 16          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_group[3].pipe_q_reg[4][valid]/C              | tag_q_reg[0][valid]/D                      |
+| Path #35    | 4.000       | 4.037      | 0.116(3%)   | 3.921(97%) | -0.008     | -0.059 | 0.035             | Timed                     | Same Clock        | 1            | NA     | FDRE/C-(1)-LUT5-(14)-FDRE/D                                                                                                                        | clk               | clk             | None      | None-None     | 1            | 1             | 0       | 14          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_group[3].pipe_q_reg[4][dlog][0]_replica_5/C  | x_q_reg[3][7]/D                            |
+| Path #36    | 4.000       | 4.008      | 1.216(31%)  | 2.792(69%) | -0.040     | -0.059 | 0.035             | Timed                     | Same Clock        | 11           | NA     | DSP_OUTPUT/CLK-(3)-LUT4-(2)-LUT5-(24)-LUT6-(3)-LUT6-(24)-LUT6-(1)-LUT6-(6)-LUT6-(61)-LUT6-(50)-LUT2-(1)-CARRY8-(1)-CARRY8-FDRE/D                   | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 61          | 0         | 0          | 0          | DSP_OUTPUT/CLK            | FDRE/D                  | DSP_OUTPUT_INST/CLK                              | gen_norm_q.norm_q_reg[exp][10]/D           |
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Sun Nov  1 13:13:21 2026
+| Host         : ip-172-31-32-48 running 64-bit Ubuntu 24.04.1 LTS
+| Command      : report_high_fanout_nets -timing -max_nets 50 -file fanout.rpt
+| Design       : engine_path
+| Device       : xcvu47p
+| Design State : Physopt postRoute
+---------------------------------------------------------------------------------------------------------------------------------------------
+High Fan-out Nets Information
+1. Summary
+----------
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| Net Name                                               | Fanout | Driver Type | Worst Slack(ns) | Worst Delay(ns) |
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| u_engine/gen_lane[0].u_lane/bank_q[0][0][31]_i_1_n_0   |    512 | LUT3        |           0.816 |           2.419 |
+| u_engine/gen_lane[100].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.436 |           2.346 |
+| u_engine/gen_lane[100].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.523 |           2.248 |
+| u_engine/gen_lane[102].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.135 |           2.082 |
+| u_engine/gen_lane[102].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.350 |           1.857 |
+| u_engine/gen_lane[103].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.060 |           2.118 |
+| u_engine/gen_lane[103].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.846 |           1.318 |
+| u_engine/gen_lane[105].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.013 |           2.317 |
+| u_engine/gen_lane[105].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.608 |           1.707 |
+| u_engine/gen_lane[106].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.085 |           2.006 |
+| u_engine/gen_lane[106].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.982 |           2.101 |
+| u_engine/gen_lane[107].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.663 |           1.533 |
+| u_engine/gen_lane[107].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.267 |           1.916 |
+| u_engine/gen_lane[108].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.901 |           1.393 |
+| u_engine/gen_lane[108].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.042 |           2.240 |
+| u_engine/gen_lane[109].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.563 |           2.171 |
+| u_engine/gen_lane[109].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.765 |           1.955 |
+| u_engine/gen_lane[111].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.293 |           1.805 |
+| u_engine/gen_lane[111].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.843 |           1.241 |
+| u_engine/gen_lane[112].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.425 |           2.441 |
+| u_engine/gen_lane[113].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.991 |           2.077 |
+| u_engine/gen_lane[113].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.820 |           2.236 |
+| u_engine/gen_lane[114].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.044 |           1.668 |
+| u_engine/gen_lane[114].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.095 |           1.602 |
+| u_engine/gen_lane[115].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.165 |           1.854 |
+| u_engine/gen_lane[115].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.050 |           1.962 |
+| u_engine/gen_lane[116].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.045 |           2.213 |
+| u_engine/gen_lane[116].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.270 |           1.981 |
+| u_engine/gen_lane[118].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.261 |           1.874 |
+| u_engine/gen_lane[118].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.377 |           1.744 |
+| u_engine/gen_lane[119].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.417 |           1.679 |
+| u_engine/gen_lane[119].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.128 |           1.949 |
+| u_engine/gen_lane[11].u_lane/bank_q[0][0][31]_i_1_n_0  |    512 | LUT3        |           0.225 |           2.632 |
+| u_engine/gen_lane[11].u_lane/bank_q[1][0][31]_i_1_n_0  |    512 | LUT3        |           0.286 |           1.795 |
+| u_engine/gen_lane[120].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.073 |           2.158 |
+| u_engine/gen_lane[120].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.165 |           2.051 |
+| u_engine/gen_lane[121].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.247 |           1.893 |
+| u_engine/gen_lane[121].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.292 |           1.840 |
+| u_engine/gen_lane[123].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.543 |           1.743 |
+| u_engine/gen_lane[123].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.065 |           2.211 |
+| u_engine/gen_lane[125].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           0.745 |           2.524 |
+| u_engine/gen_lane[125].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           1.550 |           1.700 |
+| u_engine/gen_lane[127].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT3        |           1.229 |           2.158 |
+| u_engine/gen_lane[127].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT3        |           0.897 |           2.473 |
+| u_engine/gen_lane[13].u_lane/bank_q[0][0][31]_i_1_n_0  |    512 | LUT3        |           0.999 |           1.502 |
+| u_engine/gen_lane[14].u_lane/bank_q[0][0][31]_i_1_n_0  |    512 | LUT3        |           1.272 |           1.978 |
+| u_engine/gen_lane[14].u_lane/bank_q[1][0][31]_i_1_n_0  |    512 | LUT3        |           1.159 |           2.077 |
+| u_engine/gen_lane[15].u_lane/bank_q[0][0][31]_i_1_n_0  |    512 | LUT3        |           1.008 |           1.745 |
+| u_engine/gen_lane[18].u_lane/bank_q[0][0][31]_i_1_n_0  |    512 | LUT3        |           1.610 |           1.606 |
+| u_engine/gen_lane[18].u_lane/bank_q[1][0][31]_i_1_n_0  |    512 | LUT3        |           1.536 |           1.669 |
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| CLB LUTs                   | 516940 |     0 |          0 |   1303680 | 39.65 |
+|   LUT as Logic             | 479852 |     0 |          0 |   1303680 | 36.81 |
+|   LUT as Memory            |  37088 |     0 |          0 |    600960 |  6.17 |
+| CLB Registers              | 390311 |     0 |
+          0 |   2607360 | 14.97 |
+| CARRY8                     |  14126 |     0 |          0 |    162960 |  8.67 |
+|   LUT as Distributed RAM                   |  37088 |     0 |            |           |       |
+|   LUT as Shift Register                    |      0 |     0 |            |           |       |
+| CLB Registers                              | 390311 |     0 |          0 |   2607360 | 14.97 |
+| DSPs           |   16 |     0 |          0 |      9024 |  0.18 |
+| CARRY8   |  14126 |                 CLB |
+| CLB LUTs                   | 133933 | 283013 | 99994 |  30.46 |  65.51 |  23.15 |
+|   LUT as Logic             | 124141 | 257397 | 98314 |  28.23 |  59.58 |  22.76 |
+|   LUT as Memory            |   9792 |  25616 |  1680 |   4.77 |  12.95 |   0.85 |
+| CLB Registers              | 100373 | 210136 | 79802 |  11.41 |  24.32 |   9.24 |
+| CARRY8                     |   3629 |   7587 |  2910 |   6.60 |  14.05 |   5.39 |
+| DSPs                       |      2 |     14 |     0 |   0.07 |   0.46 |   0.00 |
+1. Utilization by Hierarchy
+1. Utilization by Hierarchy
+---------------------------
++------------------------------+----------------------------------+------------+------------+---------+------+--------+--------+--------+---
+|           Instance           |              Module              | Total LUTs | Logic LUTs | LUTRAMs | SRLs |   FFs  | RAMB36 | RAMB18 | UR
++------------------------------+----------------------------------+------------+------------+---------+------+--------+--------+--------+---
+| engine_path                  |                            (top) |     516940 |     479852 |   37088 |    0 | 390311 |      0 |      0 |   
+|   (engine_path)              |                            (top) |          0 |          0 |       0 |    0 |  10538 |      0 |      0 |   
+|   u_engine                   |                           engine |     516940 |     479852 |   37088 |    0 | 379773 |      0 |      0 |   
+|     (u_engine)               |                           engine |       1062 |       1062 |       0 |    0 |   5447 |      0 |      0 |   
+|     gen_dma[0].u_dma         |                         port_dma |        960 |        368 |     592 |    0 |    175 |      0 |      0 |   
+|       (gen_dma[0].u_dma)     |                         port_dma |         93 |         93 |       0 |    0 |     59 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1461 |        250 |        102 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1457 |        230 |         82 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1453 |        221 |         73 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1449 |        250 |        102 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1445 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1441 |        230 |         82 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1437 |        222 |         74 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1433 |        254 |        106 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1429 |        222 |         74 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1425 |        229 |         81 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1421 |        221 |         73 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1417 |        219 |         71 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1413 |        250 |        102 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1409 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1405 |        230 |         82 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1401 |        222 |         74 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1397 |        250 |        102 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1393 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1389 |        229 |         81 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1385 |        222 |         74 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1381 |        251 |        103 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1377 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1373 |        230 |         82 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1369 |        230 |         82 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1365 |        226 |         78 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1361 |        222 |         74 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1357 |        250 |        102 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1353 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1349 |        229 |         81 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1345 |        221 |         73 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1341 |        250 |        102 |     148 |    0 |     29 |      0 |      0 |   
+|       gen_slice[0].u_data    |      stream_fifo__parameterized0 |        218 |         70 |     148 |    0 |     29 |      0 |      0 |   
+|     gen_lane[0].u_lane       |                         dot_lane |       3693 |       3553 |     140 |    0 |   2855 |      0 |      0 |   
+|       (gen_lane[0].u_lane)   |                         dot_lane |       1204 |       1064 |     140 |    0 |   2013 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1329 |        326 |        326 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1330 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1337 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1320 |        329 |        329 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1321 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1328 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1311 |        329 |        329 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1312 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1319 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1302 |        323 |        323 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1303 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1310 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1293 |        324 |        324 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1294 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1301 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1284 |        338 |        338 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1285 |        216 |        216 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1292 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1275 |        325 |        325 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1276 |        215 |        215 |       0 |    0 |     28 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1283 |        346 |        346 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1266 |        329 |        329 |       0 |    0 |    147 |      0 |      0 |   
+1. Placer Final Level Congestion Reporting
+2. Router Initial Congestion
+1. Placer Final Level Congestion Reporting
+------------------------------------------
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+
+| Direction | Type | Level | Window | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL | Cell Names |
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+
+* No congestion windows are found above level 5
+2. Router Initial Congestion
+----------------------------
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+-------------+
+| Direction | Type | Level | Window | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL | Cell Names | Sub Windows |
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+-------------+
+CABOSSE-END run2 engine_path:MulRegs:2:0:0:explore

@@ -1139,6 +1139,34 @@ iteration, a few placed builds, each with the owner's go.
    each (then: an AND per group of ports, as step's minimum); the
    drain's `go` (16 groups' ok to 128 lanes' ready) and the current
    unit's lane count to 128 compares are central broadcasts.
+   Build 3 (2026-11-01, commit 9bd2faf, c6i.8xlarge, both runs side by
+   side, reports/data/f2/2026-11-01-engine-placed-build3.txt; routed
+   checkpoints in S3): the drain and issue families are gone in both.
+   - Default flow: WNS -0.354 ns, 5,971 failing endpoints (1h26). The
+     lane's accumulator loop is what is left: `rd_slot_q`, `written_q`,
+     the tags and `file_q` → `fp_add`'s `s1_q.lo` (2,928 paths from
+     `rd_slot_q` alone; worst 12 levels, 71% route). Then the step's
+     `dlog` to the lanes' `x_q`, the multiplier's product to `p_q`, the
+     step's unit to `step_active_q`, and the DMA buffers' write enables
+     (-0.334).
+   - Explore flow: WNS -0.079 ns, 586 failing endpoints (2h56). No
+     family stands out: the x broadcast to the lanes (`gen_group.x_q` →
+     lane `x_q`, 1 LUT, 97% route, about 2 ns per hop), `rd_slot_q` →
+     `s1_q.lo` (280 paths), the DMA buffer's count, the scale unit's DSP
+     product, the lane's FIFO write enable.
+   - Size: 517,289 LUTs (was 555,726), middle SLR 66%, 37,088 LUTs as
+     memory, no SRLs, 16 DSPs; no congestion window above level 5. Peak
+     memory 16.3 GB per run.
+   Correction to round 3: the shell build does not run Vivado's default
+   flow. aws-fpga's `aws_build_dcp_from_cl.py` (branch f2, c34f88e)
+   places with `SSI_SpreadLogic_high`, then runs `phys_opt_design` and
+   `route_design -tns_cleanup` with `AggressiveExplore`, and takes each
+   directive as an option (`--place`, `--phy_opt`, `--route`). So the
+   explore run, not the default one, is the closer measure of M8.
+   Next (proposed, owner to confirm): make the gate the shell's own
+   directives; add a register stage to the x broadcast (the step's
+   group → lanes) and read the lane's file a cycle early; build 4
+   with the shell's directives only.
 4. Stop when the worst slack is >= 0 at 250 MHz. If the builds stop
    closing named families (the owner decides, D-063), target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%
