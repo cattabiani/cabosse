@@ -109,8 +109,9 @@ reaches the DMAs and the lanes 6 cycles later, through copies per group of
 4 ports (16 lanes); the lanes never refuse it. Each port's FIFO is 4
 FIFOs of 64 bits, one per lane, each with its own pointers (D-062). The
 drain takes each write group's state from registers at the group. So no
-one-cycle signal spans the 128 lanes. It costs 8 cycles of start-up per
-waiting command (72, measured, 64 before). Keeping each `SCORES` row's max in
+one-cycle signal spans the 128 lanes. It costs 10 cycles of start-up per
+waiting command (74, measured, 64 before D-051; 2 of them M6 round 4's
+registers in the lane's product and the scale's multiply). Keeping each `SCORES` row's max in
 the drain, so softmax has no `MAX` command (D-054), waits for a working
 core (D-057).
 

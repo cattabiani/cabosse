@@ -14,8 +14,9 @@
 //
 // Three steps: multiply | normalize | shift below exponent 1. Regs registers
 // split them (0: combinational; 1: after the multiply, which lets Vivado use
-// the DSPs' own register; 2: after normalizing too). A result leaves Regs
-// cycles after its operands enter.
+// the DSPs' own register; 2: after normalizing too; 3: a second one after the
+// multiply, so a DSP's output register drives only a register). A result
+// leaves Regs cycles after its operands enter.
 
 module fp_product
   import fp_pkg::*;
@@ -123,14 +124,20 @@ module fp_product
 
   // --- Registers ------------------------------------------------------------------
 
-  if (Regs > 2) begin : gen_bad_regs
-    $error("fp_product: Regs must be 0, 1 or 2");
+  if (Regs > 3) begin : gen_bad_regs
+    $error("fp_product: Regs must be 0 to 3");
   end
   if (M > F32SigW) begin : gen_bad_m
     $error("fp_product: M must be at most 24, FP32's significand");
   end
 
-  if (Regs >= 1) begin : gen_mul_q
+  if (Regs >= 3) begin : gen_mul_qq
+    mul_t mul_dsp_q;
+    always_ff @(posedge clk_i) begin
+      mul_dsp_q <= mul_d;
+      mul_q     <= mul_dsp_q;
+    end
+  end else if (Regs >= 1) begin : gen_mul_q
     always_ff @(posedge clk_i) mul_q <= mul_d;
   end else begin : gen_mul_comb
     logic unused_clk;  // no register, no clock

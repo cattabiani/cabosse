@@ -40,9 +40,9 @@ SYNTH_PARAMS = {
 }
 # (top, parameters, message): shapes that must not elaborate.
 BAD_SHAPES = [
-    # fp_product: its callers delay the addend by Regs cycles; a third
+    # fp_product: its callers delay the addend by Regs cycles; a fourth
     # register would not be placed.
-    ("fp_product", (("Regs", 3),), "Regs must be 0, 1 or 2"),
+    ("fp_product", (("Regs", 4),), "Regs must be 0 to 3"),
     # dot_lane: E = 8 leaves each unit A / E = 2 partial sums for a 4-cycle
     # loop; a group would read a sum still in the adder.
     ("dot_lane", (("E", 8),), "A / E >= 4"),

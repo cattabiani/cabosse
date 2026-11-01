@@ -171,7 +171,7 @@
  },
  "real": {
   "provenance": {
-   "commit": "16a8711aec340543bea5f2c3f920b86ab22231a7",
+   "commit": "e7ae7ad861978f293417623c05aed566df20ed0e",
    "dirty": false,
    "date": "2026-11-01",
    "machine": "Linux x86_64"
@@ -193,7 +193,7 @@
       576
      ],
      "wait": true,
-     "cycles": 855,
+     "cycles": 857,
      "model": 792.0,
      "engine": 720.0
     },
@@ -230,7 +230,7 @@
       64
      ],
      "wait": true,
-     "cycles": 213,
+     "cycles": 215,
      "model": 216.0,
      "engine": 144.0
     },
@@ -243,7 +243,7 @@
       64
      ],
      "wait": true,
-     "cycles": 149,
+     "cycles": 151,
      "model": 152.0,
      "engine": 80.0
     },
@@ -255,7 +255,7 @@
       576
      ],
      "wait": true,
-     "cycles": 786,
+     "cycles": 788,
      "model": 792.0,
      "engine": 720.0
     },
@@ -267,7 +267,7 @@
       576
      ],
      "wait": true,
-     "cycles": 1797,
+     "cycles": 1799,
      "model": 1800.0,
      "engine": 1728.0
     },
@@ -291,7 +291,7 @@
       1536
      ],
      "wait": true,
-     "cycles": 1981,
+     "cycles": 1983,
      "model": 1992.0,
      "engine": 1920.0
     },
@@ -303,7 +303,7 @@
       576
      ],
      "wait": true,
-     "cycles": 781,
+     "cycles": 783,
      "model": 792.0,
      "engine": 720.0
     },
@@ -340,7 +340,7 @@
       64
      ],
      "wait": true,
-     "cycles": 213,
+     "cycles": 215,
      "model": 216.0,
      "engine": 144.0
     },
@@ -353,7 +353,7 @@
       64
      ],
      "wait": true,
-     "cycles": 149,
+     "cycles": 151,
      "model": 152.0,
      "engine": 80.0
     },
@@ -365,7 +365,7 @@
       576
      ],
      "wait": true,
-     "cycles": 786,
+     "cycles": 788,
      "model": 792.0,
      "engine": 720.0
     },
@@ -377,7 +377,7 @@
       576
      ],
      "wait": true,
-     "cycles": 1797,
+     "cycles": 1799,
      "model": 1800.0,
      "engine": 1728.0
     },
@@ -401,7 +401,7 @@
       1536
      ],
      "wait": true,
-     "cycles": 1981,
+     "cycles": 1983,
      "model": 1992.0,
      "engine": 1920.0
     },
@@ -413,7 +413,7 @@
       576
      ],
      "wait": true,
-     "cycles": 55365,
+     "cycles": 55367,
      "model": 55368.0,
      "engine": 55296.0
     }
@@ -427,7 +427,7 @@
       576
      ],
      "wait": true,
-     "cycles": 855,
+     "cycles": 857,
      "model": 792.0,
      "engine": 720.0
     },
@@ -464,7 +464,7 @@
       64
      ],
      "wait": true,
-     "cycles": 1224,
+     "cycles": 1226,
      "model": 1224.0,
      "engine": 1152.0
     },
@@ -477,7 +477,7 @@
       64
      ],
      "wait": true,
-     "cycles": 1341,
+     "cycles": 1343,
      "model": 1352.0,
      "engine": 1280.0
     },
@@ -489,7 +489,7 @@
       576
      ],
      "wait": true,
-     "cycles": 786,
+     "cycles": 788,
      "model": 792.0,
      "engine": 720.0
     },
@@ -501,7 +501,7 @@
       576
      ],
      "wait": true,
-     "cycles": 1797,
+     "cycles": 1799,
      "model": 1800.0,
      "engine": 1728.0
     },
@@ -525,7 +525,7 @@
       1536
      ],
      "wait": true,
-     "cycles": 1981,
+     "cycles": 1983,
      "model": 1992.0,
      "engine": 1920.0
     },
@@ -537,7 +537,7 @@
       576
      ],
      "wait": true,
-     "cycles": 781,
+     "cycles": 783,
      "model": 792.0,
      "engine": 720.0
     },
@@ -574,7 +574,7 @@
       64
      ],
      "wait": true,
-     "cycles": 1224,
+     "cycles": 1226,
      "model": 1224.0,
      "engine": 1152.0
     },
@@ -587,7 +587,7 @@
       64
      ],
      "wait": true,
-     "cycles": 1341,
+     "cycles": 1343,
      "model": 1352.0,
      "engine": 1280.0
     },
@@ -599,7 +599,7 @@
       576
      ],
      "wait": true,
-     "cycles": 786,
+     "cycles": 788,
      "model": 792.0,
      "engine": 720.0
     },
@@ -611,7 +611,7 @@
       576
      ],
      "wait": true,
-     "cycles": 1797,
+     "cycles": 1799,
      "model": 1800.0,
      "engine": 1728.0
     },
@@ -635,7 +635,7 @@
       1536
      ],
      "wait": true,
-     "cycles": 1981,
+     "cycles": 1983,
      "model": 1992.0,
      "engine": 1920.0
     },
@@ -647,7 +647,7 @@
       576
      ],
      "wait": true,
-     "cycles": 55365,
+     "cycles": 55367,
      "model": 55368.0,
      "engine": 55296.0
     }
@@ -661,7 +661,7 @@
       576
      ],
      "wait": true,
-     "cycles": 855,
+     "cycles": 857,
      "model": 792.0,
      "engine": 720.0
     },
@@ -698,7 +698,7 @@
       64
      ],
      "wait": true,
-     "cycles": 9288,
+     "cycles": 9290,
      "model": 9288.0,
      "engine": 9216.0
     },
@@ -711,7 +711,7 @@
       64
      ],
      "wait": true,
-     "cycles": 10301,
+     "cycles": 10303,
      "model": 10312.0,
      "engine": 10240.0
     },
@@ -723,7 +723,7 @@
       576
      ],
      "wait": true,
-     "cycles": 786,
+     "cycles": 788,
      "model": 792.0,
      "engine": 720.0
     },
@@ -735,7 +735,7 @@
       576
      ],
      "wait": true,
-     "cycles": 1797,
+     "cycles": 1799,
      "model": 1800.0,
      "engine": 1728.0
     },
@@ -759,7 +759,7 @@
       1536
      ],
      "wait": true,
-     "cycles": 1981,
+     "cycles": 1983,
      "model": 1992.0,
      "engine": 1920.0
     },
@@ -771,7 +771,7 @@
       576
      ],
      "wait": true,
-     "cycles": 781,
+     "cycles": 783,
      "model": 792.0,
      "engine": 720.0
     },
@@ -808,7 +808,7 @@
       64
      ],
      "wait": true,
-     "cycles": 9288,
+     "cycles": 9290,
      "model": 9288.0,
      "engine": 9216.0
     },
@@ -821,7 +821,7 @@
       64
      ],
      "wait": true,
-     "cycles": 10301,
+     "cycles": 10303,
      "model": 10312.0,
      "engine": 10240.0
     },
@@ -833,7 +833,7 @@
       576
      ],
      "wait": true,
-     "cycles": 786,
+     "cycles": 788,
      "model": 792.0,
      "engine": 720.0
     },
@@ -845,7 +845,7 @@
       576
      ],
      "wait": true,
-     "cycles": 1797,
+     "cycles": 1799,
      "model": 1800.0,
      "engine": 1728.0
     },
@@ -869,7 +869,7 @@
       1536
      ],
      "wait": true,
-     "cycles": 1981,
+     "cycles": 1983,
      "model": 1992.0,
      "engine": 1920.0
     },
@@ -881,7 +881,7 @@
       576
      ],
      "wait": true,
-     "cycles": 55365,
+     "cycles": 55367,
      "model": 55368.0,
      "engine": 55296.0
     }

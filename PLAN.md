@@ -1181,6 +1181,23 @@ iteration, a few placed builds, each with the owner's go.
    passes at a worst slack of +0.1 ns or more, for the shell's clock
    tree and logic that an out-of-context build does not see (an
    estimate).
+   RTL, on `m6/round4-rtl`, every family build 3 named, same bits (every
+   test passes unchanged): the lane reads its accumulator file a cycle
+   early into a register `fp_add` takes, the sum written that cycle
+   bypassing it (the loop stays 4 cycles), and its product gets a second
+   register (`MulRegs` 2); x reaches each port's lanes through a register
+   per port holding the head they take (no mux or `dlog` at the lanes);
+   issue's "every port took it" is an AND per group of 4 ports, then over
+   the groups, with the same latency; issue's and step's next unit's
+   ports come from registers (step's units under 3 beats, VALUES at t <=
+   8, wait a cycle or two at their end); the DMA buffers' write enables
+   come from registered full flags (`stream_fifo`); the scale's multiply
+   gets a third register (`fp_product` Regs 3). SmolLM2's engine commands
+   each take 2 cycles more (latency, reports/data/M5-engine.json);
+   `engine_startup_cycles` 72 → 74. Not done: the drain's `go` and lane
+   counts (not failing in build 3; a register there would cost SCORES a
+   cycle per unit). If build 4 still shows issue's or step's unit paths:
+   keep `rem` and `last_tile` in `unit_t` (from the review).
 4. Stop when the worst slack is >= 0 at 250 MHz. If the builds stop
    closing named families (the owner decides, D-063), target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%

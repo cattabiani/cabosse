@@ -15,9 +15,11 @@
 //
 // Units: unit e takes element e of each beat, so the S = A / E partial sums
 // e, e + E, e + 2E, ... are its own. Group g of a row (its g-th beat) adds
-// to sum slot g mod S, kept in the unit's accumulator file: read when the
-// product enters fp_add, written back when the sum leaves, so the loop is
-// fp_add's 3 registers plus the file, LoopCycles cycles. Group g + S reads
+// to sum slot g mod S, kept in the unit's accumulator file: read the cycle
+// before the product enters fp_add, into a register that fp_add takes (the
+// sum written in that cycle bypasses the file), and written back when the
+// sum leaves, so the loop is fp_add's 3 registers plus that one, LoopCycles
+// cycles. Group g + S reads
 // that slot at least S cycles later, so S >= LoopCycles makes any pattern of
 // bubbles safe. A row's first S groups add to +0 instead of the file, which
 // still holds the previous row's sums; so does a later group whose slot no
@@ -43,7 +45,7 @@ module dot_lane
 #(
   parameter  int unsigned E       = 4,     // pairs per cycle (multiply-add units)
   parameter  int unsigned A       = 16,    // partial sums per row (D-027)
-  parameter  int unsigned MulRegs = 1,     // registers inside each product (bf16_mac)
+  parameter  int unsigned MulRegs = 1,     // registers inside each product (fp_product; the engine takes 2)
   parameter  bit          Ftz     = 1'b0,  // flush-to-zero variant (fp_mul_add)
   parameter  int unsigned Banks   = 2,     // level-1 buffers
   localparam int unsigned S       = A / E, // partial sums per unit
@@ -64,7 +66,7 @@ module dot_lane
 );
 
   localparam int unsigned W          = prod_sig_w(8);
-  localparam int unsigned LoopCycles = 4;  // fp_add's 3 registers, then the file
+  localparam int unsigned LoopCycles = 4;  // fp_add's 3 registers, then the addend's
   localparam int unsigned SW         = $clog2(S);
   localparam int unsigned Levels     = $clog2(A);  // of the tree; level i here is i + 1 there
   localparam int unsigned LW         = $clog2(Levels);
@@ -72,7 +74,8 @@ module dot_lane
   localparam int unsigned OutDepth   = 2;
   localparam int unsigned OW         = $clog2(OutDepth);
   // Stages of a beat's tag: 0 is the input register; it enters fp_add at
-  // Rd, leaves it at Wr, and its row's sums are copied at Snap.
+  // Rd, leaves it at Wr, and its row's sums are copied at Snap (snap, a
+  // register of its own, from stage Snap - 1).
   localparam int unsigned Rd         = MulRegs + 1;
   localparam int unsigned Wr         = Rd + 3;
   localparam int unsigned Snap       = Wr + 1;
@@ -116,23 +119,24 @@ module dot_lane
     logic [E-1:0]  mask;
   } tag_t;
 
-  tag_t              tag_q[Snap+1];
+  tag_t              tag_d, tag_q[Snap];
   logic [E-1:0][15:0] w_q, x_q;
+  assign tag_d = '{valid: fire, last: last_i, first: first_q, slot: slot_q, mask: mask_i};
   always_ff @(posedge clk_i) begin
-    tag_q[0] <= '{valid: fire, last: last_i, first: first_q, slot: slot_q, mask: mask_i};
+    tag_q[0] <= tag_d;
     w_q      <= w_i;
     x_q      <= x_i;
     if (!rst_ni) tag_q[0].valid <= 1'b0;
   end
-  for (genvar i = 0; i < Snap; i++) begin : gen_tag
+  for (genvar i = 0; i < Snap - 1; i++) begin : gen_tag
     always_ff @(posedge clk_i) begin
       tag_q[i+1] <= tag_q[i];
       if (!rst_ni) tag_q[i+1].valid <= 1'b0;
     end
   end
 
-  logic snap;  // copy the row's sums into a context this cycle
-  assign snap = tag_q[Snap].valid && tag_q[Snap].last;
+  logic snap;  // copy the row's sums into a context this cycle: stage Snap's beat is a last
+  always_ff @(posedge clk_i) snap <= rst_ni && tag_q[Snap-1].valid && tag_q[Snap-1].last;
 
   // --- Units: product, add, accumulator file ---------------------------------
 
@@ -153,23 +157,36 @@ module dot_lane
     );
     always_ff @(posedge clk_i) p_q <= p_d;
 
-    // The unit's own copies of the read and write stages' tags: one tag's
-    // slot would select the file's words in every unit (a fan-out of about
-    // 260, the lane's worst path in the full engine).
-    logic          rd_valid_q, rd_first_q;
-    logic [SW-1:0] rd_slot_q, wr_slot_q;
+    // The unit's own copies of the tags of the read stage, the one before
+    // it (the file's read) and the write stage: one tag's slot would select
+    // the file's words in every unit (a fan-out of about 260, the lane's
+    // worst path in the full engine).
+    logic          pre_first, rd_valid_q, pre_first_q;  // pre: tag_q[Rd-2]'s
+    logic [SW-1:0] pre_slot, pre_slot_q, wr_slot_q;
+    if (Rd >= 2) begin : gen_pre
+      assign {pre_first, pre_slot} = {tag_q[Rd-2].first, tag_q[Rd-2].slot};
+    end else begin : gen_pre_in
+      assign {pre_first, pre_slot} = {tag_d.first, tag_d.slot};
+    end
     always_ff @(posedge clk_i) begin
-      rd_valid_q <= rst_ni && tag_q[Rd-1].valid && tag_q[Rd-1].mask[e];
-      rd_first_q <= tag_q[Rd-1].first;
-      rd_slot_q  <= tag_q[Rd-1].slot;
-      wr_slot_q  <= tag_q[Wr-1].slot;
+      rd_valid_q  <= rst_ni && tag_q[Rd-1].valid && tag_q[Rd-1].mask[e];
+      pre_first_q <= pre_first;
+      pre_slot_q  <= pre_slot;
+      wr_slot_q   <= tag_q[Wr-1].slot;
     end
 
     logic [31:0] file_q[S];
     logic [S-1:0] written_q;
-    logic [31:0] addend, sum;
-    logic        sum_valid;
-    assign addend = (rd_first_q || !written_q[rd_slot_q]) ? 32'h0 : file_q[rd_slot_q];
+    logic [31:0] addend_q, sum;
+    logic        sum_valid, hit;
+    // The addend as the file and its flags will be in the read stage: this
+    // cycle's write (the bypass) and the copy's clearing of the flags, both
+    // as the always_ff blocks below apply them.
+    assign hit = sum_valid && wr_slot_q == pre_slot_q;
+    always_ff @(posedge clk_i) begin
+      if (pre_first_q || !(hit || (!snap && written_q[pre_slot_q]))) addend_q <= 32'h0;
+      else addend_q <= hit ? sum : file_q[pre_slot_q];
+    end
 
     fp_add #(
       .W  (W),
@@ -179,7 +196,7 @@ module dot_lane
       .rst_ni,
       .valid_i(rd_valid_q),
       .a_i    (p_q),
-      .b_i    (addend),
+      .b_i    (addend_q),
       .valid_o(sum_valid),
       .y_o    (sum)
     );
@@ -265,23 +282,30 @@ module dot_lane
   end
 
   // The adder, after an issue register.
-  logic          iss_valid_q;
+  logic          iss_valid_q, iss_root_q;
   logic [LW-1:0] iss_lvl_q;
   logic [31:0]   op_a_q, op_b_q;
   always_ff @(posedge clk_i) begin
     iss_valid_q <= rst_ni && pick;
+    iss_root_q  <= rst_ni && root_issue;
     iss_lvl_q   <= pick_lvl;
     op_a_q      <= front_a[pick_lvl];
     op_b_q      <= front_b[pick_lvl];
   end
 
-  logic [LW-1:0] tree_lvl_q[3];  // iss_lvl_q through fp_add's registers
+  // iss_lvl_q and iss_root_q through fp_add's registers; the root's flag is
+  // the output FIFO's write enable, a register of its own.
+  logic [LW-1:0] tree_lvl_q[AddLatency];
+  logic          tree_root_q[AddLatency];
   logic          tree_valid;
   logic [31:0]   tree_sum;
   always_ff @(posedge clk_i) begin
-    tree_lvl_q[0] <= iss_lvl_q;
-    tree_lvl_q[1] <= tree_lvl_q[0];
-    tree_lvl_q[2] <= tree_lvl_q[1];
+    tree_lvl_q[0]  <= iss_lvl_q;
+    tree_root_q[0] <= rst_ni && iss_root_q;
+    for (int unsigned i = 1; i < AddLatency; i++) begin
+      tree_lvl_q[i]  <= tree_lvl_q[i-1];
+      tree_root_q[i] <= rst_ni && tree_root_q[i-1];
+    end
   end
 
   fp_add #(
@@ -298,7 +322,7 @@ module dot_lane
   );
 
   logic root_result;  // the row's result
-  assign root_result = tree_valid && tree_lvl_q[2] == LW'(Levels - 1);
+  assign root_result = tree_root_q[AddLatency-1];
   assign room[Levels-1] = out_room;
 
   // Levels 2 and up: a queue each, one row's items deep (A >> i), counting
@@ -310,7 +334,7 @@ module dot_lane
     logic [QW-1:0] rd_q, wr_q;
     logic [QW:0]   count_q, flying_q;  // items held, results on their way
     logic          push, pop2, issue_below;
-    assign push        = tree_valid && tree_lvl_q[2] == LW'(i - 1);
+    assign push        = tree_valid && tree_lvl_q[AddLatency-1] == LW'(i - 1);
     assign pop2        = pick && pick_lvl == LW'(i);
     assign issue_below = pick && pick_lvl == LW'(i - 1);
     assign has_pair[i] = count_q >= 2;

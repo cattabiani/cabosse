@@ -11,7 +11,7 @@
 module engine_path
   import fp_pkg::*;
 #(
-  parameter  int unsigned MulRegs   = 2,
+  parameter  int unsigned MulRegs   = 3,
   parameter  int unsigned Ports     = 32,
   localparam int unsigned AddrWidth = 34,
   localparam int unsigned DataWidth = 256,

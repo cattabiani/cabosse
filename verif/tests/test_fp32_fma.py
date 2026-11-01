@@ -34,7 +34,12 @@ N_SLOW = 10**8  # per operation, slow run
 W_PER_CHUNK = 16  # exhaustive BF16 run: 16 values of w against all 2^16 x
 # fp32_fma's product registers: the same bits either way. The default (2) is
 # built without parameters, the build the slow run uses.
-PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (("MulRegs", 1),), "mulregs2": ()}
+PIPELINES = {
+    "mulregs0": (("MulRegs", 0),),
+    "mulregs1": (("MulRegs", 1),),
+    "mulregs2": (),
+    "mulregs3": (("MulRegs", 3),),  # the engine's scale (rtl/engine.sv)
+}
 FTZ = (("Ftz", 1),)  # the flush-to-zero variant (D-016's cost)
 N_FLUSHED = 500  # results each flush changes, at least, per operation
 # Per operation, the (a, b, c) columns that reach fp_product's inputs and
