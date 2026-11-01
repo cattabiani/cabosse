@@ -1167,6 +1167,20 @@ iteration, a few placed builds, each with the owner's go.
    directives; add a register stage to the x broadcast (the step's
    group → lanes) and read the lane's file a cycle early; build 4
    with the shell's directives only.
+   Round 4 (owner, 2026-11-01): fix every known family at once, against
+   a harness closer to the shell, then build 4. Harness, on
+   `m6/round4-shell-harness`: a `shell` flow is now the gate. It places
+   the design inside the Small Shell's CL region (`pblock_CL`, read at
+   build time from the aws-fpga checkout: the file is under the Amazon
+   Software License, so it is not copied into this repository), with the
+   shell's directives (placement `SSI_SpreadLogic_high` or another
+   given per run, `phys_opt_design` and `route_design -tns_cleanup` with
+   `AggressiveExplore`) and no physical optimization after routing. The
+   clock gets 0.065 ns of uncertainty on top of Vivado's 0.035 ns, for
+   the shell MMCM's jitter (about 0.1 ns in all, an estimate), and a run
+   passes at a worst slack of +0.1 ns or more, for the shell's clock
+   tree and logic that an out-of-context build does not see (an
+   estimate).
 4. Stop when the worst slack is >= 0 at 250 MHz. If the builds stop
    closing named families (the owner decides, D-063), target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%

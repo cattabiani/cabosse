@@ -8,13 +8,13 @@
 # worst paths (M3, D-027, D-038). Results go to the serial console between CABOSSE
 # markers, read back with `aws ec2 get-console-output --latest`. The instance
 # powers off (and, launched with shutdown behaviour "terminate", terminates)
-# when done or at the deadline. A run whose worst slack is negative exits
+# when done or at the deadline. A run whose worst slack is below the margin exits
 # with an error (timing.tcl), shown as its exit status.
 
 REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga, for the part name
 FALLBACK_PART=xcvu47p-fsvh2892-2-e
-# top:param:value:cycles:retime[:flow] (timing.tcl). mac_loop is the lanes' unit
+# top:param:value:cycles:retime[:flow[:place]] (timing.tcl). mac_loop is the lanes' unit
 # (D-038) and fma_path the vector unit's fma (D-039), measured on
 # 2026-10-07 and 2026-10-08 (reports/data/f2/); lane_path is the whole lane
 # (M4), its loop 4 cycles.
@@ -26,6 +26,7 @@ THREADS=4                      # Vivado's threads per run
 shutdown -h +$DEADLINE_MIN
 export HOME=/root  # cloud-init runs this without HOME; Vivado needs it
 export CABOSSE_THREADS=$THREADS
+export CABOSSE_AWS_FPGA=/root/aws-fpga  # the shell flow's floorplan
 [ -n "$DCP_S3" ] && export CABOSSE_DCP=1
 out=/var/log/cabosse.log
 exec > >(tee -a $out > /dev/console) 2>&1
