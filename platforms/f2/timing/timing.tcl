@@ -85,32 +85,8 @@ if {$flow eq "shell"} {
 # The routed design, for reports without a rebuild (time_loops.sh keeps it).
 if {[info exists env(CABOSSE_DCP)] && $env(CABOSSE_DCP) eq "1"} {write_checkpoint -force routed.dcp}
 
-report_timing_summary -no_header -file timing_summary.rpt
-report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
-# Logic levels per path, and the nets with the most loads (the failing
-# paths' families: below).
-report_design_analysis -logic_level_distribution -max_paths 10000 -file logic_levels.rpt
-report_high_fanout_nets -timing -max_nets 50 -file fanout.rpt
-report_utilization -file utilization.rpt
-report_utilization -hierarchical -hierarchical_depth 4 -file utilization_hier.rpt
-report_design_analysis -congestion -file congestion.rpt
-
-# Every failing path's family, compactly: start and end cells with their
-# indices dropped, the paths of each, and the worst slack. The properties
-# come as lists, a call each.
-set paths [get_timing_paths -setup -max_paths 300000 -nworst 1 -slack_lesser_than 0]
-set families [dict create]
-if {[llength $paths]} {  # get_property fails on none: a build that meets timing
-  foreach s [get_property STARTPOINT_PIN $paths] e [get_property ENDPOINT_PIN $paths] \
-          slack [get_property SLACK $paths] {
-    dict lappend families "[regsub -all {\[[0-9]+\]} $s {[*]}] -> [regsub -all {\[[0-9]+\]} $e {[*]}]" $slack
-  }
-}
-set f [open families.rpt w]
-dict for {key slacks} $families {
-  puts $f "[tcl::mathfunc::min {*}$slacks] [llength $slacks] $key"
-}
-close $f
+set argv {}  ;# report.tcl: the design is open
+source $repo/platforms/f2/timing/report.tcl
 set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
 puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow place=$place wns_ns=$wns"
 # A design that misses 250 MHz with the margin must not pass as measured
