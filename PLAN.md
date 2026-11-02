@@ -705,6 +705,24 @@ and the fpga-mgmt tools README (2026-11-02): `clk_main_a0` is fixed at 250
 MHz; groups B and C change at run time; `clk_hbm_axi` is set by recipe at
 build time (125 to 450 MHz).
 
+**D-065 (2026-11-02) — The core's clock is `clk_hbm_axi`** (owner,
+2026-11-02; revises D-064's group B or C). The core and the 32 HBM ports
+run on AWS_CLK_GEN's `clk_hbm_axi`, with no crossing on the memory side;
+the wrapper crosses into `clk_main_a0` at OCL and PCIS only. The build
+times it for 250 MHz (recipe H0); the host changes it at run time through
+the SDK's `aws_clkgen_set_dynamic` (its HBM argument; the command-line
+`fpga-load-clkgen-dynamic` sets groups A to C only), which holds the
+design in reset until the clocks lock again. The rest of D-064 stands.
+*Why:* D-064 wanted the HBM ports on the core's clock; `clk_hbm_axi` is
+that clock by construction, and the HBM's AXI ports run on it from 125 to
+450 MHz in AWS's own example (one HBM configuration, at 450 MHz, built
+with every HBM recipe; to verify on F2, M8). The bring-up design is timed
+for 250 MHz too, not 450: no optimization before a measurement asks for
+it (owner, 2026-11-02). Sources: aws-fpga `f2` branch (c34f88e):
+hdk/docs/Clock_Recipes_User_Guide.md, hdk/docs/AWS_CLK_GEN_spec.md,
+sdk/userspace/fpga_libs/fpga_clkgen/fpga_clkgen_utils.c; the HBM IP's
+configuration, `cl_hbm.xci` in aws-fpga-resources (6d32be9).
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1583,6 +1601,13 @@ registers after the multiply (review of round 5).
   on the owner's machine.
 - Budget: up to $50 for M8, aiming at about $30 (owner, 2026-11-02);
   every launch with the owner's OK and a time limit.
+
+**Steps (one branch and PR each):** D-065 and the bring-up design's
+block diagram and registers (platforms/f2/README.md); the bring-up core
+(test engines, registers; vendor-free, Verilator-tested); the CL top and
+its build flow (shell IP, AFI); the host tool and the F2 run script; the
+build and the F2 run (AWS, owner's OK each); the core's timing-only build
+in the shell.
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
