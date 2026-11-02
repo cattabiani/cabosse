@@ -1198,11 +1198,40 @@ iteration, a few placed builds, each with the owner's go.
    counts (not failing in build 3; a register there would cost SCORES a
    cycle per unit). If build 4 still shows issue's or step's unit paths:
    keep `rem` and `last_tile` in `unit_t` (from the review).
+   Build 4 (2026-11-01, round 4's RTL, c6i.8xlarge,
+   reports/data/f2/2026-11-01-engine-placed-build4.txt; routed checkpoints
+   in S3): the shell flow meets 250 MHz. WNS +0.028 ns
+   (`SSI_SpreadLogic_high`) and +0.031 ns (`SSI_BalanceSLRs`), no failing
+   endpoint, hold met; below the harness's +0.1 ns margin. 504,631 and
+   504,750 LUTs, per SLR 153,691 / 231,848 / 119,092 and 132,685 /
+   216,966 / 155,099; peak memory 13.3 and 14.1 GB per run. The full log
+   was lost (the console snapshots were in a temporary directory); the
+   reports were regenerated from the checkpoints (scripts/f2/report_dcps.sh,
+   2026-11-02), and builds now save their log and reports to S3 themselves.
+   Paths under +0.2 ns: 731 and 1,446 of 1.1 million endpoints. The worst
+   families: the scale's multiply in both runs (its operands into the DSP,
+   +0.028; the DSP's output into the normalization, +0.031: Vivado took
+   both registers after the multiply into the DSP), the lanes' buffer
+   write enables (one LUT driving 512 flops, +0.033), then families that
+   move with placement (issue's unit to the DMA addresses, the lane's
+   addend, the DMA buffers' write enables, the lane's buffer read, the x
+   broadcast; +0.046 to +0.08).
+   Round 5 (owner, 2026-11-02): the two structural families only, no
+   build. The lane's buffer write enables come from registers, a cycle
+   early, `max_fanout` 128 (same bits and cycles). The scale's multiply
+   gets a register on its operands (the DSP's input registers) and a
+   third after the multiply, in the fabric (`fp_product` Regs 5): 2 cycles
+   more drain latency, so SmolLM2's engine commands that wait take 2 cycles
+   more each (reports/data/M5-engine.json), `engine_startup_cycles` 74 →
+   76. M8's full build checks both.
 4. Stop when the worst slack is >= 0 at 250 MHz. If the builds stop
    closing named families (the owner decides, D-063), target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%
    fewer tokens/s where the engine bounds them). Floorplanning (SLRs,
    the HBM side) waits for the full build inside the shell (M8, M9).
+   Met by build 4 (owner, 2026-11-02): the loop closes at 250 MHz. The
+   harness gets no over-constraint to chase its +0.1 ns margin: that would
+   tune the tools on a stand-in, not the RTL (M8 notes).
 
 **Answers for `LOAD` and `KV_STORE` (owner, 2026-10-29):**
 - Both run in the vector unit's own pipeline, in order with its other
@@ -1475,6 +1504,17 @@ accepts (below `WrOutstanding` = 128 it only slows the stores), and what
 a one-beat partial write costs in the memory that holds the V cache
 (read-modify-write or not). If V's one-beat bursts are slow, gather V
 rows on chip into longer bursts; only after measuring.
+**From M6's timing loop (2026-11-02):** the engine met 250 MHz out of
+context by +0.03 ns (build 4), and round 5's fixes are not placed yet;
+expect the full build to lose some of it. If it misses by a little: first
+over-constrain the clock during placement and physical optimization only
+(extra clock uncertainty, removed before routing; Vivado's UltraFast
+methodology, to verify; and whether the shell flow takes it in the CL's
+constraints, to verify), then a slower clock. Check which CL clocks the
+shell offers (one near 200 MHz, to verify), so that a slower clock is a
+constraint change, not an RTL one. The engine's AXI ports cross SLRs to
+the HBM and its control port to the shell: the wrapper registers each
+SLR crossing.
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
