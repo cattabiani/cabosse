@@ -32,10 +32,11 @@ read_listed $repo/rtl/sources.f
 read_listed $repo/platforms/f2/bringup/sources.f
 read_verilog -sv $repo/platforms/f2/bringup/${CL}.sv
 
-print "Reading AWS's IP: HBM, OCL clock converter, debug bridge, PCIS SmartConnect"
+print "Reading AWS's IP: HBM, OCL clock converter, the clock generator's register slice, debug bridge, PCIS SmartConnect"
 read_ip [list \
   ${HDK_IP_SRC_DIR}/cl_hbm/cl_hbm.xci \
   ${HDK_IP_SRC_DIR}/cl_axi_clock_converter_light/cl_axi_clock_converter_light.xci \
+  ${HDK_IP_SRC_DIR}/cl_axi_register_slice_light/cl_axi_register_slice_light.xci \
   ${HDK_IP_SRC_DIR}/cl_debug_bridge/cl_debug_bridge.xci \
 ]
 add_files ${HDK_BD_SRC_DIR}/cl_axi_sc_1x1/cl_axi_sc_1x1.bd
