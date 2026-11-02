@@ -144,12 +144,16 @@ module fp_product
   end
 
   if (Regs >= 5) begin : gen_mul_qqq
-    mul_t mul_dsp_q[2];
+    // A product of two DSPs in cascade can take three registers in series,
+    // so the last one is kept as it is: in the fabric (to verify in M8).
+    mul_t mul_dsp_q, mul_dsp2_q;
+    (* dont_touch = "true" *) mul_t mul_fabric_q;
     always_ff @(posedge clk_i) begin
-      mul_dsp_q[0] <= mul_d;
-      mul_dsp_q[1] <= mul_dsp_q[0];
-      mul_q        <= mul_dsp_q[1];
+      mul_dsp_q    <= mul_d;
+      mul_dsp2_q   <= mul_dsp_q;
+      mul_fabric_q <= mul_dsp2_q;
     end
+    assign mul_q = mul_fabric_q;
   end else if (Regs >= 3) begin : gen_mul_qq
     mul_t mul_dsp_q;
     always_ff @(posedge clk_i) begin

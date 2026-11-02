@@ -1514,7 +1514,12 @@ constraints, to verify), then a slower clock. Check which CL clocks the
 shell offers (one near 200 MHz, to verify), so that a slower clock is a
 constraint change, not an RTL one. The engine's AXI ports cross SLRs to
 the HBM and its control port to the shell: the wrapper registers each
-SLR crossing.
+SLR crossing. Round 5's two fixes rest on Vivado attributes in rtl/
+(`max_fanout` on the lanes' buffer write enables, `dont_touch` on the
+scale's last product register, so that it stays out of the DSPs): check
+in the placed netlist that both did what they say. If `fp_product` ever
+needs a sixth register layout, split `Regs` into an input register and the
+registers after the multiply (review of round 5).
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over

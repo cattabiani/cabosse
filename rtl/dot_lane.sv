@@ -246,6 +246,9 @@ module dot_lane
   logic [31:0]      bank_q[Banks][A];
   logic [Banks-1:0] full_q;
   logic [BW-1:0]    load_ptr_q, read_ptr_q;
+  function automatic logic [BW-1:0] next_ptr(logic [BW-1:0] ptr);
+    return ptr == BW'(Banks - 1) ? '0 : ptr + 1'b1;
+  endfunction
   logic [PW-1:0]    pair_q;
   assign has_pair[0] = full_q[read_ptr_q];
   assign front_a[0]  = bank_q[read_ptr_q][{pair_q, 1'b0}];
@@ -256,10 +259,8 @@ module dot_lane
   // drives A x 32 flops, so synthesis copies it rather than one LUT driving all.
   (* max_fanout = 128 *) logic [Banks-1:0] load_we_q;
   logic [BW-1:0] load_ptr_d;
-  assign load_ptr_d = snap ? BW'((load_ptr_q + 1) % Banks) : load_ptr_q;
-  for (genvar b = 0; b < Banks; b++) begin : gen_load_we
-    always_ff @(posedge clk_i) load_we_q[b] <= snap_d && load_ptr_d == BW'(b);
-  end
+  assign load_ptr_d = snap ? next_ptr(load_ptr_q) : load_ptr_q;
+  always_ff @(posedge clk_i) load_we_q <= snap_d ? Banks'(1) << load_ptr_d : '0;
   always_ff @(posedge clk_i) begin
     for (int unsigned b = 0; b < Banks; b++) begin
       if (load_we_q[b]) begin
@@ -287,7 +288,7 @@ module dot_lane
       if (pick && pick_lvl == '0) pair_q <= pair_q + 1'b1;
       if (bank_done) begin
         full_q[read_ptr_q] <= 1'b0;
-        read_ptr_q         <= BW'((read_ptr_q + 1) % Banks);
+        read_ptr_q         <= next_ptr(read_ptr_q);
       end
       reserved_q <= reserved_q + (BW + 1)'(fire && last_i) - (BW + 1)'(bank_done);
     end
