@@ -63,6 +63,19 @@ aws ec2 create-fpga-image --region eu-central-1 --name cabosse-bringup-<commit> 
   --logs-storage-location Bucket=<bucket>,Key=afi-logs/<build>/
 ```
 
+### On F2
+
+`scripts/f2/run_bringup.sh` is the user data of one f2.6xlarge (FPGA
+Developer AMI, the build instance profile; `AGFI`, `S3` set at launch): it
+builds the host tool (`host/bringup.cpp`, C++23 against AWS's SDK), loads
+the AFI and runs `scripts/f2/bringup_plan.py`. The plan first sets the core
+clock (the clock generator holds the design in reset until then), then
+measures register access (OCL), host writes and reads through PCIS (checked
+by port 0's engine), and at 250, 200 and 125 MHz: every port together and
+alone, bursts, outstanding limits, the switch (own pseudo channel, the next,
+the other stack, all on one), one-beat partial writes, read latency. Each
+step is a JSON line with its provenance, copied to S3 as it comes.
+
 ### A run
 
 The host sets the registers, writes `CTRL.start`, and polls `STATUS.busy`.
