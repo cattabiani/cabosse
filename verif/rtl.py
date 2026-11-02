@@ -56,6 +56,25 @@ def harnesses() -> list[Path]:
     return sorted((REPO / "platforms" / "f2" / "timing").glob("*.sv"))
 
 
+def file_list(listed: Path) -> tuple[Path, ...]:
+    """The files a sources.f names, in order, resolved against its folder."""
+    lines = (ln.split("//")[0].strip() for ln in listed.read_text().splitlines())
+    return tuple(listed.parent / ln for ln in lines if ln)
+
+
+# The bring-up design's vendor-free modules (platforms/f2/bringup/), built on
+# rtl/; its CL top (the shell, AWS's and AMD's IP) builds only in Vivado.
+BRINGUP = file_list(REPO / "platforms" / "f2" / "bringup" / "sources.f")
+
+
+def extra_sources(top: str) -> tuple[Path, ...]:
+    """The files outside rtl/ that `top` needs after it: a timing harness's
+    own file, or the bring-up design's; none for a module of rtl/."""
+    if any(p.stem == top for p in BRINGUP):
+        return BRINGUP
+    return tuple(p for p in harnesses() if p.stem == top)
+
+
 def simulate(
     top: str, test_module: str | None = None, params: Sequence[tuple[str, int]] = ()
 ) -> None:

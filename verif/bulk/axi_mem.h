@@ -110,6 +110,8 @@ class AxiReadPort {
   bool r_valid() const { return r_valid_; }
   /// @return RRESP for this cycle: SLVERR (2) on settings.bad_beat, else OKAY.
   unsigned r_resp() const { return r_valid_ && n_beats_ == s_.bad_beat ? 2 : 0; }
+  /// @return RLAST for this cycle: the beat is its burst's last.
+  bool r_last() const { return r_valid_ && bursts_.front().sent + 1 == bursts_.front().beats; }
   /// @return RDATA for this cycle (meaningful while r_valid()).
   std::span<const std::byte> r_data() const {
     if (!r_valid_) return {};
