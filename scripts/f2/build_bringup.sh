@@ -63,6 +63,9 @@ section cl
 # A CL directory from AWS's template (its build scripts and constraints),
 # with our synthesis script in place of the template's.
 cd /root/aws-fpga/hdk/cl/examples && python3 create_new_cl.py --new_cl_name $CL >>$log 2>&1
+# hdk_setup.sh unsets CL_DIR when the directory does not exist yet (it is
+# created just above): set it again for the rest and for AWS's build scripts.
+export CL_DIR=/root/aws-fpga/hdk/cl/examples/$CL
 design=$CL_DIR/design
 [ -d "$design" ] || { echo "CABOSSE-RESULT fail create_new_cl.py"; tail -20 $log; finish; }
 # The top in place of the template's, for AWS's scripts; synthesis reads our
