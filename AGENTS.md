@@ -51,8 +51,10 @@ one is wrong, say so and explain why, and let the owner decide.
    review (REVIEW.md) and the tests pass. Creating or changing
    remotes needs explicit consent. Do not rewrite history that has already
    been pushed.
-2. **Never run `sudo`.** If something needs it, print the exact command and
-   ask the owner to run it.
+2. **Never run `sudo` on the owner's machine.** If something needs it,
+   print the exact command and ask the owner to run it. On the project's
+   own disposable AWS instances (launched and terminated by its scripts),
+   scripts may run as root and install what they need (owner, 2026-11-02).
 3. **No cloud resources** (AWS or other) unless the owner has authorized it
    in the current session, with a budget. Reading public documentation is
    fine.
@@ -66,8 +68,9 @@ one is wrong, say so and explain why, and let the owner decide.
    asking. Every dependency needs a license compatible with the project.
    Python packages may be installed into the project's `.venv` and must be
    pinned in `requirements.txt`. **Never install anything outside `.venv`**
-   (apt, system-wide, tarballs). If a program is missing, say what it is and
-   why it is needed, and suggest the install command. The owner installs it.
+   (apt, system-wide, tarballs) on the owner's machine; rule 2 covers the
+   AWS instances. If a program is missing, say what it is and why it is
+   needed, and suggest the install command. The owner installs it.
 7. **Never commit model weights, waveforms, or build outputs.** Weights go in
    the git-ignored `weights/` directory.
 8. **Numerics changes go through the spec.** Any change to formats, rounding,
