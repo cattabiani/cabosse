@@ -163,7 +163,10 @@ These are proposed in M0 and will be confirmed when the first code is written
   loop; the block that uses it handles backpressure at its own boundary.
 - Parameters for widths and counts (`L` lanes, etc.). No magic numbers.
 - Synthesizable by Verilator, Yosys, and Vivado. No vendor primitives in
-  `rtl/`. They belong in `platforms/`.
+  `rtl/`. They belong in `platforms/`. Vivado synthesis attributes
+  (`max_fanout`, `dont_touch`, ...) are allowed in `rtl/` as timing or
+  area hints only: the design must be correct without them, and each has
+  a comment saying why.
 - Must pass `verilator --lint-only -Wall` with no warnings, or with
   waivers that each have a comment.
 

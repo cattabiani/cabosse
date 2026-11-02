@@ -38,7 +38,7 @@ PIPELINES = {
     "mulregs0": (("MulRegs", 0),),
     "mulregs1": (("MulRegs", 1),),
     "mulregs2": (),
-    "mulregs3": (("MulRegs", 3),),  # the engine's scale (rtl/engine.sv)
+    "mulregs5": (("MulRegs", 5),),  # the engine's scale (rtl/engine.sv)
 }
 FTZ = (("Ftz", 1),)  # the flush-to-zero variant (D-016's cost)
 N_FLUSHED = 500  # results each flush changes, at least, per operation

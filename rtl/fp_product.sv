@@ -15,8 +15,10 @@
 // Three steps: multiply | normalize | shift below exponent 1. Regs registers
 // split them (0: combinational; 1: after the multiply, which lets Vivado use
 // the DSPs' own register; 2: after normalizing too; 3: a second one after the
-// multiply, so a DSP's output register drives only a register). A result
-// leaves Regs cycles after its operands enter.
+// multiply; 4: one on the decoded operands too, the DSPs' input registers;
+// 5: a third after the multiply: Vivado takes two into a DSP, so the third
+// is in the fabric and the DSP drives only a register). A result leaves Regs
+// cycles after its operands enter.
 
 module fp_product
   import fp_pkg::*;
@@ -36,11 +38,11 @@ module fp_product
 
   // --- Multiply ---------------------------------------------------------------
 
-  operand_t a, b;
+  operand_t a_d, b_d, a, b;  // a and b are a_d and b_d when Regs < 4
   // Widened to FP32, exactly. With Ftz, the flush makes every input normal
   // or zero, which gen_lz_ftz below relies on.
-  assign a = decode_f32(flush_f32(32'(a_i) << (F32SigW - M), Ftz));
-  assign b = decode_f32(flush_f32(32'(b_i) << (F32SigW - M), Ftz));
+  assign a_d = decode_f32(flush_f32(32'(a_i) << (F32SigW - M), Ftz));
+  assign b_d = decode_f32(flush_f32(32'(b_i) << (F32SigW - M), Ftz));
 
   typedef struct packed {
     logic          sign;
@@ -124,14 +126,35 @@ module fp_product
 
   // --- Registers ------------------------------------------------------------------
 
-  if (Regs > 3) begin : gen_bad_regs
-    $error("fp_product: Regs must be 0 to 3");
+  if (Regs > 5) begin : gen_bad_regs
+    $error("fp_product: Regs must be 0 to 5");
   end
   if (M > F32SigW) begin : gen_bad_m
     $error("fp_product: M must be at most 24, FP32's significand");
   end
 
-  if (Regs >= 3) begin : gen_mul_qq
+  if (Regs >= 4) begin : gen_in_q
+    always_ff @(posedge clk_i) begin
+      a <= a_d;
+      b <= b_d;
+    end
+  end else begin : gen_in_comb
+    assign a = a_d;
+    assign b = b_d;
+  end
+
+  if (Regs >= 5) begin : gen_mul_qqq
+    // A product of two DSPs in cascade can take three registers in series,
+    // so the last one is kept as it is: in the fabric (to verify in M8).
+    mul_t mul_dsp_q, mul_dsp2_q;
+    (* dont_touch = "true" *) mul_t mul_fabric_q;
+    always_ff @(posedge clk_i) begin
+      mul_dsp_q    <= mul_d;
+      mul_dsp2_q   <= mul_dsp_q;
+      mul_fabric_q <= mul_dsp2_q;
+    end
+    assign mul_q = mul_fabric_q;
+  end else if (Regs >= 3) begin : gen_mul_qq
     mul_t mul_dsp_q;
     always_ff @(posedge clk_i) begin
       mul_dsp_q <= mul_d;

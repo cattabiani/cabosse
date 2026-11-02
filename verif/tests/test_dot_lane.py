@@ -27,9 +27,14 @@ import rtl
 SEED = 20261008
 BUBBLE_ROW_LEN = 64  # 16 beats: each slot of the rotation 4 times
 MAX_CYCLES = 1_000_000  # a hung handshake fails instead of running forever
-BANKS = 2  # rtl/dot_lane.sv's default level-1 buffers
-# dot_lane's product registers: the same bits and handshake either way.
-PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (), "mulregs2": (("MulRegs", 2),)}
+# dot_lane's product registers and level-1 buffers: the same bits and
+# handshake either way.
+PIPELINES = {
+    "mulregs0": (("MulRegs", 0),),
+    "mulregs1": (),
+    "mulregs2": (("MulRegs", 2),),
+    "banks3": (("Banks", 3),),  # a buffer pointer that wraps at 3
+}
 
 Ready = Callable[[int], bool]  # cycle -> out_ready_i
 
@@ -103,6 +108,7 @@ async def run(
     (default none), with out_ready_i from out_ready(cycle). Inputs carry
     random bits while in_valid_i is low. The clock runs (start_clock)."""
     rng = np.random.default_rng(seed)
+    banks = int(dut.Banks.value)
     beats = [b for row in rows for b in row.beats()]
     gaps = gaps or [0] * len(beats)
     assert len(gaps) == len(beats)
@@ -135,9 +141,9 @@ async def run(
         # reserved_o, which the engine's room estimate reads (D-051): at
         # most Banks, and a last beat refused exactly when it is Banks.
         reserved = int(dut.reserved_o.value)
-        assert reserved <= BANKS, (cycle, reserved)
+        assert reserved <= banks, (cycle, reserved)
         if valid and last:
-            assert bool(dut.in_ready_o.value) == (reserved < BANKS), (cycle, reserved)
+            assert bool(dut.in_ready_o.value) == (reserved < banks), (cycle, reserved)
         if valid:
             if dut.in_ready_o.value:
                 i, idle, holding = i + 1, 0, False

@@ -1,0 +1,818 @@
+# Build 4 (M6 round 4), 2026-11-01, c6i.8xlarge i-09ebb95b321c214a2, eu-central-1.
+# REF=main at launch (21:16 UTC): 0f779cb or 8819bee, the same RTL (8819bee changes PLAN.md only).
+# RUNS: engine_path:MulRegs:3:0:0:shell, engine_path:MulRegs:3:0:0:shell:SSI_BalanceSLRs.
+# The full console log was lost (snapshots kept in a temporary directory). Part 1 is the
+# console's last 64 KiB, read on 2026-11-02, up to CABOSSE-FINISHED. Part 2 is the reports
+# regenerated from the two routed checkpoints (s3://cabosse-builds-628837661672/dcp/2026-11-01-build4/)
+# by scripts/f2/report_dcps.sh on r6i.2xlarge i-089ee365fb4622dfc, 2026-11-02.
+
+
+=== Part 1: console tail (starts mid-report)
+   | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[0][1][1]/CE                    |
+| Path #7     | 4.000       | 3.861      | 0.576(15%)  | 3.285(85%) | -0.009     | 0.051 | 0.100             | Timed                     | Same Clock        | 5            | 6      | FDRE/C-(3)-LUT6-(2)-LUT6-(68)-LUT6-(14)-LUT4-(7)-LUT2-(2)-FDRE/D                                                                                       | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 68          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_queue[3].count_q_reg[0]/C                   | read_ptr_q_reg[0]_replica/D               |
+| Path #8     | 4.000       | 3.859      | 0.189(5%)   | 3.670(95%) | -0.009     | 0.054 | 0.100             | Timed                     | Same Clock        | 2            | 2      | FDRE/C-(64)-MUXF8-(1)-LUT6-(1)-FDRE/D                                                                                                                  | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 64          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | pair_q_reg[2]_replica/C                         | op_a_q_reg[11]/D                          |
+| Path #9     | 4.000       | 3.854      | 0.382(10%)  | 3.472(90%) | -0.009     | 0.059 | 0.100             | Timed                     | Same Clock        | 4            | 2      | FDRE/C-(1)-LUT6-(1)-MUXF7-MUXF8-LUT6-(1)-FDRE/D                                                                                                        | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 1           | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | bank_q_reg[0][12][13]/C                         | op_a_q_reg[13]/D                          |
+| Path #10    | 4.000       | 3.854      | 1.272(34%)  | 2.582(66%) | -0.010     | 0.061 | 0.100             | Timed                     | Same Clock        | 10           | 8      | FDRE/C-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-CARRY8-LUT3-(37)-LUT5-(2)-LUT6-(4)-LUT6-(2)-LUT6-(1)-FDRE/D                                               | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 37          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[3].addend_q_reg[25]/C                  | s1_q_reg[lo][7]/D                         |
+| Path #11    | 4.000       | 3.852      | 1.041(28%)  | 2.811(72%) | -0.010     | 0.063 | 0.100             | Timed                     | Same Clock        | 9            | 8      | FDRE/C-(28)-LUT3-(1)-LUT5-(38)-LUT5-(2)-LUT3-(2)-LUT5-(1)-LUT6-(1)-CARRY8-LUT5-(1)-LUT4-(1)-FDSE/D                                                     | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 38          | 0         | 0          | 0          | FDRE/C                    | FDSE/D                  | s2_q_reg[exp][1]/C                              | y_o_reg[27]/D                             |
+| Path #12    | 4.000       | 3.853      | 1.298(34%)  | 2.555(66%) | -0.009     | 0.063 | 0.100             | Timed                     | Same Clock        | 9            | 9      | FDRE/C-(3)-LUT4-(2)-LUT5-(16)-LUT6-(6)-LUT6-(14)-LUT6-(4)-LUT6-(61)-LUT6-(4)-LUT3-(3)-LUT6-(1)-FDRE/D                                                  | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 61          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_norm_q.norm_q[sig][49]_i_26__4_psdsp/C      | gen_norm_q.norm_q_reg[sig][45]/D          |
+| Path #13    | 4.000       | 3.850      | 1.130(30%)  | 2.720(70%) | -0.008     | 0.064 | 0.100             | Timed                     | Same Clock        | 9            | 8      | FDRE/C-(6)-LUT4-(3)-LUT5-(3)-LUT2-(1)-CARRY8-LUT3-(31)-LUT6-(2)-LUT5-(2)-LUT5-(2)-LUT4-(1)-FDRE/D                                                      | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 31          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | op_b_q_reg[29]/C                                | s1_q_reg[lo][4]/D                         |
+| Path #14    | 4.000       | 3.765      | 0.190(6%)   | 3.575(94%) | -0.008     | 0.064 | 0.100             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[1][3][18]/CE                   |
+| Path #15    | 4.000       | 3.766      | 0.190(6%)   | 3.576(94%) | -0.008     | 0.064 | 0.100             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[1][3][27]/CE                   |
+| Path #16    | 4.000       | 3.765      | 0.190(6%)   | 3.575(94%) | -0.008     | 0.064 | 0.100             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[1][3][28]/CE                   |
+| Path #17    | 4.000       | 3.766      | 0.190(6%)   | 3.576(94%) | -0.008     | 0.064 | 0.100             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[1][3][9]/CE                    |
+| Path #18    | 4.000       | 3.848      | 1.178(31%)  | 2.670(69%) | -0.008     | 0.069 | 0.100             | Timed                     | Same Clock        | 10           | 8      | FDRE/C-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-CARRY8-LUT3-(28)-LUT6-(1)-LUT6-(4)-LUT5-(2)-LUT5-(1)-FDRE/D                                               | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 28          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].addend_q_reg[27]/C                  | s1_q_reg[lo][3]/D                         |
+| Path #19    | 4.000       | 3.843      | 0.984(26%)  | 2.859(74%) | -0.007     | 0.071 | 0.100             | Timed                     | Same Clock        | 9            | 8      | FDRE/C-(6)-LUT4-(3)-LUT5-(4)-LUT2-(1)-CARRY8-LUT3-(31)-LUT5-(2)-LUT6-(4)-LUT6-(2)-LUT4-(1)-FDRE/D                                                      | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 31          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | op_b_q_reg[25]/C                                | s1_q_reg[lo][5]/D                         |
+| Path #20    | 4.000       | 3.843      | 1.037(27%)  | 2.806(73%) | -0.010     | 0.071 | 0.100             | Timed                     | Same Clock        | 10           | 8      | FDRE/C-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-CARRY8-LUT3-(37)-LUT5-(3)-LUT5-(1)-LUT5-(1)-LUT6-(1)-FDRE/D                                               | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 37          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].addend_q_reg[26]/C                  | s1_q_reg[lo][0]/D                         |
+| Path #21    | 4.000       | 3.812      | 1.431(38%)  | 2.381(62%) | -0.040     | 0.073 | 0.100             | Timed                     | Same Clock        | 9            | 9      | DSP_OUTPUT/CLK-(3)-LUT4-(2)-LUT5-(16)-LUT6-(4)-LUT6-(4)-LUT6-(14)-LUT6-(5)-LUT6-(61)-LUT6-(2)-LUT3-(1)-FDRE/D                                          | clk               | clk             | Seq 
+CABOSSE-REPLAY 05
+      | None-None     | 0            | 0             | 1       | 61          | 0         | 0          | 0          | DSP_OUTPUT/CLK            | FDRE/D                  | DSP_OUTPUT_INST/CLK                             | gen_norm_q.norm_q_reg[sig][10]/D          |
+| Path #22    | 4.000       | 3.754      | 0.131(4%)   | 3.623(96%) | -0.008     | 0.075 | 0.100             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[0][12][29]/CE                  |
+| Path #23    | 4.000       | 3.839      | 1.014(27%)  | 2.825(73%) | -0.010     | 0.076 | 0.100             | Timed                     | Same Clock        | 9            | 8      | FDRE/C-(28)-LUT3-(1)-LUT5-(38)-LUT5-(2)-LUT3-(2)-LUT5-(1)-LUT6-(1)-CARRY8-LUT3-(1)-LUT5-(1)-FDSE/D                                                     | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 38          | 0         | 0          | 0          | FDRE/C                    | FDSE/D                  | s2_q_reg[exp][1]/C                              | y_o_reg[30]/D                             |
+| Path #24    | 4.000       | 3.841      | 0.888(24%)  | 2.953(76%) | -0.008     | 0.076 | 0.100             | Timed                     | Same Clock        | 9            | 8      | FDRE/C-(6)-LUT4-(2)-LUT5-(4)-LUT2-(1)-CARRY8-LUT5-(3)-LUT4-(6)-LUT5-(2)-LUT5-(2)-LUT4-(1)-FDRE/D                                                       | clk               | clk             | None      | None-None     | 3            | 0             | 1       | 6           | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | op_a_q_reg[30]/C                                | s1_q_reg[lo][20]/D                        |
+| Path #25    | 4.000       | 3.838      | 0.981(26%)  | 2.857(74%) | -0.010     | 0.076 | 0.100             | Timed                     | Same Clock        | 10           | 9      | FDRE/C-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-CARRY8-LUT5-(7)-LUT6-(2)-LUT6-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                                | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 7           | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[1].addend_q_reg[27]/C                  | s1_q_reg[lo][11]/D                        |
+| Path #26    | 4.000       | 3.752      | 0.131(4%)   | 3.621(96%) | -0.008     | 0.077 | 0.100             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[0][12][25]/CE                  |
+| Path #27    | 4.000       | 3.752      | 0.131(4%)   | 3.621(96%) | -0.008     | 0.077 | 0.100             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[0][12][30]/CE                  |
+| Path #28    | 4.000       | 3.834      | 0.077(3%)   | 3.757(97%) | -0.010     | 0.077 | 0.100             | Timed                     | Same Clock        | 0            | 1      | FDRE/C-(4)-FDRE/D                                                                                                                                      | clk               | clk             | None      | None-None     | 1            | 1             | 1       | 4           | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_group[5].gen_port[22].x_at_reg[22][2][4]/C  | x_q_reg[2][4]/D                           |
+| Path #29    | 4.000       | 3.835      | 0.383(10%)  | 3.452(90%) | -0.009     | 0.078 | 0.100             | Timed                     | Same Clock        | 4            | 2      | FDRE/C-(128)-LUT6-(1)-MUXF7-MUXF8-LUT6-(1)-FDRE/D                                                                                                      | clk               | clk             | None      | None-None     | 0            | 2             | 1       | 128         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | read_ptr_q_reg[0]/C                             | op_b_q_reg[14]/D                          |
+| Path #30    | 4.000       | 3.835      | 0.898(24%)  | 2.937(76%) | -0.008     | 0.078 | 0.100             | Timed                     | Same Clock        | 9            | 8      | FDRE/C-(6)-LUT4-(3)-LUT5-(3)-LUT2-(1)-CARRY8-LUT5-(3)-LUT4-(6)-LUT5-(2)-LUT6-(2)-LUT4-(1)-FDRE/D                                                       | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 6           | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | op_b_q_reg[25]/C                                | s1_q_reg[lo][22]/D                        |
+| Path #31    | 4.000       | 3.838      | 1.331(35%)  | 2.507(65%) | -0.008     | 0.079 | 0.100             | Timed                     | Same Clock        | 10           | 9      | FDRE/C-(7)-LUT4-(1)-LUT5-(4)-LUT2-(1)-CARRY8-CARRY8-LUT3-(28)-LUT6-(1)-LUT6-(2)-LUT5-(2)-LUT5-(1)-FDRE/D                                               | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 28          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_unit[0].addend_q_reg[28]/C                  | s1_q_reg[lo][11]/D                        |
+| Path #32    | 4.000       | 3.831      | 1.231(33%)  | 2.600(67%) | -0.010     | 0.084 | 0.100             | Timed                     | Same Clock        | 9            | 9      | FDRE/C-(3)-LUT4-(2)-LUT5-(16)-LUT6-(6)-LUT6-(14)-LUT6-(1)-LUT6-(5)-LUT6-(61)-LUT6-(2)-LUT3-(1)-FDRE/D                                                  | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 61          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_norm_q.norm_q[sig][49]_i_26__4_psdsp/C      | gen_norm_q.norm_q_reg[sig][50]/D          |
+| Path #33    | 4.000       | 3.744      | 0.190(6%)   | 3.554(94%) | -0.008     | 0.086 | 0.100             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[1][6][14]/CE                   |
+| Path #34    | 4.000       | 3.744      | 0.190(6%)   | 3.554(94%) | -0.008     | 0.086 | 0.100             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[1][6][25]/CE                   |
+| Path #35    | 4.000       | 3.744      | 0.190(6%)   | 3.554(94%) | -0.008     | 0.086 | 0.100             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[1][6][26]/CE                   |
+| Path #36    | 4.000       | 3.743      | 0.190(6%)   | 3.553(94%) | -0.008     | 0.086 | 0.100             | Timed                     | Same Clock        | 1            | 2      | FDRE/C-(37)-LUT2-(512)-FDRE/CE                                                                                                                         | clk               | clk             | None      | None-None     | 0            | 1             | 1       | 512         | 0         | 0          | 0          | FDRE/C                    | FDRE/CE                 | load_ptr_q_reg[0]/C                             | bank_q_reg[1][6][31]/CE                   |
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Mon Nov  2 00:22:21 2026
+| Host         : ip-172-31-32-173 running 64-bit Ubuntu 24.04.1 LTS
+| Command      : report_high_fanout_nets -timing -max_nets 50 -file fanout.rpt
+| Design       : engine_path
+| Device       : xcvu47p
+| Design State : Routed
+---------------------------------------------------------------------------------------------------------------------------------------------
+High Fan-out Nets Information
+1. Summary
+----------
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| Net Name                                               | Fanout | Driver Type | Worst Slack(ns) | Worst Delay(ns) |
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| u_engine/gen_lane[0].u_lane/bank_q[0][0][31]_i_1_n_0   |    512 | LUT2        |           1.042 |           1.071 |
+| u_engine/gen_lane[0].u_lane/bank_q[1][0][31]_i_1_n_0   |    512 | LUT2        |           0.780 |           1.321 |
+| u_engine/gen_lane[100].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           1.309 |           1.753 |
+| u_engine/gen_lane[100].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           1.064 |           1.991 |
+| u_engine/gen_lane[101].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.816 |           1.861 |
+| u_engine/gen_lane[101].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.460 |           2.205 |
+| u_engine/gen_lane[102].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.472 |           2.488 |
+| u_engine/gen_lane[102].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           1.299 |           1.653 |
+| u_engine/gen_lane[103].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           1.099 |           1.899 |
+| u_engine/gen_lane[103].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.284 |           2.703 |
+| u_engine/gen_lane[104].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.740 |           1.641 |
+| u_engine/gen_lane[104].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.745 |           1.628 |
+| u_engine/gen_lane[105].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.262 |           1.446 |
+| u_engine/gen_lane[105].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.267 |           1.423 |
+| u_engine/gen_lane[106].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.417 |           1.883 |
+| u_engine/gen_lane[106].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.408 |           1.881 |
+| u_engine/gen_lane[107].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.075 |           1.426 |
+| u_engine/gen_lane[107].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.213 |           1.272 |
+| u_engine/gen_lane[108].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.323 |           1.615 |
+| u_engine/gen_lane[108].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.267 |           1.663 |
+| u_engine/gen_lane[109].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.417 |           1.531 |
+| u_engine/gen_lane[109].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.410 |           1.529 |
+| u_engine/gen_lane[10].u_lane/bank_q[0][0][31]_i_1_n_0  |    512 | LUT2        |           0.549 |           2.402 |
+| u_engine/gen_lane[10].u_lane/bank_q[1][0][31]_i_1_n_0  |    512 | LUT2        |           0.957 |           1.978 |
+| u_engine/gen_lane[110].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.468 |           1.582 |
+| u_engine/gen_lane[110].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.280 |           1.762 |
+| u_engine/gen_lane[111].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.500 |           1.379 |
+| u_engine/gen_lane[111].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.599 |           1.272 |
+| u_engine/gen_lane[112].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.690 |           2.338 |
+| u_engine/gen_lane[112].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.220 |           2.788 |
+| u_engine/gen_lane[113].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.938 |           2.206 |
+| u_engine/gen_lane[113].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.601 |           2.532 |
+| u_engine/gen_lane[114].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.545 |           2.301 |
+| u_engine/gen_lane[114].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.229 |           2.599 |
+| u_engine/gen_lane[115].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           1.213 |           1.830 |
+| u_engine/gen_lane[115].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           1.150 |           1.879 |
+| u_engine/gen_lane[116].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           1.317 |           1.845 |
+| u_engine/gen_lane[116].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           1.380 |           1.774 |
+| u_engine/gen_lane[117].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           1.441 |           1.726 |
+| u_engine/gen_lane[117].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.399 |           2.746 |
+| u_engine/gen_lane[118].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.476 |           2.185 |
+| u_engine/gen_lane[118].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.652 |           1.986 |
+| u_engine/gen_lane[119].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.948 |           1.962 |
+| u_engine/gen_lane[119].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           1.005 |           1.894 |
+| u_engine/gen_lane[11].u_lane/bank_q[0][0][31]_i_1_n_0  |    512 | LUT2        |           0.602 |           2.87
+CABOSSE-REPLAY 06
+2 |
+| u_engine/gen_lane[11].u_lane/bank_q[1][0][31]_i_1_n_0  |    512 | LUT2        |           0.190 |           3.274 |
+| u_engine/gen_lane[120].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           1.123 |           1.767 |
+| u_engine/gen_lane[120].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.806 |           2.068 |
+| u_engine/gen_lane[121].u_lane/bank_q[0][0][31]_i_1_n_0 |    512 | LUT2        |           0.127 |           1.514 |
+| u_engine/gen_lane[121].u_lane/bank_q[1][0][31]_i_1_n_0 |    512 | LUT2        |           0.154 |           1.465 |
++--------------------------------------------------------+--------+-------------+-----------------+-----------------+
+| CLB LUTs                   | 504750 |     0 |          0 |   1303680 | 38.72 |
+|   LUT as Logic             | 467662 |     0 |          0 |   1303680 | 35.87 |
+|   LUT as Memory            |  37088 |     0 |          0 |    600960 |  6.17 |
+| CLB Registers              | 425400 |     0 |          0 |   2607360 | 16.32 |
+| CARRY8                     |  15155 |     0 |          0 |    162960 |  9.30 |
+|   LUT as Distributed RAM                   |  37088 |     0 |            |           |       |
+|   LUT as Shift Register                    |      0 |     0 |            |           |       |
+| CLB Registers                              | 425400 |     0 |          0 |   2607360 | 16.32 |
+| DSPs           |   16 |     0 |          0 |      9024 |  0.18 |
+| CARRY8   |  15155 |                 CLB |
+| CLB LUTs                   | 132685 | 216966 | 155099 |  30.18 |  50.22 |  35.90 |
+|   LUT as Logic             | 122605 | 197210 | 147847 |  27.89 |  45.65 |  34.22 |
+|   LUT as Memory            |  10080 |  19756 |   7252 |   4.91 |   9.99 |   3.67 |
+| CLB Registers              | 111986 | 169730 | 143684 |  12.73 |  19.64 |  16.63 |
+| CARRY8                     |   3990 |   6265 |   4900 |   7.26 |  11.60 |   9.07 |
+| DSPs                       |      0 |     16 |      0 |   0.00 |   0.52 |   0.00 |
+1. Utilization by Hierarchy
+1. Utilization by Hierarchy
+---------------------------
++------------------------------+----------------------------------+------------+------------+---------+------+--------+--------+--------+---
+|           Instance           |              Module              | Total LUTs | Logic LUTs | LUTRAMs | SRLs |   FFs  | RAMB36 | RAMB18 | UR
++------------------------------+----------------------------------+------------+------------+---------+------+--------+--------+--------+---
+| engine_path                  |                            (top) |     504750 |     467662 |   37088 |    0 | 425400 |      0 |      0 |   
+|   (engine_path)              |                            (top) |          0 |          0 |       0 |    0 |  10507 |      0 |      0 |   
+|   u_engine                   |                           engine |     504750 |     467662 |   37088 |    0 | 414893 |      0 |      0 |   
+|     (u_engine)               |                           engine |       2095 |       2095 |       0 |    0 |   6743 |      0 |      0 |   
+|     gen_dma[0].u_dma         |                         port_dma |        970 |        378 |     592 |    0 |    183 |      0 |      0 |   
+|       (gen_dma[0].u_dma)     |                         port_dma |         90 |         90 |       0 |    0 |     59 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1461 |        256 |        108 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1457 |        233 |         85 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1453 |        226 |         78 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1449 |        255 |        107 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1445 |        222 |         74 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1441 |        233 |         85 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1437 |        226 |         78 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1433 |        254 |        106 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1429 |        221 |         73 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1425 |        233 |         85 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1421 |        225 |         77 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1417 |        224 |         76 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1413 |        254 |        106 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1409 |        222 |         74 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1405 |        233 |         85 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1401 |        225 |         77 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1397 |        256 |        108 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1393 |        221 |         73 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1389 |        233 |         85 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1385 |        224 |         76 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1381 |        255 |        107 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1377 |        224 |         76 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1373 |        235 |         87 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1369 |        233 |         85 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1365 |        225 |         77 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1361 |        227 |         79 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1357 |        256 |        108 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1353 |        224 |         76 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1349 |        231 |         83 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1345 |        228 |         80 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    | stream_fifo__parameterized0_1341 |        254 |        106 |     148 |    0 |     31 |      0 |      0 |   
+|       gen_slice[0].u_data    |      stream_fifo__parameterized0 |        221 |         73 |     148 |    0 |     31 |      0 |      0 |   
+|     gen_lane[0].u_lane       |                         dot_lane |       3628 |       3488 |     140 |    0 |   3124 |      0 |      0 |   
+|       (gen_lane[0].u_lane)   |                         dot_lane |       1017 |        877 |     140 |    0 |   2158 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1329 |        357 |        357 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1330 |        214 |        214 |       0 |    0 |     59 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1337 |        341 |        341 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1320 |        357 |        357 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1321 |        208 |        208 |       0 |    0 |     59 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1328 |        343 |        343 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1311 |        357 |        357 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1312 |        208 |        208 |       0 |    0 |     59 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1319 |        341 |        341 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1302 |        357 |        357 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1303 |        208 |        208 |       0 |    0 |     59 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1310 |        341 |        341 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1293 |        357 |        357 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1294 |        208 |        208 |       0 |    0 |     59 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1301 |        341 |        341 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1284 |        360 |        360 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1285 |        208 |        208 |       0 |    0 |     59 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1292 |        341 |        341 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1275 |        370 |        370 |       0 |    0 |    147 |      0 |      0 |   
+|       gen_unit[0].u_mul      |                  fp_product_1276 |        208 |        208 |       0 |    0 |     59 |      0 |      0 |   
+|       u_tree                 |                      fp_add_1283 |        342 |        342 |       0 |    0 |    142 |      0 |      0 |   
+|       gen_unit[0].u_add      |                      fp_add_1266 |        357 |        357 |       0 |    0 |    147 |      0 |      0 |   
+1. Placer Final Level Congestion Reporting
+2. Router Initial Congestion
+1. Placer Final Level Congestion Reporting
+------------------------------------------
++-----------+--------+-------+---------------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+---------------------------------------------------------------------------------------------------------+
+| Direction |  Type  | Level |              Window             | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL |                                                Cell Names                                               |
++-----------+--------+-------+---------------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+---------------------------------------------------------------------------------------------------------+
+| North     | Global |     5 | (CLEM_X19Y573,CLEM_X34Y604)     |            3% |          1.590 | 27% | 1%     |  18% |   3% | 0%   | 0%   | 0%  |    5% |  0% | u_engine/gen_lane[85].u_lane(29%),u_engine/gen_lane[110].u_lane(21%),u_engine/gen_lane[122].u_lane(16%) |
+| North     | Global |     6 | (CLEM_X11Y574,CLEM_X41Y637)     |            4% |          1.581 | 28% | 5%     |  18% |   1% | 0%   | 0%   | 0%  |    7% |  0% | u_engine/gen_lane[85].u_lane(15%),u_engine/gen_lane[122].u_lane(12%),u_engine/gen_lane[111].u_lane(10%) |
+| North     | Long   |     5 | (CLEL_R_X20Y575,CLEL_R_X35Y606) |            3% |          1.433 | 24% | 0%     |  19% |   2% | 0%   | 0%   | 0%  |    4% |  0% | u_engine/gen_lane[85].u_lane(32%),u_engine/gen_lane[122].u_lane(19%),u_engine/gen_lane[110].u_lane(14%) |
+| North     | Long   |     6 | (CLEM_X11Y575,CLEM_X41Y638)     |            4% |          1.569 | 28% | 5%     |  18% |   1% | 0%   | 0%   | 0%  |    7% |  0% | u_engine/gen_lane[85].u_lane(16%),u_engine/gen_lane[122].u_lane(13%),u_engine/gen_lane[111].u_lane(10%) |
+| North     | Long   |     7 | (CLEM_X7Y553,CLEM_X69Y680)      |            3% |          1.862 | 33% | 4%     |  18% |   2% | 0%   | 0%   | 0%  |    8% |  0% | u_engine/gen_lane[90].u_lane(7%),u_engine/gen_lane[85].u_lane(7%),u_engine/gen_lane[120].u_lane(6%)     |
++-----------+--------+-------+---------------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+---------------------------------------------------------------------------------------------------------+
+2. Router Initial Congestion
+----------------------------
++-----------+--------+-------+------------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------------------------------------------------------------+----------------------------------------------------------------+
+| Direction |  Type  | Level |            Window            | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL |                            Cell Names                            |                           Sub Windows                          |
++-----------+--------+-------+------------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------------------------------------------------------------+----------------------------------------------------------------+
+| North     | Global |     6 | (CLEM_X9Y578,CLEM_X72Y609)   |            3% |          5.469 | 25% |     2% |  16% |   3% |   0% |   0% |  0% |    5% |  0% | u_engine(99%),rst_nq_reg_replica_6(0%),rst_nq_reg_replica_23(0%) | (CLEM_X9Y578,CLEL_R_X40Y609), (CLEM_X41Y578,CLEM_X72Y609)      |
+| North     | Long   |     7 | (CLEL_R_X0Y553,CLEM_X63Y680) |            4% |          5.291 | 36% |     4% |  18% |   2% |   0% |   0% |  0% |    8% |  0% | u_engine(98%),rst_nq_reg_replica_6(0%),r_resp_q_reg[31][1](0%)   | (CLEL_R_X0Y617,CLEL_R_X63Y680), (CLEL_R_X0Y553,CLEL_R_X63Y616) |
++-----------+--------+-------+------------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------------------------------------------------------------+----------------------------------------------------------------+
+CABOSSE-END run2 engine_path:MulRegs:3:0:0:shell:SSI_BalanceSLRs
+CABOSSE-BEGIN summary
+run1 engine_path:MulRegs:3:0:0:shell
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow place=$place wns_ns=$wns"
+CABOSSE-RESULT top=engine_path loop_cycles=0 retime=0 flow=shell place=SSI_SpreadLogic_high wns_ns=0.028
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.028        0.000                      0              1112534        0.010        0.000                      0              1112534        1.468        0.000                       0                480696  
+peak = 13281.973
+run2 engine_path:MulRegs:3:0:0:shell:SSI_BalanceSLRs
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow place=$place wns_ns=$wns"
+CABOSSE-RESULT top=engine_path loop_cycles=0 retime=0 flow=shell place=SSI_BalanceSLRs wns_ns=0.031
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.031        0.000                      0              1112753        0.010        0.000                      0              1112753        1.468        0.000                       0                480645  
+peak = 14084.352
+CABOSSE-END summary
+CABOSSE-FINISHED
+
+=== Part 2: report_dcps.sh log
+CABOSSE-BEGIN setup
+2026-11-02T08:21:26Z
+cabosse 6411ab140dfedbffd53549c52bb92db0587661f6 2026-11-02T09:19:39+01:00
+vivado v2025.2 (64-bit)
+CABOSSE-END setup
+run1 exit 0 08:34:10
+run1 saved to s3://cabosse-builds-628837661672/dcp/2026-11-01-build4/run1/
+run2 exit 0 08:34:27
+run2 saved to s3://cabosse-builds-628837661672/dcp/2026-11-01-build4/run2/
+CABOSSE-BEGIN run1
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.028        0.000                      0              1112534        0.010        0.000                      0              1112534        1.468        0.000                       0                480696  
+
+# paths (one per endpoint) per slack bin, ns from the bin's lower edge, under 0.2 ns
+0.00 49
+0.05 79
+0.10 198
+0.15 403
+0.20 2
+0.028 192 u_engine/mul_scale_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.046 40 u_engine/iss_unit_q_reg[r][*]/C -> u_engine/gen_dma[*].u_dma/addr_q_reg[*]/D
+0.047 20 u_engine/gen_lane[*].u_lane/gen_unit[*].addend_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMA/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMB/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMC/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMD/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAME/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMF/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMG/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMH/WE
+0.062 4 u_engine/gen_group[*].gen_port[*].second_q_reg/C -> u_engine/gen_group[*].gen_port[*].x_at_reg[*][*][*]/D
+0.063 8 u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMA/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMB/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMC/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMD/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAME/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMF/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMG/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMH/WE
+0.066 35 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_A_B_DATA_INST/B[*]
+0.072 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMA/WE
+0.072 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMB/WE
+0.072 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMC/WE
+CABOSSE-END run1
+CABOSSE-BEGIN run2
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.031        0.000                      0              1112753        0.010        0.000                      0              1112753        1.468        0.000                       0                480645  
+
+# paths (one per endpoint) per slack bin, ns from the bin's lower edge, under 0.2 ns
+0.00 6
+0.05 95
+0.10 441
+0.15 895
+0.20 9
+0.031 24 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+0.033 13 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_26__4_psdsp/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+0.033 184 u_engine/gen_lane[*].u_lane/load_ptr_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/bank_q_reg[*][*][*]/CE
+0.034 4 rst_nq_reg_replica_30/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/valid_o_reg/R
+0.051 3 u_engine/gen_lane[*].u_lane/gen_queue[*].count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_replica/D
+0.054 10 u_engine/gen_lane[*].u_lane/pair_q_reg[*]_replica/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.059 17 u_engine/gen_lane[*].u_lane/bank_q_reg[*][*][*]/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.061 134 u_engine/gen_lane[*].u_lane/gen_unit[*].addend_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+0.063 39 u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[exp][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/y_o_reg[*]/D
+0.064 43 u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/u_tree/s1_q_reg[lo][*]/D
+0.076 14 u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/u_tree/s1_q_reg[lo][*]/D
+0.077 151 u_engine/gen_group[*].gen_port[*].x_at_reg[*][*][*]/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+0.078 39 u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.086 13 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[exp][*]/D
+0.090 29 u_engine/gen_lane[*].u_lane/snap_reg/C -> u_engine/gen_lane[*].u_lane/bank_q_reg[*][*][*]/CE
+0.090 3 u_engine/gen_lane[*].u_lane/gen_queue[*].count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_rep/D
+0.092 3 u_engine/gen_lane[*].u_lane/gen_unit[*].file_q_reg[*][*]/C -> u_engine/gen_lane[*].u_lane/bank_q_reg[*][*][*]/D
+0.096 2 u_engine/gen_lane[*].u_lane/gen_unit[*].p_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+0.096 7 u_engine/gen_lane[*].u_lane/pair_q_reg[*]_rep_replica/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.097 56 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg_rep[*]/C -> u_engine/gen_lane[*].u_lane/w_q_reg[*][*]/D
+0.098 15 u_engine/gen_lane[*].u_lane/u_tree/s2_q_reg[exp][*]/C -> u_engine/gen_lane[*].u_lane/u_tree/y_o_reg[*]/D
+0.099 212 u_engine/mul_scale_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.100 17 u_engine/x_data_q_reg[*][*][*]/C -> u_engine/gen_group[*].x_q_reg[*][*][*][*]/D
+0.101 1 rst_nq_reg_replica_30/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[valid]/R
+0.102 1 u_engine/gen_lane[*].u_lane/gen_queue[*].count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+CABOSSE-END run2
+CABOSSE-FINISHED
+
+
+=== Part 2, run1: worst_paths_summary.rpt (first 60 lines)
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Mon Nov  2 08:30:36 2026
+| Host              : ip-172-31-36-48 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 200 -nworst 1 -path_type summary -file worst_paths_summary.rpt
+| Design            : engine_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Startpoint                     Endpoint                       Slack(ns)     
+----------------------------------------------------------------------------
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[10]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[11]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[12]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[13]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[14]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[15]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[16]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[17]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[18]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[19]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[1]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[20]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[21]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[22]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[23]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[24]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[25]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[26]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[27]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[28]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[29]
+                                                              0.028         
+u_engine/mul_scale_q_reg[1]/C  u_engine/gen_scale[6].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[2]
+
+=== Part 2, run1: families.rpt, sorted (worst slack, paths, start -> end)
+0.028 192 u_engine/mul_scale_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.046 40 u_engine/iss_unit_q_reg[r][*]/C -> u_engine/gen_dma[*].u_dma/addr_q_reg[*]/D
+0.047 20 u_engine/gen_lane[*].u_lane/gen_unit[*].addend_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMA/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMB/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMC/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMD/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAME/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMF/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMG/WE
+0.057 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_28_34/RAMH/WE
+0.062 4 u_engine/gen_group[*].gen_port[*].second_q_reg/C -> u_engine/gen_group[*].gen_port[*].x_at_reg[*][*][*]/D
+0.063 8 u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMA/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMB/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMC/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMD/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAME/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMF/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMG/WE
+0.066 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_0_6/RAMH/WE
+0.066 35 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_A_B_DATA_INST/B[*]
+0.072 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMA/WE
+0.072 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMB/WE
+0.072 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMC/WE
+0.072 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMD/WE
+0.072 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAME/WE
+0.072 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMF/WE
+0.072 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMG/WE
+0.072 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMH/WE
+0.075 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_0_6/RAMA/WE
+0.075 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_0_6/RAMB/WE
+0.075 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_0_6/RAMC/WE
+0.075 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_0_6/RAMD/WE
+0.075 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_0_6/RAME/WE
+0.075 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_0_6/RAMF/WE
+0.075 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_0_6/RAMG/WE
+0.075 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_0_6/RAMH/WE
+0.076 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMA/WE
+0.076 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMB/WE
+0.076 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMC/WE
+0.076 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMD/WE
+0.076 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAME/WE
+0.076 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMF/WE
+0.076 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMG/WE
+0.076 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMH/WE
+0.077 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_7_13/RAMA/WE
+0.077 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_7_13/RAMB/WE
+0.077 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_7_13/RAMC/WE
+0.077 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_7_13/RAMD/WE
+0.077 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_7_13/RAME/WE
+0.077 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_7_13/RAMF/WE
+0.077 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_7_13/RAMG/WE
+0.077 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_7_13/RAMH/WE
+0.081 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMA/WE
+0.081 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMB/WE
+0.081 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMC/WE
+0.081 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMD/WE
+0.081 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAME/WE
+0.081 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMF/WE
+0.081 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMG/WE
+0.081 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMH/WE
+0.084 1 rst_nq_reg_replica_97/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[valid]/R
+0.089 2 u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[lz][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/y_o_reg[*]/D
+0.091 17 u_engine/x_data_q_reg[*][*][*]/C -> u_engine/gen_group[*].x_q_reg[*][*][*][*]/D
+0.093 1 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod][*]_psdsp_12/D
+0.096 147 u_engine/gen_group[*].gen_port[*].x_at_reg[*][*][*]/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+0.102 8 u_engine/gen_seen[*].grp_min_q_reg[*][*]/C -> u_engine/min_q_reg[*]/D
+0.107 1 u_engine/cur_q_reg[lanes][*]/C -> u_engine/gen_wgroup[*].ok_q_reg[*]/D
+0.107 1 rst_nq_reg_replica_97/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/valid_o_reg/R
+0.109 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMA/WE
+0.109 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMB/WE
+0.109 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMC/WE
+0.109 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMD/WE
+0.109 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAME/WE
+0.109 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMF/WE
+0.109 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMG/WE
+0.109 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMH/WE
+0.110 12 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+0.111 4 u_engine/gen_scale[*].u_mul/u_fma/p_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_add/s1_q_reg[lo][*]/D
+0.112 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAMA/WE
+0.112 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAMB/WE
+0.112 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAMC/WE
+0.112 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAMD/WE
+0.112 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAME/WE
+0.112 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAMF/WE
+0.112 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAMG/WE
+0.112 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_56_62/RAMH/WE
+0.117 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMA/WE
+0.117 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMB/WE
+0.117 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMC/WE
+0.117 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMD/WE
+0.117 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAME/WE
+0.117 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMF/WE
+0.117 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMG/WE
+0.117 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMH/WE
+0.118 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMA/WE
+0.118 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMB/WE
+0.118 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMC/WE
+0.118 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMD/WE
+0.118 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAME/WE
+0.118 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMF/WE
+0.118 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMG/WE
+0.118 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_42_48/RAMH/WE
+0.118 2 u_engine/gen_lane[*].u_lane/count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]/D
+0.118 3 u_engine/gen_scale[*].u_mul/u_fma/u_add/s2_q_reg[lz][*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_add/y_o_reg[*]/D
+0.118 8 u_engine/gen_lane[*].u_lane/count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/reserved_q_reg[*]/D
+0.128 1 u_engine/gen_lane[*].u_lane/count_q_reg[*]/C -> u_engine/gen_wgroup[*].ok_q_reg[*]/D
+0.133 6 u_engine/gen_group[*].pipe_q_reg[*][valid]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/D
+0.135 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMA/WE
+0.135 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMB/WE
+0.135 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMC/WE
+0.135 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMD/WE
+0.135 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAME/WE
+0.135 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMF/WE
+0.135 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMG/WE
+0.135 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_7_13/RAMH/WE
+0.136 2 rst_nq_reg_replica_59/C -> u_engine/gen_lane[*].u_lane/count_q_reg[*]/R
+0.136 1 rst_nq_reg_replica_59/C -> u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/R
+0.136 4 u_engine/drain_grp_q_reg[*]__0_rep__0/C -> u_engine/slot_q_reg[*][*]/D
+0.138 2 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod][*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+0.143 9 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_4__1_psdsp/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+0.150 5 u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[exp][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/y_o_reg[*]/D
+0.152 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_49_55/RAMA/WE
+0.152 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_49_55/RAMB/WE
+0.152 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_49_55/RAMC/WE
+0.152 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_49_55/RAMD/WE
+0.152 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_49_55/RAME/WE
+0.152 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_49_55/RAMF/WE
+0.152 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_49_55/RAMG/WE
+0.152 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_49_55/RAMH/WE
+0.154 3 u_engine/gen_lane[*].u_lane/count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.154 5 u_engine/mul_scale_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[exp_sum][*]/D
+0.155 2 u_engine/gen_group[*].pipe_q_reg[*][valid]/C -> u_engine/gen_lane[*].u_lane/reserved_q_reg[*]/D
+0.156 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_49_55/RAMA/WE
+0.156 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_49_55/RAMB/WE
+0.156 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_49_55/RAMC/WE
+0.156 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_49_55/RAMD/WE
+0.156 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_49_55/RAME/WE
+0.156 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_49_55/RAMF/WE
+0.156 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_49_55/RAMG/WE
+0.156 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_49_55/RAMH/WE
+0.156 4 u_engine/gen_group[*].pipe_q_reg[*][active][*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg[*]/CE
+0.156 4 u_engine/gen_group[*].pipe_q_reg[*][active][*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg_rep[*]/CE
+0.157 1 u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/u_tree/s1_q_reg[lo][*]/D
+0.158 2 u_engine/gen_scale[*].u_mul/u_fma/u_add/s2_q_reg[exp][*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_add/y_o_reg[*]/D
+0.159 1 rst_nq_reg_replica_100/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/valid_o_reg/R
+0.164 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/C -> u_engine/gen_seen[*].grp_min_q_reg[*][*]/D
+0.168 2 u_engine/gen_lane[*].u_lane/u_tree/s2_q_reg[lz][*]/C -> u_engine/gen_lane[*].u_lane/u_tree/y_o_reg[*]/D
+0.168 1 u_engine/gen_group[*].pipe_q_reg[*][active][*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/CE
+0.169 1 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod][*]_psdsp_10/D
+0.170 1 u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/u_tree/s1_q_reg[lo][*]/D
+0.171 1 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod][*]_psdsp_2/D
+0.177 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMA/WE
+0.177 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMB/WE
+0.177 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMC/WE
+0.177 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMD/WE
+0.177 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAME/WE
+0.177 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMF/WE
+0.177 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMG/WE
+0.177 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_14_20/RAMH/WE
+0.179 2 u_engine/gen_group[*].pipe_q_reg[*][valid]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg[*]/CE
+0.179 3 u_engine/gen_group[*].pipe_q_reg[*][valid]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg_rep[*]/CE
+0.180 2 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod][*]_psdsp_11/D
+0.181 1 u_engine/gen_lane[*].u_lane/count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_rep/D
+0.183 4 u_engine/gen_lane[*].u_lane/gen_unit[*].addend_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/R
+0.184 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_21_27/RAMA/WE
+0.184 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_21_27/RAMB/WE
+0.184 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_21_27/RAMC/WE
+0.184 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_21_27/RAMD/WE
+0.184 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_21_27/RAME/WE
+0.184 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_21_27/RAMF/WE
+0.184 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_21_27/RAMG/WE
+0.184 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_21_27/RAMH/WE
+0.187 1 rst_nq_reg_replica_1/C -> u_engine/gen_lane[*].u_lane/pair_q_reg[*]_replica/R
+0.188 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_63_63/DP/WE
+0.188 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_63_63/SP/WE
+0.190 5 u_engine/gen_group[*].pipe_q_reg[*][valid]_replica/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg[*]/CE
+0.190 4 u_engine/gen_group[*].pipe_q_reg[*][valid]_replica/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg_rep[*]/CE
+0.192 2 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[exp][*]/D
+0.194 1 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod][*]_psdsp_6/D
+0.196 2 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/slot_q_reg[*][*]/D
+0.197 1 u_engine/gen_lane[*].u_lane/pair_q_reg[*]_rep/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.198 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_14_20/RAMA/WE
+0.198 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_14_20/RAMB/WE
+0.198 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_14_20/RAMC/WE
+0.198 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_14_20/RAMD/WE
+0.198 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_14_20/RAME/WE
+0.198 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_14_20/RAMF/WE
+0.198 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_14_20/RAMG/WE
+0.198 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_14_20/RAMH/WE
+
+=== Part 2, run1: utilization.rpt (CLB rows)
+| CLB LUTs                   | 504631 |     0 |          0 |   1303680 | 38.71 |
+|   LUT as Logic             | 467543 |     0 |          0 |   1303680 | 35.86 |
+|   LUT as Memory            |  37088 |     0 |          0 |    600960 |  6.17 |
+| CLB Registers              | 425452 |     0 |          0 |   2607360 | 16.32 |
+| CARRY8                     |  15155 |     0 |          0 |    162960 |  9.30 |
+|   LUT as Distributed RAM                   |  37088 |     0 |            |           |       |
+|   LUT as Shift Register                    |      0 |     0 |            |           |       |
+| CLB Registers                              | 425452 |     0 |          0 |   2607360 | 16.32 |
+| DSPs           |   16 |     0 |          0 |      9024 |  0.18 |
+| CARRY8   |  15155 |                 CLB |
+| CLB LUTs                   | 153691 | 231848 | 119092 |  34.96 |  53.67 |  27.57 |
+|   LUT as Logic             | 142171 | 215292 | 110080 |  32.34 |  49.84 |  25.48 |
+|   LUT as Memory            |  11520 |  16556 |   9012 |   5.61 |   8.37 |   4.56 |
+| CLB Registers              | 130792 | 194261 | 100399 |  14.87 |  22.48 |  11.62 |
+| CARRY8                     |   4645 |   6926 |   3584 |   8.45 |  12.83 |   6.64 |
+| DSPs                       |      0 |     16 |      0 |   0.00 |   0.52 |   0.00 |
+
+=== Part 2, run2: worst_paths_summary.rpt (first 60 lines)
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Mon Nov  2 08:30:37 2026
+| Host              : ip-172-31-36-48 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 200 -nworst 1 -path_type summary -file worst_paths_summary.rpt
+| Design            : engine_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Startpoint                     Endpoint                       Slack(ns)     
+----------------------------------------------------------------------------
+u_engine/gen_scale[0].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK
+                               u_engine/gen_scale[0].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][18]/D
+                                                              0.031         
+u_engine/gen_lane[122].u_lane/load_ptr_q_reg[0]/C
+                               u_engine/gen_lane[122].u_lane/bank_q_reg[0][1][24]/CE
+                                                              0.033         
+u_engine/gen_scale[7].u_mul/u_fma/u_mul/gen_norm_q.norm_q[sig][49]_i_26__4_psdsp/C
+                               u_engine/gen_scale[7].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][23]/D
+                                                              0.033         
+rst_nq_reg_replica_30/C        u_engine/gen_lane[123].u_lane/gen_unit[2].u_add/valid_o_reg/R
+                                                              0.034         
+u_engine/gen_scale[0].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK
+                               u_engine/gen_scale[0].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][19]/D
+                                                              0.034         
+u_engine/gen_lane[122].u_lane/load_ptr_q_reg[0]/C
+                               u_engine/gen_lane[122].u_lane/bank_q_reg[0][1][1]/CE
+                                                              0.035         
+u_engine/gen_lane[92].u_lane/gen_queue[3].count_q_reg[0]/C
+                               u_engine/gen_lane[92].u_lane/read_ptr_q_reg[0]_replica/D
+                                                              0.051         
+u_engine/gen_lane[3].u_lane/pair_q_reg[2]_replica/C
+                               u_engine/gen_lane[3].u_lane/op_a_q_reg[11]/D
+                                                              0.054         
+u_engine/gen_lane[121].u_lane/bank_q_reg[0][12][13]/C
+                               u_engine/gen_lane[121].u_lane/op_a_q_reg[13]/D
+                                                              0.059         
+u_engine/gen_lane[104].u_lane/gen_unit[3].addend_q_reg[25]/C
+                               u_engine/gen_lane[104].u_lane/gen_unit[3].u_add/s1_q_reg[lo][7]/D
+                                                              0.061         
+u_engine/gen_lane[5].u_lane/gen_unit[2].u_add/s2_q_reg[exp][1]/C
+                               u_engine/gen_lane[5].u_lane/gen_unit[2].u_add/y_o_reg[27]/D
+                                                              0.063         
+u_engine/gen_scale[7].u_mul/u_fma/u_mul/gen_norm_q.norm_q[sig][49]_i_26__4_psdsp/C
+                               u_engine/gen_scale[7].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][45]/D
+                                                              0.063         
+u_engine/gen_lane[56].u_lane/op_b_q_reg[29]/C
+                               u_engine/gen_lane[56].u_lane/u_tree/s1_q_reg[lo][4]/D
+                                                              0.064         
+u_engine/gen_lane[122].u_lane/load_ptr_q_reg[0]/C
+                               u_engine/gen_lane[122].u_lane/bank_q_reg[1][3][18]/CE
+                                                              0.064         
+u_engine/gen_lane[122].u_lane/load_ptr_q_reg[0]/C
+                               u_engine/gen_lane[122].u_lane/bank_q_reg[1][3][27]/CE
+
+=== Part 2, run2: families.rpt, sorted (worst slack, paths, start -> end)
+0.031 24 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+0.033 184 u_engine/gen_lane[*].u_lane/load_ptr_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/bank_q_reg[*][*][*]/CE
+0.033 13 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_26__4_psdsp/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+0.034 4 rst_nq_reg_replica_30/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/valid_o_reg/R
+0.051 3 u_engine/gen_lane[*].u_lane/gen_queue[*].count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_replica/D
+0.054 10 u_engine/gen_lane[*].u_lane/pair_q_reg[*]_replica/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.059 17 u_engine/gen_lane[*].u_lane/bank_q_reg[*][*][*]/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.061 134 u_engine/gen_lane[*].u_lane/gen_unit[*].addend_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+0.063 39 u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[exp][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/y_o_reg[*]/D
+0.064 43 u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/u_tree/s1_q_reg[lo][*]/D
+0.076 14 u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/u_tree/s1_q_reg[lo][*]/D
+0.077 151 u_engine/gen_group[*].gen_port[*].x_at_reg[*][*][*]/C -> u_engine/gen_lane[*].u_lane/x_q_reg[*][*]/D
+0.078 39 u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.086 13 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[exp][*]/D
+0.090 3 u_engine/gen_lane[*].u_lane/gen_queue[*].count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_rep/D
+0.090 29 u_engine/gen_lane[*].u_lane/snap_reg/C -> u_engine/gen_lane[*].u_lane/bank_q_reg[*][*][*]/CE
+0.092 3 u_engine/gen_lane[*].u_lane/gen_unit[*].file_q_reg[*][*]/C -> u_engine/gen_lane[*].u_lane/bank_q_reg[*][*][*]/D
+0.096 7 u_engine/gen_lane[*].u_lane/pair_q_reg[*]_rep_replica/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.096 2 u_engine/gen_lane[*].u_lane/gen_unit[*].p_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/D
+0.097 56 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg_rep[*]/C -> u_engine/gen_lane[*].u_lane/w_q_reg[*][*]/D
+0.098 15 u_engine/gen_lane[*].u_lane/u_tree/s2_q_reg[exp][*]/C -> u_engine/gen_lane[*].u_lane/u_tree/y_o_reg[*]/D
+0.099 212 u_engine/mul_scale_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.100 17 u_engine/x_data_q_reg[*][*][*]/C -> u_engine/gen_group[*].x_q_reg[*][*][*][*]/D
+0.101 1 rst_nq_reg_replica_30/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[valid]/R
+0.102 25 u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_rep/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.102 57 u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[lz][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/y_o_reg[*]/D
+0.102 8 u_engine/gen_lane[*].u_lane/pair_q_reg[*]_replica/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.102 1 u_engine/gen_lane[*].u_lane/gen_queue[*].count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.103 28 u_engine/gen_lane[*].u_lane/pair_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.106 9 u_engine/gen_lane[*].u_lane/w_q_reg[*][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_mul/gen_mul_q.mul_q_reg[prod][*]/D
+0.107 32 u_engine/gen_lane[*].u_lane/load_ptr_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/bank_q_reg[*][*][*]/R
+0.109 9 u_engine/gen_scale[*].u_mul/u_fma/u_add/s2_q_reg[exp][*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_add/y_o_reg[*]/D
+0.110 2 u_engine/gen_lane[*].u_lane/gen_queue[*].count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_rep__0/D
+0.112 11 u_engine/gen_lane[*].u_lane/pair_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.113 1 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_26__4_psdsp/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[zero]/D
+0.114 1 u_engine/gen_lane[*].u_lane/count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/pair_q_reg[*]_replica/CE
+0.117 17 u_engine/gen_lane[*].u_lane/snap_reg/C -> u_engine/gen_lane[*].u_lane/bank_q_reg[*][*][*]/R
+0.119 15 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[prod]/DSP_A_B_DATA_INST/B[*]
+0.126 11 u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_replica/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.128 1 u_engine/gen_lane[*].u_lane/pair_q_reg[*]_rep/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.128 8 u_engine/gen_lane[*].u_lane/u_tree/s2_q_reg[lz][*]/C -> u_engine/gen_lane[*].u_lane/u_tree/y_o_reg[*]/D
+0.128 1 u_engine/gen_lane[*].u_lane/gen_queue[*].count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/pair_q_reg[*]_rep_replica/CE
+0.130 4 u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[exp][*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/y_o_reg[*]/R
+0.131 5 u_engine/gen_group[*].pipe_q_reg[*][valid]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg[*]/CE
+0.131 8 u_engine/gen_group[*].pipe_q_reg[*][valid]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg_rep[*]/CE
+0.132 1 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/slot_q_reg[*][*]/D
+0.138 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMA/WADR4
+0.138 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMB/WADR4
+0.138 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMC/WADR4
+0.138 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMD/WADR4
+0.138 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAME/WADR4
+0.138 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMF/WADR4
+0.138 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMG/WADR4
+0.138 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_35_41/RAMH/WADR4
+0.140 1 u_engine/gen_lane[*].u_lane/gen_queue[*].count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.145 21 u_engine/iss_unit_q_reg[r][*]/C -> u_engine/gen_dma[*].u_dma/addr_q_reg[*]/D
+0.150 1 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod][*]_psdsp_2/D
+0.152 13 u_engine/gen_lane[*].u_lane/pair_q_reg[*]_rep/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.153 1 rst_nq_reg_replica_5/C -> u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_rep__0/R
+0.154 2 u_engine/gen_dma[*].u_dma/addr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/reserved_q_reg[*]/D
+0.155 3 u_engine/gen_group[*].pipe_q_reg[*][last]/C -> u_engine/gen_lane[*].u_lane/reserved_q_reg[*]/D
+0.155 4 u_engine/gen_lane[*].u_lane/bank_q_reg[*][*][*]/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.155 1 rst_nq_reg_replica_2/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].written_q_reg[*]/R
+0.157 2 u_engine/gen_lane[*].u_lane/snap_reg/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].addend_q_reg[*]/R
+0.164 2 rst_nq_reg_replica_38/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/valid_o_reg/R
+0.164 1 u_engine/gen_lane[*].u_lane/gen_queue[*].count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/pair_q_reg[*]_replica/CE
+0.165 2 u_engine/gen_dma[*].u_dma/left_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/reserved_q_reg[*]/D
+0.169 1 rst_nq_reg_replica_10/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/valid_o_reg/R
+0.172 1 u_engine/gen_group[*].pipe_q_reg[*][active][*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg[*]/CE
+0.173 1 u_engine/gen_group[*].pipe_q_reg[*][active][*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/rd_q_reg_rep[*]/CE
+0.175 3 u_engine/gen_lane[*].u_lane/count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_rep/D
+0.179 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMA/WADR4
+0.179 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMB/WADR4
+0.179 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMC/WADR4
+0.179 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMD/WADR4
+0.179 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAME/WADR4
+0.179 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMF/WADR4
+0.179 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMG/WADR4
+0.179 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMH/WADR4
+0.180 1 u_engine/mul_scale_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_dsp_q_reg[inf]/D
+0.182 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMA/WE
+0.182 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMB/WE
+0.182 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMC/WE
+0.182 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMD/WE
+0.182 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAME/WE
+0.182 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMF/WE
+0.182 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMG/WE
+0.182 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_35_41/RAMH/WE
+0.184 2 u_engine/cur_q_reg[lanes][*]/C -> u_engine/lane_out_ready_reg[*]/D
+0.186 1 u_engine/gen_group[*].pipe_q_reg[*][last]/C -> u_engine/gen_lane[*].u_lane/first_q_reg/D
+0.186 1 rst_nq_reg_replica_16/C -> u_engine/gen_lane[*].u_lane/u_tree/s1_q_reg[valid]/R
+0.186 1 rst_nq_reg_replica_16/C -> u_engine/gen_lane[*].u_lane/u_tree/s2_q_reg[valid]/R
+0.186 1 rst_nq_reg_replica_16/C -> u_engine/gen_lane[*].u_lane/u_tree/valid_o_reg/R
+0.187 1 u_engine/drain_grp_q_reg[*]__0/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod][*]_psdsp_15/D
+0.188 3 u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_4__3_psdsp/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+0.188 1 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod][*]_psdsp_16/D
+0.188 1 u_engine/gen_lane[*].u_lane/rd_ptr_q_reg[*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qq.mul_q_reg[prod][*]_psdsp_11/D
+0.189 1 rst_nq_reg_replica_5/C -> u_engine/gen_lane[*].u_lane/pair_q_reg[*]_replica/R
+0.189 8 u_engine/gen_lane[*].u_lane/gen_unit[*].addend_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s1_q_reg[lo][*]/R
+0.189 2 u_engine/gen_scale[*].u_mul/u_fma/u_add/s2_q_reg[lz][*]/C -> u_engine/gen_scale[*].u_mul/u_fma/u_add/y_o_reg[*]/D
+0.192 1 rst_nq_reg_replica_25/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/valid_o_reg/R
+0.192 1 u_engine/gen_lane[*].u_lane/count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMA/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMB/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMC/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMD/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAME/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMF/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMG/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_56_62/RAMH/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMA/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMB/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMC/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMD/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAME/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMF/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMG/WE
+0.194 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_42_48/RAMH/WE
+0.195 1 u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_rep__0/C -> u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+0.195 2 u_engine/gen_lane[*].u_lane/count_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+0.195 1 u_engine/iss_unit_q_reg[beats][*]/C -> u_engine/gen_dma[*].u_dma/left_q_reg[*]/D
+0.196 1 rst_nq_reg_replica_14/C -> u_engine/gen_lane[*].u_lane/load_ptr_q_reg[*]/R
+0.196 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMA/WE
+0.196 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMB/WE
+0.196 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMC/WE
+0.196 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMD/WE
+0.196 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAME/WE
+0.196 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMF/WE
+0.196 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMG/WE
+0.196 2 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_0_63_28_34/RAMH/WE
+0.196 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/D
+0.196 1 r_valid_q_reg[*]/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/wr_q_reg[*]/CE
+0.197 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_63_63/DP/WE
+0.197 1 u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/full_q_reg/C -> u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/mem_q_reg_64_127_63_63/SP/WE
+0.197 1 rst_nq_reg_replica_42/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].u_add/s2_q_reg[valid]/R
+0.197 2 u_engine/gen_group[*].pipe_q_reg[*][lanes][*]/C -> u_engine/gen_lane[*].u_lane/slot_q_reg[*]/CE
+0.197 1 u_engine/gen_lane[*].u_lane/reserved_q_reg[*]/C -> u_engine/gen_seen[*].grp_res_q_reg[*][*]/D
+0.198 1 u_engine/gen_seen[*].grp_min_q_reg[*][*]/C -> u_engine/min_q_reg[*]/D
+0.199 1 rst_nq_reg_replica_12/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].written_q_reg[*]/R
+0.200 1 u_engine/gen_lane[*].u_lane/gen_unit[*].pre_slot_q_reg[*]/C -> u_engine/gen_lane[*].u_lane/gen_unit[*].addend_q_reg[*]/D
+
+=== Part 2, run2: utilization.rpt (CLB rows)
+| CLB LUTs                   | 504750 |     0 |          0 |   1303680 | 38.72 |
+|   LUT as Logic             | 467662 |     0 |          0 |   1303680 | 35.87 |
+|   LUT as Memory            |  37088 |     0 |          0 |    600960 |  6.17 |
+| CLB Registers              | 425400 |     0 |          0 |   2607360 | 16.32 |
+| CARRY8                     |  15155 |     0 |          0 |    162960 |  9.30 |
+|   LUT as Distributed RAM                   |  37088 |     0 |            |           |       |
+|   LUT as Shift Register                    |      0 |     0 |            |           |       |
+| CLB Registers                              | 425400 |     0 |          0 |   2607360 | 16.32 |
+| DSPs           |   16 |     0 |          0 |      9024 |  0.18 |
+| CARRY8   |  15155 |                 CLB |
+| CLB LUTs                   | 132685 | 216966 | 155099 |  30.18 |  50.22 |  35.90 |
+|   LUT as Logic             | 122605 | 197210 | 147847 |  27.89 |  45.65 |  34.22 |
+|   LUT as Memory            |  10080 |  19756 |   7252 |   4.91 |   9.99 |   3.67 |
+| CLB Registers              | 111986 | 169730 | 143684 |  12.73 |  19.64 |  16.63 |
+| CARRY8                     |   3990 |   6265 |   4900 |   7.26 |  11.60 |   9.07 |
+| DSPs                       |      0 |     16 |      0 |   0.00 |   0.52 |   0.00 |

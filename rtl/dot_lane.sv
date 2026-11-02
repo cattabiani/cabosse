@@ -136,7 +136,9 @@ module dot_lane
   end
 
   logic snap;  // copy the row's sums into a context this cycle: stage Snap's beat is a last
-  always_ff @(posedge clk_i) snap <= rst_ni && tag_q[Snap-1].valid && tag_q[Snap-1].last;
+  logic snap_d;
+  assign snap_d = rst_ni && tag_q[Snap-1].valid && tag_q[Snap-1].last;
+  always_ff @(posedge clk_i) snap <= snap_d;
 
   // --- Units: product, add, accumulator file ---------------------------------
 
@@ -244,17 +246,28 @@ module dot_lane
   logic [31:0]      bank_q[Banks][A];
   logic [Banks-1:0] full_q;
   logic [BW-1:0]    load_ptr_q, read_ptr_q;
+  function automatic logic [BW-1:0] next_ptr(logic [BW-1:0] ptr);
+    return ptr == BW'(Banks - 1) ? '0 : ptr + 1'b1;
+  endfunction
   logic [PW-1:0]    pair_q;
   assign has_pair[0] = full_q[read_ptr_q];
   assign front_a[0]  = bank_q[read_ptr_q][{pair_q, 1'b0}];
   assign front_b[0]  = bank_q[read_ptr_q][{pair_q, 1'b1}];
   assign bank_done   = pick && pick_lvl == '0 && pair_q == PW'(A / 2 - 1);
 
+  // Buffer b's write enable, snap && load_ptr_q == b, from a register: it
+  // drives A x 32 flops, so synthesis copies it rather than one LUT driving all.
+  (* max_fanout = 128 *) logic [Banks-1:0] load_we_q;
+  logic [BW-1:0] load_ptr_d;
+  assign load_ptr_d = snap ? next_ptr(load_ptr_q) : load_ptr_q;
+  always_ff @(posedge clk_i) load_we_q <= snap_d ? Banks'(1) << load_ptr_d : '0;
   always_ff @(posedge clk_i) begin
-    if (snap) begin
-      for (int unsigned s = 0; s < S; s++) begin
-        for (int unsigned e = 0; e < E; e++) begin
-          bank_q[load_ptr_q][s*E+e] <= written[e][s] ? acc[e][s] : 32'h0;
+    for (int unsigned b = 0; b < Banks; b++) begin
+      if (load_we_q[b]) begin
+        for (int unsigned s = 0; s < S; s++) begin
+          for (int unsigned e = 0; e < E; e++) begin
+            bank_q[b][s*E+e] <= written[e][s] ? acc[e][s] : 32'h0;
+          end
         end
       end
     end
@@ -270,12 +283,12 @@ module dot_lane
     end else begin
       if (snap) begin
         full_q[load_ptr_q] <= 1'b1;
-        load_ptr_q         <= BW'((load_ptr_q + 1) % Banks);
+        load_ptr_q         <= load_ptr_d;
       end
       if (pick && pick_lvl == '0) pair_q <= pair_q + 1'b1;
       if (bank_done) begin
         full_q[read_ptr_q] <= 1'b0;
-        read_ptr_q         <= BW'((read_ptr_q + 1) % Banks);
+        read_ptr_q         <= next_ptr(read_ptr_q);
       end
       reserved_q <= reserved_q + (BW + 1)'(fire && last_i) - (BW + 1)'(bank_done);
     end
