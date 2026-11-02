@@ -37,6 +37,32 @@ clock converter and SmartConnect configurations, the debug bridge) come
 from the aws-fpga checkout on the build instance; nothing of theirs is
 copied here (Amazon Software License).
 
+### Files
+
+- `bringup_port.sv`, `bringup_host.sv`, `bringup_core.sv` (listed in
+  `sources.f`): the vendor-free core, the host's port to HBM port 0
+  included, tested in Verilator (verif/tests/test_bringup_core.py).
+- `cabosse_bringup.sv`: the CL top (shell ports, crossings, HBM IP, ILA),
+  built only in Vivado; verif/tests/test_bringup_core.py elaborates it with
+  slang when `CABOSSE_AWS_FPGA` names an aws-fpga checkout.
+- `synth_cabosse_bringup.tcl`: its synthesis in AWS's shell flow.
+
+### Build
+
+`scripts/f2/build_bringup.sh` is the user data of one build instance
+(c6i.8xlarge, FPGA Developer AMI, the build instance profile): it makes a
+CL directory from AWS's template, puts our design in it, runs
+`aws_build_dcp_from_cl.py` (Small Shell, recipe H0) and our reports, and
+copies the logs, reports and the AFI tarball to `S3` (under `dcp/`, where
+the build role may write). A route with negative slack fails the run. The
+AFI is then made from the tarball:
+
+```
+aws ec2 create-fpga-image --region eu-central-1 --name cabosse-bringup-<commit> \
+  --input-storage-location Bucket=<bucket>,Key=dcp/<build>/<tag>.Developer_CL.tar \
+  --logs-storage-location Bucket=<bucket>,Key=afi-logs/<build>/
+```
+
 ### A run
 
 The host sets the registers, writes `CTRL.start`, and polls `STATUS.busy`.

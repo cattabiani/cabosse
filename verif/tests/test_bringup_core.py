@@ -4,9 +4,13 @@
 on the memory model of verif/bulk/axi_mem.h, through the driver
 verif/bulk/bringup_core.cpp: the registers, runs that write and read the
 pattern on every port (with the memory's checks of the AXI rules), the
-counters, the limits, partial writes and error responses."""
+counters, the limits, partial writes and error responses, the host's
+port to HBM port 0; and the CL top's elaboration against the shell."""
 
+import os
+import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 import bulk
 import numpy as np
@@ -34,7 +38,7 @@ COUNTERS = [
     "rd_occ_hi", "wr_beats", "wr_cycles", "wr_first", "wr_maxout", "wr_occ_lo", "wr_occ_hi",
     "flags",
 ]  # fmt: skip
-WRITE_OP, READ_OP, POLL_OP, WAIT_OP = 0, 1, 2, 3  # the driver's operations
+WRITE_OP, READ_OP, POLL_OP, WAIT_OP, HOST_WRITE_OP, HOST_READ_OP = range(6)  # the driver's
 Op = tuple[int, int, int]
 
 
@@ -238,3 +242,44 @@ def test_host_port_keeps_port_0():
     assert got[:2] == [1, 1]
     [[port0, port1]] = runs(got[2:], 2)
     assert port0["wr_beats"] == 0 and port1["wr_beats"] == 512, (port0, port1)
+
+
+@rtl.needs_verilator
+def test_host_port():
+    """The host reaches any address through port 0 while HOST_PORT is set
+    (the reset value); with it clear port 0's engine runs, and the host then
+    reads what the engine wrote."""
+    mem = blank()
+    addrs = [0, 0x20, STRIDE + 0x40, MEM_BYTES - 32]  # port 0's region and others'
+    ops = [(HOST_WRITE_OP, a, 0x1000 * (k + 1)) for k, a in enumerate(addrs)]
+    ops += [(HOST_READ_OP, a, 0) for a in addrs]
+    ops += start(WRITE, beats=16, port_en=1) + [(WRITE_OP, REGS["host_port"], 1)]
+    ops += [(HOST_READ_OP, 0x40, 0)]
+    res = run(mem, ops, latency=20, wlatency=10)
+    beats = np.reshape(res.reads, (-1, 8))
+    for k, a in enumerate(addrs):
+        want = 0x1000 * (k + 1) + np.arange(8)
+        np.testing.assert_array_equal(beats[k], want)
+        if a >= 16 * 32:  # outside what the engine writes after
+            np.testing.assert_array_equal(res.mem[a // 4 : a // 4 + 8], want)
+    np.testing.assert_array_equal(beats[-1], pattern(0x40, 8))
+
+
+@rtl.needs("slang")
+@pytest.mark.skipif(not os.environ.get("CABOSSE_AWS_FPGA"), reason="needs CABOSSE_AWS_FPGA")
+def test_cl_top_elaborates() -> None:
+    """The CL top (cabosse_bringup.sv) elaborates against the shell's ports
+    (cl_ports.vh) and AWS's clock generator and DDR stub, from the aws-fpga
+    checkout (branch f2) that CABOSSE_AWS_FPGA names; AMD's IP stays unknown
+    (Vivado checks it)."""
+    hdk = Path(os.environ["CABOSSE_AWS_FPGA"]) / "hdk" / "common"
+    aws = [
+        hdk / "lib" / f
+        for f in ("interfaces.sv", "lib_pipe.sv", "aws_clk_regs.sv", "aws_clk_gen.sv")
+    ]
+    aws.append(hdk / "shell_stable" / "design" / "sh_ddr" / "sh_ddr.stub.sv")
+    ours = [*rtl.file_list(rtl.SOURCES), *rtl.BRINGUP, rtl.BRINGUP_TOP]
+    argv = ["slang", "--ignore-unknown-modules", "--top", rtl.BRINGUP_TOP.stem]
+    argv += ["-I", str(hdk / "shell_stable" / "design" / "interfaces"), *map(str, aws + ours)]
+    result = subprocess.run(argv, capture_output=True, text=True)
+    assert result.returncode == 0 and "0 errors, 0 warnings" in result.stdout, result.stdout

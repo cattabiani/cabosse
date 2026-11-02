@@ -4,12 +4,13 @@
 // The bring-up design's core (platforms/f2/README.md): the registers on an
 // AXI-Lite port and Ports test engines (bringup_port.sv), one per HBM port,
 // all on one clock. Vendor-free; the CL top (cabosse_bringup.sv) adds the
-// shell, the clock crossings and the HBM.
+// shell, the clock crossings and the HBM. HBM port 0 is shared with the
+// host's port (PCIS) through bringup_host.sv, which HOST_PORT drives.
 //
 // AXI-Lite: one access at a time; a write takes its address and data in the
-// same cycle and ignores the strobes (whole words). A read answers 3 cycles
-// after its address: the ports' counters are a register stage in each port
-// and one here.
+// same cycle and ignores the strobes (whole words). A read answers 4 cycles
+// after its address: the ports' counters are a register stage in each port,
+// then a stage per group of 8 ports and one here.
 //
 // A start is refused (STATUS.refused) while busy, and when the settings
 // break README.md's rules, which would hang a port or end a run with bursts
@@ -31,7 +32,7 @@ module bringup_core #(
   input  logic                                 clk_i,
   input  logic                                 rst_ni,
   input  logic                                 hbm_ready_i,  // both stacks initialized, synchronized to clk_i
-  output logic                                 host_port_o,  // HBM port 0 serves the host
+  output logic                                 host_sel_o,   // HBM port 0 serves the host now
   // AXI-Lite (registers)
   input  logic                                 s_aw_valid_i,
   output logic                                 s_aw_ready_o,
@@ -49,7 +50,31 @@ module bringup_core #(
   input  logic                                 s_r_ready_i,
   output logic [31:0]                          s_r_data_o,
   output logic [1:0]                           s_r_resp_o,
-  // AXI, a port each
+  // The host's AXI (PCIS, through the CL top), to HBM port 0 (bringup_host.sv)
+  input  logic                                 h_ar_valid_i,
+  output logic                                 h_ar_ready_o,
+  input  logic [AddrWidth-1:0]                 h_ar_addr_i,
+  input  logic [7:0]                           h_ar_len_i,
+  input  logic [1:0]                           h_ar_burst_i,
+  output logic                                 h_r_valid_o,
+  input  logic                                 h_r_ready_i,
+  output logic [DataWidth-1:0]                 h_r_data_o,
+  output logic [1:0]                           h_r_resp_o,
+  output logic                                 h_r_last_o,
+  input  logic                                 h_aw_valid_i,
+  output logic                                 h_aw_ready_o,
+  input  logic [AddrWidth-1:0]                 h_aw_addr_i,
+  input  logic [7:0]                           h_aw_len_i,
+  input  logic [1:0]                           h_aw_burst_i,
+  input  logic                                 h_w_valid_i,
+  output logic                                 h_w_ready_o,
+  input  logic [DataWidth-1:0]                 h_w_data_i,
+  input  logic [BeatBytes-1:0]                 h_w_strb_i,
+  input  logic                                 h_w_last_i,
+  output logic                                 h_b_valid_o,
+  input  logic                                 h_b_ready_i,
+  output logic [1:0]                           h_b_resp_o,
+  // AXI, a port each (sizes: always the full beat)
   output logic [Ports-1:0]                     ar_valid_o,
   input  logic [Ports-1:0]                     ar_ready_i,
   output logic [Ports-1:0][AddrWidth-1:0]      ar_addr_o,
@@ -106,7 +131,7 @@ module bringup_core #(
   logic                  busy_q, hbm_ready_q, refused_q;
   logic [Ports-1:0]      busy;
   logic                  start_wr, settings_ok;
-  logic [1:0]            rd_stage_q;  // reads: 0 idle, then 1, 2, 3 (answer held until taken)
+  logic [2:0]            rd_stage_q;  // reads: 0 idle, then 1, 2, 3, 4 (answer held until taken)
   logic [11:0]           rd_addr_q;   // the read's address, its low bits a port's counter
 
   // A burst of 1, 2, 4, 8 or 16 beats: a power of two up to 16.
@@ -176,13 +201,12 @@ module bringup_core #(
   end
 
   assign start_wr    = wr_fire && s_aw_addr_i == RegCtrl && s_w_data_i[0];
-  assign host_port_o = host_port_q;
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) cycles_q <= '0;
     else cycles_q <= cycles_q + 1'b1;
     if (!rst_ni) cycles_hi_q <= '0;
-    else if (rd_stage_q == 2'd2 && rd_addr_q == RegCyclesLo) cycles_hi_q <= cycles_q[63:32];
+    else if (rd_stage_q == 3'd3 && rd_addr_q == RegCyclesLo) cycles_hi_q <= cycles_q[63:32];
     busy_q      <= |busy || start_q;  // a port is busy from its start, a cycle after start_q
     hbm_ready_q <= hbm_ready_i;
   end
@@ -191,6 +215,15 @@ module bringup_core #(
 
   logic [AddrWidth-1:0]        base;
   logic [Ports-1:0][31:0]      stat;
+  // The engines' AXI: straight out, but for port 0's (bringup_host.sv).
+  logic [Ports-1:0]                e_ar_valid, e_ar_ready, e_r_valid, e_r_ready;
+  logic [Ports-1:0]                e_aw_valid, e_aw_ready, e_w_valid, e_w_ready, e_w_last;
+  logic [Ports-1:0]                e_b_valid, e_b_ready;
+  logic [Ports-1:0][AddrWidth-1:0] e_ar_addr, e_aw_addr;
+  logic [Ports-1:0][7:0]           e_ar_len, e_aw_len;
+  logic [Ports-1:0][1:0]           e_ar_burst, e_aw_burst;
+  logic [Ports-1:0][DataWidth-1:0] e_w_data;
+  logic [Ports-1:0][BeatBytes-1:0] e_w_strb;
   assign base = {base_hi_q[AddrWidth-33:0], base_lo_q};
 
   for (genvar p = 0; p < Ports; p++) begin : gen_port
@@ -226,52 +259,130 @@ module bringup_core #(
       .busy_o    (busy[p]),
       .stat_sel_i(rd_addr_q[5:2]),
       .stat_o    (stat[p]),
-      .ar_valid_o(ar_valid_o[p]),
-      .ar_ready_i(ar_ready_i[p]),
-      .ar_addr_o (ar_addr_o[p]),
-      .ar_len_o  (ar_len_o[p]),
+      .ar_valid_o(e_ar_valid[p]),
+      .ar_ready_i(e_ar_ready[p]),
+      .ar_addr_o (e_ar_addr[p]),
+      .ar_len_o  (e_ar_len[p]),
       .ar_size_o (ar_size_o[p]),
-      .ar_burst_o(ar_burst_o[p]),
-      .r_valid_i (r_valid_i[p]),
-      .r_ready_o (r_ready_o[p]),
+      .ar_burst_o(e_ar_burst[p]),
+      .r_valid_i (e_r_valid[p]),
+      .r_ready_o (e_r_ready[p]),
       .r_data_i  (r_data_i[p]),
       .r_resp_i  (r_resp_i[p]),
       .r_last_i  (r_last_i[p]),
-      .aw_valid_o(aw_valid_o[p]),
-      .aw_ready_i(aw_ready_i[p]),
-      .aw_addr_o (aw_addr_o[p]),
-      .aw_len_o  (aw_len_o[p]),
+      .aw_valid_o(e_aw_valid[p]),
+      .aw_ready_i(e_aw_ready[p]),
+      .aw_addr_o (e_aw_addr[p]),
+      .aw_len_o  (e_aw_len[p]),
       .aw_size_o (aw_size_o[p]),
-      .aw_burst_o(aw_burst_o[p]),
-      .w_valid_o (w_valid_o[p]),
-      .w_ready_i (w_ready_i[p]),
-      .w_data_o  (w_data_o[p]),
-      .w_strb_o  (w_strb_o[p]),
-      .w_last_o  (w_last_o[p]),
-      .b_valid_i (b_valid_i[p]),
-      .b_ready_o (b_ready_o[p]),
+      .aw_burst_o(e_aw_burst[p]),
+      .w_valid_o (e_w_valid[p]),
+      .w_ready_i (e_w_ready[p]),
+      .w_data_o  (e_w_data[p]),
+      .w_strb_o  (e_w_strb[p]),
+      .w_last_o  (e_w_last[p]),
+      .b_valid_i (e_b_valid[p]),
+      .b_ready_o (e_b_ready[p]),
       .b_resp_i  (b_resp_i[p])
     );
+
+    if (p > 0) begin : gen_direct
+      assign ar_valid_o[p] = e_ar_valid[p];
+      assign e_ar_ready[p] = ar_ready_i[p];
+      assign ar_addr_o[p]  = e_ar_addr[p];
+      assign ar_len_o[p]   = e_ar_len[p];
+      assign ar_burst_o[p] = e_ar_burst[p];
+      assign e_r_valid[p]  = r_valid_i[p];
+      assign r_ready_o[p]  = e_r_ready[p];
+      assign aw_valid_o[p] = e_aw_valid[p];
+      assign e_aw_ready[p] = aw_ready_i[p];
+      assign aw_addr_o[p]  = e_aw_addr[p];
+      assign aw_len_o[p]   = e_aw_len[p];
+      assign aw_burst_o[p] = e_aw_burst[p];
+      assign w_valid_o[p]  = e_w_valid[p];
+      assign e_w_ready[p]  = w_ready_i[p];
+      assign w_data_o[p]   = e_w_data[p];
+      assign w_strb_o[p]   = e_w_strb[p];
+      assign w_last_o[p]   = e_w_last[p];
+      assign e_b_valid[p]  = b_valid_i[p];
+      assign b_ready_o[p]  = e_b_ready[p];
+    end
   end
 
-  // --- Reads: address taken (stage 1), the port's counter (2), the answer (3) --
+  // Port 0, shared with the host; the engine reads R and B data from the
+  // memory's side, the host from its FIFOs.
+  bringup_host #(.AddrWidth(AddrWidth), .DataWidth(DataWidth)) u_host (
+    .clk_i,
+    .rst_ni,
+    .sel_i       (host_port_q),
+    .sel_o       (host_sel_o),
+    .h_ar_valid_i,
+    .h_ar_ready_o,
+    .h_ar_i      ({h_ar_addr_i, h_ar_len_i, h_ar_burst_i}),
+    .h_r_valid_o,
+    .h_r_ready_i,
+    .h_r_o       ({h_r_data_o, h_r_resp_o, h_r_last_o}),
+    .h_aw_valid_i,
+    .h_aw_ready_o,
+    .h_aw_i      ({h_aw_addr_i, h_aw_len_i, h_aw_burst_i}),
+    .h_w_valid_i,
+    .h_w_ready_o,
+    .h_w_i       ({h_w_data_i, h_w_strb_i, h_w_last_i}),
+    .h_b_valid_o,
+    .h_b_ready_i,
+    .h_b_resp_o,
+    .e_ar_valid_i(e_ar_valid[0]),
+    .e_ar_ready_o(e_ar_ready[0]),
+    .e_ar_i      ({e_ar_addr[0], e_ar_len[0], e_ar_burst[0]}),
+    .e_r_valid_o (e_r_valid[0]),
+    .e_r_ready_i (e_r_ready[0]),
+    .e_aw_valid_i(e_aw_valid[0]),
+    .e_aw_ready_o(e_aw_ready[0]),
+    .e_aw_i      ({e_aw_addr[0], e_aw_len[0], e_aw_burst[0]}),
+    .e_w_valid_i (e_w_valid[0]),
+    .e_w_ready_o (e_w_ready[0]),
+    .e_w_i       ({e_w_data[0], e_w_strb[0], e_w_last[0]}),
+    .e_b_valid_o (e_b_valid[0]),
+    .e_b_ready_i (e_b_ready[0]),
+    .m_ar_valid_o(ar_valid_o[0]),
+    .m_ar_ready_i(ar_ready_i[0]),
+    .m_ar_o      ({ar_addr_o[0], ar_len_o[0], ar_burst_o[0]}),
+    .m_r_valid_i (r_valid_i[0]),
+    .m_r_ready_o (r_ready_o[0]),
+    .m_r_i       ({r_data_i[0], r_resp_i[0], r_last_i[0]}),
+    .m_aw_valid_o(aw_valid_o[0]),
+    .m_aw_ready_i(aw_ready_i[0]),
+    .m_aw_o      ({aw_addr_o[0], aw_len_o[0], aw_burst_o[0]}),
+    .m_w_valid_o (w_valid_o[0]),
+    .m_w_ready_i (w_ready_i[0]),
+    .m_w_o       ({w_data_o[0], w_strb_o[0], w_last_o[0]}),
+    .m_b_valid_i (b_valid_i[0]),
+    .m_b_ready_o (b_ready_o[0]),
+    .m_b_resp_i  (b_resp_i[0])
+  );
+
+  // --- Reads: address taken (stage 1), the port's counter (2), its group's (3),
+  // the answer (4) -----------------------------------------------------------------
+
+  localparam int unsigned Groups = (Ports + 7) / 8;
+  logic [Groups-1:0][31:0] group_q;  // the counter of port rd_port_q's place in each group of 8
 
   logic        rd_is_port_q;  // the address is a port's counter
   logic [4:0]  rd_port_q;
   logic [31:0] r_data_q;
   logic [5:0]  ar_port;      // the port the address would be, 0 .. 59
 
-  assign s_ar_ready_o = rd_stage_q == 2'd0;
-  assign s_r_valid_o  = rd_stage_q == 2'd3;
+  assign s_ar_ready_o = rd_stage_q == 3'd0;
+  assign s_r_valid_o  = rd_stage_q == 3'd4;
   assign s_r_data_o   = r_data_q;
   assign s_r_resp_o   = 2'b00;
   assign ar_port      = s_ar_addr_i[11:6] - 6'(RegPorts >> 6);
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) rd_stage_q <= '0;
-    else if (s_ar_valid_i && s_ar_ready_o) rd_stage_q <= 2'd1;
-    else if (rd_stage_q == 2'd1 || rd_stage_q == 2'd2) rd_stage_q <= rd_stage_q + 1'b1;
-    else if (s_r_valid_o && s_r_ready_i) rd_stage_q <= 2'd0;
+    else if (s_ar_valid_i && s_ar_ready_o) rd_stage_q <= 3'd1;
+    else if (rd_stage_q != 3'd0 && rd_stage_q != 3'd4) rd_stage_q <= rd_stage_q + 1'b1;
+    else if (s_r_valid_o && s_r_ready_i) rd_stage_q <= 3'd0;
   end
 
   always_ff @(posedge clk_i) begin
@@ -280,9 +391,14 @@ module bringup_core #(
       rd_is_port_q <= s_ar_addr_i >= RegPorts && 32'(ar_port) < 32'(Ports);
       rd_port_q    <= 5'(ar_port);
     end
-    if (rd_stage_q == 2'd2) begin
+    for (int g = 0; g < Groups; g++) begin
+      if (rd_stage_q == 3'd2) begin
+        group_q[g] <= g * 8 + int'(rd_port_q[2:0]) < Ports ? stat[g * 8 + int'(rd_port_q[2:0])] : '0;
+      end
+    end
+    if (rd_stage_q == 3'd3) begin
       if (rd_is_port_q) begin
-        r_data_q <= stat[rd_port_q];
+        r_data_q <= group_q[rd_port_q[4:3]];
       end else begin
         unique case (rd_addr_q)
           RegId:       r_data_q <= Id;

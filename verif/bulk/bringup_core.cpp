@@ -10,7 +10,11 @@
 /// Input (little-endian uint32 on stdin): the memory's size in words, its
 /// words, the number of operations, then per operation three words: kind,
 /// register offset, value. Kinds: 0 write the value, 1 read (its value goes
-/// out), 2 read STATUS until busy is clear, 3 wait the value's cycles.
+/// out), 2 read STATUS until busy is clear, 3 wait the value's cycles,
+/// 4 the host writes one beat at the offset (a byte address), its words the
+/// value plus their index, 5 the host reads one beat at the offset (its 8
+/// words go out). The host's accesses are one-beat bursts on the host port
+/// (PCIS's place), one at a time, AW and W together.
 /// Plusargs: the memory's (axi_settings; +w... for the write side), +seed.
 /// Output: the values read, in order; then the memory's words.
 
@@ -122,6 +126,49 @@ struct Bench {
     dut.s_r_ready_i = 0;
     return value;
   }
+
+  /// @brief The host writes one beat at addr: words value + i.
+  void host_write(uint64_t addr, uint32_t value) {
+    dut.h_aw_valid_i = dut.h_w_valid_i = 1;
+    dut.h_aw_addr_i = addr;
+    dut.h_aw_len_i = 0;
+    dut.h_aw_burst_i = 1;
+    for (size_t i = 0; i < kBeatWords; ++i) set_bits(dut.h_w_data_i, 32 * i, 32, value + static_cast<uint32_t>(i));
+    dut.h_w_strb_i = 0xFFFF'FFFF;
+    dut.h_w_last_i = 1;
+    // AW and W may be taken in different cycles; each drops after its handshake.
+    for (uint64_t i = 0; dut.h_aw_valid_i || dut.h_w_valid_i; ++i) {
+      if (i == kMaxIdleCycles) throw std::runtime_error("hung waiting for the host's AWREADY and WREADY");
+      dut.clk_i = 0;
+      dut.eval();
+      const bool aw_taken = dut.h_aw_valid_i && dut.h_aw_ready_o, w_taken = dut.h_w_valid_i && dut.h_w_ready_o;
+      cycle();
+      if (aw_taken) dut.h_aw_valid_i = 0;
+      if (w_taken) dut.h_w_valid_i = 0;
+    }
+    dut.h_b_ready_i = 1;
+    until([&] { return dut.h_b_valid_o != 0; }, "the host's BVALID");
+    cycle();
+    dut.h_b_ready_i = 0;
+  }
+
+  /// @brief The host reads one beat at addr.
+  std::array<uint32_t, kBeatWords> host_read(uint64_t addr) {
+    dut.h_ar_valid_i = 1;
+    dut.h_ar_addr_i = addr;
+    dut.h_ar_len_i = 0;
+    dut.h_ar_burst_i = 1;
+    until([&] { return dut.h_ar_ready_o != 0; }, "the host's ARREADY");
+    cycle();
+    dut.h_ar_valid_i = 0;
+    dut.h_r_ready_i = 1;
+    until([&] { return dut.h_r_valid_o != 0; }, "the host's RVALID");
+    std::array<uint32_t, kBeatWords> beat;
+    for (size_t i = 0; i < kBeatWords; ++i) beat[i] = static_cast<uint32_t>(get_bits(dut.h_r_data_o, 32 * i, 32));
+    cycle();
+    dut.h_r_ready_i = 0;
+    return beat;
+  }
 };
 
 }  // namespace
@@ -172,6 +219,8 @@ int main(int argc, char** argv) {
         case 3:
           for (uint32_t i = 0; i < op[2]; ++i) bench.cycle();
           break;
+        case 4: bench.host_write(op[1], op[2]); break;
+        case 5: std::ranges::copy(bench.host_read(op[1]), std::back_inserter(out)); break;
         default: std::println(stderr, "unknown operation {}", op[0]); return kExitBadInput;
       }
     }
