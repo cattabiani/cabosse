@@ -18,11 +18,11 @@ MAX_LANE_DEPTH = 19
 # alone is 27, and met 250 MHz in M3), its value when written (M5's walker
 # PR): next-cycle unit state into the RAMs' addresses.
 MAX_ENGINE_CONTROL_DEPTH = 22
-# (top, extra files, parameters): our modules, the harnesses in platforms/,
-# then the units' flush-to-zero variants.
+# (top, extra files, parameters): our modules, the harnesses and the bring-up
+# design in platforms/, then the units' flush-to-zero variants.
 TOPS = (
     [(m, (), ()) for m in MODULES]
-    + [(p.stem, (p,), ()) for p in rtl.harnesses()]
+    + [(p.stem, rtl.extra_sources(p.stem), ()) for p in (*rtl.harnesses(), *rtl.BRINGUP)]
     + [(t, (), FTZ) for t in ("bf16_mac", "fp32_fma", "dot_lane")]
 )
 IDS = [top + ("-ftz" if params else "") for top, _, params in TOPS]
@@ -37,6 +37,7 @@ SYNTH_PARAMS = {
     "engine": (("Ports", 4),),
     "engine_path": (("Ports", 4),),
     "vec_unit": (("Lanes", 8), ("Len", 64)),
+    "bringup_core": (("Ports", 2),),
 }
 # (top, parameters, message): shapes that must not elaborate.
 BAD_SHAPES = [
@@ -76,6 +77,8 @@ BAD_SHAPES = [
     ("vec_unit", (("Lanes", 32),), "Partials"),
     ("vec_unit", (("KvPorts", 24),), "KvPorts"),
     ("vec_unit", (("Lanes", 4), ("Len", 64), ("Partials", 64)), "Lanes must be 2 * E"),
+    # bringup_core: more ports than a 32-bit PORT_EN and the counters' map hold.
+    ("bringup_core", (("Ports", 33),), "Ports must be 1 to 32"),
 ]
 
 
@@ -84,10 +87,12 @@ def test_there_is_rtl() -> None:
 
 
 def test_sources_lists_every_rtl_file() -> None:
-    """rtl/sources.f names every .sv file under rtl/, and nothing else."""
-    lines = [ln.strip() for ln in rtl.SOURCES.read_text().splitlines()]
-    listed = {rtl.RTL / ln for ln in lines if ln.endswith(".sv")}
-    assert listed == set(rtl.RTL.rglob("*.sv"))
+    """rtl/sources.f names every .sv file under rtl/, and nothing else; the
+    bring-up design's sources.f its folder's vendor-free modules (all but
+    the CL top, cabosse_bringup.sv)."""
+    assert set(rtl.file_list(rtl.SOURCES)) == set(rtl.RTL.rglob("*.sv"))
+    folder = rtl.BRINGUP[0].parent
+    assert set(rtl.BRINGUP) == set(folder.glob("*.sv")) - {folder / "cabosse_bringup.sv"}
 
 
 @rtl.needs_verilator
@@ -127,5 +132,5 @@ def test_engine_control_depth() -> None:
 @pytest.mark.parametrize(("top", "params", "message"), BAD_SHAPES)
 def test_rejects_a_bad_shape(top: str, params: tuple, message: str) -> None:
     """Elaboration stops with a message."""
-    result = rtl.lint(top, params=list(params))
+    result = rtl.lint(top, rtl.extra_sources(top), list(params))
     assert result.returncode != 0 and message in result.stderr, result.stderr

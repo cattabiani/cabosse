@@ -42,6 +42,7 @@ def build(top: str, params: tuple[tuple[str, int], ...] = ()) -> Path:
     The drivers need C++23 with <print> (GCC 14 or newer); the standard CXX
     variable picks the compiler, which Verilator's makefile otherwise fixes.
     The top's parameters are public, so a driver reads the build's values.
+    A top outside rtl/ brings its own files (rtl.extra_sources).
     Thread-safe: the first caller builds, the others wait for it."""
     with _BUILD_LOCK:
         if (top, params) not in _BUILT:
@@ -65,7 +66,7 @@ def _build(top: str, params: tuple[tuple[str, int], ...]) -> Path:
         "--top-module", top, "-Mdir", str(directory), "-o", "bulk",
         *(f"-G{k}={v}" for k, v in params),
         *(["-MAKEFLAGS", f"CXX={cxx}", "-MAKEFLAGS", f"LINK={cxx}"] if cxx else []),
-        *rtl.VERILATOR_FILES, str(DRIVERS / f"{top}.cpp"),
+        *rtl.VERILATOR_FILES, *map(str, rtl.extra_sources(top)), str(DRIVERS / f"{top}.cpp"),
     ]  # fmt: skip
     result = subprocess.run(argv, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout[-2000:] + result.stderr[-4000:]
