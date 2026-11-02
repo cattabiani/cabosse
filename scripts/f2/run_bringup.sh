@@ -47,7 +47,7 @@ echo "aws-fpga $aws_fpga"
 source /etc/profile >>$log 2>&1
 cd aws-fpga && { source sdk_setup.sh >>$log 2>&1 || { echo "sdk_setup failed"; tail -40 $log; finish; }; }
 # <print> needs GCC 14; Ubuntu 24.04's default is 13.
-apt-get install -y -q g++-14 >>$log 2>&1 || { echo "g++-14 install failed"; tail -20 $log; finish; }
+{ apt-get update -q && apt-get install -y -q g++-14; } >>$log 2>&1 || { echo "g++-14 install failed"; tail -20 $log; finish; }
 make -C /root/cabosse/platforms/f2/host CXX=g++-14 >>$log 2>&1 || { echo "host tool build failed"; tail -40 $log; finish; }
 echo "CABOSSE-END setup"
 

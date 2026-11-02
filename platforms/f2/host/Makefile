@@ -7,10 +7,13 @@
 
 CXX ?= g++
 CXXFLAGS = -std=c++23 -O2 -Wall -Wextra -Werror -I$(SDK_DIR)/userspace/include
+# The SDK's own build of the library, as its tools link it (sdk_setup.sh
+# also installs it, in a folder the linker may not search).
+LDFLAGS = -L$(SDK_DIR)/userspace/lib/so -Wl,-rpath,$(SDK_DIR)/userspace/lib/so
 LDLIBS = -lfpga_mgmt
 
 bringup: bringup.cpp
-	$(CXX) $(CXXFLAGS) -o $@ $< $(LDLIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LDFLAGS) $(LDLIBS)
 
 clean:
 	rm -f bringup

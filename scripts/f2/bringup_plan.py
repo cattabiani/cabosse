@@ -32,6 +32,7 @@ LATENCY_SAMPLES = 1000
 HOST_BYTES = 64 << 20  # PCIS writes
 HOST_READ_BYTES = 4 << 20  # PCIS reads: slow, a word at a time
 OCL_SAMPLES = 10000
+UPLOAD_S = 30  # results to S3 at most this often, and at the end
 
 
 class Plan:
@@ -41,14 +42,28 @@ class Plan:
         self.tool, self.out, self.quick = tool, out, quick
         self.provenance = json.loads(os.environ.get("PROVENANCE", "{}"))
         self.s3 = os.environ.get("S3", "")
+        self.uploaded = 0.0  # when the file last went to S3
 
     def call(self, *args: object) -> dict:
         """One tool command; its JSON, or {"error": ...}."""
         result = subprocess.run([self.tool, *map(str, args)], capture_output=True, text=True)
+        lines = result.stdout.strip().splitlines()
         try:
-            return json.loads(result.stdout.strip().splitlines()[-1])
-        except IndexError, json.JSONDecodeError:
-            return {"error": f"no JSON (exit {result.returncode})", "stderr": result.stderr[-2000:]}
+            return json.loads(lines[-1]) if lines else self.no_json(result)
+        except json.JSONDecodeError:
+            return self.no_json(result)
+
+    @staticmethod
+    def no_json(result: subprocess.CompletedProcess) -> dict:
+        """The error of a command that printed no JSON."""
+        return {"error": f"no JSON (exit {result.returncode})", "stderr": result.stderr[-2000:]}
+
+    def upload(self, now: bool = False) -> None:
+        """The file to S3, at most every UPLOAD_S unless now."""
+        if self.s3 and (now or time.monotonic() - self.uploaded > UPLOAD_S):
+            dst = f"{self.s3}/{os.path.basename(self.out)}"
+            subprocess.run(["aws", "s3", "cp", "--only-show-errors", self.out, dst])
+            self.uploaded = time.monotonic()
 
     def record(self, step: str, params: dict, result: dict) -> dict:
         """Append a step's result to the file (and S3); return it."""
@@ -56,23 +71,14 @@ class Plan:
         line |= self.provenance | {"params": params, "result": result}
         with open(self.out, "a") as f:
             f.write(json.dumps(line) + "\n")
-        if self.s3:
-            subprocess.run(
-                [
-                    "aws",
-                    "s3",
-                    "cp",
-                    "--only-show-errors",
-                    self.out,
-                    f"{self.s3}/{os.path.basename(self.out)}",
-                ]
-            )
+        self.upload()
         print(step, json.dumps(params), "error" if "error" in result else "ok", flush=True)
         return result
 
-    def run(self, step: str, **regs: int) -> dict:
-        """A run of the test engines with these registers (the tool's names)."""
-        settings = {
+    @staticmethod
+    def settings(**regs: int) -> dict:
+        """A run's registers (the tool's names): the defaults, then regs."""
+        return {
             "host_port": 0,
             "port_en": ALL,
             "base_lo": 0,
@@ -85,8 +91,18 @@ class Plan:
             "wr_limit": 64,
             "strb": 0xFFFF_FFFF,
         } | regs
+
+    def run(self, step: str, **regs: int) -> dict:
+        """A run of the test engines with these registers."""
+        settings = self.settings(**regs)
         args = [f"{k}={v}" for k, v in settings.items()]
         return self.record(step, settings, self.call("run", *args))
+
+    def latency(self, step: str, n: int, **regs: int) -> dict:
+        """n runs of one beat, one burst, each port's first beat's cycles."""
+        settings = self.settings(mode=READ, beats=1, rd_burst=1, wr_burst=1, rd_limit=1, **regs)
+        args = [f"{k}={v}" for k, v in settings.items()]
+        return self.record(step, settings | {"n": n}, self.call("latency", n, *args))
 
 
 def base(addr: int) -> dict:
@@ -108,7 +124,7 @@ def at_clock(plan: Plan, mhz: int) -> None:
         plan.run("read_burst", mode=READ, beats=beats, rd_burst=b, port_en=ALL)
         plan.run("write_burst", mode=WRITE, beats=beats, wr_burst=b, port_en=ALL)
     for lim in LIMITS:
-        plan.run("read_limit", mode=READ, beats=beats >> 2, rd_burst=1, rd_limit=min(lim, 255))
+        plan.run("read_limit", mode=READ, beats=beats >> 2, rd_burst=1, rd_limit=lim)
         plan.run("write_limit", mode=WRITE, beats=beats >> 2, wr_burst=1, wr_limit=lim)
     # The switch: every port at its own pseudo channel's address, then the
     # next one's, then the other stack's, then all on port 0's.
@@ -122,27 +138,10 @@ def at_clock(plan: Plan, mhz: int) -> None:
     # A one-beat partial write (D-062's V stores) against a full one.
     plan.run("write_partial_1beat", mode=WRITE, beats=beats >> 2, wr_burst=1, strb=0x0000_FFFF)
     plan.run("write_full_1beat", mode=WRITE, beats=beats >> 2, wr_burst=1)
-    # Latency: one beat, one burst, port 0 and 31 (the stacks' far ends).
+    # Latency: one beat, one burst, ports 0 and 31 (the stacks' far ends).
+    n = LATENCY_SAMPLES // 10 if plan.quick else LATENCY_SAMPLES
     for p in (0, 31):
-        firsts = []
-        for _ in range(LATENCY_SAMPLES // (10 if plan.quick else 1)):
-            r = plan.call(
-                "run",
-                "host_port=0",
-                f"port_en={1 << p}",
-                f"stride={REGION_BYTES}",
-                "mode=1",
-                "beats=1",
-                "rd_burst=1",
-                "rd_limit=1",
-                "base_lo=0",
-                "base_hi=0",
-            )
-            if "error" in r:
-                firsts = r
-                break
-            firsts.append(r["ports"][0]["rd_first"])
-        plan.record("read_latency", {"port": p, "mhz": mhz}, {"rd_first": firsts})
+        plan.latency("read_latency", n, port_en=1 << p)
 
 
 def main() -> None:
@@ -178,6 +177,7 @@ def main() -> None:
         at_clock(plan, mhz)
     plan.record("clock", {"mhz": CLOCKS_MHZ[0]}, plan.call("clock", CLOCKS_MHZ[0]))
     plan.record("done", {}, {})
+    plan.upload(now=True)
 
 
 if __name__ == "__main__":

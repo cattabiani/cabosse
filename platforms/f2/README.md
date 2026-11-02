@@ -112,7 +112,7 @@ when the port is done; `start` clears them.
 | 0x000 | ID | RO | `0xCAB0B001` |
 | 0x004 | BUILD | RO | the build's commit (first 8 hex digits) |
 | 0x008 | SCRATCH | RW | for register access tests |
-| 0x00C | STATUS | RO | bit 0 busy (any port), bit 1 HBM ready (both stacks), bit 2 refused (the last start), bit 3 the host owns HBM port 0 now |
+| 0x00C | STATUS | RO | bit 0 busy (any port), bit 1 HBM ready (both stacks), bit 2 refused (the last start), bit 3 the host owns HBM port 0 now, bits 15:8 start requests so far (mod 256: the host sees its start arrive, OCL's writes and reads not being ordered) |
 | 0x010 | CYCLES_LO | RO | free-running cycle counter; reading it latches CYCLES_HI |
 | 0x014 | CYCLES_HI | RO | |
 | 0x020 | CTRL | WO | bit 0 start |
