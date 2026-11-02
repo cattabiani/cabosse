@@ -226,7 +226,7 @@ def test_bad_settings_refused(bad: dict[str, int]):
     status = (READ_OP, REGS["status"], 0)
     ops = start(WRITE, **(good | bad)) + [status] + start(WRITE, **good) + [status] + counters(1)
     got = run(blank(), ops).reads
-    assert got[0] == 0b110 and got[1] == 0b010, got[:2]
+    assert got[0] == 1 << 8 | 0b110 and got[1] == 2 << 8 | 0b010, got[:2]  # starts so far, flags
     [[c]] = runs(got[2:], 1)
     assert c["wr_beats"] == 64, c  # the good run, on port 0
 

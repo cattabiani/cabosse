@@ -129,6 +129,7 @@ module bringup_core #(
   logic [63:0]           cycles_q;
   logic [31:0]           cycles_hi_q;  // CYCLES_HI as of the last CYCLES_LO read
   logic                  busy_q, hbm_ready_q, refused_q;
+  logic [7:0]            starts_q;  // start requests, taken or refused: the host sees its own arrive
   logic [Ports-1:0]      busy;
   logic                  start_wr, settings_ok;
   logic [2:0]            rd_stage_q;  // reads: 0 idle, then 1, 2, 3, 4 (answer held until taken)
@@ -173,11 +174,15 @@ module bringup_core #(
       scratch_q   <= '0;
       host_port_q <= 1'b1;
       refused_q   <= 1'b0;
+      starts_q    <= '0;
     end else begin
       if (wr_fire) b_pend_q <= 1'b1;
       else if (s_b_ready_i) b_pend_q <= 1'b0;
       start_q <= start_wr && !busy_q && settings_ok;
-      if (start_wr) refused_q <= busy_q || !settings_ok;
+      if (start_wr) begin
+        refused_q <= busy_q || !settings_ok;
+        starts_q  <= starts_q + 1'b1;
+      end
       if (wr_fire) begin
         unique case (s_aw_addr_i)
           RegScratch:  scratch_q   <= s_w_data_i;
@@ -404,7 +409,7 @@ module bringup_core #(
           RegId:       r_data_q <= Id;
           RegBuild:    r_data_q <= Build;
           RegScratch:  r_data_q <= scratch_q;
-          RegStatus:   r_data_q <= {28'd0, host_sel_o, refused_q, hbm_ready_q, busy_q};
+          RegStatus:   r_data_q <= {16'd0, starts_q, 4'd0, host_sel_o, refused_q, hbm_ready_q, busy_q};
           RegCyclesLo: r_data_q <= cycles_q[31:0];
           RegCyclesHi: r_data_q <= cycles_hi_q;
           RegPortEn:   r_data_q <= port_en_q;

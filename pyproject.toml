@@ -12,6 +12,8 @@ addopts = "-m 'not slow'"
 [tool.ruff]
 line-length = 100
 target-version = "py314"
+# Runs on the F2 instance's system Python (Ubuntu 24.04: 3.12).
+per-file-target-version = { "scripts/f2/bringup_plan.py" = "py312" }
 
 [tool.ruff.lint]
 # pycodestyle, pyflakes, import order, pyupgrade, bugbear
