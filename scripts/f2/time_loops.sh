@@ -6,7 +6,9 @@
 # and route the accumulate-loop harnesses of platforms/f2/timing/ on F2's
 # part at 250 MHz, the RUNS below all at once, and print the slack and the
 # worst paths (M3, D-027, D-038). Results go to the serial console between CABOSSE
-# markers, read back with `aws ec2 get-console-output --latest`. The instance
+# markers, read back with `aws ec2 get-console-output --latest`. With S3 set,
+# the log and each run's reports also go to S3, where they outlive the
+# instance (its disk goes with it, the console keeps 64 KiB). The instance
 # powers off (and, launched with shutdown behaviour "terminate", terminates)
 # when done or at the deadline. A run whose worst slack is below the margin exits
 # with an error (timing.tcl), shown as its exit status.
@@ -20,17 +22,23 @@ FALLBACK_PART=xcvu47p-fsvh2892-2-e
 # (M4), its loop 4 cycles.
 RUNS="lane_path:MulRegs:1:4:0 lane_path:MulRegs:1:4:1 lane_path:MulRegs:2:4:0"
 DEADLINE_MIN=110               # safety net: power off even if something hangs (engine: 210+)
-DCP_S3=                        # s3://bucket/prefix: keep each run's routed checkpoint there
+S3=                            # s3://bucket/dcp/<build>: keep the log, reports, checkpoints there
 THREADS=4                      # Vivado's threads per run
 
 shutdown -h +$DEADLINE_MIN
 export HOME=/root  # cloud-init runs this without HOME; Vivado needs it
 export CABOSSE_THREADS=$THREADS
 export CABOSSE_AWS_FPGA=/root/aws-fpga  # the shell flow's floorplan
-[ -n "$DCP_S3" ] && export CABOSSE_DCP=1
+[ -n "$S3" ] && export CABOSSE_DCP=1
 out=/var/log/cabosse.log
 exec > >(tee -a $out > /dev/console) 2>&1
 log=/var/log/cabosse-build.log
+
+save_log() {  # copy the log so far to S3, over the last copy
+  [ -z "$S3" ] || aws s3 cp --only-show-errors $out "$S3/cabosse.log"
+}
+# Every 5 minutes, so a run cut off by the deadline still leaves its log.
+[ -n "$S3" ] && { while sleep 300; do save_log; done & } >>$log 2>&1
 
 section() { echo "CABOSSE-BEGIN $1"; }
 done_() { echo "CABOSSE-END $1"; }
@@ -76,8 +84,10 @@ for run in $RUNS; do
     status=$?
     echo "run$i ($run) exit $status $(date -u +%T)"
     [ $status -eq 0 ] || tail -30 vivado.out
-    if [ -n "$DCP_S3" ] && [ -f routed.dcp ]; then
-      aws s3 cp --only-show-errors routed.dcp "$DCP_S3/run$i.dcp" && echo "run$i dcp $DCP_S3/run$i.dcp"
+    if [ -n "$S3" ]; then
+      aws s3 cp --only-show-errors --recursive . "$S3/run$i/" --exclude "*" \
+        --include "*.rpt" --include "vivado.*" --include "routed.dcp" &&
+        echo "run$i saved to $S3/run$i/"
     fi
   ) &
   pids+=($!)
@@ -111,6 +121,7 @@ done
 # for a reader polling every 30 s to catch each one.
 exec > /dev/console 2>&1
 sleep 2  # let tee finish writing the log
+save_log
 split -b 16k -d $out /var/log/cabosse-part.
 for part in /var/log/cabosse-part.*; do
   echo "CABOSSE-REPLAY ${part##*.}"
