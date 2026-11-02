@@ -75,7 +75,7 @@ module engine
   parameter  int unsigned E            = 4,    // pairs per lane per cycle
   parameter  int unsigned A            = 16,   // partial sums per row (D-027)
   parameter  int unsigned MaxD         = 128,  // largest head dimension
-  parameter  int unsigned MulRegs      = 3,    // registers in the scale's multiply (fp32_fma)
+  parameter  int unsigned MulRegs      = 5,    // registers in the scale's multiply (fp32_fma)
   localparam int unsigned LanesPerPort = DataWidth / (16 * E),  // a beat holds E weights each
   localparam int unsigned L            = Ports * LanesPerPort,
   localparam int unsigned Groups       = L / Writes,  // write groups per pass
