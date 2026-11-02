@@ -13,8 +13,9 @@
 /// out), 2 read STATUS until busy is clear, 3 wait the value's cycles,
 /// 4 the host writes one beat at the offset (a byte address), its words the
 /// value plus their index, 5 the host reads one beat at the offset (its 8
-/// words go out). The host's accesses are one-beat bursts on the host port
-/// (PCIS's place), one at a time, AW and W together.
+/// words go out), 6 the host posts that read and does not wait, 7 the host
+/// takes the posted read's beat (its 8 words go out). The host's accesses
+/// are one-beat bursts on the host port (PCIS's place), one at a time.
 /// Plusargs: the memory's (axi_settings; +w... for the write side), +seed.
 /// Output: the values read, in order; then the memory's words.
 
@@ -127,7 +128,10 @@ struct Bench {
     return value;
   }
 
-  /// @brief The host writes one beat at addr: words value + i.
+  /// @brief The host writes one beat.
+  /// @param addr its byte address, beat-aligned.
+  /// @param value word i of the beat is value + i.
+  /// @throws std::runtime_error on a hang.
   void host_write(uint64_t addr, uint32_t value) {
     dut.h_aw_valid_i = dut.h_w_valid_i = 1;
     dut.h_aw_addr_i = addr;
@@ -152,8 +156,10 @@ struct Bench {
     dut.h_b_ready_i = 0;
   }
 
-  /// @brief The host reads one beat at addr.
-  std::array<uint32_t, kBeatWords> host_read(uint64_t addr) {
+  /// @brief The host posts a one-beat read; host_take() collects its beat.
+  /// @param addr its byte address, beat-aligned.
+  /// @throws std::runtime_error on a hang.
+  void host_post(uint64_t addr) {
     dut.h_ar_valid_i = 1;
     dut.h_ar_addr_i = addr;
     dut.h_ar_len_i = 0;
@@ -161,6 +167,12 @@ struct Bench {
     until([&] { return dut.h_ar_ready_o != 0; }, "the host's ARREADY");
     cycle();
     dut.h_ar_valid_i = 0;
+  }
+
+  /// @brief The beat of the read host_post() posted.
+  /// @return its 8 words.
+  /// @throws std::runtime_error on a hang.
+  std::array<uint32_t, kBeatWords> host_take() {
     dut.h_r_ready_i = 1;
     until([&] { return dut.h_r_valid_o != 0; }, "the host's RVALID");
     std::array<uint32_t, kBeatWords> beat;
@@ -220,7 +232,12 @@ int main(int argc, char** argv) {
           for (uint32_t i = 0; i < op[2]; ++i) bench.cycle();
           break;
         case 4: bench.host_write(op[1], op[2]); break;
-        case 5: std::ranges::copy(bench.host_read(op[1]), std::back_inserter(out)); break;
+        case 5:
+          bench.host_post(op[1]);
+          std::ranges::copy(bench.host_take(), std::back_inserter(out));
+          break;
+        case 6: bench.host_post(op[1]); break;
+        case 7: std::ranges::copy(bench.host_take(), std::back_inserter(out)); break;
         default: std::println(stderr, "unknown operation {}", op[0]); return kExitBadInput;
       }
     }

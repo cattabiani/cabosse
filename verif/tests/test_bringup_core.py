@@ -38,7 +38,10 @@ COUNTERS = [
     "rd_occ_hi", "wr_beats", "wr_cycles", "wr_first", "wr_maxout", "wr_occ_lo", "wr_occ_hi",
     "flags",
 ]  # fmt: skip
-WRITE_OP, READ_OP, POLL_OP, WAIT_OP, HOST_WRITE_OP, HOST_READ_OP = range(6)  # the driver's
+# The driver's operations
+WRITE_OP, READ_OP, POLL_OP, WAIT_OP, HOST_WRITE_OP, HOST_READ_OP, HOST_POST_OP, HOST_TAKE_OP = (
+    range(8)
+)
 Op = tuple[int, int, int]
 
 
@@ -283,3 +286,17 @@ def test_cl_top_elaborates() -> None:
     argv += ["-I", str(hdk / "shell_stable" / "design" / "interfaces"), *map(str, aws + ours)]
     result = subprocess.run(argv, capture_output=True, text=True)
     assert result.returncode == 0 and "0 errors, 0 warnings" in result.stdout, result.stdout
+
+
+@rtl.needs_verilator
+def test_host_waits_for_port_0():
+    """A host read posted while port 0's engine owns the port waits in its
+    FIFO (STATUS bit 3 clear), and is answered once HOST_PORT gives the port
+    back; the host's write before it was answered before the hand-over."""
+    status = (READ_OP, REGS["status"], 0)
+    ops = [(HOST_WRITE_OP, 0x80, 0x77), (WRITE_OP, REGS["host_port"], 0), status]
+    ops += [(HOST_POST_OP, 0x80, 0), (WAIT_OP, 0, 200), status]
+    ops += [(WRITE_OP, REGS["host_port"], 1), status, (HOST_TAKE_OP, 0, 0)]
+    got = run(blank(), ops, latency=20).reads
+    assert got[:3] == [0b0010, 0b0010, 0b1010], got[:3]  # engine, engine, host
+    np.testing.assert_array_equal(got[3:], 0x77 + np.arange(8))

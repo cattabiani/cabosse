@@ -81,7 +81,11 @@ at byte address `a` holds `(a >> 2) ^ SEED`. Bursts must not cross 4 KB:
 up to 16, `BEATS` a multiple of both, both limits at least 1. A start that
 breaks these rules, or comes during a run, is refused (`STATUS.refused`).
 Port 0 runs only with `HOST_PORT` clear, and `HOST_PORT` keeps its value
-during a run. A read burst of 1 beat is issued at
+during a run. The host uses PCIS only while `STATUS` says it owns port 0
+and HBM is ready, with full-width beats (as AWS's example, HBM sees full
+beats only), and before clearing `HOST_PORT` waits for its writes'
+responses (a read through PCIS flushes posted writes); port 0 passes to the
+engine once the host's side is idle (`STATUS` bit 3). A read burst of 1 beat is issued at
 half rate (port_dma takes a command every other cycle), and reads have at
 most 128 beats in flight (port_dma's FIFO, as in the engine).
 
@@ -95,7 +99,7 @@ when the port is done; `start` clears them.
 | 0x000 | ID | RO | `0xCAB0B001` |
 | 0x004 | BUILD | RO | the build's commit (first 8 hex digits) |
 | 0x008 | SCRATCH | RW | for register access tests |
-| 0x00C | STATUS | RO | bit 0 busy (any port), bit 1 HBM ready (both stacks), bit 2 refused (the last start) |
+| 0x00C | STATUS | RO | bit 0 busy (any port), bit 1 HBM ready (both stacks), bit 2 refused (the last start), bit 3 the host owns HBM port 0 now |
 | 0x010 | CYCLES_LO | RO | free-running cycle counter; reading it latches CYCLES_HI |
 | 0x014 | CYCLES_HI | RO | |
 | 0x020 | CTRL | WO | bit 0 start |

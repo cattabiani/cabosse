@@ -13,7 +13,7 @@
 # checkpoint; PLAN.md, M8: slack >= 0 at 250 MHz). The instance powers off
 # when done or at the deadline.
 
-REF=main                       # branch of github.com/cattabiani/cabosse
+REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga
 CL=cabosse_bringup
 DEADLINE_MIN=240               # safety net: power off even if something hangs

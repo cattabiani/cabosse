@@ -5,8 +5,8 @@
 // SmartConnect) and port 0's test engine (platforms/f2/README.md,
 // HOST_PORT). sel_i asks for the owner; sel_o is the owner: it turns to the
 // host at once (the core asks only between runs, the engine idle) and back
-// to the engine once the host's side is idle, no burst unanswered and none
-// offered. The host's channels each pass a 2-entry FIFO, a register stage
+// to the engine once the host's side is idle: no burst unanswered, its
+// address or its data sent (W may go ahead of AW), and none offered. The host's channels each pass a 2-entry FIFO, a register stage
 // on its long way from the shell. With the engine owning the port, the
 // host's requests wait in their FIFOs.
 //
@@ -77,11 +77,14 @@ module bringup_host #(
   logic           ar_valid, aw_valid, w_valid, r_ready, b_ready;  // the host's FIFOs, memory side
   logic [AxW-1:0] ar, aw;
   logic [WW-1:0]  w;
-  logic [7:0]     reads_q, writes_q;  // the host's bursts unanswered
+  // The host's bursts unanswered: reads by address, writes by address and by
+  // last data beat. The SmartConnect lets at most 64 out, so 8 bits hold them.
+  logic [7:0]     reads_q, writes_q, wlasts_q;
 
   assign sel_o = sel_q;
 
   // verilator lint_off PINCONNECTEMPTY
+  // The FIFOs' counts go unread.
   stream_fifo #(.Width(AxW), .Depth(2)) u_ar (
     .clk_i, .rst_ni,
     .in_valid_i (h_ar_valid_i), .in_ready_o (h_ar_ready_o), .in_data_i (h_ar_i),
@@ -128,12 +131,17 @@ module bringup_host #(
       sel_q    <= 1'b1;
       reads_q  <= '0;
       writes_q <= '0;
+      wlasts_q <= '0;
     end else begin
       reads_q  <= reads_q + 8'(sel_q && ar_valid && m_ar_ready_i)
                 - 8'(sel_q && m_r_valid_i && r_ready && m_r_i[0]);
       writes_q <= writes_q + 8'(sel_q && aw_valid && m_aw_ready_i) - 8'(sel_q && m_b_valid_i && b_ready);
+      wlasts_q <= wlasts_q + 8'(sel_q && w_valid && m_w_ready_i && w[0])
+                - 8'(sel_q && m_b_valid_i && b_ready);
       if (sel_i) sel_q <= 1'b1;
-      else if (reads_q == '0 && writes_q == '0 && !ar_valid && !aw_valid && !w_valid) sel_q <= 1'b0;
+      else if (reads_q == '0 && writes_q == '0 && wlasts_q == '0 && !ar_valid && !aw_valid && !w_valid) begin
+        sel_q <= 1'b0;
+      end
     end
   end
 

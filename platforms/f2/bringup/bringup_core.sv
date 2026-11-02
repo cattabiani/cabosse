@@ -404,7 +404,7 @@ module bringup_core #(
           RegId:       r_data_q <= Id;
           RegBuild:    r_data_q <= Build;
           RegScratch:  r_data_q <= scratch_q;
-          RegStatus:   r_data_q <= {29'd0, refused_q, hbm_ready_q, busy_q};
+          RegStatus:   r_data_q <= {28'd0, host_sel_o, refused_q, hbm_ready_q, busy_q};
           RegCyclesLo: r_data_q <= cycles_q[31:0];
           RegCyclesHi: r_data_q <= cycles_hi_q;
           RegPortEn:   r_data_q <= port_en_q;
