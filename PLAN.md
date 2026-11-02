@@ -1437,6 +1437,11 @@ iteration, a few placed builds, each with the owner's go.
   of wire), 16 logic levels. Use: 618,132 LUTs (47.4%), 378,367 registers,
   16 DSPs; by SLR 34.7% / 74.1% / 33.6% of LUTs. So the pipelined step
   control (D-051) is built: the timing loop (D-060).
+- [x] The timing loop (D-060, D-063; steps above): rounds 1 to 5, builds 1
+  to 4. Build 4 (round 4's RTL, the shell's flow and floorplan) meets 250
+  MHz: WNS +0.028 and +0.031 ns, no failing endpoint (below the harness's
+  +0.1 ns margin). Round 5's two structural fixes (PR #83) wait for M8's
+  full build. Closed by the owner, 2026-11-02.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
