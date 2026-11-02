@@ -65,6 +65,7 @@ def file_list(listed: Path) -> tuple[Path, ...]:
 # The bring-up design's vendor-free modules (platforms/f2/bringup/), built on
 # rtl/; its CL top (the shell, AWS's and AMD's IP) builds only in Vivado.
 BRINGUP = file_list(REPO / "platforms" / "f2" / "bringup" / "sources.f")
+BRINGUP_TOP = REPO / "platforms" / "f2" / "bringup" / "cabosse_bringup.sv"
 
 
 def extra_sources(top: str) -> tuple[Path, ...]:

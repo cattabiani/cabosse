@@ -92,7 +92,7 @@ def test_sources_lists_every_rtl_file() -> None:
     the CL top, cabosse_bringup.sv)."""
     assert set(rtl.file_list(rtl.SOURCES)) == set(rtl.RTL.rglob("*.sv"))
     folder = rtl.BRINGUP[0].parent
-    assert set(rtl.BRINGUP) == set(folder.glob("*.sv")) - {folder / "cabosse_bringup.sv"}
+    assert set(rtl.BRINGUP) == set(folder.glob("*.sv")) - {rtl.BRINGUP_TOP}
 
 
 @rtl.needs_verilator
