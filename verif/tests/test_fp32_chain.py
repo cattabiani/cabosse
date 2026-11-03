@@ -9,7 +9,7 @@ each function's integer steps (exp's clamp, rounding of t and subnormal
 results; the inputs recip and rsqrt scale), rounding families and random
 bits. Slow: 10⁸ random inputs per operation, and the M1 golden model's
 exhaustive ranges for recip and rsqrt (one period of the bit-trick error;
-the scaled inputs). On request (CABOSSE_SWEEP=1, tens of minutes): every
+the scaled inputs). On request (CABOSSE_SWEEP=1 pytest -m on_request, tens of minutes): every
 FP32 input of exp, recip and rsqrt (PLAN.md, M6 answers)."""
 
 import os
@@ -212,6 +212,7 @@ def test_exhaustive_ranges(name: str) -> None:
     bulk.in_parallel(one, chunks)
 
 
+@pytest.mark.on_request
 @pytest.mark.skipif(not SWEEP, reason="every FP32 input, tens of minutes: CABOSSE_SWEEP=1")
 @rtl.needs_verilator
 @pytest.mark.parametrize("op", UNARY)

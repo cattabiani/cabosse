@@ -6,8 +6,9 @@ pythonpath = ["model", "model/tests", "verif", "scripts/f2"]
 markers = [
     "slow: exhaustive tests that take minutes (run with: pytest -m slow)",
     "wide: the 128-lane engine (a build of minutes; CI runs these in their own job)",
+    "on_request: runs only when asked, with its environment variable set (pytest -m on_request)",
 ]
-addopts = "-m 'not slow'"
+addopts = "-m 'not slow and not on_request'"
 
 [tool.ruff]
 line-length = 100

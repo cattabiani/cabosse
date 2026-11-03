@@ -33,16 +33,12 @@ for sub in ("model", "model/tests", "verif"):
     sys.path.insert(0, str(REPO / sub))
 
 import perf  # noqa: E402
-from reporting import blocks, measure  # noqa: E402
+from reporting import m6, measure  # noqa: E402
 
 import rtl  # noqa: E402  (puts .tools/ on PATH)
 
 DATA = REPO / "reports" / "data" / "M6.json"
 TOPS = ("fp32_fma", "fp32_chain")
-SLOTS = 16  # the vector unit's width (D-030)
-# One fp32_fma in Vivado on F2's part, MulRegs = 2 (PLAN.md, M3: the fifth
-# timing log): LUTs, registers, DSPs.
-VIVADO_FMA = {"LUTs": 1262, "registers": 535, "DSPs": 2}
 DESIGN = perf.load_design("v0").values()
 # Yosys's UltraScale+ cells, by what they count.
 KINDS = {
@@ -146,45 +142,6 @@ def latency() -> dict:
     return out
 
 
-def latency_tables(data: dict) -> str:
-    """The latencies found at each position, and each position's cycles."""
-    positions = [k for k in data if k != "provenance"]
-    names = sorted({n for p in positions for n in data[p]["latencies"]})
-    rows = [
-        [
-            n,
-            *(
-                "; ".join(f"{v} ({c}x)" for v, c in data[p]["latencies"].get(n, {}).items()) or "-"
-                for p in positions
-            ),
-        ]
-        for n in names
-    ]
-    head = ["latency (cycles found, count)", *(f"position {p}" for p in positions)]
-    cycles = []
-    for p in positions:
-        d, w = data[p], data[p]["worst"]
-        worst = f"{w['kind']}: {w['cycles']} against {w['model_cycles']:.0f} ({w['off']:+.1%})"
-        cycles.append([p, f"{d['cycles']:,}", f"{d['model_cycles']:,.0f}", worst])
-    head2 = ["position", "unit cycles", "perf model", "worst command"]
-    return blocks.table(head, rows) + "\n\n" + blocks.table(head2, cycles)
-
-
-def table(data: dict) -> str:
-    """Per top: Yosys's cells, and the Vivado estimate (M3's FMA times the
-    ratio); the vector unit's 16 slots."""
-    fma, chain = data["fp32_fma"], data["fp32_chain"]
-    rows = []
-    for kind in KINDS:
-        row = [kind, f"{fma[kind]:,}", f"{chain[kind]:,}", "-", "-"]
-        if kind in VIVADO_FMA:
-            est = VIVADO_FMA[kind] * chain[kind] / fma[kind]
-            row[3:] = [f"{est:,.0f}", f"{est * SLOTS:,.0f}"]
-        rows.append(row)
-    head = ["", "fp32_fma (Yosys)", "fp32_chain (Yosys)", "chain (Vivado, estimate)", "16 slots"]
-    return blocks.table(head, rows)
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("part", choices=("area", "latency", "show"))
@@ -194,9 +151,10 @@ def main() -> None:
         data[args.part] = {"provenance": measure.provenance()} | globals()[args.part]()
         DATA.write_text(json.dumps(data, indent=1) + "\n")
     if "area" in data:
-        print(table(data["area"]))
+        print(m6.area_table(data["area"]))
     if "latency" in data:
-        print(latency_tables(data["latency"]))
+        latency = m6.without_provenance(data["latency"])
+        print(m6.latencies_table(latency) + "\n\n" + m6.cycles_table(latency))
     if not data:
         sys.exit(f"no data in {DATA}: run the `area` or `latency` part first")
 
