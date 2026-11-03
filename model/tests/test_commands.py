@@ -126,6 +126,31 @@ def test_channel_writes_stay_in_their_reserved_bytes(ports: int) -> None:
     assert torch.equal(q, commands.lane_order(model.layers[1].q, layout.lanes)[0].view(-1))
 
 
+@pytest.mark.parametrize("ports", [4, 32])
+def test_channel_reads_undo_channel_writes(ports: int) -> None:
+    """Every tensor, KV caches with some rows written, back from the bytes."""
+    c = tiny.tiny_config()
+    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=2))
+    layout = commands.Layout.of(c, cap=4 * ports, ports=ports)
+    cache = decoder.KVCache.empty(model, layout.cap)
+    decoder.step(model, cache, [5, 6, 7])
+    hbm = commands.load(model, layout, cache)
+    mem: dict[int, torch.Tensor] = {}
+    for at, raw in commands.channel_writes(layout, hbm):
+        channel, offset = divmod(at, layout.channel_bytes)
+        m = mem.setdefault(channel, torch.zeros(layout.end_bytes, dtype=torch.uint8))
+        m[offset : offset + len(raw)] = raw
+
+    def read(at: int, n: int) -> torch.Tensor:
+        channel, offset = divmod(at, layout.channel_bytes)
+        return mem[channel][offset : offset + n]
+
+    back = commands.channel_reads(layout, read)
+    for name, (addr, _, dtype) in layout.tensors.items():
+        view = torch.int16 if dtype == commands.BF16 else torch.int32
+        assert torch.equal(back[addr].view(view), hbm[addr].view(view)), name  # NaNs too
+
+
 def test_channel_constants_are_f2s() -> None:
     f2 = perf.load_platform("f2").values()
     assert commands.PORTS == f2["hbm_ports"]

@@ -28,6 +28,7 @@ at load time; channel_writes() gives the bytes the host writes.
 """
 
 import enum
+import functools
 import math
 import struct
 from collections.abc import Callable, Iterator
@@ -289,6 +290,11 @@ REGISTERS = [
     (0x30, "STRIDE", "RW", "row stride of S and P, in elements (SCORES, VALUES, LEN_T)"),
     (0x10000, "COMMAND_BUFFER", "W", "the command list: 64 KiB, up to 2,048 commands"),
 ]
+REG = {name: offset for offset, name, _, _ in REGISTERS}
+ID = 0x43424F53  # 'CBOS'
+VERSION = 1  # of the registers and the command set
+CONTROL_START, CONTROL_RESET = 1, 2
+STATUS_BUSY, STATUS_DONE, STATUS_ERROR = 1, 2, 4
 
 
 def f32_bits(x: float | torch.Tensor) -> int:
@@ -525,19 +531,51 @@ def kv_lane_order(cache: torch.Tensor, values: bool, lanes: int) -> list[torch.T
 
 
 def channel_writes(
-    layout: Layout, hbm: dict[int, torch.Tensor]
+    layout: Layout, hbm: dict[int, torch.Tensor], kinds: frozenset[Kind] = frozenset(Kind)
 ) -> Iterator[tuple[int, torch.Tensor]]:
-    """HBM as the host writes it, one tensor at a time: (HBM byte address,
-    bytes as uint8) per write. An engine tensor goes to every channel at its
-    offset, in the engine's order (per_port); one LOAD reads goes to channel
-    0 as it is. Channel c starts at c · channel_bytes."""
+    """HBM as the host writes it, one tensor at a time (of `kinds` only):
+    (HBM byte address, bytes as uint8) per write. An engine tensor goes to
+    every channel at its offset, in the engine's order (per_port); one LOAD
+    reads goes to channel 0 as it is. Channel c starts at c · channel_bytes."""
     for name, (addr, _, _) in layout.tensors.items():
         kind, x = layout.kinds[name], hbm[addr]
+        if kind not in kinds:
+            continue
         if kind == Kind.LOADED:
             yield addr, x.contiguous().view(-1).view(torch.uint8)
             continue
         for p, beats in enumerate(per_port(x, kind, layout.lanes)):
             yield p * layout.channel_bytes + addr, beats.contiguous().view(-1).view(torch.uint8)
+
+
+@functools.cache
+def port_slots(shape: tuple[int, ...], kind: Kind, lanes: int) -> list[torch.Tensor]:
+    """per_port() of the element indices: per port and beat element, the
+    tensor's flat index there plus one, or 0 where none is."""
+    index = torch.arange(1, math.prod(shape) + 1, dtype=torch.int32).reshape(shape)
+    return per_port(index, kind, lanes)
+
+
+def channel_reads(
+    layout: Layout, read: Callable[[int, int], torch.Tensor]
+) -> dict[int, torch.Tensor]:
+    """HBM as channel_writes() left it, back in the tensors' logical shape
+    (load()'s map): `read(address, n_bytes)` gives HBM's bytes as uint8. A
+    matrix or cache is gathered from every channel's share."""
+    hbm = {}
+    for name, (addr, shape, dtype) in layout.tensors.items():
+        kind = layout.kinds[name]
+        if kind == Kind.LOADED:
+            hbm[addr] = read(addr, n_bytes(shape, dtype)).view(dtype).reshape(shape).clone()
+            continue
+        out = torch.zeros(math.prod(shape), dtype=dtype)
+        for p, slots in enumerate(port_slots(shape, kind, layout.lanes)):
+            at = p * layout.channel_bytes + addr
+            beats = read(at, n_bytes(tuple(slots.shape), dtype)).view(dtype).view(slots.shape)
+            used = slots > 0
+            out[slots[used].long() - 1] = beats[used]
+        hbm[addr] = out.reshape(shape)
+    return hbm
 
 
 def load_vector(dst: Buf, layout: Layout, name: str, flags: Flag = Flag.NONE) -> Command:
