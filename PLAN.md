@@ -1636,6 +1636,32 @@ paths are the SmartConnect's write FIFO into the host's first slice and
 the host's read slice into the SmartConnect, then the counters' read
 select (+0.145 ns). None of the 30 closest families (slack up to
 +0.199 ns) touches the HBM, so port 0's ready and mux needed no fix.
+**F2 run 1 (2026-11-03, build 4's AFI afi-09d01f5eb2ccb7888):** the AFI
+loads, the clock generator sets 250, 200 and 125 MHz (measured within
+0.01%), OCL reads take 1.37 µs (median). HBM: all 32 ports read and
+write with no bad beat and no error response; every rate is one 32-byte
+beat per cycle per port at every clock: 256 GB/s in total at 250 MHz,
+reads or writes, each port alone or all together, bursts of 2 to 16.
+The memory itself shows only in reads and writes together: reads drop
+to 194 GB/s beside 256 GB/s of writes at 250 MHz, to 201 of 205 GB/s at
+200 MHz, and not at 125 MHz. One-beat bursts:
+reads half and writes three quarters of the port rate, at every clock,
+so the limit is in the core's clock domain (to check only if M9 needs
+short bursts). A one-beat partial write costs the same as a full one
+(same rate, mean response 18.3 cycles; its effect on memory is not
+checked). Up to 14 one-beat writes were in flight per port, as many as
+the rate needed (Little's law): the shell's limit was not reached.
+Ports reading the other stack: 1.0 to 2.7 GB/s each, 32 GB/s as all
+beats over the slowest port's time; all ports on one pseudo channel:
+one port's rate in total. One-beat read latency at 250 MHz, ports 0 and
+31: min 43 cycles, median 43-44 (172-176 ns), p99 73-79. **Not met: host DMA.** The host tool's
+PCIS writes need AVX-512 (one 64-byte store per beat) and the F2 host
+CPU reports none, so nothing was written; the PCIS reads ran (4.8 and
+15 MB/s) against unknown data. Next: write with AVX2 (two 32-byte
+stores a line; the host path keeps byte strobes, so a split beat is
+still correct), log the CPU, and run again (the same AFI).
+Data: reports/data/f2/2026-11-03-f2run1.txt and .jsonl
+(scripts/f2/bringup_report.py).
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
