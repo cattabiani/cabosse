@@ -289,7 +289,12 @@ COMMAND_BYTES = struct.calcsize(FORMAT)
 REGISTERS = [
     (0x00, "ID", "R", "0x43424F53 ('CBOS')"),
     (0x04, "VERSION", "R", "architecture version"),
-    (0x08, "CONTROL", "W", "bit 0: start a token; bit 1: reset the controller"),
+    (
+        0x08,
+        "CONTROL",
+        "W",
+        "bit 0: start a token; bit 1: reset the controller and the units (wins over bit 0)",
+    ),
     (0x0C, "STATUS", "R", "bit 0: busy; bit 1: done; bit 2: error"),
     (0x10, "TOKEN", "RW", "token id of the next step"),
     (0x14, "POSITION", "RW", "position of the next step"),
@@ -298,7 +303,7 @@ REGISTERS = [
         0x1C,
         "ERROR",
         "R",
-        "bits 15:0: the command's index; 31:28: why (1 opcode, 2 memory, 3 no END)",
+        "31:28 why (1 opcode, 2 memory, 3 no END), 15:0 the command (memory: where the run was)",
     ),
     (0x20, "LOGITS_LO", "RW", "host address for OUTPUT, low 32 bits"),
     (0x24, "LOGITS_HI", "RW", "host address for OUTPUT, high 32 bits"),

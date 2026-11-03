@@ -110,7 +110,7 @@ def test_check_catches_a_missing_wait() -> None:
     issued = [c for c in cmds if c.op not in (Op.OUTPUT, Op.END)]
     unit = [int(c.op not in commands.ENGINE_OPS) for c in issued]
     tok = controller.Token(
-        handovers=[(10 * i, u, 0) for i, u in enumerate(unit)],
+        handovers=[(10 * i, u, 0, 0) for i, u in enumerate(unit)],
         gos=[],
         eng_dones=[10 * i + 5 for i, u in enumerate(unit) if u == 0],
         vec_dones=[10 * i + 5 for i, u in enumerate(unit) if u == 1],

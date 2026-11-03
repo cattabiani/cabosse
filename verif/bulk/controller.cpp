@@ -18,8 +18,8 @@
 /// wait no sooner than +latency cycles after its go. A go with no waiting
 /// command taken and not yet given one ends the run (exit 4).
 ///
-/// Output per token: the number of handovers, then per handover its cycle
-/// and unit (0 the engine, 1 the vector unit) and the engine's wait bit;
+/// Output per token: the number of handovers, then per handover its cycle,
+/// unit (0 the engine, 1 the vector unit), the engine's wait bit and group;
 /// the number of gos, then each go's cycle; per unit the number of dones,
 /// then their cycles; the cycle STATUS was first seen done or error;
 /// STATUS, ERROR, CYCLES_LO, CYCLES_HI. Cycles count from the token's
@@ -71,7 +71,7 @@ struct Stub {
 struct Events {
   struct Handover {
     uint64_t cycle;
-    uint32_t unit, wait;
+    uint32_t unit, wait, group;
   };
   std::vector<Handover> handovers;
   std::vector<uint64_t> gos, eng_dones, vec_dones;
@@ -119,11 +119,11 @@ struct Bench {
     }
     if (dut.eng_valid_o && eng.ready) {
       eng.pending.push_back({now, static_cast<bool>(dut.eng_wait_o), std::nullopt, draw_latency()});
-      events.handovers.push_back({now, 0, dut.eng_wait_o});
+      events.handovers.push_back({now, 0, dut.eng_wait_o, dut.cmd_group_o});
     }
     if (dut.vec_valid_o && vec.ready) {
       vec.pending.push_back({now, false, std::nullopt, draw_latency()});
-      events.handovers.push_back({now, 1, 0});
+      events.handovers.push_back({now, 1, 0, 0});
     }
     dut.clk_i = 1;
     dut.eval();
@@ -199,7 +199,9 @@ int main(int argc, char** argv) {
       const uint64_t seen = bench.now;
       const Events& e = bench.events;
       out.push_back(static_cast<uint32_t>(e.handovers.size()));
-      for (const auto& h : e.handovers) out.insert(out.end(), {static_cast<uint32_t>(h.cycle), h.unit, h.wait});
+      for (const auto& h : e.handovers) {
+        out.insert(out.end(), {static_cast<uint32_t>(h.cycle), h.unit, h.wait, h.group});
+      }
       put_all(out, e.gos);
       put_all(out, e.eng_dones);
       put_all(out, e.vec_dones);

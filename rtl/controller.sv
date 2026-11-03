@@ -11,7 +11,7 @@
 // a word at a time, not readable). Writes take whole words (WSTRB is not
 // looked at); a read of an offset with no register gives 0; every response
 // is OKAY. CONTROL bit 0 starts a token (when not busy), bit 1 resets the
-// sequencer (when the units are idle: it does not stop them). The host must
+// sequencer and the units (units_reset_o; bit 1 wins over bit 0). The host must
 // not write the command buffer while a token runs.
 //
 // A token: pc runs from 0; the command at pc is read from the buffer (a
@@ -36,15 +36,18 @@
 // Every command handed over writes its dst into the written set and becomes
 // its last writer. Errors stop the sequencer with STATUS error and ERROR =
 // {reason, 16 bits of pc}: an unknown opcode (ErrOpcode), a unit's memory
-// error (ErrMemory: err_i, sticky in the units), or pc reaching COMMANDS
-// without END (ErrNoEnd). Nothing else is checked: the runtime validates the
+// error (ErrMemory: err_i, sticky in the units; pc is where the sequencer
+// was, not the failing command), or pc reaching COMMANDS (or the buffer's
+// end) without END (ErrNoEnd). Nothing else is checked: the runtime validates the
 // list (commands.validate).
 //
 // The command's fields go to both units on one bus (cmd_*); eng_valid_o or
 // vec_valid_o says whose it is. cmd_group_o (n / kv_heads, attention) is
 // found by subtraction in the cycles after the command reaches pc, so an
-// attention command waits a cycle more than its group. token_o, t_o (position + 1) and stride_o
-// are the registers, held through a token.
+// attention command waits a cycle more than its group. token_o, t_o
+// (position + 1) and stride_o are TOKEN, POSITION and STRIDE as they were at
+// the token's start. units_reset_o pulses with CONTROL's reset, for the
+// units' own reset (their memory errors are sticky).
 
 module controller #(
   parameter  int unsigned Bufs      = 22,
@@ -79,6 +82,7 @@ module controller #(
   output logic [31:0]          s_r_data_o,
   output logic [1:0]           s_r_resp_o,
   output logic                 irq_o,        // a pulse: the token is done
+  output logic                 units_reset_o,  // a pulse: CONTROL's reset
 
   output logic [4:0]           cmd_op_o,
   output logic [BufW-1:0]      cmd_dst_o,
@@ -176,7 +180,8 @@ module controller #(
   assign waddr       = s_aw_addr_i[15:0];
   assign raddr       = s_ar_addr_i[15:0];
   assign cb_we       = wr && s_aw_addr_i[16];
-  assign start       = wr && !s_aw_addr_i[16] && waddr == RegControl && s_w_data_i[0] && !busy_q;
+  assign start       = wr && !s_aw_addr_i[16] && waddr == RegControl && s_w_data_i[0] && !busy_q
+                    && !s_w_data_i[1];
   assign ctl_reset   = wr && !s_aw_addr_i[16] && waddr == RegControl && s_w_data_i[1];
 
   always_ff @(posedge clk_i) begin
@@ -235,6 +240,16 @@ module controller #(
   localparam int unsigned CmdAW = $clog2(Commands);
 
   logic [7:0][31:0] cmd_q;  // the command at pc
+  logic [AddrW-1:0] run_token_q, run_t_q, run_stride_q;  // the registers at start
+
+  always_ff @(posedge clk_i) begin
+    units_reset_o <= rst_ni && ctl_reset;
+    if (start) begin
+      run_token_q  <= AddrW'(token_q);
+      run_t_q      <= AddrW'(position_q + 32'd1);
+      run_stride_q <= AddrW'(stride_q);
+    end
+  end
   logic [PcW-1:0]   pc_q, pc_d;
 
   // A RAM per word of a command (a plain simple dual-port RAM each, for
@@ -274,9 +289,9 @@ module controller #(
   assign cmd_addr_o   = MemAddrW'({cmd_q[6], cmd_q[5]});
   assign cmd_scalar_o = cmd_q[7];
   assign cmd_bf16_o   = Bf16Mask[f_dst[4:0]];
-  assign token_o      = AddrW'(token_q);
-  assign t_o          = AddrW'(position_q + 32'd1);
-  assign stride_o     = AddrW'(stride_q);
+  assign token_o      = run_token_q;
+  assign t_o          = run_t_q;
+  assign stride_o     = run_stride_q;
 
   // ---------------------------------------------------------- the sequencer
 
@@ -328,7 +343,7 @@ module controller #(
   assign need_wait = is_eng && !waited_q[BufW'(f_a)];
 
   assign issuing     = busy_q && !ctl_reset;
-  assign fail_end    = issuing && 32'(pc_q) >= commands_q;
+  assign fail_end    = issuing && (32'(pc_q) >= commands_q || pc_q >= PcW'(Commands));
   assign active      = issuing && !fail_end;
   assign fail_opcode = active && !known;
   assign fail_mem    = issuing && (eng_err_i || vec_err_i);
@@ -343,10 +358,11 @@ module controller #(
 
   always_ff @(posedge clk_i) begin
     fresh_q <= start || fire;
-    if (fresh_q) begin
-      group_q    <= '0;
-      rem_q      <= f_n[HeadWidth-1:0];
+    if (start || fire) begin  // the next command's group is not known yet
       group_ok_q <= 1'b0;
+    end else if (fresh_q) begin
+      group_q <= '0;
+      rem_q   <= f_n[HeadWidth-1:0];
     end else if (!group_ok_q) begin
       if (f_kv_heads != 0 && rem_q >= f_kv_heads) begin
         rem_q   <= rem_q - f_kv_heads;

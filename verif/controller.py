@@ -18,7 +18,7 @@ from commands import REG, Command, Op
 class Token:
     """One token's events, cycles from its CONTROL write."""
 
-    handovers: list[tuple[int, int, int]]  # (cycle, unit: 0 engine / 1 vector, wait)
+    handovers: list[tuple[int, int, int, int]]  # (cycle, unit: 0 engine / 1 vector, wait, group)
     gos: list[int]
     eng_dones: list[int]
     vec_dones: list[int]
@@ -61,8 +61,8 @@ def run(
     found = []
     for _ in tokens:
         (n,) = take(1)
-        flat = take(3 * n)
-        handovers = [tuple(flat[i : i + 3]) for i in range(0, 3 * n, 3)]
+        flat = take(4 * n)
+        handovers = [tuple(flat[i : i + 4]) for i in range(0, 4 * n, 4)]
         gos, eng, vec = (take(take(1)[0]) for _ in range(3))
         seen, status, error, lo, hi = take(5)
         found.append(Token(handovers, gos, eng, vec, seen, status, error, lo | hi << 32))
@@ -80,7 +80,7 @@ def check(cmds: list[Command], tok: Token) -> None:
     done, with CYCLES."""
     units = [c.op not in commands.ENGINE_OPS for c in cmds]
     issued = [i for i, c in enumerate(cmds) if c.op not in (Op.OUTPUT, Op.END)]
-    assert [u for _, u, _ in tok.handovers] == [int(units[i]) for i in issued], "units or order"
+    assert [h[1] for h in tok.handovers] == [int(units[i]) for i in issued], "units or order"
     at = {i: h[0] for i, h in zip(issued, tok.handovers, strict=True)}  # handover cycle
     assert all(at[a] < at[b] for a, b in itertools.pairwise(issued)), "list order"
     done, k = {}, {0: 0, 1: 0}
@@ -90,8 +90,11 @@ def check(cmds: list[Command], tok: Token) -> None:
         k[u] += 1
     assert k[0] == len(tok.eng_dones) and k[1] == len(tok.vec_dones), "dones"
     waits = commands.engine_waits(cmds)
-    for i, (_, u, w) in zip(issued, tok.handovers, strict=True):
+    for i, (_, u, w, group) in zip(issued, tok.handovers, strict=True):
         assert u == 1 or bool(w) == waits[i], f"command {i}: wait {w}, engine_waits {waits[i]}"
+        if cmds[i].op in (Op.SCORES, Op.VALUES):
+            want = cmds[i].n // cmds[i].kv_heads
+            assert group == want, f"command {i}: group {group}, not {want}"
     for i, stop in enumerate(commands.stops(cmds)):
         if stop and i in at:
             assert all(done[j] < at[i] for j in issued if j < i), f"command {i}: stop before a done"
