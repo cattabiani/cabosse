@@ -664,6 +664,8 @@ INVALID = [
     pytest.param(change(Op.SUM, flags=F.NEG_A), "flags", id="flags"),
     pytest.param(change(Op.ROTATE_HALF, dst=B.K), "overlaps", id="overlap"),
     pytest.param(change(Op.MATVEC, addr=8), "beat-aligned", id="address"),
+    pytest.param(change(Op.LOAD, addr=8), "beat-aligned", id="load address"),
+    pytest.param(change(Op.KV_STORE, addr=64), "128-byte aligned", id="store address"),
     pytest.param(change(Op.MATVEC, n=2**20), "20 bits", id="width"),
     pytest.param(change(Op.MUL, op=99), "unknown opcode", id="opcode"),
     pytest.param(end_twice, "END must be the last", id="end"),

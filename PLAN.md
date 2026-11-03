@@ -1610,7 +1610,9 @@ does not check them; `SCORES` and `VALUES` are given after the
   command (a test per kind), ordering hazards included: D-068's waits and
   stops do not keep two commands off one buffer's read port. The KV cache
   is not written at load (a token reads only rows it and earlier ones
-  stored). Greedy generation on the golden
+  stored). Open for step 4: `validate()` does not check a command's span
+  against the image's buffer sizes, which the simulation platform will
+  report. Greedy generation on the golden
   platform gives the golden model's tokens, logits and KV cache bit for bit
   (tiny, 4 and 32 ports).
 

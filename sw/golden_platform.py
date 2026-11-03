@@ -50,11 +50,21 @@ class GoldenPlatform:
         self.hbm: dict[int, torch.Tensor] | None = None  # memory as tensors, once read
         self.caches_stale = False  # the stores wrote self.hbm, not yet self.mem
         self.logits: torch.Tensor | None = None
+        # Rows no store has written hold NaN, as in commands.load(), so a
+        # read of one shows (the hardware's are whatever was there).
+        stale = {
+            addr: torch.full(shape, torch.nan, dtype=dtype)
+            for name, (addr, shape, dtype) in layout.tensors.items()
+            if layout.kinds[name] in commands.CACHES
+        }
+        for addr, data in commands.channel_writes(layout, stale, commands.CACHES):
+            self.mem.write(addr, data)
 
     def reg_write(self, offset: int, value: int) -> None:
         assert 0 <= value < 2**32, value
         if offset >= COMMAND_BUFFER:
             at = offset - COMMAND_BUFFER
+            assert at % 4 == 0 and at < len(self.command_buffer), hex(offset)
             self.command_buffer[at : at + 4] = value.to_bytes(4, "little")
         elif offset == REG["CONTROL"]:
             if value & commands.CONTROL_RESET:

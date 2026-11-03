@@ -28,7 +28,6 @@ at load time; channel_writes() gives the bytes the host writes.
 """
 
 import enum
-import functools
 import math
 import struct
 from collections.abc import Callable, Iterator
@@ -53,6 +52,11 @@ HEAD_BITS = 8  # attention's heads and KV heads
 HEAD_DIMS = (16, 32, 64, 128)  # the engine's: a power of two, 16 to 128
 
 VECTOR_LANES = 16  # the vector unit's elements a cycle (D-030), half a LOAD beat in FP32
+ID = 0x43424F53  # 'CBOS', the ID register
+VERSION = 1  # of the registers and the command set
+CONTROL_START, CONTROL_RESET = 1, 2
+STATUS_BUSY, STATUS_DONE, STATUS_ERROR = 1, 2, 4
+CACHE_ALIGN = 128  # bytes: a KV cache's address (rtl/vec_unit.sv)
 PORTS = 32  # F2's HBM ports, one channel each (docs/f2.md)
 CHANNEL_BYTES = 2**29  # F2's channel: 16 GiB over 32
 
@@ -298,10 +302,6 @@ REGISTERS = [
     (0x10000, "COMMAND_BUFFER", "W", "the command list: 64 KiB, up to 2,048 commands"),
 ]
 REG = {name: offset for offset, name, _, _ in REGISTERS}
-ID = 0x43424F53  # 'CBOS'
-VERSION = 1  # of the registers and the command set
-CONTROL_START, CONTROL_RESET = 1, 2
-STATUS_BUSY, STATUS_DONE, STATUS_ERROR = 1, 2, 4
 
 
 def f32_bits(x: float | torch.Tensor) -> int:
@@ -549,9 +549,10 @@ def channel_writes(
     every channel at its offset, in the engine's order (per_port); one LOAD
     reads goes to channel 0 as it is. Channel c starts at c · channel_bytes."""
     for name, (addr, _, _) in layout.tensors.items():
-        kind, x = layout.kinds[name], hbm[addr]
+        kind = layout.kinds[name]
         if kind not in kinds:
             continue
+        x = hbm[addr]
         if kind == Kind.LOADED:
             yield addr, x.contiguous().view(-1).view(torch.uint8)
             continue
@@ -559,7 +560,6 @@ def channel_writes(
             yield p * layout.channel_bytes + addr, beats.contiguous().view(-1).view(torch.uint8)
 
 
-@functools.lru_cache(maxsize=16)  # a model's few shapes; lm_head's is large
 def port_slots(shape: tuple[int, ...], kind: Kind, lanes: int) -> list[torch.Tensor]:
     """per_port() of the element indices: per port and beat element, the
     tensor's flat index there plus one, or 0 where none is."""
@@ -584,14 +584,20 @@ def channel_reads(
         if kind == Kind.LOADED:
             hbm[addr] = read(addr, n_bytes(shape, dtype)).view(dtype).reshape(shape).clone()
             continue
-        out = torch.zeros(math.prod(shape), dtype=dtype)
+        out, shares = torch.zeros(math.prod(shape), dtype=dtype), []
         for p, slots in enumerate(port_slots(shape, kind, layout.lanes)):
             if not len(slots):  # a port with no rows of it
                 continue
             at = p * layout.channel_bytes + addr
             beats = read(at, n_bytes(tuple(slots.shape), dtype)).view(dtype).view(slots.shape)
             used = slots > 0
-            out[slots[used].long() - 1] = beats[used]
+            index, data = slots[used].long() - 1, beats[used]
+            out[index] = data
+            shares.append((p, index, data))
+        if kind == Kind.V_CACHE:  # its copies (D-062) agree
+            for p, index, data in shares:
+                same = torch.equal(out[index].view(torch.int16), data.view(torch.int16))
+                assert same, f"{name}: V's copies differ on port {p}"
         hbm[addr] = out.reshape(shape)
     return hbm
 
@@ -1092,8 +1098,11 @@ def validate(layout: Layout, cmds: list[Command]) -> None:
         if cmd.op == Op.LOAD:  # rows of whole AXI beats (rtl/vec_unit.sv)
             beat = VECTOR_LANES if cmd.flags & Flag.SRC_BF16 else VECTOR_LANES // 2
             need(cmd.m % beat == 0, i, f"m {cmd.m} not whole beats ({beat} elements)")
+            need(cmd.addr % BEAT_BYTES == 0, i, "address not beat-aligned")
         else:
             need(cmd.n >= 1, i, "no rows (n = 0)")
+        if cmd.op in STORE_OPS:
+            need(cmd.addr % CACHE_ALIGN == 0, i, f"cache address not {CACHE_ALIGN}-byte aligned")
         if cmd.op == Op.ROTATE_HALF:
             need(cmd.m % 2 == 0, i, "odd row length")
         if cmd.op in ENGINE_OPS:

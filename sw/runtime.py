@@ -83,7 +83,8 @@ class Runtime:
                 " longer contexts are not supported yet. Start a new conversation."
             )
         vocab = self.layout.config.vocab_size
-        assert 0 <= token < vocab, (token, vocab)
+        if not 0 <= token < vocab:
+            raise ValueError(f"token {token} outside the vocabulary of {vocab}")
         p = self.platform
         p.reg_write(REG["TOKEN"], token)
         p.reg_write(REG["POSITION"], self.position)
