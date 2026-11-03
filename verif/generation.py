@@ -9,6 +9,12 @@ from golden import arith, decoder, tiny
 from runtime import Runtime
 
 SEED = 7
+# SmolLM2 on the simulated core (verif/tests/test_core.py,
+# scripts/measure_m7.py): F2's 32 ports; 256 positions (a multiple of the
+# 128 lanes); 64 MiB channels, as channel 0 holds the engine's region and
+# LOAD's tensors; buffers as long as the longest, LOGITS (the vocabulary).
+SMOLLM2_PORTS, SMOLLM2_CAP, SMOLLM2_CHAN_W, SMOLLM2_LENGTH = 32, 256, 26, 49152
+SMOLLM2_PROMPT = "The capital of France is"
 
 
 def tiny_model(seed: int = SEED, **config: int) -> decoder.Model:
