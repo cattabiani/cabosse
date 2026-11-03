@@ -21,9 +21,9 @@
  },
  "latency": {
   "provenance": {
-   "commit": "1cefc6297ca2b3bdb372fbb295c31f020d951a65",
+   "commit": "ca03747efe06637b1d178a69592baeaf74934499",
    "dirty": false,
-   "date": "2026-11-01",
+   "date": "2026-11-03",
    "machine": "Linux x86_64"
   },
   "0": {
@@ -195,5 +195,15 @@
     }
    }
   }
+ },
+ "tests": {
+  "provenance": {
+   "commit": "ca03747efe06637b1d178a69592baeaf74934499",
+   "dirty": false,
+   "date": "2026-11-03",
+   "machine": "Linux x86_64"
+  },
+  "fast": "1 failed, 943 passed, 4 skipped, 39 deselected in 561.84s (0:09:21)",
+  "slow": "38 passed, 949 deselected in 1397.69s (0:23:17)"
  }
 }
