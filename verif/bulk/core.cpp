@@ -64,6 +64,8 @@ struct Bench {
   AxiWritePort vec_wr;
   std::array<std::byte, kBeatBytes> w_beat{};
   uint64_t progress = 0;  ///< memory beats moved: a run's sign of life
+  uint64_t trace_port = UINT64_MAX;  ///< +trace_port: its reads to stderr
+  uint64_t now = 0;
 
   /// @brief One clock cycle: the memories' outputs onto the core, settle,
   /// the memories see the core's outputs, the rising edge.
@@ -90,6 +92,15 @@ struct Bench {
     dut.clk_i = 0;
     dut.eval();
     if (dut.rst_ni) {
+      if (trace_port < kPorts) {
+        const size_t p = trace_port;
+        if (get_bits(dut.e_ar_valid_o, p, 1) && get_bits(dut.e_ar_ready_i, p, 1)) {
+          std::println(stderr, "{} AR 0x{:X} len {}", now, get_bits(dut.e_ar_addr_o, kAddrBits * p, kAddrBits), get_bits(dut.e_ar_len_o, 8 * p, 8));
+        }
+        if (get_bits(dut.e_r_valid_i, p, 1) && get_bits(dut.e_r_ready_o, p, 1)) {
+          std::println(stderr, "{} R {:08X} {:08X}", now, get_bits(dut.e_r_data_i, 256 * p, 32), get_bits(dut.e_r_data_i, 256 * p + 32, 32));
+        }
+      }
       for (size_t p = 0; p < kPorts; ++p) {
         progress += get_bits(dut.e_r_valid_i, p, 1) && get_bits(dut.e_r_ready_o, p, 1);
         ports[p].tick({static_cast<bool>(get_bits(dut.e_ar_valid_o, p, 1)), get_bits(dut.e_ar_addr_o, kAddrBits * p, kAddrBits),
@@ -109,6 +120,7 @@ struct Bench {
     }
     dut.clk_i = 1;
     dut.eval();
+    ++now;
   }
 
   /// @brief Run until STATUS is done or error.
@@ -188,6 +200,7 @@ int main(int argc, char** argv) {
               .vec_rd = AxiReadPort(mem, axi_settings(context, kBeatBytes, kPorts), (seed << 16) + kPorts),
               .vec_wr = AxiWritePort(mem, axi_settings(context, kBeatBytes, 0, "w"), (seed << 16) + kPorts + 1)};
   const uint64_t poll = std::max<uint64_t>(1, plusarg(context, "poll", 64));
+  bench.trace_port = plusarg(context, "trace_port", UINT64_MAX);
   dut->host_r_valid_i = 0;
   try {
     reset(bench);

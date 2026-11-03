@@ -55,7 +55,8 @@
 // Read ports: x_data_i[r] is the E values of group x_addr_o[r] (elements
 // E * x_addr_o[r] ... + E - 1) of buffer x_buf_o as presented in the
 // previous cycle (a synchronous RAM), zeros past the buffer's end. Port 1
-// serves a VALUES pass's second head. Write port: when w_valid_o, slot s
+// serves a VALUES pass's second head; on other commands the lanes past d may
+// read it too, and it must give port 0's data there (rtl/core.sv). Write port: when w_valid_o, slot s
 // with w_mask_o[s] holds row w_row_o + s of buffer w_buf_o: FP32, or the
 // BF16 bits in its low half when w_bf16_o. It never waits.
 
