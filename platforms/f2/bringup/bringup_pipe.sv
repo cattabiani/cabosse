@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 // Copyright 2026 The Cabosse Authors
 //
-// Stages 2-entry FIFOs (rtl/stream_fifo.sv) in a row: a valid/ready stream
-// with every signal registered at each stage, at full rate, for a long wire
-// (bringup_host.sv's way to the shell's PCIS).
+// Stages register slices in a row: a valid/ready stream at full rate with
+// every signal registered at each stage, in flops only, for a long wire
+// (bringup_host.sv's way to the shell's PCIS, across an SLR). A stage is a
+// skid buffer: its output register, and a second register that takes the
+// beat arriving while the output waits; its ready is that register empty.
 
 module bringup_pipe #(
   parameter int unsigned Width  = 32,
-  parameter int unsigned Stages = 2
+  parameter int unsigned Stages = 1
 ) (
   input  logic             clk_i,
   input  logic             rst_ni,
@@ -33,14 +35,30 @@ module bringup_pipe #(
   assign out_data_o    = data[Stages];
 
   for (genvar s = 0; s < Stages; s++) begin : gen_stage
-    // verilator lint_off PINCONNECTEMPTY
-    // The count goes unread.
-    stream_fifo #(.Width(Width), .Depth(2)) u_fifo (
-      .clk_i, .rst_ni,
-      .in_valid_i (valid[s]), .in_ready_o (ready[s]), .in_data_i (data[s]),
-      .out_valid_o(valid[s+1]), .out_ready_i(ready[s+1]), .out_data_o(data[s+1]), .count_o()
-    );
-    // verilator lint_on PINCONNECTEMPTY
+    logic             out_valid_q, skid_valid_q;
+    logic [Width-1:0] out_q, skid_q;
+    logic             take;  // the output register loads this cycle
+    assign take        = ready[s+1] || !out_valid_q;
+    assign ready[s]    = !skid_valid_q;
+    assign valid[s+1]  = out_valid_q;
+    assign data[s+1]   = out_q;
+
+    always_ff @(posedge clk_i) begin
+      if (!rst_ni) begin
+        out_valid_q  <= 1'b0;
+        skid_valid_q <= 1'b0;
+      end else if (take) begin
+        out_valid_q  <= skid_valid_q || valid[s];
+        skid_valid_q <= 1'b0;
+      end else if (valid[s] && !skid_valid_q) begin
+        skid_valid_q <= 1'b1;
+      end
+    end
+
+    always_ff @(posedge clk_i) begin
+      if (take) out_q <= skid_valid_q ? skid_q : data[s];
+      if (!take && !skid_valid_q) skid_q <= data[s];
+    end
   end
 
 endmodule

@@ -7,8 +7,8 @@
 // host at once (the core asks only between runs, the engine idle) and back
 // to the engine once the host's side is idle: no burst unanswered, its
 // address or its data sent (W may go ahead of AW), and none offered. The
-// host's channels each pass HostStages 2-entry FIFOs (bringup_pipe.sv),
-// register stages on their long way from the shell. With the engine owning
+// host's channels each pass HostStages register slices (bringup_pipe.sv),
+// on their long way from the shell, the first or last beside the port. With the engine owning
 // the port, the host's requests wait in their FIFOs.
 //
 // AXI: the subset of bringup_port.sv (full beats, INCR, one ID), plus the
@@ -17,7 +17,7 @@
 module bringup_host #(
   parameter  int unsigned AddrWidth  = 34,
   parameter  int unsigned DataWidth  = 256,
-  parameter  int unsigned HostStages = 3,
+  parameter  int unsigned HostStages = 2,
   localparam int unsigned BeatBytes  = DataWidth / 8,
   localparam int unsigned AxW        = AddrWidth + 8 + 2,           // address, length, burst
   localparam int unsigned WW         = DataWidth + BeatBytes + 1,   // data, strobes, last
