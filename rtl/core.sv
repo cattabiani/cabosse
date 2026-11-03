@@ -11,11 +11,10 @@
 // ext port, on the buffers the vector unit holds: x_addr_o[0] (a group of E
 // values) as ext_r_addr_i = E * x_addr_o[0], x_addr_o[1] (a VALUES pass's
 // second head, on P) as ext_r2_addr_i, and each write's Writes slots as the
-// first Writes lanes of an ext write. The engine may take x from read port 1
-// on any command (its lanes past d, rtl/engine.sv) and expects port 0's data
-// there unless the command is VALUES: only P has a second read, so port 1
-// gives P's second read for P and port 0's data for any other buffer. The command list keeps the two units
-// off each other's buffer ports (commands.hazards).
+// first Writes lanes of an ext write. Only P has a second read (D-069); the
+// vector unit gives port 0's data on port 1 for any other buffer, which the
+// engine needs. The command list keeps the two units off each other's buffer
+// ports (commands.hazards).
 //
 // host_r_*: a read of a buffer's Lanes elements from host_r_addr_i, the data
 // the cycle after, in place of the engine's read: for the simulation to read
@@ -198,18 +197,14 @@ module core #(
   logic [Lanes-1:0][31:0]               ext_r_data, ext_r2_data, ext_w_data;
   logic [BufW-1:0]                      ext_r_buf;
   logic [AddrW-1:0]                     ext_r_addr;
-  logic                                 x_p_q;  // the x read the cycle before was P's
-
-  always_ff @(posedge clk_i) x_p_q <= BufW'(x_buf) == BufW'(BufP);
 
   always_comb begin
-    ext_w_data = '0;
-    for (int unsigned s = 0; s < Writes; s++) ext_w_data[s] = w_data[s];
     for (int unsigned e = 0; e < E; e++) begin
       x_data[0][e] = ext_r_data[e][15:0];   // x is BF16: the low half
-      x_data[1][e] = x_p_q ? ext_r2_data[e][15:0] : ext_r_data[e][15:0];
+      x_data[1][e] = ext_r2_data[e][15:0];
     end
   end
+  assign ext_w_data    = (Lanes * 32)'(w_data);
   assign ext_r_buf     = host_r_valid_i ? host_r_buf_i : BufW'(x_buf);
   assign ext_r_addr    = host_r_valid_i ? host_r_addr_i : AddrW'(E * x_addr[0]);
   assign host_r_data_o = ext_r_data;

@@ -690,6 +690,15 @@ def test_validate_refuses_a_misaligned_stride() -> None:
         commands.validate(dataclasses.replace(layout, stride=8), commands.build(layout))
 
 
+def test_validate_refuses_buffers_too_short() -> None:
+    layout = commands.Layout.of(tiny.tiny_config(), 16, ports=4)
+    longest = max(n for _, n in commands.buffers(layout.config, layout.stride).values())
+    cmds = commands.build(layout)
+    commands.validate(layout, cmds, longest)
+    with pytest.raises(ValueError, match="elements needed"):
+        commands.validate(layout, cmds, longest - 1)
+
+
 def test_the_ladders_lists_are_valid() -> None:
     for name in ("SmolLM2-135M-Instruct", "Qwen2.5-0.5B-Instruct"):
         c = perf.load_config(name)

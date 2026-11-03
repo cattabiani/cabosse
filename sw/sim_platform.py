@@ -31,12 +31,11 @@ class SimPlatform:
         binary: Path = bulk.build("core", params)
         argv = [str(binary), *(f"+{k}={v}" for k, v in plusargs.items())]
         self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        hello = self.words(5)
+        hello = self.words(4)
         assert hello[0] == HELLO, hex(hello[0])
-        self.ports, chan_w_got, self.buffer_elements, self.lanes = map(int, hello[1:])
+        self.ports, chan_w_got, self.buffer_elements = map(int, hello[1:])
         assert (self.ports, chan_w_got, self.buffer_elements) == (ports, chan_w, length), hello
         self.channel_bytes = 1 << chan_w
-        self.cycles = 0  # of the last run_until_done
 
     def send(self, *words: int, data: bytes = b"") -> None:
         assert self.proc.stdin is not None
@@ -45,14 +44,11 @@ class SimPlatform:
 
     def words(self, n: int) -> np.ndarray:
         assert self.proc.stdout is not None
-        raw = self.proc.stdout.read(4 * n) if n else b""
+        raw = self.proc.stdout.read(4 * n)
         if len(raw) != 4 * n:
-            raise SimError(self.failure())
+            code = self.proc.wait()
+            raise SimError(f"the simulation exited ({code}): see its stderr above")
         return np.frombuffer(raw, dtype="<u4")
-
-    def failure(self) -> str:
-        code = self.proc.wait()
-        return f"the simulation exited ({code}): see its stderr above"
 
     def reg_write(self, offset: int, value: int) -> None:
         self.send(REG_WRITE, offset, value)
@@ -74,8 +70,7 @@ class SimPlatform:
 
     def run_until_done(self) -> None:
         self.send(RUN)
-        lo, hi = self.words(2)
-        self.cycles = int(lo) | int(hi) << 32
+        self.words(1)  # STATUS: the runtime reads it
 
     def read_buffer(self, buf: Buf, first: int, n: int) -> np.ndarray:
         """A buffer's raw bits (BF16 in the low half), a uint32 each."""

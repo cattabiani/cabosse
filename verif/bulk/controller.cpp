@@ -34,11 +34,6 @@
 
 namespace {
 
-// commands.REGISTERS' offsets and STATUS's bits.
-constexpr uint32_t kRegId = 0x00, kRegVersion = 0x04, kRegControl = 0x08, kRegStatus = 0x0C;
-constexpr uint32_t kRegToken = 0x10, kRegPosition = 0x14, kRegError = 0x1C;
-constexpr uint32_t kRegCyclesLo = 0x28, kRegCyclesHi = 0x2C;
-constexpr uint32_t kStatusDone = 2, kStatusError = 4;
 constexpr int kExitBadGo = 4;
 
 /// @brief A go the controller sends with no command waiting for it.
@@ -139,15 +134,7 @@ struct Bench {
     events = {};
     now = 0;
     axil_write(*this, kRegControl, 1);
-    uint64_t idle = 0;
-    while (true) {
-      const size_t before = events.progress();
-      for (uint64_t i = 0; i < poll; ++i) cycle();
-      const uint32_t status = axil_read(*this, kRegStatus);
-      if (status & (kStatusDone | kStatusError)) return status;
-      idle = events.progress() == before ? idle + poll : 0;
-      if (idle > kMaxIdleCycles) return std::nullopt;
-    }
+    return axil_until_status(*this, poll, [&] { return events.progress(); });
   }
 };
 

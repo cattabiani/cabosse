@@ -7,15 +7,15 @@
 /// (sw/platforms.py) on stdin and stdout, with the HBM behind the core's AXI
 /// ports in a memory model (axi_mem.h).
 ///
-/// At start it writes kHello, Ports, ChanW, Len and Lanes. Then requests,
+/// At start it writes kHello, Ports, ChanW and Len. Then requests,
 /// little-endian uint32 words, each an opcode and its arguments:
 /// - 0 register write: offset, value (AXI-Lite). No answer.
 /// - 1 register read: offset. Answer: the value.
 /// - 2 memory write: address low, high, bytes, then the bytes padded to
 ///   words (straight into the memory, as the host's loads). No answer.
 /// - 3 memory read: address low, high, bytes. Answer: the bytes padded to words.
-/// - 4 run: cycles until STATUS is done or error, polled over AXI-Lite every
-///   +poll cycles. Answer: the cycles run, low and high word.
+/// - 4 run: until STATUS is done or error, polled over AXI-Lite every +poll
+///   cycles. Answer: STATUS.
 /// - 5 buffer read: buffer, first element, elements (host_r port, Lanes a
 ///   cycle). Answer: the elements' raw bits, a word each.
 /// - 6 quit.
@@ -45,27 +45,15 @@ constexpr size_t kAddrBits = 34;
 constexpr size_t kBeatBytes = 32;
 constexpr size_t kBeatWords = kBeatBytes / 4;
 constexpr uint32_t kHello = 0x4342'5349;  // 'CBSI'
-constexpr uint32_t kRegStatus = 0x0C, kStatusDone = 2, kStatusError = 4;
 constexpr int kExitAxi = 5;
-
-/// @brief Word i of a beat's bytes.
-uint32_t word_at(std::span<const std::byte> bytes, size_t i) {
-  uint32_t w;
-  std::memcpy(&w, bytes.data() + 4 * i, 4);
-  return w;
-}
 
 /// @brief The core, its memory and the host's side of its ports.
 struct Bench {
   Vcore& dut;
-  std::span<std::byte> mem;  ///< every channel, channel c at c << kChanW
   std::vector<AxiReadPort> ports;
   AxiReadPort vec_rd;
   AxiWritePort vec_wr;
-  std::array<std::byte, kBeatBytes> w_beat{};
   uint64_t progress = 0;  ///< memory beats moved: a run's sign of life
-  uint64_t trace_port = UINT64_MAX;  ///< +trace_port: its reads to stderr
-  uint64_t now = 0;
 
   /// @brief One clock cycle: the memories' outputs onto the core, settle,
   /// the memories see the core's outputs, the rising edge.
@@ -92,15 +80,6 @@ struct Bench {
     dut.clk_i = 0;
     dut.eval();
     if (dut.rst_ni) {
-      if (trace_port < kPorts) {
-        const size_t p = trace_port;
-        if (get_bits(dut.e_ar_valid_o, p, 1) && get_bits(dut.e_ar_ready_i, p, 1)) {
-          std::println(stderr, "{} AR 0x{:X} len {}", now, get_bits(dut.e_ar_addr_o, kAddrBits * p, kAddrBits), get_bits(dut.e_ar_len_o, 8 * p, 8));
-        }
-        if (get_bits(dut.e_r_valid_i, p, 1) && get_bits(dut.e_r_ready_o, p, 1)) {
-          std::println(stderr, "{} R {:08X} {:08X}", now, get_bits(dut.e_r_data_i, 256 * p, 32), get_bits(dut.e_r_data_i, 256 * p + 32, 32));
-        }
-      }
       for (size_t p = 0; p < kPorts; ++p) {
         progress += get_bits(dut.e_r_valid_i, p, 1) && get_bits(dut.e_r_ready_o, p, 1);
         ports[p].tick({static_cast<bool>(get_bits(dut.e_ar_valid_o, p, 1)), get_bits(dut.e_ar_addr_o, kAddrBits * p, kAddrBits),
@@ -112,29 +91,13 @@ struct Bench {
       progress += (dut.v_r_valid_i && dut.v_r_ready_o) + (dut.v_w_valid_o && dut.v_w_ready_i);
       vec_rd.tick({static_cast<bool>(dut.v_ar_valid_o), dut.v_ar_addr_o, dut.v_ar_len_o, dut.v_ar_size_o, dut.v_ar_burst_o},
                   dut.v_r_ready_o);
-      std::ranges::copy(std::as_bytes(std::span(dut.v_w_data_o.data(), kBeatWords)), w_beat.begin());
       vec_wr.tick({static_cast<bool>(dut.v_aw_valid_o), dut.v_aw_addr_o, dut.v_aw_len_o, dut.v_aw_size_o, dut.v_aw_burst_o},
-                  {static_cast<bool>(dut.v_w_valid_o), w_beat, get_bits(dut.v_w_strb_o, 0, kBeatBytes),
+                  {static_cast<bool>(dut.v_w_valid_o), std::as_bytes(std::span(dut.v_w_data_o.data(), kBeatWords)), get_bits(dut.v_w_strb_o, 0, kBeatBytes),
                    static_cast<bool>(dut.v_w_last_o)},
                   dut.v_b_ready_o);
     }
     dut.clk_i = 1;
     dut.eval();
-    ++now;
-  }
-
-  /// @brief Run until STATUS is done or error.
-  /// @return the cycles run, or nothing on a hang.
-  std::optional<uint64_t> run(uint64_t poll) {
-    uint64_t cycles = 0, idle = 0;
-    while (true) {
-      const uint64_t before = progress;
-      for (uint64_t i = 0; i < poll; ++i) cycle();
-      cycles += poll;
-      if (axil_read(*this, kRegStatus) & (kStatusDone | kStatusError)) return cycles;
-      idle = progress == before ? idle + poll : 0;
-      if (idle > kMaxIdleCycles) return std::nullopt;
-    }
   }
 
   /// @brief n elements of a buffer from `first`, Lanes a cycle.
@@ -195,16 +158,14 @@ int main(int argc, char** argv) {
     ports.emplace_back(mem.subspan(p * channel_bytes, channel_bytes), axi_settings(context, kBeatBytes, p), (seed << 16) + p);
   }
   Bench bench{.dut = *dut,
-              .mem = mem,
               .ports = std::move(ports),
               .vec_rd = AxiReadPort(mem, axi_settings(context, kBeatBytes, kPorts), (seed << 16) + kPorts),
               .vec_wr = AxiWritePort(mem, axi_settings(context, kBeatBytes, 0, "w"), (seed << 16) + kPorts + 1)};
   const uint64_t poll = std::max<uint64_t>(1, plusarg(context, "poll", 64));
-  bench.trace_port = plusarg(context, "trace_port", UINT64_MAX);
   dut->host_r_valid_i = 0;
   try {
     reset(bench);
-    const std::array<uint32_t, 5> hello{kHello, kPorts, kChanW, kLen, kLanes};
+    const std::array<uint32_t, 4> hello{kHello, kPorts, kChanW, kLen};
     answer(hello);
     std::array<uint32_t, 3> a{};
     for (uint32_t op = 0; read_exact(std::span(&op, 1));) {
@@ -236,13 +197,12 @@ int main(int argc, char** argv) {
           break;
         }
         case 4: {
-          const auto cycles = bench.run(poll);
-          if (!cycles) {
+          const auto status = axil_until_status(bench, poll, [&] { return bench.progress; });
+          if (!status) {
             std::println(stderr, "hung: no memory traffic for {} cycles", kMaxIdleCycles);
             return kExitHang;
           }
-          const std::array<uint32_t, 2> c{static_cast<uint32_t>(*cycles), static_cast<uint32_t>(*cycles >> 32)};
-          answer(c);
+          answer(std::span(&*status, 1));
           break;
         }
         case 5: {

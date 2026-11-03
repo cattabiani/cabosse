@@ -771,8 +771,13 @@ in it keeps a second copy of its banks, written with the first and read by
 a second ext port; the core sets it for P only. Cost: P's memory twice,
 about 0.9 MB more on chip at the ladder's sizing (P is 917,504 bytes). The
 alternatives cost more elsewhere: a one-head `VALUES` pass halves its rate
-(D-062's numbers), and reading P ahead into small buffers per head needs a
-stall the engine's x read does not have. *Why:* the smallest change that
+(D-062's numbers), reading P ahead into small buffers per head needs a
+stall the engine's x read does not have, and skewing P's banks by row (row
+h rotated by E·h, so the two heads' reads hit different banks) needs a
+choice of two read addresses per bank and the row in the vector unit's
+address logic; a P stride of 8 mod 16 would put the two reads on different
+banks of one copy, but S and P share STRIDE and D-049 aligns it to 16.
+*Why:* the smallest change that
 keeps D-062's two-head pass and the engine as it is.
 
 ## Milestones
