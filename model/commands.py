@@ -46,6 +46,13 @@ E = 4  # weights a lane takes per cycle (D-027)
 LANES_PER_PORT = BEAT_BYTES // (E * BF16.itemsize)  # a beat holds E weights for each
 VALUES_HEADS = 2  # heads per p.V pass, at most (rtl/engine.sv's Heads)
 STRIDE_ALIGN = 16  # elements: S and P's stride, the vector unit's width (D-030, D-049)
+# Field widths of the RTL's defaults, for validate() (rtl/engine.sv, rtl/vec_unit.sv).
+ROW_BITS = 20  # rows, n, m, cap, stride, token, positions
+COL_BITS = 16  # the engine's columns
+HEAD_BITS = 8  # attention's heads and KV heads
+HEAD_DIMS = (16, 32, 64, 128)  # the engine's: a power of two, 16 to 128
+
+VECTOR_LANES = 16  # the vector unit's elements a cycle (D-030), half a LOAD beat in FP32
 PORTS = 32  # F2's HBM ports, one channel each (docs/f2.md)
 CHANNEL_BYTES = 2**29  # F2's channel: 16 GiB over 32
 
@@ -317,6 +324,10 @@ class Kind(enum.Enum):
     V_CACHE = enum.auto()
 
 
+CACHES = frozenset({Kind.K_CACHE, Kind.V_CACHE})
+WEIGHTS = frozenset(Kind) - CACHES
+
+
 @dataclass(frozen=True)
 class Layout:
     """Where each tensor sits in HBM: name -> (address, shape, dtype), and
@@ -548,7 +559,7 @@ def channel_writes(
             yield p * layout.channel_bytes + addr, beats.contiguous().view(-1).view(torch.uint8)
 
 
-@functools.cache
+@functools.lru_cache(maxsize=16)  # a model's few shapes; lm_head's is large
 def port_slots(shape: tuple[int, ...], kind: Kind, lanes: int) -> list[torch.Tensor]:
     """per_port() of the element indices: per port and beat element, the
     tensor's flat index there plus one, or 0 where none is."""
@@ -557,19 +568,26 @@ def port_slots(shape: tuple[int, ...], kind: Kind, lanes: int) -> list[torch.Ten
 
 
 def channel_reads(
-    layout: Layout, read: Callable[[int, int], torch.Tensor]
+    layout: Layout,
+    read: Callable[[int, int], torch.Tensor],
+    kinds: frozenset[Kind] = frozenset(Kind),
 ) -> dict[int, torch.Tensor]:
     """HBM as channel_writes() left it, back in the tensors' logical shape
-    (load()'s map): `read(address, n_bytes)` gives HBM's bytes as uint8. A
-    matrix or cache is gathered from every channel's share."""
+    (load()'s map; of `kinds` only): `read(address, n_bytes)` gives HBM's
+    bytes as uint8. A matrix or cache is gathered from every channel's
+    share."""
     hbm = {}
     for name, (addr, shape, dtype) in layout.tensors.items():
         kind = layout.kinds[name]
+        if kind not in kinds:
+            continue
         if kind == Kind.LOADED:
             hbm[addr] = read(addr, n_bytes(shape, dtype)).view(dtype).reshape(shape).clone()
             continue
         out = torch.zeros(math.prod(shape), dtype=dtype)
         for p, slots in enumerate(port_slots(shape, kind, layout.lanes)):
+            if not len(slots):  # a port with no rows of it
+                continue
             at = p * layout.channel_bytes + addr
             beats = read(at, n_bytes(tuple(slots.shape), dtype)).view(dtype).view(slots.shape)
             used = slots > 0
@@ -1039,6 +1057,59 @@ def kv_store_command(
     assert mem.shape == (cmd.n, cmd.cap, cmd.m) and buf[cmd.a].dtype == F32, (mem.shape, cmd)
     assert cmd.m & (cmd.m - 1) == 0, cmd
     mem[:, position] = arith.bf16(buffer_span(buf[cmd.a], cmd.n, cmd.m))
+
+
+def validate(layout: Layout, cmds: list[Command]) -> None:
+    """Raise ValueError on the first command the hardware cannot run
+    correctly, or on a layout it cannot hold: the controller checks only for
+    unknown opcodes (PLAN.md, M7's answers), so the runtime calls this before
+    writing a list. Ordering hazards included: the controller's waits and
+    stops (D-068) do not keep two commands off one read port."""
+    lanes = layout.lanes
+
+    def need(ok: bool, i: int, why: str) -> None:
+        if not ok:
+            raise ValueError(f"command {i} ({cmds[i].op!r}): {why}")
+
+    most = COMMAND_BUFFER_BYTES // COMMAND_BYTES
+    if not 0 < len(cmds) <= most:
+        raise ValueError(f"{len(cmds)} commands: the buffer holds 1 to {most}")
+    if layout.stride % STRIDE_ALIGN or not 0 < layout.stride < 2**ROW_BITS:
+        raise ValueError(f"stride {layout.stride}: a multiple of {STRIDE_ALIGN} below 2^{ROW_BITS}")
+    if layout.end_bytes > layout.channel_bytes:
+        raise ValueError(
+            f"layout: {layout.end_bytes:,} bytes, channel 0 holds {layout.channel_bytes:,}"
+        )
+    for i, cmd in enumerate(cmds):
+        need(cmd.op in OPS, i, "unknown opcode")
+        need((cmd.op == Op.END) == (i == len(cmds) - 1), i, "END must be the last command, once")
+        need(flags_ok(cmd), i, f"flags {cmd.flags!r} not accepted")
+        need(overlap_ok(cmd), i, "dst overlaps a source it reads again")
+        need(max(cmd.n, cmd.m, cmd.cap) < 2**ROW_BITS, i, f"n, m or cap of {ROW_BITS} bits or more")
+        if cmd.op in (Op.END, Op.OUTPUT):
+            continue
+        need(cmd.m >= 1 or bool(cmd.flags & Flag.LEN_T), i, "no columns (m = 0)")  # LEN_T: t
+        if cmd.op == Op.LOAD:  # rows of whole AXI beats (rtl/vec_unit.sv)
+            beat = VECTOR_LANES if cmd.flags & Flag.SRC_BF16 else VECTOR_LANES // 2
+            need(cmd.m % beat == 0, i, f"m {cmd.m} not whole beats ({beat} elements)")
+        else:
+            need(cmd.n >= 1, i, "no rows (n = 0)")
+        if cmd.op == Op.ROTATE_HALF:
+            need(cmd.m % 2 == 0, i, "odd row length")
+        if cmd.op in ENGINE_OPS:
+            need(cmd.m < 2**COL_BITS, i, f"m of {COL_BITS} bits or more")
+            need(cmd.addr % BEAT_BYTES == 0, i, "address not beat-aligned")
+        if cmd.op in ENGINE_OPS - {Op.MATVEC} | STORE_OPS:
+            need(cmd.cap % lanes == 0, i, f"cap {cmd.cap} not a multiple of the {lanes} lanes")
+            need(cmd.m in HEAD_DIMS, i, f"head dimension {cmd.m} not one of {HEAD_DIMS}")
+        if cmd.op in (Op.VALUES, Op.V_STORE):
+            need(cmd.m <= lanes, i, f"head dimension {cmd.m} above the {lanes} lanes")
+        if cmd.op in (Op.SCORES, Op.VALUES):
+            need(0 < cmd.kv_heads and cmd.n % cmd.kv_heads == 0, i, "KV heads not dividing heads")
+            need(cmd.n < 2**HEAD_BITS, i, f"heads of {HEAD_BITS} bits or more")
+    found = hazards(cmds)
+    if found:
+        raise ValueError(f"{len(found)} ordering hazards, first {found[0]}")
 
 
 def run(

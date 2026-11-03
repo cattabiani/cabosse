@@ -1606,10 +1606,11 @@ does not check them; `SCORES` and `VALUES` are given after the
   the runtime checks it (step 2), `Layout` does not, so the perf model can
   still lay out any cap.
 - [x] Step 2: `sw/` runtime (`runtime.py`, `platforms.py`,
-  `golden_platform.py`). Validation refuses each kind of bad command (a
-  test per kind); ordering needs no check, as the controller derives it
-  from the list (D-068). The KV cache is not written at load (a token reads
-  only rows it and earlier ones stored). Greedy generation on the golden
+  `golden_platform.py`). `commands.validate()` refuses each kind of bad
+  command (a test per kind), ordering hazards included: D-068's waits and
+  stops do not keep two commands off one buffer's read port. The KV cache
+  is not written at load (a token reads only rows it and earlier ones
+  stored). Greedy generation on the golden
   platform gives the golden model's tokens, logits and KV cache bit for bit
   (tiny, 4 and 32 ports).
 

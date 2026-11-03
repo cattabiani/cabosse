@@ -5,6 +5,7 @@ gives the golden decode step's bits, so every operation has a command; its
 encoding round-trips; the HBM layout is consistent."""
 
 import dataclasses
+from collections.abc import Callable
 
 import commands
 import paths
@@ -618,3 +619,77 @@ def test_lane_order(lanes: int, shape: tuple[int, int]) -> None:
     got = commands.lane_order(w, lanes)
     assert all(b.shape[1] * b.dtype.itemsize == commands.BEAT_BYTES for b in got)
     assert [arith.bits_bf16(b).tolist() for b in got] == lane_order_restated(w, lanes)
+
+
+def first(cmds: list[commands.Command], which: commands.Op) -> int:
+    return next(i for i, c in enumerate(cmds) if c.op == which)
+
+
+def change(which: commands.Op, **fields: int) -> Callable[[list[commands.Command]], None]:
+    def bad(cmds: list[commands.Command]) -> None:
+        i = first(cmds, which)
+        cmds[i] = dataclasses.replace(cmds[i], **fields)
+
+    return bad
+
+
+def end_twice(cmds: list[commands.Command]) -> None:
+    cmds.insert(0, commands.Command(Op.END))
+
+
+def too_many(cmds: list[commands.Command]) -> None:
+    most = commands.COMMAND_BUFFER_BYTES // commands.COMMAND_BYTES
+    cmds[:0] = [commands.Command(Op.ADD, B.T, B.T, B.W, n=1, m=1)] * most
+
+
+def read_port(cmds: list[commands.Command]) -> None:
+    """A vector command reading the engine's input beside it (one read port
+    a buffer, no arbitration), which D-068's waits and stops do not order."""
+    i = first(cmds, Op.MATVEC)
+    cmds.insert(i + 1, commands.Command(Op.SUMSQ, B.R, cmds[i].a, n=1, m=8))
+
+
+# Each kind of command the hardware would hang on or silently get wrong.
+INVALID = [
+    pytest.param(change(Op.MATVEC, n=0), "no rows", id="rows"),
+    pytest.param(change(Op.MATVEC, m=0), "no columns", id="columns"),
+    pytest.param(change(Op.MUL, m=0), "no columns", id="vector columns"),
+    pytest.param(change(Op.LOAD, m=40), "not whole beats", id="load beats"),
+    pytest.param(change(Op.ROTATE_HALF, m=63), "odd row length", id="odd rotate"),
+    pytest.param(change(Op.SCORES, cap=20), "not a multiple of the 16 lanes", id="cap"),
+    pytest.param(change(Op.KV_STORE, cap=20), "not a multiple of the 16 lanes", id="store cap"),
+    pytest.param(change(Op.SCORES, m=8), "head dimension 8", id="head dim"),
+    pytest.param(change(Op.VALUES, m=32), "above the 16 lanes", id="values head dim"),
+    pytest.param(change(Op.SCORES, kv_heads=3), "KV heads not dividing", id="groups"),
+    pytest.param(change(Op.SUM, flags=F.NEG_A), "flags", id="flags"),
+    pytest.param(change(Op.ROTATE_HALF, dst=B.K), "overlaps", id="overlap"),
+    pytest.param(change(Op.MATVEC, addr=8), "beat-aligned", id="address"),
+    pytest.param(change(Op.MATVEC, n=2**20), "20 bits", id="width"),
+    pytest.param(change(Op.MUL, op=99), "unknown opcode", id="opcode"),
+    pytest.param(end_twice, "END must be the last", id="end"),
+    pytest.param(too_many, "the buffer holds", id="length"),
+    pytest.param(read_port, "read port", id="read port"),
+]
+
+
+@pytest.mark.parametrize(("mutate", "why"), INVALID)
+def test_validate_refuses_what_the_hardware_cannot_run(mutate, why) -> None:
+    layout = commands.Layout.of(tiny.tiny_config(), 16, ports=4)
+    cmds = commands.build(layout)
+    commands.validate(layout, cmds)  # the list as built passes
+    mutate(cmds)
+    with pytest.raises(ValueError, match=why):
+        commands.validate(layout, cmds)
+
+
+def test_validate_refuses_a_misaligned_stride() -> None:
+    layout = commands.Layout.of(tiny.tiny_config(), 16, ports=4)
+    with pytest.raises(ValueError, match="stride 8"):
+        commands.validate(dataclasses.replace(layout, stride=8), commands.build(layout))
+
+
+def test_the_ladders_lists_are_valid() -> None:
+    for name in ("SmolLM2-135M-Instruct", "Qwen2.5-0.5B-Instruct"):
+        c = perf.load_config(name)
+        layout = commands.Layout.of(c, c.max_position_embeddings)
+        commands.validate(layout, commands.build(layout))
