@@ -28,7 +28,17 @@ from reporting import blocks, m6, measure  # noqa: E402
 import rtl  # noqa: E402, F401  (puts .tools/ on PATH for the suites)
 
 UP_TO_DATE = "model/tests/test_reporting.py::test_m6_report_is_up_to_date"
-SUITES = {"fast": ["--deselect", UP_TO_DATE], "slow": ["-m", "slow"]}
+# Tests that skip by design here, left out so the summary has no skip: the
+# 2^32 sweep runs only on request (its result is in the report), and the CL
+# top needs an aws-fpga checkout (M8's).
+ON_REQUEST = [
+    "verif/tests/test_fp32_chain.py::test_every_input",
+    "verif/tests/test_bringup_core.py::test_cl_top_elaborates",
+]
+SUITES = {
+    "fast": [arg for t in [UP_TO_DATE, *ON_REQUEST] for arg in ("--deselect", t)],
+    "slow": ["-m", "slow"],
+}
 
 
 def measure_tests() -> None:
