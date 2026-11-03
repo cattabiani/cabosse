@@ -30,8 +30,8 @@ possible; Vivado, F2's only build flow, is the exception (D-032). The path:
   cache, as in StreamingLLM). At the window's end the host runtime stops the
   conversation with a message that longer contexts are not supported yet. A
   possible later improvement; it changes the spec (was Q-24).
-- Beating commercial GPUs. We compare against our own bandwidth bound and our
-  baseline.
+- Beating commercial GPUs. We compare against our own bandwidth bound, and
+  against a CPU and a GPU on the same model (D-067).
 - General programmability. It is a fixed-function decode engine driven by
   a command stream, for Llama-style models (RMSNorm, RoPE, GQA, SwiGLU).
 - Low-precision activations or KV cache. Weight-only quantization is a
@@ -733,6 +733,21 @@ M9's first build checks anyway, and a separate build now would be the
 same few hours twice and stale after M7's changes. A miss there has the
 same fixes as now (M8's notes: over-constrain placement, or a slower
 clock).
+
+**D-067 (2026-11-03) — Compare with CPU and GPU on the same model, not
+with the hackathon profile** (owner, 2026-11-03; replaces M7's "compared
+with the baseline profile"). SmolLM2-135M-Instruct's published BF16
+weights, batch 1, greedy, one prompt, decode tokens/s after the prompt
+(prefill excluded), with Hugging Face `transformers` + PyTorch on this PC's
+CPU (Ryzen 7 7800X3D) and GPU (RTX 4070 Ti). M7 measures them with a
+one-off script, never in CI, in any environment with `torch` and
+`transformers` (the GPU's CUDA build stays out of `requirements.txt`), and
+records machine, versions and date in a data file; the M7 report sets the
+perf model's estimate beside them. M9 adds F2's measured speed and its host
+CPU (EPYC 7R13). No Colab: an external service with varying hardware. Being
+slower than a GPU is fine. D-008 stays as history. *Why:* the hackathon ran
+a different model on different hardware, so its profile says little; people
+judge speed against the CPU and GPU they know, on the same model.
 
 ## Milestones
 
@@ -1501,7 +1516,8 @@ the runtime stops the conversation with a clear message (see Non-goals).
 "go", and everything else stays on the device.
 **Done when:** tiny configs are bit-exact for 3 prompts × 64 tokens.
 SmolLM2 is bit-exact for ≥ 8 tokens. The cycle breakdown per token is
-compared with the perf model and with the baseline profile.
+compared with the perf model; decode speed with a CPU and a GPU on the same
+model (D-067).
 **Notes (from M5):** the engine needs `rows` ≥ 1 and `cols` ≥ 1; a `cols` = 0
 command hangs it, so the controller rejects one (or the list builder never
 makes one). The model's `Layout` moves to channel offsets (D-040). The
@@ -1520,6 +1536,40 @@ engine needs `cap` a multiple of L, the stride a multiple of 16, a
 power-of-two head dimension from 16 to 128 (`VALUES`: at most L), and
 does not check them; `SCORES` and `VALUES` are given after the
 `KV_STORE` they depend on (D-044).
+
+**Answers to the start-of-milestone questions (owner, 2026-11-03):**
+- Runtime and simulation: `sw/`'s runtime talks to a platform with six
+  calls (`reg_write`, `reg_read`, `mem_write`, `mem_read`,
+  `run_until_done`, `read_logits`). The simulation backend is a Verilator
+  driver in a child process, driven over stdin/stdout like `verif/bulk/`'s
+  drivers (protocol documented in the driver); no new dependency, and a
+  simulation crash does not take Python down. M9's F2 backend implements
+  the same calls.
+- Size: the tiny configs at 4 ports (16 lanes) in CI, 3 prompts × 64
+  tokens; one tiny prompt at 32 ports in CI's wide job. SmolLM2 at 32 ports
+  (128 lanes), 8 tokens, as a `slow` test (about 30-40 minutes with the
+  build, estimate; measured in M7). 256 lanes is M9's question.
+- Buffers: as decided in M6 (a port muxed to the unit that owns it,
+  `commands.hazards()`, no arbitration); M7 adds the engine's x read and
+  result write.
+- Memory map: D-040 for the engine and the KV cache; `LOAD`'s tensors
+  (embedding rows and its row-ordered copy, RoPE, norm weights) in channel
+  0 above the engine's region, and `Layout` checks that they fit. The
+  runtime uses `model/commands.py` (`Layout`, `build()`), no second copy.
+- Logits: `read_logits` reads the logits' buffer after `END` in
+  simulation; `OUTPUT` and Q-33 stay M9's.
+- Baseline: D-067 (CPU and GPU on the same model).
+- Bad commands: the runtime validates the command list and layout before
+  writing them (zero rows or columns, `cap` and the lanes, the stride's
+  alignment, the head dimension), so nothing that hangs or silently breaks
+  the hardware reaches it; a test feeds it each kind. The controller
+  treats an unknown opcode as an error (STATUS error, ERROR register) and
+  adds no other checks.
+- End of the context window: as in Non-goals (the runtime stops with a
+  message).
+
+**Progress:**
+- [x] Answers above.
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
