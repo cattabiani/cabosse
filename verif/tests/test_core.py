@@ -4,10 +4,13 @@
 simulation platform (PLAN.md, M7): greedy decoding on the tiny model gives
 the golden model's tokens, logits and KV cache bit for bit."""
 
+import re
 import time
 
 import pytest
 import torch
+import vector
+from commands import Buf
 from generation import SEED, check_generation, tiny_model
 from runtime import Runtime
 from sim_platform import SimPlatform
@@ -34,12 +37,17 @@ def generate_on_sim(ports: int, n_prompts: int) -> None:
         for k, prompt in enumerate(prompts(n_prompts, model.config.vocab_size)):
             rt.reset()
             start = time.monotonic()
-            try:
-                check_generation(rt, model, prompt, N_NEW)
-            except AssertionError as e:
-                raise AssertionError(f"seed {SEED}, {ports} ports, prompt {k}: {e}") from e
+            check_generation(rt, model, prompt, N_NEW, f"seed {SEED}, {ports} ports, prompt {k}")
             seconds = time.monotonic() - start
             print(f"{ports} ports, prompt {k}: {rt.position + 1} tokens in {seconds:.1f} s")
+
+
+def test_the_cores_buffer_ids_are_the_command_lists() -> None:
+    """rtl/core.sv's defaults (the F2 build's too): BF16 buffers and P's id."""
+    src = (rtl.RTL / "core.sv").read_text()
+    assert re.search(rf"Bf16Mask\s*=\s*32'h{vector.BF16_MASK:x}\b", src, re.IGNORECASE)
+    assert re.search(rf"BufP\s*=\s*{int(Buf.P)}\b", src)
+    assert re.search(rf"Bufs\s*=\s*{len(Buf)}\b", src)
 
 
 @rtl.needs_verilator

@@ -14,11 +14,13 @@
 
 #include "stream.h"
 
-// rtl/controller.sv's registers: commands.REGISTERS' offsets and STATUS's bits.
+/// @name rtl/controller.sv's registers: commands.REGISTERS' offsets and STATUS's bits.
+/// @{
 constexpr uint32_t kRegId = 0x00, kRegVersion = 0x04, kRegControl = 0x08, kRegStatus = 0x0C;
 constexpr uint32_t kRegToken = 0x10, kRegPosition = 0x14, kRegError = 0x1C;
 constexpr uint32_t kRegCyclesLo = 0x28, kRegCyclesHi = 0x2C;
 constexpr uint32_t kStatusDone = 2, kStatusError = 4;
+/// @}
 
 /// @brief Cycle until `done()` holds after a settle, at most kMaxIdleCycles.
 /// @throws std::runtime_error on a hang, naming `what`.
@@ -68,6 +70,10 @@ uint32_t axil_read(B& bench, uint32_t addr) {
 
 /// @brief Run the controller's token: read STATUS every `poll` cycles until
 /// it is done or error.
+/// @tparam B the bench.
+/// @tparam Progress a callable returning a count.
+/// @param bench the bench whose controller runs.
+/// @param poll cycles between two STATUS reads.
 /// @param progress a count that grows while the token moves.
 /// @return STATUS, or nothing if `progress()` stays for kMaxIdleCycles.
 template <CycleBench B, typename Progress>

@@ -23,11 +23,12 @@
 /// writes cost nothing); engine port p reads channel p, the vector unit's
 /// port the whole of it at global addresses. Plusargs: the memory's
 /// (axi_settings; +w... for the vector unit's write side), +seed, +poll.
-/// Exits 3 if a run makes no progress for kMaxIdleCycles (STATUS polls aside),
-/// 5 on a broken AXI rule, each with a message on stderr.
+/// Exits 2 on a bad request (an unknown opcode, an address or a buffer out of
+/// range, input cut short), 3 if a run makes no progress for kMaxIdleCycles
+/// (STATUS polls aside) or a register access hangs, 5 on a broken AXI rule,
+/// each with a message on stderr.
 
 #include <cstdlib>
-#include <cstring>
 
 #include "Vcore.h"
 #include "Vcore___024root.h"
@@ -40,6 +41,7 @@ using Params = Vcore___024root;  // the build's parameters (verif/bulk.py: --pub
 constexpr size_t kPorts = Params::core__DOT__Ports;
 constexpr size_t kChanW = Params::core__DOT__ChanW;
 constexpr size_t kLen = Params::core__DOT__Len;
+constexpr size_t kBufs = Params::core__DOT__Bufs;
 constexpr size_t kLanes = Params::core__DOT__Lanes;
 constexpr size_t kAddrBits = 34;
 constexpr size_t kBeatBytes = 32;
@@ -100,7 +102,11 @@ struct Bench {
     dut.eval();
   }
 
-  /// @brief n elements of a buffer from `first`, Lanes a cycle.
+  /// @brief n elements of a buffer from `first`, Lanes a cycle (host_r).
+  /// @param buf the buffer's id (commands.Buf).
+  /// @param first its first element read.
+  /// @param n elements.
+  /// @return their raw bits, a word each.
   std::vector<uint32_t> read_buffer(uint32_t buf, uint32_t first, uint32_t n) {
     std::vector<uint32_t> out;
     dut.host_r_valid_i = 1;
@@ -119,19 +125,25 @@ struct Bench {
   }
 };
 
-/// @brief Read n words from stdin.
+/// @brief Read words from stdin.
+/// @param words where they go, as many as it holds.
 /// @return false at the end of the input.
 bool read_exact(std::span<uint32_t> words) {
   return std::fread(words.data(), sizeof(uint32_t), words.size(), stdin) == words.size();
 }
 
 /// @brief Write words to stdout and flush: the parent waits for them.
+/// @param words the answer.
 void answer(std::span<const uint32_t> words) {
   std::fwrite(words.data(), sizeof(uint32_t), words.size(), stdout);
   std::fflush(stdout);
 }
 
 /// @brief The bytes [addr, addr + n) of the memory.
+/// @param mem every channel, channel c at c << kChanW.
+/// @param addr a global address.
+/// @param n bytes.
+/// @return the bytes, a view into mem.
 /// @throws std::out_of_range past its end.
 std::span<std::byte> bytes_at(std::span<std::byte> mem, uint64_t addr, uint64_t n) {
   if (addr > mem.size() || n > mem.size() - addr) throw std::out_of_range(std::format("0x{:X} + {} past the memory", addr, n));
@@ -185,14 +197,14 @@ int main(int argc, char** argv) {
           std::vector<uint32_t> words((a[2] + 3) / 4);
           if (!read_exact(words)) throw std::out_of_range("memory write's bytes");
           const auto dst = bytes_at(mem, uint64_t{a[1]} << 32 | a[0], a[2]);
-          std::memcpy(dst.data(), words.data(), dst.size());
+          std::ranges::copy(std::as_bytes(std::span(words)).first(dst.size()), dst.begin());
           break;
         }
         case 3: {
           if (!read_exact(a)) throw std::out_of_range("memory read");
           const auto src = bytes_at(mem, uint64_t{a[1]} << 32 | a[0], a[2]);
           std::vector<uint32_t> words((a[2] + 3) / 4);
-          std::memcpy(words.data(), src.data(), src.size());
+          std::ranges::copy(src, std::as_writable_bytes(std::span(words)).begin());
           answer(words);
           break;
         }
@@ -207,6 +219,7 @@ int main(int argc, char** argv) {
         }
         case 5: {
           if (!read_exact(a)) throw std::out_of_range("buffer read");
+          if (a[0] == 0 || a[0] >= kBufs) throw std::out_of_range(std::format("buffer {}", a[0]));
           if (a[1] > kLen || a[2] > kLen - a[1]) throw std::out_of_range("buffer read past the buffer");
           answer(bench.read_buffer(a[0], a[1], a[2]));
           break;

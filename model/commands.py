@@ -1111,11 +1111,12 @@ def validate(layout: Layout, cmds: list[Command], buffer_elements: int | None = 
         raise ValueError(
             f"layout: {layout.end_bytes:,} bytes, channel 0 holds {layout.channel_bytes:,}"
         )
-    longest = max(n for _, n in buffers(layout.config, layout.stride).values())
-    if buffer_elements is not None and longest > buffer_elements:
-        raise ValueError(
-            f"buffers of {longest:,} elements needed, the device has {buffer_elements:,}"
-        )
+    if buffer_elements is not None:
+        longest = max(n for _, n in buffers(layout.config, layout.stride).values())
+        if longest > buffer_elements:
+            raise ValueError(
+                f"buffers of {longest:,} elements needed, the device has {buffer_elements:,}"
+            )
     for i, cmd in enumerate(cmds):
         need(cmd.op in OPS, i, "unknown opcode")
         need((cmd.op == Op.END) == (i == len(cmds) - 1), i, "END must be the last command, once")

@@ -31,7 +31,7 @@ def test_generate_is_the_golden_models(ports: int) -> None:
     rt, _ = open_golden(model, ports, cap)
     gen = torch.Generator().manual_seed(SEED)
     prompt = torch.randint(0, model.config.vocab_size, (5,), generator=gen).tolist()
-    check_generation(rt, model, prompt, 6)
+    check_generation(rt, model, prompt, 6, f"seed {SEED}, {ports} ports")
 
 
 def test_a_new_conversation_starts_at_position_0() -> None:

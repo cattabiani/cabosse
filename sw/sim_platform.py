@@ -31,10 +31,15 @@ class SimPlatform:
         binary: Path = bulk.build("core", params)
         argv = [str(binary), *(f"+{k}={v}" for k, v in plusargs.items())]
         self.proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        hello = self.words(4)
-        assert hello[0] == HELLO, hex(hello[0])
-        self.ports, chan_w_got, self.buffer_elements = map(int, hello[1:])
-        assert (self.ports, chan_w_got, self.buffer_elements) == (ports, chan_w, length), hello
+        try:
+            hello = tuple(map(int, self.words(4)))
+            if hello != (HELLO, ports, chan_w, length):
+                raise SimError(f"hello {hello}, not {(HELLO, ports, chan_w, length)}")
+        except BaseException:
+            self.proc.kill()
+            self.proc.wait()
+            raise
+        self.ports, self.buffer_elements = ports, length
         self.channel_bytes = 1 << chan_w
 
     def send(self, *words: int, data: bytes = b"") -> None:
