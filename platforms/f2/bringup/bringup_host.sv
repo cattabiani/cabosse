@@ -6,20 +6,22 @@
 // HOST_PORT). sel_i asks for the owner; sel_o is the owner: it turns to the
 // host at once (the core asks only between runs, the engine idle) and back
 // to the engine once the host's side is idle: no burst unanswered, its
-// address or its data sent (W may go ahead of AW), and none offered. The host's channels each pass a 2-entry FIFO, a register stage
-// on its long way from the shell. With the engine owning the port, the
-// host's requests wait in their FIFOs.
+// address or its data sent (W may go ahead of AW), and none in its pipes. The
+// host's channels each pass HostStages register slices (bringup_pipe.sv),
+// on their long way from the shell, the first or last beside the port. With the engine owning
+// the port, the host's requests wait in their pipes.
 //
 // AXI: the subset of bringup_port.sv (full beats, INCR, one ID), plus the
 // host's write strobes and RLAST.
 
 module bringup_host #(
-  parameter  int unsigned AddrWidth = 34,
-  parameter  int unsigned DataWidth = 256,
-  localparam int unsigned BeatBytes = DataWidth / 8,
-  localparam int unsigned AxW       = AddrWidth + 8 + 2,           // address, length, burst
-  localparam int unsigned WW        = DataWidth + BeatBytes + 1,   // data, strobes, last
-  localparam int unsigned RW        = DataWidth + 2 + 1            // data, response, last
+  parameter  int unsigned AddrWidth  = 34,
+  parameter  int unsigned DataWidth  = 256,
+  parameter  int unsigned HostStages = 2,
+  localparam int unsigned BeatBytes  = DataWidth / 8,
+  localparam int unsigned AxW        = AddrWidth + 8 + 2,           // address, length, burst
+  localparam int unsigned WW         = DataWidth + BeatBytes + 1,   // data, strobes, last
+  localparam int unsigned RW         = DataWidth + 2 + 1            // data, response, last
 ) (
   input  logic                 clk_i,
   input  logic                 rst_ni,
@@ -74,7 +76,8 @@ module bringup_host #(
 );
 
   logic           sel_q;
-  logic           ar_valid, aw_valid, w_valid, r_ready, b_ready;  // the host's FIFOs, memory side
+  logic           ar_valid, aw_valid, w_valid, r_ready, b_ready;  // the host's pipes, memory side
+  logic           ar_busy, aw_busy, w_busy;  // a request inside a pipe
   logic [AxW-1:0] ar, aw;
   logic [WW-1:0]  w;
   // The host's bursts unanswered: reads by address, writes by address and by
@@ -83,32 +86,32 @@ module bringup_host #(
 
   assign sel_o = sel_q;
 
+  bringup_pipe #(.Width(AxW), .Stages(HostStages)) u_ar (
+    .clk_i, .rst_ni,
+    .in_valid_i (h_ar_valid_i), .in_ready_o (h_ar_ready_o), .in_data_i (h_ar_i), .busy_o(ar_busy),
+    .out_valid_o(ar_valid), .out_ready_i(sel_q && m_ar_ready_i), .out_data_o(ar)
+  );
+  bringup_pipe #(.Width(AxW), .Stages(HostStages)) u_aw (
+    .clk_i, .rst_ni,
+    .in_valid_i (h_aw_valid_i), .in_ready_o (h_aw_ready_o), .in_data_i (h_aw_i), .busy_o(aw_busy),
+    .out_valid_o(aw_valid), .out_ready_i(sel_q && m_aw_ready_i), .out_data_o(aw)
+  );
+  bringup_pipe #(.Width(WW), .Stages(HostStages)) u_w (
+    .clk_i, .rst_ni,
+    .in_valid_i (h_w_valid_i), .in_ready_o (h_w_ready_o), .in_data_i (h_w_i), .busy_o(w_busy),
+    .out_valid_o(w_valid), .out_ready_i(sel_q && m_w_ready_i), .out_data_o(w)
+  );
   // verilator lint_off PINCONNECTEMPTY
-  // The FIFOs' counts go unread.
-  stream_fifo #(.Width(AxW), .Depth(2)) u_ar (
+  // The memory's answers: their pipes' busy goes unread (the counters hold them).
+  bringup_pipe #(.Width(RW), .Stages(HostStages)) u_r (
     .clk_i, .rst_ni,
-    .in_valid_i (h_ar_valid_i), .in_ready_o (h_ar_ready_o), .in_data_i (h_ar_i),
-    .out_valid_o(ar_valid), .out_ready_i(sel_q && m_ar_ready_i), .out_data_o(ar), .count_o()
+    .in_valid_i (sel_q && m_r_valid_i), .in_ready_o (r_ready), .in_data_i (m_r_i), .busy_o(),
+    .out_valid_o(h_r_valid_o), .out_ready_i(h_r_ready_i), .out_data_o(h_r_o)
   );
-  stream_fifo #(.Width(AxW), .Depth(2)) u_aw (
+  bringup_pipe #(.Width(2), .Stages(HostStages)) u_b (
     .clk_i, .rst_ni,
-    .in_valid_i (h_aw_valid_i), .in_ready_o (h_aw_ready_o), .in_data_i (h_aw_i),
-    .out_valid_o(aw_valid), .out_ready_i(sel_q && m_aw_ready_i), .out_data_o(aw), .count_o()
-  );
-  stream_fifo #(.Width(WW), .Depth(2)) u_w (
-    .clk_i, .rst_ni,
-    .in_valid_i (h_w_valid_i), .in_ready_o (h_w_ready_o), .in_data_i (h_w_i),
-    .out_valid_o(w_valid), .out_ready_i(sel_q && m_w_ready_i), .out_data_o(w), .count_o()
-  );
-  stream_fifo #(.Width(RW), .Depth(2)) u_r (
-    .clk_i, .rst_ni,
-    .in_valid_i (sel_q && m_r_valid_i), .in_ready_o (r_ready), .in_data_i (m_r_i),
-    .out_valid_o(h_r_valid_o), .out_ready_i(h_r_ready_i), .out_data_o(h_r_o), .count_o()
-  );
-  stream_fifo #(.Width(2), .Depth(2)) u_b (
-    .clk_i, .rst_ni,
-    .in_valid_i (sel_q && m_b_valid_i), .in_ready_o (b_ready), .in_data_i (m_b_resp_i),
-    .out_valid_o(h_b_valid_o), .out_ready_i(h_b_ready_i), .out_data_o(h_b_resp_o), .count_o()
+    .in_valid_i (sel_q && m_b_valid_i), .in_ready_o (b_ready), .in_data_i (m_b_resp_i), .busy_o(),
+    .out_valid_o(h_b_valid_o), .out_ready_i(h_b_ready_i), .out_data_o(h_b_resp_o)
   );
   // verilator lint_on PINCONNECTEMPTY
 
@@ -139,7 +142,7 @@ module bringup_host #(
       wlasts_q <= wlasts_q + 8'(sel_q && w_valid && m_w_ready_i && w[0])
                 - 8'(sel_q && m_b_valid_i && b_ready);
       if (sel_i) sel_q <= 1'b1;
-      else if (reads_q == '0 && writes_q == '0 && wlasts_q == '0 && !ar_valid && !aw_valid && !w_valid) begin
+      else if (reads_q == '0 && writes_q == '0 && wlasts_q == '0 && !ar_busy && !aw_busy && !w_busy) begin
         sel_q <= 1'b0;
       end
     end

@@ -79,14 +79,15 @@ def extra_sources(top: str) -> tuple[Path, ...]:
 def simulate(
     top: str, test_module: str | None = None, params: Sequence[tuple[str, int]] = ()
 ) -> None:
-    """Build rtl/ with `top` as the top module and its parameters set to
-    `params` ((name, value) pairs), and run the cocotb tests in
+    """Build rtl/ (and `top`'s files outside it, extra_sources) with `top` as
+    the top module and its parameters set to `params` ((name, value) pairs),
+    and run the cocotb tests in
     verif/tests/<test_module>.py (default test_<top>) against it; a failing
     test fails here."""
     runner = get_runner("verilator")
     build_dir = BUILD / "_".join([top, *(f"{k}{v}" for k, v in params)])
     runner.build(
-        build_args=VERILATOR_FILES,
+        build_args=[*VERILATOR_FILES, *map(str, extra_sources(top))],
         hdl_toplevel=top,
         build_dir=build_dir,
         parameters=dict(params),

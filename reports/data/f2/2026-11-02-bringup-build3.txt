@@ -1,0 +1,161 @@
+# Bring-up build 3 (M8), 2026-11-02, c6i.8xlarge i-02f21be83dbec9bfe, eu-central-1.
+# REF=main 3c816e1 (#92). scripts/f2/build_bringup.sh, Small Shell, clock recipe H0;
+# outputs in s3://cabosse-builds-628837661672/dcp/2026-11-02-bringup3/.
+# Stage ends (checkpoint times, UTC): start 21:47, synth 22:00, opt 22:08, place 22:26,
+# phys_opt 22:41, route 00:24. Vivado peak memory 9.2 GB (vivado.log).
+# Part 1: failing endpoints grouped by the first three levels of source and destination
+# (reports/families.rpt), top 20. Part 2: cabosse.log's result section.
+
+## Part 1: failing endpoints, worst slack (ns), source -> destination
+  2551  -0.922  AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]  ->  u_core/gen_port[*].u_port/u_rd
+  1432  -0.925  AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]  ->  u_core/gen_port[*].u_port/u_wr
+   983  -0.935  u_core/u_host/u_w  ->  u_pcis/cl_axi_sc_1x1_i/smartconnect_0
+   872  -0.706  u_core/u_host/u_r  ->  u_pcis/cl_axi_sc_1x1_i/smartconnect_0
+   631  -0.980  u_pcis/cl_axi_sc_1x1_i/smartconnect_0  ->  u_core/u_host/u_w
+   550  -0.643  u_hbm/inst/TWO_STACK.u_hbm_top  ->  u_core/u_host/u_r
+   515  -0.904  u_core/base_lo_q_reg[*]/C  ->  u_core/gen_port[*].addr_q_reg[*]/D
+   488  -0.473  AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]  ->  u_core/gen_port[*].u_port/cyc_q_reg[*]
+   436  -0.902  u_core/stride_q_reg[*]/C  ->  u_core/gen_port[*].offset_q_reg[*]/D
+   366  -0.918  u_core/beats_q_reg[*]/C  ->  u_core/gen_port[*].u_port/wr_dleft_q_reg[*]
+   357  -0.902  u_core/beats_q_reg[*]/C  ->  u_core/gen_port[*].u_port/wr_left_q_reg[*]
+   353  -0.916  u_core/beats_q_reg[*]/C  ->  u_core/gen_port[*].u_port/rd_left_q_reg[*]
+   238  -0.684  u_core/strb_q_reg[*]/C  ->  u_core/gen_port[*].u_port/strb_q_reg[*]
+   235  -0.256  u_core/u_host/u_w  ->  u_hbm/inst/TWO_STACK.u_hbm_top
+   231  -0.631  u_core/seed_q_reg[*]/C  ->  u_core/gen_port[*].u_port/seed_q_reg[*]
+   144  -0.847  u_core/beats_q_reg[*]/C  ->  u_core/gen_port[*].u_port/beats_q_reg[*]
+   142  -0.824  u_pcis/cl_axi_sc_1x1_i/smartconnect_0  ->  u_pcis/cl_axi_sc_1x1_i/smartconnect_0
+   120  -0.249  u_core/gen_port[*].u_port/u_rd  ->  u_core/gen_port[*].u_port/u_rd
+   108  -0.521  AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]  ->  u_core/gen_port[*].u_port/wr_out_q_reg[*]
+    88  -0.467  AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]  ->  u_core/gen_port[*].u_port/rd_out_q_reg[*]
+
+## Part 2: cabosse.log, result section
+CABOSSE-BEGIN result
+total 296744
+-rw-r--r-- 1 root root 60405760 Nov  3 00:24 2026_11_02-214948.Developer_CL.tar
+-rw-r--r-- 1 root root    30129 Nov  3 00:24 2026_11_02-214948.debug_probes.ltx
+-rw-r--r-- 1 root root 38579892 Nov  2 22:02 cabosse_bringup.2026_11_02-214948.post_link.dcp
+-rw-r--r-- 1 root root 27481736 Nov  2 22:08 cabosse_bringup.2026_11_02-214948.post_opt.dcp
+-rw-r--r-- 1 root root 48780051 Nov  2 22:41 cabosse_bringup.2026_11_02-214948.post_phys_opt.dcp
+-rw-r--r-- 1 root root 48618395 Nov  2 22:26 cabosse_bringup.2026_11_02-214948.post_place.dcp
+-rw-r--r-- 1 root root 60369513 Nov  3 00:24 cabosse_bringup.2026_11_02-214948.post_route.VIOLATED.dcp
+-rw-r--r-- 1 root root 19586074 Nov  2 22:00 cabosse_bringup.2026_11_02-214948.post_synth.dcp
+tarball s3://cabosse-builds-628837661672/dcp/2026-11-02-bringup3/2026_11_02-214948.Developer_CL.tar
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+     -0.980    -3985.444                   9714               326713        0.010        0.000                      0               326413        0.000        0.000                       0                 98395  
+
+Clock                                                                          WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----                                                                          -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk_fpga                                                                                                                                                                                                                     1.200        0.000                       0                     4  
+  clk_125                                                                                                                                                                                                                    3.725        0.000                       0                     6  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Tue Nov  3 00:25:48 2026
+| Host              : ip-172-31-41-187 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : top
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (VIOLATED) :        -0.980ns  (required time - arrival time)
+  Source:                 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.gen_fwft_latency_1.empty_r_reg_rep__0_replica_2/C
+                            (rising edge-triggered cell FDSE clocked by clk_out1_clk_mmcm_hbm  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            WRAPPER/CL/u_core/u_host/u_w/mem_q_reg_0_1_42_55/RAMC_D1/I
+                            (rising edge-triggered cell RAMD32 clocked by clk_out1_clk_mmcm_hbm  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk_out1_clk_mmcm_hbm
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk_out1_clk_mmcm_hbm rise@4.000ns - clk_out1_clk_mmcm_hbm rise@0.000ns)
+  Data Path Delay:        4.571ns  (logic 0.178ns (3.894%)  route 4.393ns (96.106%))
+  Logic Levels:           1  (LUT6=1)
+  Clock Path Skew:        0.019ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    9.626ns = ( 13.626 - 4.000 ) 
+    Source Clock Delay      (SCD):    8.869ns
+    Clock Pessimism Removal (CPR):    -0.739ns
+  Clock Uncertainty:      0.059ns  ((TSJ^2 + DJ^2)^1/2) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Discrete Jitter          (DJ):    0.095ns
+    Phase Error              (PE):    0.000ns
+  Inter-SLR Compensation: 0.289ns  ((DCD - CCD) * PF)
+    Destination Clock Delay (DCD):    9.626ns
+    Common Clock Delay      (CCD):    7.699ns
+    Prorating Factor         (PF):    0.150
+
+    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------------------------------------------
+                         (clock clk_out1_clk_mmcm_hbm rise edge)
+                                                      0.000     0.000 r                                      
+                         clock source latency         5.870     5.870                                        
+                         propagated clock network latency
+                                                      2.999     8.869                                        
+    SLICE_X152Y398       FDSE                         0.000     8.869 r  reconfigurable pblock_CL            WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.gen_fwft_latency_1.empty_r_reg_rep__0_replica_2/C
+    SLICE_X152Y398       FDSE (Prop_BFF2_SLICEM_C_Q)
+                                                      0.080     8.949 r  reconfigurable pblock_CL            WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.gen_fwft_latency_1.empty_r_reg_rep__0_replica_2/Q
+                         net (fo=6, routed)           1.405    10.354    reconfigurable                      WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.gen_fwft_latency_1.empty_r_reg_rep__0_n_0_repN_2
+    SLICE_X125Y299                                                    r  reconfigurable pblock_CL            WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/m_sc_payld[32]_INST_0/I0
+    SLICE_X125Y299       LUT6 (Prop_B6LUT_SLICEL_I0_O)
+                                                      0.098    10.452 r  reconfigurable pblock_CL            WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/m_sc_payld[32]_INST_0/O
+                         net (fo=1, routed)           2.988    13.440    reconfigurable                      WRAPPER/CL/u_core/u_host/u_w/mem_q_reg_0_1_42_55/DIC1
+    SLR Crossing[1->0]   
+    SLICE_X74Y110        RAMD32                                       r  reconfigurable pblock_CL            WRAPPER/CL/u_core/u_host/u_w/mem_q_reg_0_1_42_55/RAMC_D1/I
+  -------------------------------------------------------------------    -------------------------------------------------------
+
+                         (clock clk_out1_clk_mmcm_hbm rise edge)
+                                                      4.000     4.000 r                                      
+                         clock source latency         6.716    10.716                                        
+| CLB LUTs                   | 69682 |  2932 |       2128 |   1301552 |  5.35 |
+|   LUT as Logic             | 48173 |  2932 |       2128 |   1301552 |  3.70 |
+|   LUT as Memory            | 21509 |     0 |        800 |    600160 |  3.58 |
+| CLB Registers              | 78325 | 10281 |       4256 |   2603104 |  3.01 |
+|   LUT as Distributed RAM                   | 21312 |     0 |            |           |       |
+|   LUT as Shift Register                    |   197 |     0 |            |           |       |
+| CLB Registers                              | 78325 |     0 |       4256 |   2603104 |  3.01 |
+| Block RAM Tile    |  6.5 |     0 |          0 |      2016 |  0.32 |
+| DSPs      |    0 |     0 |          0 |      9024 |  0.00 |
+| CLB LUTs                   | 57331 | 10921 | 1430 |  13.04 |   2.53 |   0.33 |
+|   LUT as Logic             | 36567 | 10176 | 1430 |   8.32 |   2.36 |   0.33 |
+|   LUT as Memory            | 20764 |   745 |    0 |  10.11 |   0.38 |   0.00 |
+| CLB Registers              | 57484 | 20032 |  809 |   6.54 |   2.32 |   0.09 |
+| Block RAM Tile             |   6.5 |     0 |    0 |   0.97 |   0.00 |   0.00 |
+| DSPs                       |     0 |     0 |    0 |   0.00 |   0.00 |   0.00 |
+-0.980 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.gen_fwft_latency_1.em
+-0.978 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memo
+-0.973 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memo
+-0.972 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memo
+-0.971 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memo
+-0.968 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memo
+-0.968 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memo
+-0.940 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memo
+-0.939 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memo
+-0.935 578 WRAPPER/CL/u_core/u_host/u_w/full_q_reg_replica_1/C -> WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/g
+-0.932 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_mem
+-0.925 191 WRAPPER/CL/AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/u_wr/sent_q_reg[*]/R
+-0.922 189 WRAPPER/CL/AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/u_rd/gen_slice[*].u_data/count_q_reg[*]/R
+-0.920 1 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_host/u_b/empty_q_reg_replica/CE
+-0.920 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memo
+-0.919 191 WRAPPER/CL/AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/u_wr/u_lens/count_q_reg[*]/R
+-0.918 366 WRAPPER/CL/u_core/beats_q_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/wr_dleft_q_reg[*]/D
+-0.917 24 WRAPPER/CL/AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/u_wr/u_lens/empty_q_reg/S
+-0.917 24 WRAPPER/CL/AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/u_wr/u_lens/full_q_reg/R
+-0.916 353 WRAPPER/CL/u_core/beats_q_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/rd_left_q_reg[*]/D
+-0.913 162 WRAPPER/CL/AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/u_rd/gen_slice[*].u_data/wr_q_reg[*]/R
+-0.912 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memo
+-0.909 1 WRAPPER/CL/u_core/u_host/u_w/full_q_reg_replica_1/C -> WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen
+-0.908 207 WRAPPER/CL/AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/u_wr/u_tags/count_q_reg[*]/R
+-0.904 515 WRAPPER/CL/u_core/base_lo_q_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].addr_q_reg[*]/D
+-0.902 357 WRAPPER/CL/u_core/beats_q_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/wr_left_q_reg[*]/D
+-0.902 436 WRAPPER/CL/u_core/stride_q_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].offset_q_reg[*]/D
+-0.901 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memo
+-0.900 23 WRAPPER/CL/AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/u_rd/gen_slice[*].u_data/full_q_reg/R
+-0.900 24 WRAPPER/CL/AWS_CLK_GEN/CDC_RST_OUT[*].CDC_ASYNC_RST_OUT_I/arststages_ff_reg[*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/u_rd/gen_slice[*].u_data/empty_q_reg_inv/R
+CABOSSE-RESULT fail timing (negative slack after routing)
+CABOSSE-END result
