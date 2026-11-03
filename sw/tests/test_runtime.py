@@ -72,7 +72,7 @@ def test_an_unknown_opcode_stops_the_device() -> None:
     model = tiny_model()
     rt, p = open_golden(model, 4, 16)
     p.reg_write(REG["COMMAND_BUFFER"] + 3 * commands.COMMAND_BYTES, 99)  # op of command 3
-    with pytest.raises(runtime.DeviceError, match="ERROR 0x3"):
+    with pytest.raises(runtime.DeviceError, match="ERROR 0x10000003"):
         rt.step(0)
 
 

@@ -24,6 +24,7 @@
 #include "Vbringup_core.h"
 #include "Vbringup_core___024root.h"
 #include "axi_bench.h"
+#include "axil.h"
 
 namespace {
 
@@ -86,46 +87,10 @@ struct Bench {
                bit(dut.b_ready_o));
   }
 
-  /// @brief Cycle until `done()` holds after a settle, at most kMaxIdleCycles.
-  /// @throws std::runtime_error on a hang.
+  /// @brief Cycle until `done()` holds after a settle (axil.h's axil_until).
   template <typename Done>
   void until(Done done, const char* what) {
-    for (uint64_t i = 0; i < kMaxIdleCycles; ++i) {
-      dut.clk_i = 0;
-      dut.eval();
-      if (done()) return;
-      cycle();
-    }
-    throw std::runtime_error(std::format("hung waiting for {}", what));
-  }
-
-  /// @brief Write a register: address and data together, then the response.
-  void write(uint32_t addr, uint32_t value) {
-    dut.s_aw_valid_i = dut.s_w_valid_i = 1;
-    dut.s_aw_addr_i = addr;
-    dut.s_w_data_i = value;
-    until([&] { return dut.s_aw_ready_o != 0; }, "AWREADY");
-    cycle();
-    dut.s_aw_valid_i = dut.s_w_valid_i = 0;
-    dut.s_b_ready_i = 1;
-    until([&] { return dut.s_b_valid_o != 0; }, "BVALID");
-    cycle();
-    dut.s_b_ready_i = 0;
-  }
-
-  /// @brief Read a register.
-  uint32_t read(uint32_t addr) {
-    dut.s_ar_valid_i = 1;
-    dut.s_ar_addr_i = addr;
-    until([&] { return dut.s_ar_ready_o != 0; }, "ARREADY");
-    cycle();
-    dut.s_ar_valid_i = 0;
-    dut.s_r_ready_i = 1;
-    until([&] { return dut.s_r_valid_o != 0; }, "RVALID");
-    const uint32_t value = dut.s_r_data_o;
-    cycle();
-    dut.s_r_ready_i = 0;
-    return value;
+    axil_until(*this, done, what);
   }
 
   /// @brief The host writes one beat.
@@ -221,10 +186,10 @@ int main(int argc, char** argv) {
     reset(bench);
     for (Record op : ops) {
       switch (op[0]) {
-        case 0: bench.write(op[1], op[2]); break;
-        case 1: out.push_back(bench.read(op[1])); break;
+        case 0: axil_write(bench, op[1], op[2]); break;
+        case 1: out.push_back(axil_read(bench, op[1])); break;
         case 2:
-          for (uint64_t polls = 1; bench.read(kStatus) & 1; ++polls) {
+          for (uint64_t polls = 1; axil_read(bench, kStatus) & 1; ++polls) {
             if (polls == kMaxPolls) throw std::runtime_error("run hung: STATUS.busy stays set");
           }
           break;

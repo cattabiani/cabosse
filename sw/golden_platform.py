@@ -100,7 +100,8 @@ class GoldenPlatform:
         for i in range(self.regs.get(REG["COMMANDS"], 0)):
             raw = bytes(self.command_buffer[i * size : (i + 1) * size])
             if raw[0] not in commands.Op:  # the controller's one check
-                self.regs[REG["STATUS"]], self.regs[REG["ERROR"]] = commands.STATUS_ERROR, i
+                self.regs[REG["STATUS"]] = commands.STATUS_ERROR
+                self.regs[REG["ERROR"]] = commands.error_value(commands.ERROR_OPCODE, i)
                 return
             cmds.append(Command.decode(raw))
         if self.hbm is None:

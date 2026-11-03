@@ -281,6 +281,17 @@ Commands run in order; each one waits for the buffers it reads. Overlap
 comes from the memory front end streaming the next command's weights while
 the current one finishes; the perf model's "overlapped" bound assumes it.
 
+**In hardware (D-068, `rtl/controller.sv`).** The controller works out the
+ordering from the list as it runs it, with a small scoreboard: per buffer
+its last writer and whether an engine command already waited for it, and
+the buffers written since the last stop. A command off the engine that
+reads one of those waits until every command is done (the stop, D-045). An
+engine command whose input has a writer that no earlier engine command
+waited for goes with `wait`, and its go is sent once that writer is done
+(D-042). SCORES and VALUES are handed over after the last store of their
+cache's kind is done (D-044). It checks only for unknown opcodes; the
+runtime validates the list before writing it (`commands.validate`).
+
 `model/commands.py` holds the command set, `build()` (the command list of
 one decode step for any model config) and `run()`, a reference controller
 built on the golden model's functions. A test runs the list token by token
@@ -432,12 +443,12 @@ done (or the interrupt) and finds the logits at the host address it set.
 |---|---|---|---|
 | `0x0` | `ID` | R | 0x43424F53 ('CBOS') |
 | `0x4` | `VERSION` | R | architecture version |
-| `0x8` | `CONTROL` | W | bit 0: start a token; bit 1: reset the controller |
+| `0x8` | `CONTROL` | W | bit 0: start a token; bit 1: reset the controller and the units (wins over bit 0) |
 | `0xC` | `STATUS` | R | bit 0: busy; bit 1: done; bit 2: error |
 | `0x10` | `TOKEN` | RW | token id of the next step |
 | `0x14` | `POSITION` | RW | position of the next step |
 | `0x18` | `COMMANDS` | RW | number of commands in the list |
-| `0x1C` | `ERROR` | R | index of the command that failed, and why |
+| `0x1C` | `ERROR` | R | 31:28 why (1 opcode, 2 memory, 3 no END), 15:0 the command (memory: where the run was) |
 | `0x20` | `LOGITS_LO` | RW | host address for OUTPUT, low 32 bits |
 | `0x24` | `LOGITS_HI` | RW | host address for OUTPUT, high 32 bits |
 | `0x28` | `CYCLES_LO` | R | cycles of the last token, low 32 bits |

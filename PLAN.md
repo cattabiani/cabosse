@@ -1610,11 +1610,26 @@ does not check them; `SCORES` and `VALUES` are given after the
   command (a test per kind), ordering hazards included: D-068's waits and
   stops do not keep two commands off one buffer's read port. The KV cache
   is not written at load (a token reads only rows it and earlier ones
-  stored). Open for step 4: `validate()` does not check a command's span
-  against the image's buffer sizes, which the simulation platform will
-  report. Greedy generation on the golden
-  platform gives the golden model's tokens, logits and KV cache bit for bit
-  (tiny, 4 and 32 ports).
+  stored). Greedy generation on the golden platform gives the golden
+  model's tokens, logits and KV cache bit for bit (tiny, 4 and 32 ports).
+  Open for step 4: `validate()` does not check a command's span against
+  the image's buffer sizes, which the simulation platform will report.
+- [x] Step 3: `rtl/controller.sv`: AXI-Lite registers, the 64 KiB command
+  buffer and the sequencer with D-068's scoreboard (a command a cycle at
+  most). Tested alone against stub units (`verif/bulk/controller.cpp`)
+  under random readiness and latencies: the tiny model's and SmolLM2's
+  lists hand over every command in order, with `engine_waits`' wait bits,
+  each stop after every earlier done, each go after its writer's done,
+  SCORES and VALUES after their stores; an unknown opcode and a missing
+  END give STATUS error and ERROR (reason, index;
+  `commands.error_value`). Three hand mutations (no waits, no stops, no
+  store wait) each fail the tests. Logic depth (Yosys proxy) 17 cells, 31
+  before the group's divider became a subtraction loop. For M9's timing
+  build: the controller hands a command over a cycle at most, so the path
+  from the command buffer through the decode, the scoreboard and a unit's
+  ready back to the buffer's address is one cycle; if it fails 250 MHz,
+  registering the decode makes it 2 cycles a command (SmolLM2: about 5 µs
+  more a token, estimate).
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
