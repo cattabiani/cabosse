@@ -1,0 +1,132 @@
+# Bring-up build 4 (M8), 2026-11-03, c6i.8xlarge i-0f0449aacae083ac9, eu-central-1.
+# REF=main 8e344e6 (#93, #94). scripts/f2/build_bringup.sh, Small Shell, clock recipe H0;
+# outputs in s3://cabosse-builds-628837661672/dcp/2026-11-03-bringup4/.
+# Stage ends (checkpoint times, UTC): start 09:24, synth 09:36, opt 09:43, place 10:01,
+# phys_opt 10:15, route 10:32. Vivado peak memory 9.3 GB (vivado.log).
+# Timing met at 250 MHz: WNS +0.069 ns, TNS 0, WHS +0.010 ns, THS 0.
+# Part 1: reports/families.rpt, top 20 (worst slack, count, source -> destination).
+# Part 2: cabosse.log's result section.
+
+## Part 1: closest endpoints, worst slack (ns), count, source -> destination
+0.069 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[*]_replica/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].out_q_reg[*]/D
+0.073 14 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[*]/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].out_q_reg[*]/D
+0.138 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.gen_fwft_latency_1.empty_r_reg_rep__1/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].skid_q_reg[*]/D
+0.145 7 WRAPPER/CL/u_core/rd_sel_q_reg[*][counter][*]/C -> WRAPPER/CL/u_core/gen_port[*].u_port/stat_o_reg[*]/D
+0.145 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.gen_fwft_latency_1.empty_r_reg_rep_replica_26/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].out_q_reg[*]/D
+0.149 4 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[*]/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].skid_q_reg[*]/D
+0.150 18 WRAPPER/CL/u_core/u_host/u_r/gen_stage[*].out_q_reg[*]/C -> WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.gen_upsizer.inst_upsizer/gen_r_ch.accum_reg[bytes][*][userdata][*]/D
+0.156 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[*]_replica_34/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].out_q_reg[*]/D
+0.169 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_ar_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[*]/C -> WRAPPER/CL/u_core/u_host/u_ar/gen_stage[*].out_q_reg[*]/D
+0.170 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.gen_downsizer.inst_downsizer/downsizer_pntr_reg[*]_replica_31/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].out_q_reg[*]/D
+0.172 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[*]_replica_35/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].out_q_reg[*]/D
+0.176 2 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.gen_fwft_latency_1.empty_r_reg_rep_replica_6/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].out_q_reg[*]/D
+0.180 4 WRAPPER/CL/u_core/u_host/u_r/gen_stage[*].out_q_reg[*]/C -> WRAPPER/CL/u_core/u_host/u_r/gen_stage[*].out_q_reg[*]/D
+0.182 4 WRAPPER/CL/u_ocl_cdc/inst/gen_clock_conv.gen_async_lite_conv.clock_conv_lite_fwd_aw/handshake/dest_hsdata_ff_reg[*]/C -> WRAPPER/CL/u_core/scratch_q_reg[*]/CE
+0.183 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.gen_downsizer.inst_downsizer/downsizer_pntr_reg[*]_replica_30/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].out_q_reg[*]/D
+0.184 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/m00_exit_pipeline/m00_exit/inst/splitter_inst/gen_axi3.splitter_inst/ar_cmd_reg/state_reg[s_ready_i]/C -> WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_ar_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[*]/CE
+0.185 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.gen_downsizer.inst_downsizer/active_reg/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].out_q_reg[*]/D
+0.185 1 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[*].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[*]_replica_11/C -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].skid_q_reg[*]/D
+0.186 1 WRAPPER/CL/u_ocl_cdc/inst/gen_clock_conv.gen_async_lite_conv.clock_conv_lite_fwd_ar/m_valid_i_reg/C -> WRAPPER/CL/u_core/rd_sel_q_reg[*][counter][*]_rep__0/CE
+0.186 2 WRAPPER/CL/u_ocl_cdc/inst/gen_clock_conv.gen_async_lite_conv.clock_conv_lite_fwd_ar/m_valid_i_reg/C -> WRAPPER/CL/u_core/rd_sel_q_reg[*][counter][*]_rep__5/CE
+
+## Part 2: cabosse.log result section
+CABOSSE-BEGIN result
+total 299728
+-rw-r--r-- 1 root root 61143040 Nov  3 10:32 2026_11_03-092442.Developer_CL.tar
+-rw-r--r-- 1 root root    30129 Nov  3 10:32 2026_11_03-092442.debug_probes.ltx
+-rw-r--r-- 1 root root 38891045 Nov  3 09:38 cabosse_bringup.2026_11_03-092442.post_link.dcp
+-rw-r--r-- 1 root root 27708249 Nov  3 09:43 cabosse_bringup.2026_11_03-092442.post_opt.dcp
+-rw-r--r-- 1 root root 49191981 Nov  3 10:15 cabosse_bringup.2026_11_03-092442.post_phys_opt.dcp
+-rw-r--r-- 1 root root 49037910 Nov  3 10:01 cabosse_bringup.2026_11_03-092442.post_place.dcp
+-rw-r--r-- 1 root root 61109205 Nov  3 10:32 cabosse_bringup.2026_11_03-092442.post_route.dcp
+-rw-r--r-- 1 root root 19793124 Nov  3 09:36 cabosse_bringup.2026_11_03-092442.post_synth.dcp
+tarball s3://cabosse-builds-628837661672/dcp/2026-11-03-bringup4/2026_11_03-092442.Developer_CL.tar
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.069        0.000                      0               329565        0.010        0.000                      0               329265        0.000        0.000                       0                100601  
+
+Clock                                                                          WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----                                                                          -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk_fpga                                                                                                                                                                                                                     1.200        0.000                       0                     4  
+  clk_125                                                                                                                                                                                                                    3.725        0.000                       0                     6  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Tue Nov  3 10:33:57 2026
+| Host              : ip-172-31-47-111 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : top
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (MET) :             0.069ns  (required time - arrival time)
+  Source:                 WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[71]_replica/C
+                            (rising edge-triggered cell FDRE clocked by clk_out1_clk_mmcm_hbm  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            WRAPPER/CL/u_core/u_host/u_w/gen_stage[0].out_q_reg[217]/D
+                            (rising edge-triggered cell FDRE clocked by clk_out1_clk_mmcm_hbm  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk_out1_clk_mmcm_hbm
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk_out1_clk_mmcm_hbm rise@4.000ns - clk_out1_clk_mmcm_hbm rise@0.000ns)
+  Data Path Delay:        3.300ns  (logic 0.182ns (5.515%)  route 3.118ns (94.485%))
+  Logic Levels:           2  (LUT3=1 LUT6=1)
+  Clock Path Skew:        -0.407ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    8.747ns = ( 12.747 - 4.000 ) 
+    Source Clock Delay      (SCD):    8.393ns
+    Clock Pessimism Removal (CPR):    -0.762ns
+  Clock Uncertainty:      0.059ns  ((TSJ^2 + DJ^2)^1/2) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Discrete Jitter          (DJ):    0.095ns
+    Phase Error              (PE):    0.000ns
+  Inter-SLR Compensation: 0.190ns  ((DCD - CCD) * PF)
+    Destination Clock Delay (DCD):    8.747ns
+    Common Clock Delay      (CCD):    7.483ns
+    Prorating Factor         (PF):    0.150
+
+    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------------------------------------------
+                         (clock clk_out1_clk_mmcm_hbm rise edge)
+                                                      0.000     0.000 r                                      
+                         clock source latency         5.870     5.870                                        
+                         propagated clock network latency
+                                                      2.523     8.393                                        
+    SLICE_X135Y374       FDRE                         0.000     8.393 r  reconfigurable pblock_CL            WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[71]_replica/C
+    SLICE_X135Y374       FDRE (Prop_HFF_SLICEL_C_Q)
+                                                      0.079     8.472 r  reconfigurable pblock_CL            WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[71]_replica/Q
+                         net (fo=1, routed)           1.727    10.199    reconfigurable                      WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/doutb[71]_repN_alias
+    SLICE_X98Y291                                                     r  reconfigurable pblock_CL            WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/m_sc_payld[224]_INST_0_replica/I4
+    SLICE_X98Y291        LUT6 (Prop_B6LUT_SLICEL_I4_O)
+                                                      0.051    10.250 r  reconfigurable pblock_CL            WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/m_sc_payld[224]_INST_0_replica/O
+                         net (fo=1, routed)           1.332    11.582    reconfigurable                      WRAPPER/CL/u_core/u_host/u_w/m_sc_payld[208]_repN_alias
+    SLR Crossing[1->0]   
+    SLICE_X87Y214                                                     r  reconfigurable pblock_CL            WRAPPER/CL/u_core/u_host/u_w/gen_stage[0].out_q[217]_i_1/I1
+    SLICE_X87Y214        LUT3 (Prop_B6LUT_SLICEM_I1_O)
+                                                      0.052    11.634 r  reconfigurable pblock_CL            WRAPPER/CL/u_core/u_host/u_w/gen_stage[0].out_q[217]_i_1/O
+                         net (fo=1, routed)           0.059    11.693    reconfigurable                      WRAPPER/CL/u_core/u_host/u_w/gen_stage[0].out_q[217]_i_1_n_0
+    SLICE_X87Y214        FDRE                                         r  reconfigurable pblock_CL            WRAPPER/CL/u_core/u_host/u_w/gen_stage[0].out_q_reg[217]/D
+  -------------------------------------------------------------------    -------------------------------------------------------
+| CLB LUTs                   | 69795 |  2932 |       2128 |   1301552 |  5.36 |
+|   LUT as Logic             | 48656 |  2932 |       2128 |   1301552 |  3.74 |
+|   LUT as Memory            | 21139 |     0 |        800 |    600160 |  3.52 |
+| CLB Registers              | 81057 | 10281 |       4256 |   2603104 |  3.11 |
+|   LUT as Distributed RAM                   | 20942 |     0 |            |           |       |
+|   LUT as Shift Register                    |   197 |     0 |            |           |       |
+| CLB Registers                              | 81057 |     0 |       4256 |   2603104 |  3.11 |
+| Block RAM Tile    |  6.5 |     0 |          0 |      2016 |  0.32 |
+| DSPs      |    0 |     0 |          0 |      9024 |  0.00 |
+| CLB LUTs                   | 57248 | 11706 |  841 |  13.02 |   2.71 |   0.19 |
+|   LUT as Logic             | 36849 | 10966 |  841 |   8.38 |   2.54 |   0.19 |
+|   LUT as Memory            | 20399 |   740 |    0 |   9.93 |   0.37 |   0.00 |
+| CLB Registers              | 59809 | 20701 |  547 |   6.80 |   2.40 |   0.06 |
+| Block RAM Tile             |   6.5 |     0 |    0 |   0.97 |   0.00 |   0.00 |
+| DSPs                       |     0 |     0 |    0 |   0.00 |   0.00 |   0.00 |
+CABOSSE-RESULT pass 2026_11_03-092442.Developer_CL.tar
+CABOSSE-END result

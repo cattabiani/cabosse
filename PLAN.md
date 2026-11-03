@@ -1629,6 +1629,13 @@ needs the same reset registers. The tarball went to
 `create-fpga-image` only to check the flow: AWS made the AFI
 (afi-05124618e6e5291ab, available) although the design misses timing;
 no F2 run on it (owner).
+Build 4 (8e344e6, 2026-11-03) meets 250 MHz: WNS +0.069 ns, hold
++0.010 ns, no failing endpoint; routed in 1 h 8 min (Vivado peak 9.3 GB,
+69.8k LUTs) (reports/data/f2/2026-11-03-bringup-build4.txt). The closest
+paths are the SmartConnect's write FIFO into the host's first slice and
+the host's read slice into the SmartConnect, then the counters' read
+select (+0.145 ns). None of the 30 closest families (slack up to
++0.199 ns) touches the HBM, so port 0's ready and mux needed no fix.
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
