@@ -723,6 +723,17 @@ hdk/docs/Clock_Recipes_User_Guide.md, hdk/docs/AWS_CLK_GEN_spec.md,
 sdk/userspace/fpga_libs/fpga_clkgen/fpga_clkgen_utils.c; the HBM IP's
 configuration, `cl_hbm.xci` in aws-fpga-resources (6d32be9).
 
+**D-066 (2026-11-03) — The engine's first build in the shell is M9's**
+(owner, 2026-11-03; moves M8's last step). M8 ends without the core's
+timing-only build in the shell: M9's first step builds the engine in the
+shell, for timing first, then for the run. *Why:* the engine met 250 MHz
+placed out of context (M6, +0.03 ns) and the shell, HBM and host path met it in the
+bring-up design (build 4); the one thing left, the two together, is what
+M9's first build checks anyway, and a separate build now would be the
+same few hours twice and stale after M7's changes. A miss there has the
+same fixes as now (M8's notes: over-constrain placement, or a slower
+clock).
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1506,7 +1517,7 @@ power-of-two head dimension from 16 to 128 (`VALUES`: at most L), and
 does not check them; `SCORES` and `VALUES` are given after the
 `KV_STORE` they depend on (D-044).
 
-### M8 — F2 bring-up (no model)
+### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
 device memory bandwidth. Runs beside M6 and M7 (D-052).
 **Why:** keeps platform problems apart from design problems. Cloud time costs
@@ -1607,7 +1618,7 @@ block diagram and registers (platforms/f2/README.md); the bring-up core
 (test engines, registers; vendor-free, Verilator-tested); the CL top and
 its build flow (shell IP, AFI); the host tool and the F2 run script; the
 build and the F2 run (AWS, owner's OK each); the core's timing-only build
-in the shell.
+in the shell (moved to M9, D-066). Checkpoint: [reports/M8.md](reports/M8.md).
 
 **Bring-up builds (2026-11-02):** builds 1 and 2 stopped in setup and
 synthesis (#91, #92). Build 3 (3c816e1) routed in 2 h 37 (Vivado peak
@@ -1681,6 +1692,11 @@ Data: reports/data/f2/2026-11-03-f2run1.txt and .jsonl
 (scripts/f2/bringup_report.py).
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
+**First step (D-066):** the engine built in the shell, timed at 250 MHz,
+before anything runs on it; M8's notes on the engine's build and timing
+apply. **From M8:** PCIS host writes ran at 106 MB/s and 2.0 GB/s in
+two samples: measure with repeats before relying on the rate; host reads
+are 15-16 MB/s (results only, no bulk data).
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
 ≥ 1000 tokens and compared with the perf model and the bandwidth bound
 (provisional floor: ≥ 50% of it). Clock and resource use are reported.
