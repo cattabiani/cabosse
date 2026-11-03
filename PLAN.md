@@ -749,6 +749,18 @@ slower than a GPU is fine. D-008 stays as history. *Why:* the hackathon ran
 a different model on different hardware, so its profile says little; people
 judge speed against the CPU and GPU they know, on the same model.
 
+**D-068 (2026-11-03) — The controller decides waits, gos and stops in
+hardware** (owner, 2026-11-03). A small scoreboard mirrors
+`commands.engine_waits`, `stops` and `kv_waits`: per buffer its last
+writer and whether an engine command waited for that write, the buffers
+written since the last stop, and a queue of pending gos, each sent when its
+writer's unit has counted that many dones. An attention command is handed
+to the engine after the store before it is done. `OUTPUT` is done at once
+in M7 (the runtime reads LOGITS from the simulation, Q-33 stays M9's).
+*Why:* the encoding has no free bits, and the list stays a pure function
+of the model; tests check the hardware's decisions against the Python
+functions.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1568,8 +1580,31 @@ does not check them; `SCORES` and `VALUES` are given after the
 - End of the context window: as in Non-goals (the runtime stops with a
   message).
 
+**Steps (owner, 2026-11-03), one branch and PR each:**
+1. `Layout` on D-040's channel offsets; `LOAD`'s tensors in channel 0
+   above the engine's region; `load()` per channel.
+2. `sw/` runtime (Python): the six-call platform protocol, validation, the
+   token loop, the end-of-context stop; a platform on `commands.run()` for
+   fast tests.
+3. Controller and register file (RTL), tested alone against stub units
+   (D-068).
+4. Top level, the Verilator driver and the simulation platform; tiny
+   configs bit-exact (3 prompts × 64 tokens at 4 ports, one prompt at 32).
+5. SmolLM2 at 32 ports, 8 tokens bit-exact (`slow`), and the cycle
+   breakdown per token against the perf model.
+6. D-067's CPU and GPU baseline script.
+7. Report and checkpoint.
+
 **Progress:**
 - [x] Answers above.
+- [x] Step 1: `Layout` on channel offsets (D-040). Each tensor has a
+  `Kind` (LOAD's, a matrix, a K or V cache); `channel_writes()` gives the
+  host's writes per channel. HBM reserved at full context: SmolLM2 611.0
+  MiB (494.7 flat before: V's two copies, last passes padded), Qwen2.5-0.5B
+  1,804.6 MiB. The vector unit's tests keep their own smaller map
+  (`verif/decode.py`). The hardware needs `cap` a multiple of the lanes;
+  the runtime checks it (step 2), `Layout` does not, so the perf model can
+  still lay out any cap.
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and

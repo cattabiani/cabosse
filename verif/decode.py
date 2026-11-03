@@ -7,7 +7,8 @@ driver's engine steps with commands.run()'s results (OUTPUT and END are
 not the unit's), and its check bit for bit against run().
 
 The memory holds only what the unit reads and writes (PLAN.md, M6's
-real-data answers; D-040's channel offsets come in M7): its own map puts
+real-data answers), so it keeps a map of its own, smaller than Layout's
+D-040 one (whose channel 0 holds the engine's region too): it puts
 each KV cache at a low offset in every channel, in the engine's order
 (D-062), the tensors LOAD reads after the channels, and the rest (the
 engine's) past the memory."""

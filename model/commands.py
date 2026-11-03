@@ -18,16 +18,19 @@ Every result is computed in FP32 and rounded to BF16 when it is written to a
 BF16 buffer or to the KV cache: the D-011 rounding points are where the
 destination is BF16, not a step of their own.
 
-Addresses are HBM byte addresses from a Layout. HBM is modelled as a map from
-address to tensor, in the tensors' logical shape. lane_order() gives a matrix
-in the engine's read order (docs/architecture.md, "Weight layout"), the
-reordering the host does at load time.
+Addresses come from a Layout (D-040): what the engine reads (matrices, KV
+caches) is spread over every channel at the same offset, which is the
+command's address; what LOAD reads sits in channel 0 above it, at its HBM
+byte address. HBM is modelled as a map from address to tensor, in the
+tensors' logical shape. lane_order() gives a matrix in the engine's read
+order (docs/architecture.md, "Weight layout"), the reordering the host does
+at load time; channel_writes() gives the bytes the host writes.
 """
 
 import enum
 import math
 import struct
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, fields
 
 import torch
@@ -42,6 +45,8 @@ E = 4  # weights a lane takes per cycle (D-027)
 LANES_PER_PORT = BEAT_BYTES // (E * BF16.itemsize)  # a beat holds E weights for each
 VALUES_HEADS = 2  # heads per p.V pass, at most (rtl/engine.sv's Heads)
 STRIDE_ALIGN = 16  # elements: S and P's stride, the vector unit's width (D-030, D-049)
+PORTS = 32  # F2's HBM ports, one channel each (docs/f2.md)
+CHANNEL_BYTES = 2**29  # F2's channel: 16 GiB over 32
 
 
 class Op(enum.IntEnum):
@@ -295,21 +300,48 @@ def f32_value(bits: int) -> torch.Tensor:
     return arith.f32_from_bits(torch.tensor([bits], dtype=torch.int64))[0]
 
 
+class Kind(enum.Enum):
+    """How a tensor sits in HBM (D-040): LOAD reads it from channel 0 as it
+    is, or the engine reads it spread over every channel at one offset, a
+    matrix or a KV cache in the lanes' order (lane_order, kv_lane_order)."""
+
+    LOADED = enum.auto()
+    MATRIX = enum.auto()
+    K_CACHE = enum.auto()
+    V_CACHE = enum.auto()
+
+
 @dataclass(frozen=True)
 class Layout:
-    """Where each tensor sits in HBM: name -> (address, shape, dtype). The KV
-    cache has `cap` rows per KV head and layer. Also the STRIDE register's
-    value: S and P hold head h's row of t at h·stride, on chip (by default
-    `cap` rounded up to STRIDE_ALIGN; any multiple of it from the longest t
-    up works)."""
+    """Where each tensor sits in HBM: name -> (address, shape, dtype), and
+    its Kind, on an engine of `ports` ports and channels of `channel_bytes`
+    (D-040). What the engine reads sits at the same offset in every channel,
+    in [0, engine_bytes), reserving its largest share there; the tensors LOAD
+    reads sit in channel 0 above them, up to end_bytes, so a channel-0
+    offset is also the HBM address. The KV cache has `cap` rows per KV head
+    and layer. Also the STRIDE register's value: S and P hold head h's row
+    of t at h·stride, on chip (by default `cap` rounded up to STRIDE_ALIGN;
+    any multiple of it from the longest t up works)."""
 
     config: LlamaConfig
     cap: int
     stride: int
     tensors: dict[str, tuple[int, tuple[int, ...], torch.dtype]]
+    kinds: dict[str, Kind]
+    ports: int
+    channel_bytes: int
+    engine_bytes: int
+    end_bytes: int
 
     @staticmethod
-    def of(config: LlamaConfig, cap: int, stride: int | None = None) -> Layout:
+    def of(
+        config: LlamaConfig,
+        cap: int,
+        stride: int | None = None,
+        ports: int = PORTS,
+        channel_bytes: int = CHANNEL_BYTES,
+    ) -> Layout:
+        """Raises ValueError when channel 0 cannot hold it all."""
         c = config
         assert 1 <= cap <= c.max_position_embeddings, (cap, c.max_position_embeddings)
         if stride is None:
@@ -318,35 +350,45 @@ class Layout:
         d, hidden, inter = c.head_dim, c.hidden_size, c.intermediate_size
         q, kv = c.num_attention_heads * d, c.num_key_value_heads * d
         cache = (c.num_key_value_heads, cap, d)
+        ld, mat = Kind.LOADED, Kind.MATRIX
         shapes = {
-            "embed": ((c.vocab_size, hidden), BF16),
-            "rope_cos": ((cap, d), F32),
-            "rope_sin": ((cap, d), F32),
+            "embed": ((c.vocab_size, hidden), BF16, ld),
+            "rope_cos": ((cap, d), F32, ld),
+            "rope_sin": ((cap, d), F32, ld),
         }
         for i in range(c.num_hidden_layers):
             p = f"layers.{i}."
             shapes |= {
-                p + "attn_norm": ((hidden,), BF16),
-                p + "q": ((q, hidden), BF16),
-                p + "k": ((kv, hidden), BF16),
-                p + "v": ((kv, hidden), BF16),
-                p + "o": ((hidden, q), BF16),
-                p + "mlp_norm": ((hidden,), BF16),
-                p + "gate": ((inter, hidden), BF16),
-                p + "up": ((inter, hidden), BF16),
-                p + "down": ((hidden, inter), BF16),
-                p + "k_cache": (cache, BF16),
-                p + "v_cache": (cache, BF16),
+                p + "attn_norm": ((hidden,), BF16, ld),
+                p + "q": ((q, hidden), BF16, mat),
+                p + "k": ((kv, hidden), BF16, mat),
+                p + "v": ((kv, hidden), BF16, mat),
+                p + "o": ((hidden, q), BF16, mat),
+                p + "mlp_norm": ((hidden,), BF16, ld),
+                p + "gate": ((inter, hidden), BF16, mat),
+                p + "up": ((inter, hidden), BF16, mat),
+                p + "down": ((hidden, inter), BF16, mat),
+                p + "k_cache": (cache, BF16, Kind.K_CACHE),
+                p + "v_cache": (cache, BF16, Kind.V_CACHE),
             }
         # Its own copy when tied to embed: LOAD reads embed by rows, the
         # engine lm_head in the lanes' order (lane_order).
-        shapes["final_norm"] = ((hidden,), BF16)
-        shapes["lm_head"] = ((c.vocab_size, hidden), BF16)
-        tensors, addr = {}, 0
-        for name, (shape, dtype) in shapes.items():
-            tensors[name] = (addr, shape, dtype)
-            addr += -(-n_bytes(shape, dtype) // ALIGN) * ALIGN
-        return Layout(config, cap, stride, tensors)
+        shapes["final_norm"] = ((hidden,), BF16, ld)
+        shapes["lm_head"] = ((c.vocab_size, hidden), BF16, mat)
+        lanes = ports * LANES_PER_PORT
+        tensors, kinds, addr = {}, {}, 0
+        for loaded in (False, True):  # the engine's, then LOAD's above them
+            engine_bytes = addr
+            for name, (shape, dtype, kind) in shapes.items():
+                if (kind == ld) == loaded:
+                    tensors[name], kinds[name] = (addr, shape, dtype), kind
+                    addr += -(-reserved_bytes(shape, dtype, kind, lanes) // ALIGN) * ALIGN
+        if addr > channel_bytes:
+            raise ValueError(
+                f"{c.name_or_path or 'model'} at cap {cap} needs {addr:,} bytes in channel 0,"
+                f" more than its {channel_bytes:,}"
+            )
+        return Layout(config, cap, stride, tensors, kinds, ports, channel_bytes, engine_bytes, addr)
 
     def addr(self, name: str) -> int:
         return self.tensors[name][0]
@@ -355,8 +397,14 @@ class Layout:
         return self.tensors[name][1]
 
     @property
+    def lanes(self) -> int:
+        return self.ports * LANES_PER_PORT
+
+    @property
     def total_bytes(self) -> int:
-        return max(a + n_bytes(s, t) for a, s, t in self.tensors.values())
+        """HBM reserved: the engine's region in every channel, and LOAD's
+        tensors in channel 0."""
+        return (self.ports - 1) * self.engine_bytes + self.end_bytes
 
 
 def load(
@@ -420,8 +468,38 @@ def values_heads(d: int, lanes: int) -> int:
 
 def kv_region_beats(cap: int, d: int, values: bool, lanes: int) -> int:
     """The beats of one KV head's region in each channel (kv_lane_order):
-    K's cap / lanes tiles of ceil(d / E) beats, or V's cap / E."""
-    return -(-cap // E) if values else cap // lanes * -(-d // E)
+    K's ceil(cap / lanes) tiles of ceil(d / E) beats, or V's passes (its d
+    rows once per head of a pass) of ceil(cap / E)."""
+    if values:
+        return -(-d * values_heads(d, lanes) // lanes) * -(-cap // E)
+    return -(-cap // lanes) * -(-d // E)
+
+
+def region_beats(shape: tuple[int, ...], kind: Kind, lanes: int) -> int:
+    """The beats a matrix or a KV cache [kv_heads, cap, d] reserves in each
+    channel (D-040, D-062): the largest share, as if the last pass were
+    full. The hardware needs a cache's cap a multiple of lanes."""
+    if kind == Kind.MATRIX:
+        n, m = shape
+        return -(-n // lanes) * -(-m // E)
+    kv_heads, cap, d = shape
+    return kv_heads * kv_region_beats(cap, d, kind == Kind.V_CACHE, lanes)
+
+
+def reserved_bytes(shape: tuple[int, ...], dtype: torch.dtype, kind: Kind, lanes: int) -> int:
+    """The bytes a tensor reserves: in channel 0 if LOAD reads it, else in
+    every channel."""
+    if kind == Kind.LOADED:
+        return n_bytes(shape, dtype)
+    return region_beats(shape, kind, lanes) * BEAT_BYTES
+
+
+def per_port(x: torch.Tensor, kind: Kind, lanes: int) -> list[torch.Tensor]:
+    """A matrix or a KV cache in the engine's order: each port's beats
+    (lane_order, kv_lane_order)."""
+    if kind == Kind.MATRIX:
+        return lane_order(x, lanes)
+    return kv_lane_order(x, kind == Kind.V_CACHE, lanes)
 
 
 def kv_lane_order(cache: torch.Tensor, values: bool, lanes: int) -> list[torch.Tensor]:
@@ -444,6 +522,22 @@ def kv_lane_order(cache: torch.Tensor, values: bool, lanes: int) -> list[torch.T
         for p, beats in enumerate(lane_order(w.contiguous(), lanes)):
             out[p, kv, : len(beats)] = beats
     return list(out.reshape(ports, kv_heads * region, LANES_PER_PORT * E))
+
+
+def channel_writes(
+    layout: Layout, hbm: dict[int, torch.Tensor]
+) -> Iterator[tuple[int, torch.Tensor]]:
+    """HBM as the host writes it, one tensor at a time: (HBM byte address,
+    bytes as uint8) per write. An engine tensor goes to every channel at its
+    offset, in the engine's order (per_port); one LOAD reads goes to channel
+    0 as it is. Channel c starts at c · channel_bytes."""
+    for name, (addr, _, _) in layout.tensors.items():
+        kind, x = layout.kinds[name], hbm[addr]
+        if kind == Kind.LOADED:
+            yield addr, x.contiguous().view(-1).view(torch.uint8)
+            continue
+        for p, beats in enumerate(per_port(x, kind, layout.lanes)):
+            yield p * layout.channel_bytes + addr, beats.contiguous().view(-1).view(torch.uint8)
 
 
 def load_vector(dst: Buf, layout: Layout, name: str, flags: Flag = Flag.NONE) -> Command:
