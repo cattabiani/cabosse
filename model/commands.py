@@ -56,6 +56,7 @@ ID = 0x43424F53  # 'CBOS', the ID register
 VERSION = 1  # of the registers and the command set
 CONTROL_START, CONTROL_RESET = 1, 2
 STATUS_BUSY, STATUS_DONE, STATUS_ERROR = 1, 2, 4
+ERROR_OPCODE, ERROR_MEMORY, ERROR_NO_END = 1, 2, 3  # ERROR's reason, bits 31:28
 CACHE_ALIGN = 128  # bytes: a KV cache's address (rtl/vec_unit.sv)
 PORTS = 32  # F2's HBM ports, one channel each (docs/f2.md)
 CHANNEL_BYTES = 2**29  # F2's channel: 16 GiB over 32
@@ -293,7 +294,12 @@ REGISTERS = [
     (0x10, "TOKEN", "RW", "token id of the next step"),
     (0x14, "POSITION", "RW", "position of the next step"),
     (0x18, "COMMANDS", "RW", "number of commands in the list"),
-    (0x1C, "ERROR", "R", "index of the command that failed, and why"),
+    (
+        0x1C,
+        "ERROR",
+        "R",
+        "bits 15:0: the command's index; 31:28: why (1 opcode, 2 memory, 3 no END)",
+    ),
     (0x20, "LOGITS_LO", "RW", "host address for OUTPUT, low 32 bits"),
     (0x24, "LOGITS_HI", "RW", "host address for OUTPUT, high 32 bits"),
     (0x28, "CYCLES_LO", "R", "cycles of the last token, low 32 bits"),
@@ -302,6 +308,11 @@ REGISTERS = [
     (0x10000, "COMMAND_BUFFER", "W", "the command list: 64 KiB, up to 2,048 commands"),
 ]
 REG = {name: offset for offset, name, _, _ in REGISTERS}
+
+
+def error_value(reason: int, index: int) -> int:
+    """The ERROR register: why the controller stopped, at which command."""
+    return reason << 28 | index
 
 
 def f32_bits(x: float | torch.Tensor) -> int:

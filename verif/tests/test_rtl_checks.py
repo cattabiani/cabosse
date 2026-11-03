@@ -38,6 +38,7 @@ SYNTH_PARAMS = {
     "engine_path": (("Ports", 4),),
     "vec_unit": (("Lanes", 8), ("Len", 64)),
     "bringup_core": (("Ports", 2),),
+    "controller": (("Commands", 16),),  # Yosys keeps a 64 KiB buffer as flip-flops
 }
 # (top, parameters, message): shapes that must not elaborate.
 BAD_SHAPES = [

@@ -1,0 +1,426 @@
+// SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
+// Copyright 2026 The Cabosse Authors
+//
+// The controller (D-029, D-068; docs/architecture.md, "Controller" and
+// "Registers"): the host's registers on an AXI-Lite port, the command
+// buffer, and a sequencer that runs the command list once per token, handing
+// each command to the engine or the vector unit in list order.
+//
+// Registers (model/commands.py, REGISTERS): 32-bit, at their offsets; the
+// command buffer from COMMAND_BUFFER (Commands commands of 32 bytes, written
+// a word at a time, not readable). Writes take whole words (WSTRB is not
+// looked at); a read of an offset with no register gives 0; every response
+// is OKAY. CONTROL bit 0 starts a token (when not busy), bit 1 resets the
+// sequencer (when the units are idle: it does not stop them). The host must
+// not write the command buffer while a token runs.
+//
+// A token: pc runs from 0; the command at pc is read from the buffer (a
+// synchronous RAM, read at the next pc so it is there the cycle after a
+// handover) and handed over when its unit takes it and these hold (D-068,
+// model/commands.py: stops, engine_waits, kv_waits):
+// - stop: a command off the engine (vector unit, OUTPUT, END) that reads a
+//   buffer written since the last stop waits until every command handed over
+//   is done; its handover clears the written set (D-045).
+// - wait: an engine command whose input buffer's last writer no earlier
+//   engine command waited for goes with wait, and a go is queued for it: the
+//   go is sent once that writer's unit has counted its done (D-042). Gos
+//   leave in order, each after its command was taken.
+// - SCORES (VALUES) is handed over after the last KV_STORE (V_STORE) is
+//   done. kv_waits asks for the last store to the cache it reads; the last
+//   store of its kind is that one or a later one, whose done comes later
+//   (the vector unit's dones are in order).
+// - OUTPUT is done at once (M7: the host reads LOGITS; Q-33 is M9's).
+// - END waits until every command is done and every go sent, then sets
+//   STATUS done, pulses irq_o and keeps the token's cycles in CYCLES.
+// Every command handed over writes its dst into the written set and becomes
+// its last writer. Errors stop the sequencer with STATUS error and ERROR =
+// {reason, 16 bits of pc}: an unknown opcode (ErrOpcode), a unit's memory
+// error (ErrMemory: err_i, sticky in the units), or pc reaching COMMANDS
+// without END (ErrNoEnd). Nothing else is checked: the runtime validates the
+// list (commands.validate).
+//
+// The command's fields go to both units on one bus (cmd_*); eng_valid_o or
+// vec_valid_o says whose it is. token_o, t_o (position + 1) and stride_o
+// are the registers, held through a token.
+
+module controller #(
+  parameter  int unsigned Bufs      = 22,
+  parameter  logic [31:0] Bf16Mask  = 32'h4644,  // per id: X, QR, P, ATT, M (commands.buffers)
+  parameter  int unsigned AddrW     = 20,        // n, m, cap, stride, token, position
+  parameter  int unsigned MemAddrW  = 34,        // F2's HBM: 16 GiB
+  parameter  int unsigned HeadWidth = 8,
+  parameter  int unsigned Commands  = 2048,      // the command buffer: 64 KiB
+  parameter  int unsigned GoDepth   = 8,         // gos queued, at most
+  parameter  int unsigned AxilAddrW = 17,
+  localparam int unsigned BufW      = $clog2(Bufs),
+  localparam int unsigned PcW       = $clog2(Commands + 1),
+  localparam int unsigned SeqW      = PcW                     // a unit's commands of a token
+) (
+  input  logic                 clk_i,
+  input  logic                 rst_ni,
+
+  input  logic                 s_awvalid_i,
+  output logic                 s_awready_o,
+  input  logic [AxilAddrW-1:0] s_awaddr_i,
+  input  logic                 s_wvalid_i,
+  output logic                 s_wready_o,
+  input  logic [31:0]          s_wdata_i,
+  output logic                 s_bvalid_o,
+  input  logic                 s_bready_i,
+  output logic [1:0]           s_bresp_o,
+  input  logic                 s_arvalid_i,
+  output logic                 s_arready_o,
+  input  logic [AxilAddrW-1:0] s_araddr_i,
+  output logic                 s_rvalid_o,
+  input  logic                 s_rready_i,
+  output logic [31:0]          s_rdata_o,
+  output logic [1:0]           s_rresp_o,
+  output logic                 irq_o,        // a pulse: the token is done
+
+  output logic [4:0]           cmd_op_o,
+  output logic [BufW-1:0]      cmd_dst_o,
+  output logic [BufW-1:0]      cmd_a_o,
+  output logic [BufW-1:0]      cmd_b_o,
+  output logic [BufW-1:0]      cmd_c_o,
+  output logic [7:0]           cmd_flags_o,
+  output logic [AddrW-1:0]     cmd_n_o,
+  output logic [AddrW-1:0]     cmd_m_o,
+  output logic [AddrW-1:0]     cmd_cap_o,
+  output logic [MemAddrW-1:0]  cmd_addr_o,
+  output logic [31:0]          cmd_scalar_o,
+  output logic [HeadWidth-1:0] cmd_group_o,  // attention: query heads per KV head
+  output logic                 cmd_bf16_o,   // dst is a BF16 buffer
+  output logic [AddrW-1:0]     token_o,
+  output logic [AddrW-1:0]     t_o,
+  output logic [AddrW-1:0]     stride_o,
+
+  output logic                 eng_valid_o,
+  input  logic                 eng_ready_i,
+  output logic [1:0]           eng_op_o,     // rtl/engine.sv's OpMatvec, OpScores, OpValues
+  output logic                 eng_wait_o,
+  output logic                 eng_go_o,
+  input  logic                 eng_done_i,
+  input  logic                 eng_err_i,
+
+  output logic                 vec_valid_o,
+  input  logic                 vec_ready_i,
+  input  logic                 vec_done_i,
+  input  logic                 vec_err_i
+);
+
+  if (Bufs > 32 || Bufs < 2) begin : gen_bad_bufs
+    $error("controller: Bufs must be 2 to 32 (Bf16Mask's bits)");
+  end
+  if (Commands > 65536 || 2 ** $clog2(Commands) != Commands) begin : gen_bad_commands
+    $error("controller: Commands must be a power of two, at most 65536 (ERROR's 16 bits)");
+  end
+  if (AxilAddrW < 17 || 2 ** (AxilAddrW - 1) < 32 * Commands) begin : gen_bad_axil
+    $error("controller: AxilAddrW must hold COMMAND_BUFFER (0x10000) and the buffer");
+  end
+
+  // The registers' offsets (commands.REGISTERS) and values.
+  localparam logic [15:0] RegId        = 16'h00;
+  localparam logic [15:0] RegVersion   = 16'h04;
+  localparam logic [15:0] RegControl   = 16'h08;
+  localparam logic [15:0] RegStatus    = 16'h0C;
+  localparam logic [15:0] RegToken     = 16'h10;
+  localparam logic [15:0] RegPosition  = 16'h14;
+  localparam logic [15:0] RegCommands  = 16'h18;
+  localparam logic [15:0] RegError     = 16'h1C;
+  localparam logic [15:0] RegLogitsLo  = 16'h20;
+  localparam logic [15:0] RegLogitsHi  = 16'h24;
+  localparam logic [15:0] RegCyclesLo  = 16'h28;
+  localparam logic [15:0] RegCyclesHi  = 16'h2C;
+  localparam logic [15:0] RegStride    = 16'h30;
+  localparam logic [31:0] IdValue      = 32'h4342_4F53;  // 'CBOS' (commands.ID)
+  localparam logic [31:0] VersionValue = 32'd1;          // commands.VERSION
+
+  // Opcodes (commands.Op).
+  localparam logic [7:0] OpEnd     = 8'd0;
+  localparam logic [7:0] OpMatvec  = 8'd2;
+  localparam logic [7:0] OpKvStore = 8'd3;
+  localparam logic [7:0] OpScores  = 8'd4;
+  localparam logic [7:0] OpValues  = 8'd5;
+  localparam logic [7:0] OpOutput  = 8'd6;
+  localparam logic [7:0] OpVStore  = 8'd17;
+  localparam logic [7:0] OpLast    = 8'd17;
+
+  localparam logic [3:0] ErrOpcode = 4'd1;
+  localparam logic [3:0] ErrMemory = 4'd2;
+  localparam logic [3:0] ErrNoEnd  = 4'd3;
+
+  // ---------------------------------------------------------------- AXI-Lite
+
+  logic [31:0] token_q, position_q, commands_q, stride_q, logits_lo_q, logits_hi_q;
+  logic [31:0] error_q;
+  logic [63:0] cycles_q;
+  logic        busy_q, done_q, err_q;
+  logic        bvalid_q, rvalid_q;
+  logic [31:0] rdata_q;
+  logic        wr, rd, start, ctl_reset;
+  logic [15:0] waddr, raddr;
+  logic        cb_we;
+
+  assign wr          = s_awvalid_i && s_wvalid_i && !bvalid_q;
+  assign s_awready_o = wr;
+  assign s_wready_o  = wr;
+  assign s_bvalid_o  = bvalid_q;
+  assign s_bresp_o   = 2'b00;
+  assign rd          = s_arvalid_i && !rvalid_q;
+  assign s_arready_o = rd;
+  assign s_rvalid_o  = rvalid_q;
+  assign s_rdata_o   = rdata_q;
+  assign s_rresp_o   = 2'b00;
+  assign waddr       = s_awaddr_i[15:0];
+  assign raddr       = s_araddr_i[15:0];
+  assign cb_we       = wr && s_awaddr_i[16];
+  assign start       = wr && !s_awaddr_i[16] && waddr == RegControl && s_wdata_i[0] && !busy_q;
+  assign ctl_reset   = wr && !s_awaddr_i[16] && waddr == RegControl && s_wdata_i[1];
+
+  always_ff @(posedge clk_i) begin
+    if (!rst_ni) begin
+      token_q     <= '0;
+      position_q  <= '0;
+      commands_q  <= '0;
+      stride_q    <= '0;
+      logits_lo_q <= '0;
+      logits_hi_q <= '0;
+      bvalid_q    <= 1'b0;
+      rvalid_q    <= 1'b0;
+      rdata_q     <= '0;
+    end else begin
+      if (wr) bvalid_q <= 1'b1;
+      else if (s_bready_i) bvalid_q <= 1'b0;
+      if (wr && !s_awaddr_i[16]) begin
+        unique case (waddr)
+          RegToken:    token_q     <= s_wdata_i;
+          RegPosition: position_q  <= s_wdata_i;
+          RegCommands: commands_q  <= s_wdata_i;
+          RegLogitsLo: logits_lo_q <= s_wdata_i;
+          RegLogitsHi: logits_hi_q <= s_wdata_i;
+          RegStride:   stride_q    <= s_wdata_i;
+          default: ;
+        endcase
+      end
+      if (rd) begin
+        rvalid_q <= 1'b1;
+        rdata_q  <= '0;
+        if (!s_araddr_i[16]) begin
+          unique case (raddr)
+            RegId:       rdata_q <= IdValue;
+            RegVersion:  rdata_q <= VersionValue;
+            RegStatus:   rdata_q <= {29'd0, err_q, done_q, busy_q};
+            RegToken:    rdata_q <= token_q;
+            RegPosition: rdata_q <= position_q;
+            RegCommands: rdata_q <= commands_q;
+            RegError:    rdata_q <= error_q;
+            RegLogitsLo: rdata_q <= logits_lo_q;
+            RegLogitsHi: rdata_q <= logits_hi_q;
+            RegCyclesLo: rdata_q <= cycles_q[31:0];
+            RegCyclesHi: rdata_q <= cycles_q[63:32];
+            RegStride:   rdata_q <= stride_q;
+            default: ;
+          endcase
+        end
+      end else if (s_rready_i) begin
+        rvalid_q <= 1'b0;
+      end
+    end
+  end
+
+  // ---------------------------------------------------------- command buffer
+
+  localparam int unsigned CmdAW = $clog2(Commands);
+
+  logic [7:0][31:0] cmd_mem[Commands];
+  logic [7:0][31:0] cmd_q;  // the command at pc
+  logic [PcW-1:0]   pc_q, pc_d;
+
+  always_ff @(posedge clk_i) begin
+    if (cb_we) cmd_mem[s_awaddr_i[CmdAW+4:5]][s_awaddr_i[4:2]] <= s_wdata_i;
+    cmd_q <= cmd_mem[pc_d[CmdAW-1:0]];
+  end
+
+  // Fields (commands.ENCODING): op, dst, a, b, c, flags, kv_heads, n, m, cap,
+  // addr, scalar.
+  logic [7:0]  op;
+  logic [7:0]  f_dst, f_a, f_b, f_c;
+  logic [HeadWidth-1:0] f_kv_heads;
+  logic [AddrW-1:0]     f_n;  // the encoding's 32 bits; validate keeps n below 2^AddrW
+
+  assign op           = cmd_q[0][7:0];
+  assign f_dst        = cmd_q[0][15:8];
+  assign f_a          = cmd_q[0][23:16];
+  assign f_b          = cmd_q[0][31:24];
+  assign f_c          = cmd_q[1][7:0];
+  assign f_kv_heads   = cmd_q[1][16+:HeadWidth];
+  assign f_n          = cmd_q[2][AddrW-1:0];
+  assign cmd_op_o     = op[4:0];
+  assign cmd_dst_o    = BufW'(f_dst);
+  assign cmd_a_o      = BufW'(f_a);
+  assign cmd_b_o      = BufW'(f_b);
+  assign cmd_c_o      = BufW'(f_c);
+  assign cmd_flags_o  = cmd_q[1][15:8];
+  assign cmd_n_o      = f_n;
+  assign cmd_m_o      = AddrW'(cmd_q[3]);
+  assign cmd_cap_o    = AddrW'(cmd_q[4]);
+  assign cmd_addr_o   = MemAddrW'({cmd_q[6], cmd_q[5]});
+  assign cmd_scalar_o = cmd_q[7];
+  assign cmd_bf16_o   = Bf16Mask[f_dst[4:0]];
+  assign cmd_group_o  = f_kv_heads == 0 ? '0 : f_n[HeadWidth-1:0] / f_kv_heads;
+  assign token_o      = AddrW'(token_q);
+  assign t_o          = AddrW'(position_q + 32'd1);
+  assign stride_o     = AddrW'(stride_q);
+
+  // ---------------------------------------------------------- the sequencer
+
+  logic            is_eng, is_vec, known;
+  logic [Bufs-1:0] reads, dst_bit;
+
+  assign known  = op <= OpLast;
+  assign is_eng = op == OpMatvec || op == OpScores || op == OpValues;
+  assign is_vec = known && !is_eng && op != OpEnd && op != OpOutput;
+
+  always_comb begin
+    reads   = '0;
+    dst_bit = '0;
+    if (f_a != 0) reads[BufW'(f_a)] = 1'b1;
+    if (f_b != 0) reads[BufW'(f_b)] = 1'b1;
+    if (f_c != 0) reads[BufW'(f_c)] = 1'b1;
+    if (f_dst != 0) dst_bit[BufW'(f_dst)] = 1'b1;
+  end
+
+  // The scoreboard: per buffer its last writer this token (its unit and its
+  // count among that unit's commands) and whether an engine command waited
+  // for it; the buffers written since the last stop; the last stores.
+  logic [Bufs-1:0]          written_q, wvalid_q, waited_q, wunit_q;  // wunit: the engine's
+  logic [Bufs-1:0][SeqW-1:0] wseq_q;
+  logic [SeqW-1:0]          eng_issued_q, eng_done_q, vec_issued_q, vec_done_q;
+  logic [SeqW-1:0]          kstore_q, vstore_q;
+  logic                     kstore_valid_q, vstore_valid_q;
+
+  logic all_done, stop, kv_ready, need_wait, writer_done;
+  logic go_in_ready, go_out_valid, go_out_unit;
+  logic [SeqW-1:0] go_out_seq;
+  logic issuing, fire, fail_opcode, fail_mem, fail_end, end_now;
+
+  assign all_done  = eng_issued_q == eng_done_q && vec_issued_q == vec_done_q && !go_out_valid;
+  assign stop      = !is_eng && |(reads & written_q);
+  assign kv_ready  = op == OpScores ? !kstore_valid_q || vec_done_q > kstore_q
+                   : op == OpValues ? !vstore_valid_q || vec_done_q > vstore_q
+                   : 1'b1;
+  assign need_wait = is_eng && wvalid_q[BufW'(f_a)] && !waited_q[BufW'(f_a)];
+
+  assign issuing     = busy_q && !ctl_reset;
+  assign fail_end    = issuing && 32'(pc_q) >= commands_q;
+  assign fail_opcode = issuing && !fail_end && !known;
+  assign fail_mem    = issuing && (eng_err_i || vec_err_i);
+  assign end_now     = issuing && !fail_end && op == OpEnd && all_done;
+
+  assign eng_valid_o = issuing && !fail_end && is_eng && kv_ready && (!need_wait || go_in_ready);
+  assign vec_valid_o = issuing && !fail_end && is_vec && (!stop || all_done);
+  assign eng_op_o    = op == OpScores ? 2'd1 : op == OpValues ? 2'd2 : 2'd0;
+  assign eng_wait_o  = need_wait;
+  assign fire        = (eng_valid_o && eng_ready_i) || (vec_valid_o && vec_ready_i)
+                    || (issuing && !fail_end && op == OpOutput && (!stop || all_done));
+
+  // Gos, in the order of their commands: each waits for its writer's done.
+  stream_fifo #(.Width(1 + SeqW), .Depth(GoDepth)) u_gos (
+    .clk_i,
+    .rst_ni      (rst_ni && !start && !ctl_reset),  // a token starts with none
+    .in_valid_i  (eng_valid_o && eng_ready_i && need_wait),
+    .in_ready_o  (go_in_ready),
+    .in_data_i   ({wunit_q[BufW'(f_a)], wseq_q[BufW'(f_a)]}),
+    .out_valid_o (go_out_valid),
+    .out_ready_i (writer_done),
+    .out_data_o  ({go_out_unit, go_out_seq}),
+    // verilator lint_off PINCONNECTEMPTY
+    .count_o     ()
+    // verilator lint_on PINCONNECTEMPTY
+  );
+  assign writer_done = go_out_valid && (go_out_unit ? eng_done_q > go_out_seq
+                                                    : vec_done_q > go_out_seq);
+  assign eng_go_o    = writer_done;
+
+  always_comb begin
+    pc_d = pc_q;
+    if (start) pc_d = '0;
+    else if (fire) pc_d = pc_q + 1'b1;
+  end
+
+  always_ff @(posedge clk_i) begin
+    if (!rst_ni || ctl_reset) begin
+      pc_q           <= '0;
+      busy_q         <= 1'b0;
+      done_q         <= 1'b0;
+      err_q          <= 1'b0;
+      error_q        <= '0;
+      cycles_q       <= '0;
+      irq_o          <= 1'b0;
+      written_q      <= '0;
+      wvalid_q       <= '0;
+      waited_q       <= '0;
+      wunit_q        <= '0;
+      wseq_q         <= '0;
+      eng_issued_q   <= '0;
+      eng_done_q     <= '0;
+      vec_issued_q   <= '0;
+      vec_done_q     <= '0;
+      kstore_q       <= '0;
+      vstore_q       <= '0;
+      kstore_valid_q <= 1'b0;
+      vstore_valid_q <= 1'b0;
+    end else begin
+      pc_q  <= pc_d;
+      irq_o <= 1'b0;
+      if (busy_q) cycles_q <= cycles_q + 1'b1;
+      if (eng_done_i) eng_done_q <= eng_done_q + 1'b1;
+      if (vec_done_i) vec_done_q <= vec_done_q + 1'b1;
+      if (start) begin
+        busy_q         <= 1'b1;
+        done_q         <= 1'b0;
+        err_q          <= 1'b0;
+        error_q        <= '0;
+        cycles_q       <= '0;
+        written_q      <= '0;
+        wvalid_q       <= '0;
+        waited_q       <= '0;
+        eng_issued_q   <= '0;
+        eng_done_q     <= '0;
+        vec_issued_q   <= '0;
+        vec_done_q     <= '0;
+        kstore_valid_q <= 1'b0;
+        vstore_valid_q <= 1'b0;
+      end else if (fail_end || fail_opcode || fail_mem) begin
+        busy_q  <= 1'b0;
+        err_q   <= 1'b1;
+        error_q <= {fail_mem ? ErrMemory : fail_end ? ErrNoEnd : ErrOpcode, 12'd0, 16'(pc_q)};
+      end else if (end_now) begin
+        busy_q <= 1'b0;
+        done_q <= 1'b1;
+        irq_o  <= 1'b1;
+      end else if (fire) begin
+        if (stop) written_q <= dst_bit;
+        else written_q <= written_q | dst_bit;
+        if (is_eng && need_wait) waited_q[BufW'(f_a)] <= 1'b1;
+        if (f_dst != 0) begin
+          wvalid_q[BufW'(f_dst)] <= 1'b1;
+          waited_q[BufW'(f_dst)] <= 1'b0;
+          wunit_q[BufW'(f_dst)]  <= is_eng;
+          wseq_q[BufW'(f_dst)]   <= is_eng ? eng_issued_q : vec_issued_q;
+        end
+        if (is_eng) eng_issued_q <= eng_issued_q + 1'b1;
+        if (is_vec) vec_issued_q <= vec_issued_q + 1'b1;
+        if (op == OpKvStore) begin
+          kstore_q       <= vec_issued_q;
+          kstore_valid_q <= 1'b1;
+        end
+        if (op == OpVStore) begin
+          vstore_q       <= vec_issued_q;
+          vstore_valid_q <= 1'b1;
+        end
+      end
+    end
+  end
+
+endmodule
