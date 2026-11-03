@@ -1637,7 +1637,8 @@ no F2 run on it (owner).
 Compared with the Gemmini baseline (a different model) using normalized
 figures: weight bytes/s and MACs/s, and with llama.cpp on the F2 host's
 CPU at the same positions (D-056). The engine keeps a margin of 10-25% over
-the memory (D-055).
+the memory (D-055). A recording of a 1-2 turn chat with SmolLM2 on F2,
+with the command and its log saved (owner, 2026-11-03).
 **From M5:** with HBM at 450 MHz a port delivers about 1.8 beats per core
 cycle, so lanes per port becomes 8 (256 lanes on 32 ports), with a clock
 crossing on the memory side. `VALUES` runs at most 2 heads a pass (the
