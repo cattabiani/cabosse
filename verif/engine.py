@@ -123,13 +123,16 @@ class Result:
 
 
 def n_beats(m: Command, ports: int) -> int:
-    """Beats each port reserves: a matrix's passes, as if full; a cache's
-    regions per KV head (commands.kv_lane_order, D-062)."""
-    if isinstance(m, Attention):
-        kv_heads, cap, d = m.cache.shape
-        return kv_heads * commands.kv_region_beats(cap, d, m.values, ports * LANES_PER_PORT)
-    rows, cols = m.w.shape
-    return -(-rows // (ports * LANES_PER_PORT)) * -(-cols // E)
+    """Beats each port reserves (commands.region_beats)."""
+    shape = m.cache.shape if isinstance(m, Attention) else m.w.shape
+    return commands.region_beats(shape, kind(m), ports * LANES_PER_PORT)
+
+
+def kind(m: Command) -> commands.Kind:
+    """How the matrix or cache sits in each channel."""
+    if not isinstance(m, Attention):
+        return commands.Kind.MATRIX
+    return commands.Kind.V_CACHE if m.values else commands.Kind.K_CACHE
 
 
 def bf16_bits(t: torch.Tensor) -> np.ndarray:
@@ -170,11 +173,8 @@ def channel_images(mats: Sequence[Command], addrs: Sequence[int], ports: int) ->
     images = np.zeros((ports, end * BEAT_WORDS), dtype=np.uint32)
     lanes = ports * LANES_PER_PORT
     for m, addr in zip(mats, addrs, strict=True):
-        if isinstance(m, Attention):
-            per_port = commands.kv_lane_order(m.cache, m.values, lanes)
-        else:
-            per_port = commands.lane_order(m.w, lanes)
-        for p, beats in enumerate(per_port):
+        x = m.cache if isinstance(m, Attention) else m.w
+        for p, beats in enumerate(commands.per_port(x, kind(m), lanes)):
             words = bf16_bits(beats).view(np.uint32).ravel()
             start = addr // 4
             images[p, start : start + len(words)] = words

@@ -1597,6 +1597,14 @@ does not check them; `SCORES` and `VALUES` are given after the
 
 **Progress:**
 - [x] Answers above.
+- [x] Step 1: `Layout` on channel offsets (D-040). Each tensor has a
+  `Kind` (LOAD's, a matrix, a K or V cache); `channel_writes()` gives the
+  host's writes per channel. HBM reserved at full context: SmolLM2 611.0
+  MiB (494.7 flat before: V's two copies, last passes padded), Qwen2.5-0.5B
+  1,804.6 MiB. The vector unit's tests keep their own smaller map
+  (`verif/decode.py`). The hardware needs `cap` a multiple of the lanes;
+  the runtime checks it (step 2), `Layout` does not, so the perf model can
+  still lay out any cap.
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and

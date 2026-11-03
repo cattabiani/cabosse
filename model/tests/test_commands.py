@@ -74,13 +74,69 @@ def test_encoding_round_trips() -> None:
         assert commands.Command.decode(raw) == cmd
 
 
+def tensor_ends(layout: commands.Layout) -> dict[str, int]:
+    """Where each tensor's reserved bytes end: at the next one, or at the
+    end of its region."""
+    ends = {}
+    for kind_loaded, region_end in ((False, layout.engine_bytes), (True, layout.end_bytes)):
+        names = [n for n, k in layout.kinds.items() if (k == commands.Kind.LOADED) == kind_loaded]
+        names.sort(key=layout.addr)
+        bounds = [layout.addr(n) for n in names[1:]] + [region_end]
+        ends |= dict(zip(names, bounds, strict=True))
+    return ends
+
+
+@pytest.mark.parametrize("ports", [4, 32])
 @pytest.mark.parametrize("tied", [True, False])
-def test_layout_is_aligned_and_does_not_overlap(tied: bool) -> None:
-    layout = commands.Layout.of(tiny.tiny_config(tied=tied), cap=4)
-    spans = sorted({(a, a + commands.n_bytes(s, t)) for a, s, t in layout.tensors.values()})
-    assert all(a % commands.ALIGN == 0 for a, _ in spans)
-    assert all(end <= start for (_, end), (start, _) in zip(spans, spans[1:], strict=False))
+def test_layout_is_aligned_and_does_not_overlap(tied: bool, ports: int) -> None:
+    """D-040: the engine's tensors at the same offset in every channel, each
+    reserving its largest share there; LOAD's above them in channel 0."""
+    layout = commands.Layout.of(tiny.tiny_config(tied=tied), cap=4 * ports, ports=ports)
+    assert all(a % commands.ALIGN == 0 for a, _, _ in layout.tensors.values())
+    loaded = {n for n, k in layout.kinds.items() if k == commands.Kind.LOADED}
+    assert {n.rsplit(".", 1)[-1] for n in loaded} == {
+        "embed", "rope_cos", "rope_sin", "attn_norm", "mlp_norm", "final_norm"
+    }  # fmt: skip
+    for name, end in tensor_ends(layout).items():
+        addr, shape, dtype = layout.tensors[name]
+        size = commands.reserved_bytes(shape, dtype, layout.kinds[name], layout.lanes)
+        assert 0 < size and addr + size <= end, name
+        assert (name in loaded) == (layout.addr(name) >= layout.engine_bytes), name
     assert layout.addr("lm_head") != layout.addr("embed")  # LOAD reads embed by rows
+
+
+@pytest.mark.parametrize("ports", [4, 32])
+def test_channel_writes_stay_in_their_reserved_bytes(ports: int) -> None:
+    """Every write starts at its tensor's offset, in channel 0 for what
+    LOAD reads, and ends before the next tensor; a matrix's ports hold
+    lane_order's beats."""
+    c = tiny.tiny_config()
+    model = decoder.from_state_dict(c, tiny.random_weights(c, seed=1))
+    layout = commands.Layout.of(c, cap=4 * ports, ports=ports)  # cap a multiple of lanes
+    by_addr = {a: n for n, (a, _, _) in layout.tensors.items()}
+    ends = tensor_ends(layout)
+    writes = list(commands.channel_writes(layout, commands.load(model, layout)))
+    assert len({at for at, _ in writes}) == len(writes)
+    for at, raw in writes:
+        channel, offset = divmod(at, layout.channel_bytes)
+        name = by_addr[offset]
+        assert channel == 0 or layout.kinds[name] != commands.Kind.LOADED, (name, channel)
+        assert offset + len(raw) <= ends[name], name
+    q = dict(writes)[layout.addr("layers.1.q")].view(commands.BF16)
+    assert torch.equal(q, commands.lane_order(model.layers[1].q, layout.lanes)[0].view(-1))
+
+
+def test_channel_constants_are_f2s() -> None:
+    f2 = perf.load_platform("f2").values()
+    assert commands.PORTS == f2["hbm_ports"]
+    assert commands.PORTS * commands.CHANNEL_BYTES == f2["hbm_bytes"]
+
+
+def test_a_layout_that_does_not_fit_channel_0_is_refused() -> None:
+    c = tiny.tiny_config()
+    need = commands.Layout.of(c, cap=8, ports=4).total_bytes
+    with pytest.raises(ValueError, match="channel 0"):
+        commands.Layout.of(c, cap=8, ports=4, channel_bytes=need // 4)
 
 
 def test_every_opcode_is_documented_and_used() -> None:

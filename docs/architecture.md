@@ -182,7 +182,7 @@ and the HBM switch carries it to the other channels (to verify, M8).
 | What | Where | Why |
 |---|---|---|
 | Weights | HBM, spread over all 32 channels | the only memory big and fast enough; all ports stream at once |
-| Embedding, norm weights, RoPE tables | HBM, by rows | `LOAD` reads a row at a time; a tied embedding gets this copy besides the classifier's, in the lanes' order |
+| Embedding, norm weights, RoPE tables | HBM channel 0, above the engine's region, by rows | `LOAD` reads a row at a time; a tied embedding gets this copy besides the classifier's, in the lanes' order |
 | KV cache | HBM, spread over all 32 channels | grows with the position; read every token |
 | Command list | on chip, next to the controller | small (below, "One token as commands"); fetched with no HBM latency |
 | Activations | on chip | small, used constantly; no HBM traffic (perf.md's assumption) |
@@ -200,7 +200,10 @@ the beat `W[r][k…k+3]` for its 4 rows `r` = `128j+4p` … `128j+4p+3`. Each
 port reads its share of a matrix as one sequential stream, from its own
 channel at the command's `addr`: the same offset in every channel, each
 reserving the largest share (D-040). The host writes weights in this layout
-at load time (it is a reordering, not a conversion: D-015).
+at load time (it is a reordering, not a conversion: D-015). The matrices
+and KV caches fill the low offsets of every channel; the tensors `LOAD`
+reads sit in channel 0 above them, so their `addr` is an HBM address
+(`commands.Layout`, `commands.channel_writes`).
 
 **KV cache layout (D-062).** K and V are stored in the lanes' order, like
 the weights, so each port streams its own lanes' data and nothing crosses
@@ -410,10 +413,10 @@ parameters in BF16) could come close to it; a larger buffer (a rebuild) or a
 command that repeats a layer's block at shifted addresses would fix that.
 
 <!-- begin: ladder -->
-| model | layers | context | commands | command bytes | HBM (MiB) |
+| model | layers | context | commands | command bytes | HBM reserved (MiB) |
 |---|---|---|---|---|---|
-| SmolLM2-135M-Instruct | 30 | 8192 | 1333 | 42,656 | 494.7 |
-| Qwen2.5-0.5B-Instruct | 24 | 32768 | 1069 | 34,208 | 1,602.0 |
+| SmolLM2-135M-Instruct | 30 | 8192 | 1333 | 42,656 | 611.0 |
+| Qwen2.5-0.5B-Instruct | 24 | 32768 | 1069 | 34,208 | 1,804.6 |
 
 Command buffer: 64 KiB, 2,048 commands.
 <!-- end: ladder -->
@@ -452,64 +455,64 @@ SmolLM2-135M-Instruct, cache of 8192 positions:
 
 | # | command | dst | a | b | c | n | m | flags | scalar | addr |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 0 | LOAD | H |  |  |  |  | 576 | BY_TOKEN SRC_BF16 |  | 0x0 |
-| 1 | LOAD | COS |  |  |  |  | 64 | BY_POSITION |  | 0x3600000 |
-| 2 | LOAD | SIN |  |  |  |  | 64 | BY_POSITION |  | 0x3800000 |
-| 3 | LOAD | W |  |  |  |  | 576 | SRC_BF16 |  | 0x3A00000 |
+| 0 | LOAD | H |  |  |  |  | 576 | BY_TOKEN SRC_BF16 |  | 0x1146000 |
+| 1 | LOAD | COS |  |  |  |  | 64 | BY_POSITION |  | 0x4746000 |
+| 2 | LOAD | SIN |  |  |  |  | 64 | BY_POSITION |  | 0x4946000 |
+| 3 | LOAD | W |  |  |  |  | 576 | SRC_BF16 |  | 0x4B46000 |
 | 4 | SUMSQ | R | H |  |  | 1 | 576 |  |  |  |
 | 5 | MUL | R | R |  |  | 1 | 1 |  | 0.00173611 |  |
 | 6 | ADD | R | R |  |  | 1 | 1 |  | 1e-05 |  |
 | 7 | RSQRT | R | R |  |  | 1 | 1 |  |  |  |
 | 8 | MUL | T | H | R |  | 1 | 576 | B_PER_ROW |  |  |
 | 9 | MUL | X | T | W |  | 1 | 576 |  |  |  |
-| 10 | MATVEC | Q | X |  |  | 576 | 576 |  |  | 0x3A01000 |
-| 11 | MATVEC | K | X |  |  | 192 | 576 |  |  | 0x3AA3000 |
-| 12 | MATVEC | V | X |  |  | 192 | 576 |  |  | 0x3AD9000 |
+| 10 | MATVEC | Q | X |  |  | 576 | 576 |  |  | 0x0 |
+| 11 | MATVEC | K | X |  |  | 192 | 576 |  |  | 0x6000 |
+| 12 | MATVEC | V | X |  |  | 192 | 576 |  |  | 0x9000 |
 | 13 | ROTATE_HALF | KR | K |  |  | 3 | 64 |  |  |  |
 | 14 | MUL | KR | KR | SIN |  | 3 | 64 | B_ROW |  |  |
 | 15 | FMA | KR | K | COS | KR | 3 | 64 | B_ROW |  |  |
-| 16 | KV_STORE |  | KR |  |  | 3 | 64 |  |  | 0x40C2000 |
-| 17 | V_STORE |  | V |  |  | 3 | 64 |  |  | 0x43C2000 |
+| 16 | KV_STORE |  | KR |  |  | 3 | 64 |  |  | 0x3D000 |
+| 17 | V_STORE |  | V |  |  | 3 | 64 |  |  | 0x55000 |
 | 18 | ROTATE_HALF | QT | Q |  |  | 9 | 64 |  |  |  |
 | 19 | MUL | QT | QT | SIN |  | 9 | 64 | B_ROW |  |  |
 | 20 | FMA | QR | Q | COS | QT | 9 | 64 | B_ROW |  |  |
-| 21 | SCORES | S | QR |  |  | 9 | 64 |  | 0.125 | 0x40C2000 |
+| 21 | SCORES | S | QR |  |  | 9 | 64 |  | 0.125 | 0x3D000 |
 | 22 | MAX | R | S |  |  | 9 | 0 | LEN_T |  |  |
 | 23 | ADD | S | S | R |  | 9 | 0 | NEG_B B_PER_ROW LEN_T |  |  |
 | 24 | EXP | S | S |  |  | 9 | 0 | LEN_T |  |  |
 | 25 | SUM | R | S |  |  | 9 | 0 | LEN_T |  |  |
 | 26 | RECIP | R | R |  |  | 9 | 1 |  |  |  |
 | 27 | MUL | P | S | R |  | 9 | 0 | B_PER_ROW LEN_T |  |  |
-| 28 | VALUES | ATT | P |  |  | 9 | 64 |  |  | 0x43C2000 |
-| 29 | MATVEC | T | ATT |  |  | 576 | 576 |  |  | 0x3B0F000 |
+| 28 | VALUES | ATT | P |  |  | 9 | 64 |  |  | 0x55000 |
+| 29 | MATVEC | T | ATT |  |  | 576 | 576 |  |  | 0xC000 |
 | 30 | ADD | H | H | T |  | 1 | 576 |  |  |  |
-| 31 | LOAD | W |  |  |  |  | 576 | SRC_BF16 |  | 0x3BB1000 |
+| 31 | LOAD | W |  |  |  |  | 576 | SRC_BF16 |  | 0x4B47000 |
 | 32 | SUMSQ | R | H |  |  | 1 | 576 |  |  |  |
 | 33 | MUL | R | R |  |  | 1 | 1 |  | 0.00173611 |  |
 | 34 | ADD | R | R |  |  | 1 | 1 |  | 1e-05 |  |
 | 35 | RSQRT | R | R |  |  | 1 | 1 |  |  |  |
 | 36 | MUL | T | H | R |  | 1 | 576 | B_PER_ROW |  |  |
 | 37 | MUL | X | T | W |  | 1 | 576 |  |  |  |
-| 38 | MATVEC | G | X |  |  | 1536 | 576 |  |  | 0x3BB2000 |
-| 39 | MATVEC | U | X |  |  | 1536 | 576 |  |  | 0x3D62000 |
+| 38 | MATVEC | G | X |  |  | 1536 | 576 |  |  | 0x12000 |
+| 39 | MATVEC | U | X |  |  | 1536 | 576 |  |  | 0x20000 |
 | 40 | EXP | E | G |  |  | 1 | 1536 | NEG_A |  |  |
 | 41 | ADD | E | E |  |  | 1 | 1536 |  | 1 |  |
 | 42 | RECIP | E | E |  |  | 1 | 1536 |  |  |  |
 | 43 | MUL | E | G | E |  | 1 | 1536 |  |  |  |
 | 44 | MUL | M | E | U |  | 1 | 1536 |  |  |  |
-| 45 | MATVEC | T | M |  |  | 576 | 1536 |  |  | 0x3F12000 |
+| 45 | MATVEC | T | M |  |  | 576 | 1536 |  |  | 0x2E000 |
 | 46 | ADD | H | H | T |  | 1 | 576 |  |  |  |
 | … | layers 1 to 29: the same, at their own addresses |  |  |  |  |  |  |  |  |  |
-| 1323 | LOAD | W |  |  |  |  | 576 | SRC_BF16 |  | 0x1B8BC000 |
+| 1323 | LOAD | W |  |  |  |  | 576 | SRC_BF16 |  | 0x4B82000 |
 | 1324 | SUMSQ | R | H |  |  | 1 | 576 |  |  |  |
 | 1325 | MUL | R | R |  |  | 1 | 1 |  | 0.00173611 |  |
 | 1326 | ADD | R | R |  |  | 1 | 1 |  | 1e-05 |  |
 | 1327 | RSQRT | R | R |  |  | 1 | 1 |  |  |  |
 | 1328 | MUL | T | H | R |  | 1 | 576 | B_PER_ROW |  |  |
 | 1329 | MUL | X | T | W |  | 1 | 576 |  |  |  |
-| 1330 | MATVEC | LOGITS | X |  |  | 49152 | 576 |  |  | 0x1B8BD000 |
+| 1330 | MATVEC | LOGITS | X |  |  | 49152 | 576 |  |  | 0xF96000 |
 | 1331 | OUTPUT |  | LOGITS |  |  | 49152 |  |  |  |  |
 | 1332 | END |  |  |  |  |  |  |  |  |  |
 
-1333 commands (44 per layer), 42,656 bytes. HBM in use: 494.7 MiB.
+1333 commands (44 per layer), 42,656 bytes. HBM reserved: 611.0 MiB.
 <!-- end: token -->

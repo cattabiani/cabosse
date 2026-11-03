@@ -115,7 +115,7 @@ def ladder_table() -> str:
             ]
         )
     return blocks.table(
-        ["model", "layers", "context", "commands", "command bytes", "HBM (MiB)"], rows
+        ["model", "layers", "context", "commands", "command bytes", "HBM reserved (MiB)"], rows
     ) + (
         f"\n\nCommand buffer: {commands.COMMAND_BUFFER_BYTES // 2**10} KiB, "
         f"{commands.COMMAND_BUFFER_BYTES // commands.COMMAND_BYTES:,} commands."
@@ -158,7 +158,7 @@ def token_block(layout: commands.Layout) -> str:
         f"{MODEL}, cache of {layout.cap} positions:\n\n"
         + blocks.table(["#", "command", *COLUMNS], rows)
         + f"\n\n{len(cmds)} commands ({per_layer} per layer), {size:,} bytes. "
-        f"HBM in use: {layout.total_bytes / 2**20:,.1f} MiB."
+        f"HBM reserved: {layout.total_bytes / 2**20:,.1f} MiB."
     )
 
 
