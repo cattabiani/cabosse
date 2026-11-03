@@ -22,9 +22,10 @@
 //   buffer written since the last stop waits until every command handed over
 //   is done; its handover clears the written set (D-045).
 // - wait: an engine command whose input buffer's last writer no earlier
-//   engine command waited for goes with wait, and a go is queued for it: the
-//   go is sent once that writer's unit has counted its done (D-042). Gos
-//   leave in order, each after its command was taken.
+//   engine command waited for goes with wait (a buffer no command wrote this
+//   token, the host's, needs none), and a go is queued for it: the go is
+//   sent once that writer's unit has counted its done (D-042). Gos leave in
+//   order, each after its command was taken.
 // - SCORES (VALUES) is handed over after the last KV_STORE (V_STORE) is
 //   done. kv_waits asks for the last store to the cache it reads; the last
 //   store of its kind is that one or a later one, whose done comes later
@@ -40,7 +41,9 @@
 // list (commands.validate).
 //
 // The command's fields go to both units on one bus (cmd_*); eng_valid_o or
-// vec_valid_o says whose it is. token_o, t_o (position + 1) and stride_o
+// vec_valid_o says whose it is. cmd_group_o (n / kv_heads, attention) is
+// found by subtraction in the cycles after the command reaches pc, so an
+// attention command waits a cycle more than its group. token_o, t_o (position + 1) and stride_o
 // are the registers, held through a token.
 
 module controller #(
@@ -59,22 +62,22 @@ module controller #(
   input  logic                 clk_i,
   input  logic                 rst_ni,
 
-  input  logic                 s_awvalid_i,
-  output logic                 s_awready_o,
-  input  logic [AxilAddrW-1:0] s_awaddr_i,
-  input  logic                 s_wvalid_i,
-  output logic                 s_wready_o,
-  input  logic [31:0]          s_wdata_i,
-  output logic                 s_bvalid_o,
-  input  logic                 s_bready_i,
-  output logic [1:0]           s_bresp_o,
-  input  logic                 s_arvalid_i,
-  output logic                 s_arready_o,
-  input  logic [AxilAddrW-1:0] s_araddr_i,
-  output logic                 s_rvalid_o,
-  input  logic                 s_rready_i,
-  output logic [31:0]          s_rdata_o,
-  output logic [1:0]           s_rresp_o,
+  input  logic                 s_aw_valid_i,
+  output logic                 s_aw_ready_o,
+  input  logic [AxilAddrW-1:0] s_aw_addr_i,
+  input  logic                 s_w_valid_i,
+  output logic                 s_w_ready_o,
+  input  logic [31:0]          s_w_data_i,
+  output logic                 s_b_valid_o,
+  input  logic                 s_b_ready_i,
+  output logic [1:0]           s_b_resp_o,
+  input  logic                 s_ar_valid_i,
+  output logic                 s_ar_ready_o,
+  input  logic [AxilAddrW-1:0] s_ar_addr_i,
+  output logic                 s_r_valid_o,
+  input  logic                 s_r_ready_i,
+  output logic [31:0]          s_r_data_o,
+  output logic [1:0]           s_r_resp_o,
   output logic                 irq_o,        // a pulse: the token is done
 
   output logic [4:0]           cmd_op_o,
@@ -142,8 +145,7 @@ module controller #(
   localparam logic [7:0] OpScores  = 8'd4;
   localparam logic [7:0] OpValues  = 8'd5;
   localparam logic [7:0] OpOutput  = 8'd6;
-  localparam logic [7:0] OpVStore  = 8'd17;
-  localparam logic [7:0] OpLast    = 8'd17;
+  localparam logic [7:0] OpVStore  = 8'd17;  // the last opcode
 
   localparam logic [3:0] ErrOpcode = 4'd1;
   localparam logic [3:0] ErrMemory = 4'd2;
@@ -161,21 +163,21 @@ module controller #(
   logic [15:0] waddr, raddr;
   logic        cb_we;
 
-  assign wr          = s_awvalid_i && s_wvalid_i && !bvalid_q;
-  assign s_awready_o = wr;
-  assign s_wready_o  = wr;
-  assign s_bvalid_o  = bvalid_q;
-  assign s_bresp_o   = 2'b00;
-  assign rd          = s_arvalid_i && !rvalid_q;
-  assign s_arready_o = rd;
-  assign s_rvalid_o  = rvalid_q;
-  assign s_rdata_o   = rdata_q;
-  assign s_rresp_o   = 2'b00;
-  assign waddr       = s_awaddr_i[15:0];
-  assign raddr       = s_araddr_i[15:0];
-  assign cb_we       = wr && s_awaddr_i[16];
-  assign start       = wr && !s_awaddr_i[16] && waddr == RegControl && s_wdata_i[0] && !busy_q;
-  assign ctl_reset   = wr && !s_awaddr_i[16] && waddr == RegControl && s_wdata_i[1];
+  assign wr          = s_aw_valid_i && s_w_valid_i && !bvalid_q;
+  assign s_aw_ready_o = wr;
+  assign s_w_ready_o  = wr;
+  assign s_b_valid_o  = bvalid_q;
+  assign s_b_resp_o   = 2'b00;
+  assign rd          = s_ar_valid_i && !rvalid_q;
+  assign s_ar_ready_o = rd;
+  assign s_r_valid_o  = rvalid_q;
+  assign s_r_data_o   = rdata_q;
+  assign s_r_resp_o   = 2'b00;
+  assign waddr       = s_aw_addr_i[15:0];
+  assign raddr       = s_ar_addr_i[15:0];
+  assign cb_we       = wr && s_aw_addr_i[16];
+  assign start       = wr && !s_aw_addr_i[16] && waddr == RegControl && s_w_data_i[0] && !busy_q;
+  assign ctl_reset   = wr && !s_aw_addr_i[16] && waddr == RegControl && s_w_data_i[1];
 
   always_ff @(posedge clk_i) begin
     if (!rst_ni) begin
@@ -190,22 +192,22 @@ module controller #(
       rdata_q     <= '0;
     end else begin
       if (wr) bvalid_q <= 1'b1;
-      else if (s_bready_i) bvalid_q <= 1'b0;
-      if (wr && !s_awaddr_i[16]) begin
+      else if (s_b_ready_i) bvalid_q <= 1'b0;
+      if (wr && !s_aw_addr_i[16]) begin
         unique case (waddr)
-          RegToken:    token_q     <= s_wdata_i;
-          RegPosition: position_q  <= s_wdata_i;
-          RegCommands: commands_q  <= s_wdata_i;
-          RegLogitsLo: logits_lo_q <= s_wdata_i;
-          RegLogitsHi: logits_hi_q <= s_wdata_i;
-          RegStride:   stride_q    <= s_wdata_i;
+          RegToken:    token_q     <= s_w_data_i;
+          RegPosition: position_q  <= s_w_data_i;
+          RegCommands: commands_q  <= s_w_data_i;
+          RegLogitsLo: logits_lo_q <= s_w_data_i;
+          RegLogitsHi: logits_hi_q <= s_w_data_i;
+          RegStride:   stride_q    <= s_w_data_i;
           default: ;
         endcase
       end
       if (rd) begin
         rvalid_q <= 1'b1;
         rdata_q  <= '0;
-        if (!s_araddr_i[16]) begin
+        if (!s_ar_addr_i[16]) begin
           unique case (raddr)
             RegId:       rdata_q <= IdValue;
             RegVersion:  rdata_q <= VersionValue;
@@ -222,7 +224,7 @@ module controller #(
             default: ;
           endcase
         end
-      end else if (s_rready_i) begin
+      end else if (s_r_ready_i) begin
         rvalid_q <= 1'b0;
       end
     end
@@ -232,13 +234,18 @@ module controller #(
 
   localparam int unsigned CmdAW = $clog2(Commands);
 
-  logic [7:0][31:0] cmd_mem[Commands];
   logic [7:0][31:0] cmd_q;  // the command at pc
   logic [PcW-1:0]   pc_q, pc_d;
 
-  always_ff @(posedge clk_i) begin
-    if (cb_we) cmd_mem[s_awaddr_i[CmdAW+4:5]][s_awaddr_i[4:2]] <= s_wdata_i;
-    cmd_q <= cmd_mem[pc_d[CmdAW-1:0]];
+  // A RAM per word of a command (a plain simple dual-port RAM each, for
+  // Vivado to infer), read together.
+  for (genvar w = 0; w < 8; w++) begin : gen_bank
+    logic [31:0] bank[Commands];
+
+    always_ff @(posedge clk_i) begin
+      if (cb_we && s_aw_addr_i[4:2] == 3'(w)) bank[s_aw_addr_i[CmdAW+4:5]] <= s_w_data_i;
+      cmd_q[w] <= bank[pc_d[CmdAW-1:0]];
+    end
   end
 
   // Fields (commands.ENCODING): op, dst, a, b, c, flags, kv_heads, n, m, cap,
@@ -267,7 +274,6 @@ module controller #(
   assign cmd_addr_o   = MemAddrW'({cmd_q[6], cmd_q[5]});
   assign cmd_scalar_o = cmd_q[7];
   assign cmd_bf16_o   = Bf16Mask[f_dst[4:0]];
-  assign cmd_group_o  = f_kv_heads == 0 ? '0 : f_n[HeadWidth-1:0] / f_kv_heads;
   assign token_o      = AddrW'(token_q);
   assign t_o          = AddrW'(position_q + 32'd1);
   assign stride_o     = AddrW'(stride_q);
@@ -277,7 +283,7 @@ module controller #(
   logic            is_eng, is_vec, known;
   logic [Bufs-1:0] reads, dst_bit;
 
-  assign known  = op <= OpLast;
+  assign known  = op <= OpVStore;
   assign is_eng = op == OpMatvec || op == OpScores || op == OpValues;
   assign is_vec = known && !is_eng && op != OpEnd && op != OpOutput;
 
@@ -292,37 +298,64 @@ module controller #(
 
   // The scoreboard: per buffer its last writer this token (its unit and its
   // count among that unit's commands) and whether an engine command waited
-  // for it; the buffers written since the last stop; the last stores.
-  logic [Bufs-1:0]          written_q, wvalid_q, waited_q, wunit_q;  // wunit: the engine's
+  // for it (set for a buffer no command wrote: the host's); the buffers
+  // written since the last stop; the vector unit's dones the last stores
+  // need.
+  logic [Bufs-1:0]           written_q, waited_q, wunit_q;  // wunit: the engine's
   logic [Bufs-1:0][SeqW-1:0] wseq_q;
-  logic [SeqW-1:0]          eng_issued_q, eng_done_q, vec_issued_q, vec_done_q;
-  logic [SeqW-1:0]          kstore_q, vstore_q;
-  logic                     kstore_valid_q, vstore_valid_q;
+  logic [SeqW-1:0]           eng_issued_q, eng_done_q, vec_issued_q, vec_done_q;
+  logic [SeqW-1:0]           kstore_q, vstore_q;
 
-  logic all_done, stop, kv_ready, need_wait, writer_done;
+  // The group (query heads per KV head) of an attention command, by
+  // subtraction, from the cycle after it reaches pc: no divider on the path
+  // from the command buffer (2 such commands a layer, a few cycles each).
+  logic [HeadWidth-1:0] group_q, rem_q;
+  logic                 group_ok_q, fresh_q;  // fresh: cmd_q is a new command
+
+  assign cmd_group_o = group_q;
+
+  logic all_done, stop, stop_ok, kv_ready, need_wait, writer_done, active;
   logic go_in_ready, go_out_valid, go_out_unit;
   logic [SeqW-1:0] go_out_seq;
   logic issuing, fire, fail_opcode, fail_mem, fail_end, end_now;
 
   assign all_done  = eng_issued_q == eng_done_q && vec_issued_q == vec_done_q && !go_out_valid;
   assign stop      = !is_eng && |(reads & written_q);
-  assign kv_ready  = op == OpScores ? !kstore_valid_q || vec_done_q > kstore_q
-                   : op == OpValues ? !vstore_valid_q || vec_done_q > vstore_q
+  assign stop_ok   = !stop || all_done;
+  assign kv_ready  = op == OpScores ? vec_done_q >= kstore_q && group_ok_q
+                   : op == OpValues ? vec_done_q >= vstore_q && group_ok_q
                    : 1'b1;
-  assign need_wait = is_eng && wvalid_q[BufW'(f_a)] && !waited_q[BufW'(f_a)];
+  assign need_wait = is_eng && !waited_q[BufW'(f_a)];
 
   assign issuing     = busy_q && !ctl_reset;
   assign fail_end    = issuing && 32'(pc_q) >= commands_q;
-  assign fail_opcode = issuing && !fail_end && !known;
+  assign active      = issuing && !fail_end;
+  assign fail_opcode = active && !known;
   assign fail_mem    = issuing && (eng_err_i || vec_err_i);
-  assign end_now     = issuing && !fail_end && op == OpEnd && all_done;
+  assign end_now     = active && op == OpEnd && all_done;
 
-  assign eng_valid_o = issuing && !fail_end && is_eng && kv_ready && (!need_wait || go_in_ready);
-  assign vec_valid_o = issuing && !fail_end && is_vec && (!stop || all_done);
+  assign eng_valid_o = active && is_eng && kv_ready && (!need_wait || go_in_ready);
+  assign vec_valid_o = active && is_vec && stop_ok;
   assign eng_op_o    = op == OpScores ? 2'd1 : op == OpValues ? 2'd2 : 2'd0;
   assign eng_wait_o  = need_wait;
   assign fire        = (eng_valid_o && eng_ready_i) || (vec_valid_o && vec_ready_i)
-                    || (issuing && !fail_end && op == OpOutput && (!stop || all_done));
+                    || (active && op == OpOutput && stop_ok);
+
+  always_ff @(posedge clk_i) begin
+    fresh_q <= start || fire;
+    if (fresh_q) begin
+      group_q    <= '0;
+      rem_q      <= f_n[HeadWidth-1:0];
+      group_ok_q <= 1'b0;
+    end else if (!group_ok_q) begin
+      if (f_kv_heads != 0 && rem_q >= f_kv_heads) begin
+        rem_q   <= rem_q - f_kv_heads;
+        group_q <= group_q + 1'b1;
+      end else begin
+        group_ok_q <= 1'b1;
+      end
+    end
+  end
 
   // Gos, in the order of their commands: each waits for its writer's done.
   stream_fifo #(.Width(1 + SeqW), .Depth(GoDepth)) u_gos (
@@ -358,8 +391,7 @@ module controller #(
       cycles_q       <= '0;
       irq_o          <= 1'b0;
       written_q      <= '0;
-      wvalid_q       <= '0;
-      waited_q       <= '0;
+      waited_q       <= '1;
       wunit_q        <= '0;
       wseq_q         <= '0;
       eng_issued_q   <= '0;
@@ -368,8 +400,6 @@ module controller #(
       vec_done_q     <= '0;
       kstore_q       <= '0;
       vstore_q       <= '0;
-      kstore_valid_q <= 1'b0;
-      vstore_valid_q <= 1'b0;
     end else begin
       pc_q  <= pc_d;
       irq_o <= 1'b0;
@@ -383,14 +413,13 @@ module controller #(
         error_q        <= '0;
         cycles_q       <= '0;
         written_q      <= '0;
-        wvalid_q       <= '0;
-        waited_q       <= '0;
+        waited_q       <= '1;
         eng_issued_q   <= '0;
         eng_done_q     <= '0;
         vec_issued_q   <= '0;
         vec_done_q     <= '0;
-        kstore_valid_q <= 1'b0;
-        vstore_valid_q <= 1'b0;
+        kstore_q       <= '0;
+        vstore_q       <= '0;
       end else if (fail_end || fail_opcode || fail_mem) begin
         busy_q  <= 1'b0;
         err_q   <= 1'b1;
@@ -402,23 +431,16 @@ module controller #(
       end else if (fire) begin
         if (stop) written_q <= dst_bit;
         else written_q <= written_q | dst_bit;
-        if (is_eng && need_wait) waited_q[BufW'(f_a)] <= 1'b1;
+        if (need_wait) waited_q[BufW'(f_a)] <= 1'b1;
         if (f_dst != 0) begin
-          wvalid_q[BufW'(f_dst)] <= 1'b1;
           waited_q[BufW'(f_dst)] <= 1'b0;
           wunit_q[BufW'(f_dst)]  <= is_eng;
           wseq_q[BufW'(f_dst)]   <= is_eng ? eng_issued_q : vec_issued_q;
         end
         if (is_eng) eng_issued_q <= eng_issued_q + 1'b1;
         if (is_vec) vec_issued_q <= vec_issued_q + 1'b1;
-        if (op == OpKvStore) begin
-          kstore_q       <= vec_issued_q;
-          kstore_valid_q <= 1'b1;
-        end
-        if (op == OpVStore) begin
-          vstore_q       <= vec_issued_q;
-          vstore_valid_q <= 1'b1;
-        end
+        if (op == OpKvStore) kstore_q <= vec_issued_q + 1'b1;  // its done
+        if (op == OpVStore) vstore_q <= vec_issued_q + 1'b1;
       end
     end
   end

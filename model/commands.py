@@ -747,6 +747,18 @@ def flags_ok(cmd: Command) -> bool:
     return not cmd.flags & ~accepted and all((cmd.flags & pair) != pair for pair in EXCLUSIVE)
 
 
+def input_writers(commands: list[Command]) -> list[int | None]:
+    """Per command, the last command before it that wrote its input `a`, or
+    None (the host filled it)."""
+    last_write: dict[Buf, int] = {}
+    out = []
+    for i, cmd in enumerate(commands):
+        out.append(last_write.get(cmd.a))
+        if cmd.dst != Buf.NONE:
+            last_write[cmd.dst] = i
+    return out
+
+
 def engine_waits(commands: list[Command]) -> list[bool]:
     """Per command, whether it is an engine command that steps only after
     its go (D-042): the last write of its input has not been waited for by
@@ -754,17 +766,13 @@ def engine_waits(commands: list[Command]) -> list[bool]:
     writer is done. One that reads what an earlier engine command waited
     for (k and v after q, up after gate) does not wait, nor does one whose
     input no command wrote (the host filled it)."""
-    last_write: dict[Buf, int] = {}
     waited: set[int] = set()  # writes some engine command waited for
     waits = []
-    for i, cmd in enumerate(commands):
-        writer = last_write.get(cmd.a)
+    for cmd, writer in zip(commands, input_writers(commands), strict=True):
         wait = cmd.op in ENGINE_OPS and writer is not None and writer not in waited
         if wait:
             waited.add(writer)
         waits.append(wait)
-        if cmd.dst != Buf.NONE:
-            last_write[cmd.dst] = i
     return waits
 
 

@@ -1623,7 +1623,13 @@ does not check them; `SCORES` and `VALUES` are given after the
   SCORES and VALUES after their stores; an unknown opcode and a missing
   END give STATUS error and ERROR (reason, index;
   `commands.error_value`). Three hand mutations (no waits, no stops, no
-  store wait) each fail the tests.
+  store wait) each fail the tests. Logic depth (Yosys proxy) 17 cells, 31
+  before the group's divider became a subtraction loop. For M9's timing
+  build: the controller hands a command over a cycle at most, so the path
+  from the command buffer through the decode, the scoreboard and a unit's
+  ready back to the buffer's address is one cycle; if it fails 250 MHz,
+  registering the decode makes it 2 cycles a command (SmolLM2: about 5 µs
+  more a token, estimate).
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and

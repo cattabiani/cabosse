@@ -23,22 +23,23 @@
 /// the number of gos, then each go's cycle; per unit the number of dones,
 /// then their cycles; the cycle STATUS was first seen done or error;
 /// STATUS, ERROR, CYCLES_LO, CYCLES_HI. Cycles count from the token's
-/// CONTROL write. After the tokens: ID and VERSION. Exit 3 if a token hangs.
+/// CONTROL write. After the tokens: ID and VERSION. Exit 3 if a token makes
+/// no progress (handovers, gos, dones) for kMaxIdleCycles.
 
 #include <deque>
 #include <random>
 
 #include "Vcontroller.h"
-#include "stream.h"
+#include "axil.h"
 
 namespace {
 
-constexpr uint32_t kRegControl = 0x08, kRegStatus = 0x0C, kRegToken = 0x10, kRegPosition = 0x14;
-constexpr uint32_t kRegError = 0x1C, kRegCyclesLo = 0x28, kRegCyclesHi = 0x2C, kRegId = 0x00;
-constexpr uint32_t kRegVersion = 0x04;
+// commands.REGISTERS' offsets and STATUS's bits.
+constexpr uint32_t kRegId = 0x00, kRegVersion = 0x04, kRegControl = 0x08, kRegStatus = 0x0C;
+constexpr uint32_t kRegToken = 0x10, kRegPosition = 0x14, kRegError = 0x1C;
+constexpr uint32_t kRegCyclesLo = 0x28, kRegCyclesHi = 0x2C;
 constexpr uint32_t kStatusDone = 2, kStatusError = 4;
 constexpr int kExitBadGo = 4;
-constexpr uint64_t kMaxTokenCycles = 50'000'000;
 
 /// @brief A go the controller sends with no command waiting for it.
 struct GoError : std::runtime_error {
@@ -55,7 +56,6 @@ struct Stub {
   };
   std::deque<Pending> pending;
   bool ready = false;
-  std::vector<uint64_t> dones;  ///< this token's
 
   /// @brief Whether the oldest command is done this cycle.
   bool done(uint64_t now) const {
@@ -67,113 +67,86 @@ struct Stub {
   }
 };
 
-/// @brief The controller, its stubs and the host's side of AXI-Lite.
-struct Bench {
-  Vcontroller& dut;
-  std::mt19937_64 rng;
-  uint64_t ready_permille, latency, latency_max;
-  Stub eng, vec;
-  uint64_t cycle = 0;  ///< since the token's start
+/// @brief What a token did, cycles from its start.
+struct Events {
   struct Handover {
     uint64_t cycle;
     uint32_t unit, wait;
   };
   std::vector<Handover> handovers;
-  std::vector<uint64_t> gos;
+  std::vector<uint64_t> gos, eng_dones, vec_dones;
+
+  size_t progress() const { return handovers.size() + gos.size() + eng_dones.size() + vec_dones.size(); }
+};
+
+/// @brief The controller and its stubs.
+struct Bench {
+  Vcontroller& dut;
+  std::mt19937_64 rng;
+  uint64_t ready_permille, latency, latency_max;
+  Stub eng, vec;
+  uint64_t now = 0;  ///< cycles since the token's start
+  Events events;
 
   uint64_t draw_latency() { return std::uniform_int_distribution<uint64_t>(latency, latency_max)(rng); }
 
   /// @brief One clock cycle: the stubs' ready and done, settle, take a
   /// command and a go, then the rising edge.
   /// @throws GoError on a go with no command for it.
-  void tick() {
+  void cycle() {
     eng.ready = rng() % 1000 < ready_permille;
     vec.ready = rng() % 1000 < ready_permille;
-    const bool eng_done = eng.done(cycle), vec_done = vec.done(cycle);
+    const bool eng_done = eng.done(now), vec_done = vec.done(now);
     dut.eng_ready_i = eng.ready;
     dut.vec_ready_i = vec.ready;
     dut.eng_done_i = eng_done;
     dut.vec_done_i = vec_done;
-    dut.eng_err_i = 0;
-    dut.vec_err_i = 0;
     dut.clk_i = 0;
     dut.eval();
     if (dut.eng_go_o) {
       const auto it = std::ranges::find_if(eng.pending, [](const Stub::Pending& p) { return p.wait && !p.go; });
-      if (it == eng.pending.end()) throw GoError(std::format("cycle {}: a go with no waiting command", cycle));
-      it->go = cycle;
-      gos.push_back(cycle);
+      if (it == eng.pending.end()) throw GoError(std::format("cycle {}: a go with no waiting command", now));
+      it->go = now;
+      events.gos.push_back(now);
     }
     if (eng_done) {
       eng.pending.pop_front();
-      eng.dones.push_back(cycle);
+      events.eng_dones.push_back(now);
     }
     if (vec_done) {
       vec.pending.pop_front();
-      vec.dones.push_back(cycle);
+      events.vec_dones.push_back(now);
     }
     if (dut.eng_valid_o && eng.ready) {
-      eng.pending.push_back({cycle, static_cast<bool>(dut.eng_wait_o), std::nullopt, draw_latency()});
-      handovers.push_back({cycle, 0, dut.eng_wait_o});
+      eng.pending.push_back({now, static_cast<bool>(dut.eng_wait_o), std::nullopt, draw_latency()});
+      events.handovers.push_back({now, 0, dut.eng_wait_o});
     }
     if (dut.vec_valid_o && vec.ready) {
-      vec.pending.push_back({cycle, false, std::nullopt, draw_latency()});
-      handovers.push_back({cycle, 1, 0});
+      vec.pending.push_back({now, false, std::nullopt, draw_latency()});
+      events.handovers.push_back({now, 1, 0});
     }
     dut.clk_i = 1;
     dut.eval();
-    ++cycle;
+    ++now;
   }
 
-  /// @brief One AXI-Lite write: address and data together, then the response.
-  void write(uint32_t offset, uint32_t value) {
-    dut.s_awvalid_i = 1;
-    dut.s_wvalid_i = 1;
-    dut.s_awaddr_i = offset;
-    dut.s_wdata_i = value;
-    dut.s_bready_i = 1;
-    dut.clk_i = 0;
-    dut.eval();
-    while (!dut.s_awready_o) {
-      tick();
-      dut.clk_i = 0;
-      dut.eval();
-    }
-    tick();
-    dut.s_awvalid_i = 0;
-    dut.s_wvalid_i = 0;
+  /// @brief Run a token: start it, poll STATUS every `poll` cycles until
+  /// done or error.
+  /// @return STATUS, or nothing if the token makes no progress.
+  std::optional<uint32_t> token(uint32_t token, uint32_t position, uint64_t poll) {
+    axil_write(*this, kRegToken, token);
+    axil_write(*this, kRegPosition, position);
+    events = {};
+    now = 0;
+    axil_write(*this, kRegControl, 1);
+    uint64_t idle = 0;
     while (true) {
-      dut.clk_i = 0;
-      dut.eval();
-      const bool b = dut.s_bvalid_o;
-      tick();
-      if (b) break;
-    }
-  }
-
-  /// @brief One AXI-Lite read.
-  uint32_t read(uint32_t offset) {
-    dut.s_arvalid_i = 1;
-    dut.s_araddr_i = offset;
-    dut.s_rready_i = 1;
-    dut.clk_i = 0;
-    dut.eval();
-    while (!dut.s_arready_o) {
-      tick();
-      dut.clk_i = 0;
-      dut.eval();
-    }
-    tick();
-    dut.s_arvalid_i = 0;
-    while (true) {
-      dut.clk_i = 0;
-      dut.eval();
-      if (dut.s_rvalid_o) {
-        const uint32_t data = dut.s_rdata_o;
-        tick();
-        return data;
-      }
-      tick();
+      const size_t before = events.progress();
+      for (uint64_t i = 0; i < poll; ++i) cycle();
+      const uint32_t status = axil_read(*this, kRegStatus);
+      if (status & (kStatusDone | kStatusError)) return status;
+      idle = events.progress() == before ? idle + poll : 0;
+      if (idle > kMaxIdleCycles) return std::nullopt;
     }
   }
 };
@@ -192,8 +165,7 @@ int main(int argc, char** argv) {
   auto dut = std::make_unique<Vcontroller>(&context);
   const std::vector<uint32_t> words = read_words(stdin);
   Reader in{words};
-  std::vector<std::pair<uint32_t, uint32_t>> writes;
-  std::vector<std::pair<uint32_t, uint32_t>> tokens;
+  std::vector<std::pair<uint32_t, uint32_t>> writes, tokens;
   try {
     for (auto* list : {&writes, &tokens}) {
       for (uint32_t n = in.next(); n > 0; --n) {
@@ -212,47 +184,39 @@ int main(int argc, char** argv) {
               .latency = latency,
               .latency_max = std::max(latency, plusarg(context, "latency_max", latency))};
   const uint64_t poll = std::max<uint64_t>(1, plusarg(context, "poll", 16));
+  dut->eng_err_i = 0;
+  dut->vec_err_i = 0;
   std::vector<uint32_t> out;
   try {
-    dut->rst_ni = 0;
-    for (int i = 0; i < kResetCycles; ++i) bench.tick();
-    dut->rst_ni = 1;
-    for (const auto& [offset, value] : writes) bench.write(offset, value);
+    reset(bench);
+    for (const auto& [offset, value] : writes) axil_write(bench, offset, value);
     for (const auto& [token, position] : tokens) {
-      bench.write(kRegToken, token);
-      bench.write(kRegPosition, position);
-      bench.handovers.clear();
-      bench.gos.clear();
-      bench.eng.dones.clear();
-      bench.vec.dones.clear();
-      bench.cycle = 0;
-      bench.write(kRegControl, 1);
-      uint32_t status = 0;
-      while (!(status & (kStatusDone | kStatusError))) {
-        if (bench.cycle > kMaxTokenCycles) {
-          std::println(stderr, "hung: {} handovers after {} cycles", bench.handovers.size(), bench.cycle);
-          return kExitHang;
-        }
-        for (uint64_t i = 0; i < poll; ++i) bench.tick();
-        status = bench.read(kRegStatus);
+      const auto status = bench.token(token, position, poll);
+      if (!status) {
+        std::println(stderr, "hung: {} handovers after {} cycles", bench.events.handovers.size(), bench.now);
+        return kExitHang;
       }
-      const uint64_t seen = bench.cycle;
-      out.push_back(static_cast<uint32_t>(bench.handovers.size()));
-      for (const auto& h : bench.handovers) out.insert(out.end(), {static_cast<uint32_t>(h.cycle), h.unit, h.wait});
-      put_all(out, bench.gos);
-      put_all(out, bench.eng.dones);
-      put_all(out, bench.vec.dones);
-      out.insert(out.end(), {static_cast<uint32_t>(seen), status, bench.read(kRegError),
-                             bench.read(kRegCyclesLo), bench.read(kRegCyclesHi)});
-      for (uint64_t i = 0; i < kDrainCycles * bench.latency_max; ++i) bench.tick();
+      const uint64_t seen = bench.now;
+      const Events& e = bench.events;
+      out.push_back(static_cast<uint32_t>(e.handovers.size()));
+      for (const auto& h : e.handovers) out.insert(out.end(), {static_cast<uint32_t>(h.cycle), h.unit, h.wait});
+      put_all(out, e.gos);
+      put_all(out, e.eng_dones);
+      put_all(out, e.vec_dones);
+      out.insert(out.end(), {static_cast<uint32_t>(seen), *status, axil_read(bench, kRegError),
+                             axil_read(bench, kRegCyclesLo), axil_read(bench, kRegCyclesHi)});
+      for (uint64_t i = 0; i < kDrainCycles * bench.latency_max; ++i) bench.cycle();
       bench.eng.pending.clear();  // a failed token's, never done
       bench.vec.pending.clear();
     }
-    out.push_back(bench.read(kRegId));
-    out.push_back(bench.read(kRegVersion));
+    out.push_back(axil_read(bench, kRegId));
+    out.push_back(axil_read(bench, kRegVersion));
   } catch (const GoError& e) {
     std::println(stderr, "{}", e.what());
     return kExitBadGo;
+  } catch (const std::runtime_error& e) {
+    std::println(stderr, "{}", e.what());
+    return kExitHang;
   }
   std::fwrite(out.data(), sizeof(uint32_t), out.size(), stdout);
   dut->final();

@@ -4,6 +4,9 @@
 synthesizes in Yosys (AGENTS.md, SystemVerilog conventions), as the top of
 all of rtl/. One module per file, named after it."""
 
+import re
+
+import commands
 import pytest
 
 import rtl
@@ -18,6 +21,9 @@ MAX_LANE_DEPTH = 19
 # alone is 27, and met 250 MHz in M3), its value when written (M5's walker
 # PR): next-cycle unit state into the RAMs' addresses.
 MAX_ENGINE_CONTROL_DEPTH = 22
+# The controller's (a 16-command buffer), its value when written (M7): 31
+# with a divider for the group, 17 without.
+MAX_CONTROLLER_DEPTH = 17
 # (top, extra files, parameters): our modules, the harnesses and the bring-up
 # design in platforms/, then the units' flush-to-zero variants.
 TOPS = (
@@ -129,9 +135,29 @@ def test_engine_control_depth() -> None:
     assert depth <= MAX_ENGINE_CONTROL_DEPTH, f"engine: {depth} cells deep"
 
 
+@rtl.needs_yosys
+def test_controller_logic_depth() -> None:
+    """The controller's deepest path may not grow past MAX_CONTROLLER_DEPTH
+    cells. Vivado has the last word (M9)."""
+    depth = rtl.logic_depth("controller", params=SYNTH_PARAMS["controller"])
+    assert depth <= MAX_CONTROLLER_DEPTH, f"controller: {depth} cells deep"
+
+
 @rtl.needs_verilator
 @pytest.mark.parametrize(("top", "params", "message"), BAD_SHAPES)
 def test_rejects_a_bad_shape(top: str, params: tuple, message: str) -> None:
     """Elaboration stops with a message."""
     result = rtl.lint(top, rtl.extra_sources(top), list(params))
     assert result.returncode != 0 and message in result.stderr, result.stderr
+
+
+def test_controllers_opcodes_are_the_command_sets() -> None:
+    """rtl/controller.sv's opcode table (its Op... localparams) matches
+    commands.Op, the one the runtime encodes with."""
+    text = (rtl.RTL / "controller.sv").read_text()
+    found = {
+        m[1]: int(m[2]) for m in re.finditer(r"localparam logic \[7:0\] Op(\w+)\s*= 8'd(\d+)", text)
+    }
+    names = {op.name.replace("_", "").lower(): op.value for op in commands.Op}
+    assert found and all(names[n.lower()] == v for n, v in found.items()), found
+    assert max(found.values()) == max(commands.Op)
