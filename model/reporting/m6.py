@@ -81,15 +81,17 @@ def builds_table(builds: dict[str, list[dict]]) -> str:
     return blocks.table(header, rows)
 
 
-def timing_text(runs: list[dict]) -> str:
-    """The last build's verdict at 250 MHz."""
-    slacks = " and ".join(f"{float(r['wns_ns']):+.3f}" for r in runs)
-    failing = sum(r["endpoints"][0] for r in runs)
+def timing_text(name: str, runs: list[dict]) -> str:
+    """The last build's verdict at 250 MHz, placement by placement."""
+    assert runs and all(r["endpoints"] for r in runs), name
     met = all(float(r["wns_ns"]) >= 0 for r in runs)
-    return (
-        f"Build 4 {'meets' if met else 'misses'} 250 MHz: worst slack {slacks} ns in its "
-        f"{len(runs)} placements, {failing:,} failing endpoints."
+    each = "; ".join(
+        f"{r.get('place', r.get('flow', 'default'))}: worst slack {float(r['wns_ns']):+.3f} ns, "
+        f"{r['endpoints'][0]:,} failing endpoints"
+        for r in runs
     )
+    verdict = "meets 250 MHz in every placement" if met else "misses 250 MHz"
+    return f"Build {BUILDS[name].split(':')[0]} {verdict}: {each}."
 
 
 def worst_command(latency: dict) -> tuple[str, dict]:
@@ -145,8 +147,12 @@ def share_why(latency: dict) -> str:
     """Where SmolLM2's vector time goes at position 0: the reductions' rows
     queueing on the tree, and the start-ups of the commands that wait."""
     at0 = latency["0"]
-    row = next(iter(at0["latencies"]["reduction_row_cycles"]))
-    startup, n_waiting = next(iter(at0["latencies"]["vector_startup_cycles"].items()))
+    rows, startups = (
+        at0["latencies"][n] for n in ("reduction_row_cycles", "vector_startup_cycles")
+    )
+    assert len(rows) == len(startups) == 1, (rows, startups)  # the text quotes one value
+    row = next(iter(rows))
+    startup, n_waiting = next(iter(startups.items()))
     by_kind = at0["cycles_by_kind"]
     heads = perf.load_config(MODELS[0]).num_attention_heads
     return (
@@ -255,7 +261,7 @@ def generated() -> dict[str, str]:
         "area": area_table(area),
         "area-provenance": blocks.provenance_text(area["provenance"]),
         "builds": builds_table(builds),
-        "timing": timing_text(builds[list(BUILDS)[-1]]),
+        "timing": timing_text(last := list(BUILDS)[-1], builds[last]),
         "tests-provenance": blocks.provenance_text(tests["provenance"]),
         "tests": m3.tests_table(without_provenance(tests)),
     }

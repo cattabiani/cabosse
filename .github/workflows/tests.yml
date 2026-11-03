@@ -43,7 +43,7 @@ jobs:
           cache: pip
       - run: scripts/get_rtl_tools.sh
       - run: pip install -r requirements.txt
-      - run: pytest verif -m "not slow and not wide"
+      - run: pytest verif -m "not slow and not wide and not on_request"
 
   rtl-wide:  # the 128-lane engine: a build of minutes, beside the rtl job
     runs-on: ubuntu-24.04
@@ -58,7 +58,7 @@ jobs:
           cache: pip
       - run: scripts/get_rtl_tools.sh
       - run: pip install -r requirements.txt
-      - run: pytest verif -m "wide and not slow"
+      - run: pytest verif -m "wide and not slow and not on_request"
 
   exhaustive:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
