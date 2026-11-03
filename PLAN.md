@@ -1268,7 +1268,7 @@ iteration, a few placed builds, each with the owner's go.
    third after the multiply, in the fabric (`fp_product` Regs 5): 2 cycles
    more drain latency, so SmolLM2's engine commands that wait take 2 cycles
    more each (reports/data/M5-engine.json), `engine_startup_cycles` 74 →
-   76. M8's full build checks both.
+   76. M9's first build checks both (D-066).
 4. Stop when the worst slack is >= 0 at 250 MHz. If the builds stop
    closing named families (the owner decides, D-063), target 200 MHz (5 ns),
    with a decision-log entry and the perf model's clock changed (about 20%
@@ -1485,8 +1485,8 @@ iteration, a few placed builds, each with the owner's go.
 - [x] The timing loop (D-060, D-063; steps above): rounds 1 to 5, builds 1
   to 4. Build 4 (round 4's RTL, the shell's flow and floorplan) meets 250
   MHz: WNS +0.028 and +0.031 ns, no failing endpoint (below the harness's
-  +0.1 ns margin). Round 5's two structural fixes (PR #83) wait for M8's
-  full build. Closed by the owner, 2026-11-02.
+  +0.1 ns margin). Round 5's two structural fixes (PR #83) wait for M9's
+  first build (D-066). Closed by the owner, 2026-11-02.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
