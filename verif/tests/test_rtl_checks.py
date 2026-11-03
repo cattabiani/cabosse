@@ -46,6 +46,11 @@ SYNTH_PARAMS = {
     "bringup_core": (("Ports", 2),),
     "controller": (("Commands", 16),),  # Yosys keeps a 64 KiB buffer as flip-flops
 }
+# Not synthesized in Yosys, with why: each of their parts is.
+NOT_SYNTHESIZED = {
+    "core": "its vector unit takes 16 lanes (an HBM beat), more than 8 GB in Yosys (M6);"
+    " Vivado builds it in M9",
+}
 # (top, parameters, message): shapes that must not elaborate.
 BAD_SHAPES = [
     # fp_product: its callers delay the addend by Regs cycles; a sixth
@@ -112,6 +117,8 @@ def test_lint_is_clean(top: str, extra: tuple, params: tuple) -> None:
 @rtl.needs_yosys
 @pytest.mark.parametrize(("top", "extra", "params"), TOPS, ids=IDS)
 def test_synthesizes(top: str, extra: tuple, params: tuple) -> None:
+    if top in NOT_SYNTHESIZED:
+        pytest.skip(NOT_SYNTHESIZED[top])
     result = rtl.synthesize(top, extra, (*SYNTH_PARAMS.get(top, ()), *params))
     assert result.returncode == 0, result.stdout + result.stderr
 

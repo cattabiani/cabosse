@@ -14,6 +14,7 @@ import torch
 class Platform(Protocol):
     ports: int  # the engine's HBM ports, one channel each
     channel_bytes: int
+    buffer_elements: int | None  # each on-chip buffer's length; None: no limit
 
     def reg_write(self, offset: int, value: int) -> None: ...
 

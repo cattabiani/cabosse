@@ -49,6 +49,11 @@ class Runtime:
         layout = Layout.of(c, cap, ports=platform.ports, channel_bytes=platform.channel_bytes)
         cmds = commands.build(layout)
         commands.validate(layout, cmds)
+        need = max(n for _, n in commands.buffers(c, layout.stride).values())
+        if platform.buffer_elements is not None and need > platform.buffer_elements:
+            raise ValueError(
+                f"buffers of {need:,} elements needed, the device has {platform.buffer_elements:,}"
+            )
         p = platform
         found = p.reg_read(REG["ID"]), p.reg_read(REG["VERSION"])
         if found != (commands.ID, commands.VERSION):
