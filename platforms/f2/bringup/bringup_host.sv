@@ -6,20 +6,22 @@
 // HOST_PORT). sel_i asks for the owner; sel_o is the owner: it turns to the
 // host at once (the core asks only between runs, the engine idle) and back
 // to the engine once the host's side is idle: no burst unanswered, its
-// address or its data sent (W may go ahead of AW), and none offered. The host's channels each pass a 2-entry FIFO, a register stage
-// on its long way from the shell. With the engine owning the port, the
-// host's requests wait in their FIFOs.
+// address or its data sent (W may go ahead of AW), and none offered. The
+// host's channels each pass HostStages 2-entry FIFOs (bringup_pipe.sv),
+// register stages on their long way from the shell. With the engine owning
+// the port, the host's requests wait in their FIFOs.
 //
 // AXI: the subset of bringup_port.sv (full beats, INCR, one ID), plus the
 // host's write strobes and RLAST.
 
 module bringup_host #(
-  parameter  int unsigned AddrWidth = 34,
-  parameter  int unsigned DataWidth = 256,
-  localparam int unsigned BeatBytes = DataWidth / 8,
-  localparam int unsigned AxW       = AddrWidth + 8 + 2,           // address, length, burst
-  localparam int unsigned WW        = DataWidth + BeatBytes + 1,   // data, strobes, last
-  localparam int unsigned RW        = DataWidth + 2 + 1            // data, response, last
+  parameter  int unsigned AddrWidth  = 34,
+  parameter  int unsigned DataWidth  = 256,
+  parameter  int unsigned HostStages = 3,
+  localparam int unsigned BeatBytes  = DataWidth / 8,
+  localparam int unsigned AxW        = AddrWidth + 8 + 2,           // address, length, burst
+  localparam int unsigned WW         = DataWidth + BeatBytes + 1,   // data, strobes, last
+  localparam int unsigned RW         = DataWidth + 2 + 1            // data, response, last
 ) (
   input  logic                 clk_i,
   input  logic                 rst_ni,
@@ -83,34 +85,31 @@ module bringup_host #(
 
   assign sel_o = sel_q;
 
-  // verilator lint_off PINCONNECTEMPTY
-  // The FIFOs' counts go unread.
-  stream_fifo #(.Width(AxW), .Depth(2)) u_ar (
+  bringup_pipe #(.Width(AxW), .Stages(HostStages)) u_ar (
     .clk_i, .rst_ni,
     .in_valid_i (h_ar_valid_i), .in_ready_o (h_ar_ready_o), .in_data_i (h_ar_i),
-    .out_valid_o(ar_valid), .out_ready_i(sel_q && m_ar_ready_i), .out_data_o(ar), .count_o()
+    .out_valid_o(ar_valid), .out_ready_i(sel_q && m_ar_ready_i), .out_data_o(ar)
   );
-  stream_fifo #(.Width(AxW), .Depth(2)) u_aw (
+  bringup_pipe #(.Width(AxW), .Stages(HostStages)) u_aw (
     .clk_i, .rst_ni,
     .in_valid_i (h_aw_valid_i), .in_ready_o (h_aw_ready_o), .in_data_i (h_aw_i),
-    .out_valid_o(aw_valid), .out_ready_i(sel_q && m_aw_ready_i), .out_data_o(aw), .count_o()
+    .out_valid_o(aw_valid), .out_ready_i(sel_q && m_aw_ready_i), .out_data_o(aw)
   );
-  stream_fifo #(.Width(WW), .Depth(2)) u_w (
+  bringup_pipe #(.Width(WW), .Stages(HostStages)) u_w (
     .clk_i, .rst_ni,
     .in_valid_i (h_w_valid_i), .in_ready_o (h_w_ready_o), .in_data_i (h_w_i),
-    .out_valid_o(w_valid), .out_ready_i(sel_q && m_w_ready_i), .out_data_o(w), .count_o()
+    .out_valid_o(w_valid), .out_ready_i(sel_q && m_w_ready_i), .out_data_o(w)
   );
-  stream_fifo #(.Width(RW), .Depth(2)) u_r (
+  bringup_pipe #(.Width(RW), .Stages(HostStages)) u_r (
     .clk_i, .rst_ni,
     .in_valid_i (sel_q && m_r_valid_i), .in_ready_o (r_ready), .in_data_i (m_r_i),
-    .out_valid_o(h_r_valid_o), .out_ready_i(h_r_ready_i), .out_data_o(h_r_o), .count_o()
+    .out_valid_o(h_r_valid_o), .out_ready_i(h_r_ready_i), .out_data_o(h_r_o)
   );
-  stream_fifo #(.Width(2), .Depth(2)) u_b (
+  bringup_pipe #(.Width(2), .Stages(HostStages)) u_b (
     .clk_i, .rst_ni,
     .in_valid_i (sel_q && m_b_valid_i), .in_ready_o (b_ready), .in_data_i (m_b_resp_i),
-    .out_valid_o(h_b_valid_o), .out_ready_i(h_b_ready_i), .out_data_o(h_b_resp_o), .count_o()
+    .out_valid_o(h_b_valid_o), .out_ready_i(h_b_ready_i), .out_data_o(h_b_resp_o)
   );
-  // verilator lint_on PINCONNECTEMPTY
 
   assign m_ar_valid_o = sel_q ? ar_valid : e_ar_valid_i;
   assign m_ar_o       = sel_q ? ar : e_ar_i;

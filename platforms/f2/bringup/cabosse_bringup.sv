@@ -164,9 +164,13 @@ module cabosse_bringup #(
     .o_cl_rst_main_n    (gen_rst_main_n)
   );
 
-  // The generator's resets come synchronized to their clocks.
+  // The generator's resets come synchronized to their clocks. The core's is
+  // registered once more: the generator's flop would drive all of the
+  // core's (bringup_core.sv has a register per port).
   logic rst_n, ref_rst_n, cross_rst_n;  // on clk, clk_ref, clk_main_a0
+  logic core_rst_nq;
   assign rst_n       = clk_rst_n;
+  always_ff @(posedge clk) core_rst_nq <= rst_n;
   assign ref_rst_n   = clk_ref_rst_n;
   assign cross_rst_n = gen_rst_main_n;
 
@@ -254,7 +258,7 @@ module cabosse_bringup #(
 
   bringup_core #(.Ports(Ports), .Build(`CABOSSE_BUILD)) u_core (
     .clk_i       (clk),
-    .rst_ni      (rst_n),
+    .rst_ni      (core_rst_nq),
     .hbm_ready_i (hbm_ready),
     .host_sel_o  (host_sel),
     .h_ar_valid_i(h_ar_valid),

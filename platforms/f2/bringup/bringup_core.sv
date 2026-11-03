@@ -132,6 +132,7 @@ module bringup_core #(
   logic [7:0]            starts_q;  // start requests, taken or refused: the host sees its own arrive
   logic [Ports-1:0]      busy;
   logic                  start_wr, settings_ok;
+  logic                  set_start;  // a start in the groups' stage (Ports, below)
   logic [2:0]            rd_stage_q;  // reads: 0 idle, then 1, 2, 3, 4 (answer held until taken)
   logic [11:0]           rd_addr_q;   // the read's address, its low bits a port's counter
 
@@ -212,7 +213,7 @@ module bringup_core #(
     else cycles_q <= cycles_q + 1'b1;
     if (!rst_ni) cycles_hi_q <= '0;
     else if (rd_stage_q == 3'd3 && rd_addr_q == RegCyclesLo) cycles_hi_q <= cycles_q[63:32];
-    busy_q      <= |busy || start_q;  // a port is busy from its start, a cycle after start_q
+    busy_q      <= |busy || start_q || set_start;  // a port is busy from its start, two cycles after start_q
     hbm_ready_q <= hbm_ready_i;
   end
 
@@ -231,15 +232,45 @@ module bringup_core #(
   logic [Ports-1:0][BeatBytes-1:0] e_w_strb;
   assign base = {base_hi_q[AddrWidth-33:0], base_lo_q};
 
-  for (genvar p = 0; p < Ports; p++) begin : gen_port
-    // The port's address, two register stages (its offset, then the sum),
-    // settled long before a start; its start, one.
-    logic [AddrWidth-1:0] offset_q, addr_q;
-    logic                 start_q2;
+  // The settings and the start reach the ports through a register stage per
+  // group of 8 ports, and each port has its own reset register: each drives
+  // its group's ports only, on short wires (bring-up build 3's 250 MHz
+  // failures). The settings change only between runs, a write apart.
+  localparam int unsigned Groups = (Ports + 7) / 8;
+  typedef struct packed {
+    logic [2:0]            mode;
+    logic [AddrWidth-1:0]  base;
+    logic [31:0]           stride;
+    logic [CountWidth-1:0] beats;
+    logic [LenW-1:0]       rd_burst, wr_burst;
+    logic [LimitW-1:0]     rd_limit, wr_limit;
+    logic [BeatBytes-1:0]  strb;
+    logic [31:0]           seed;
+    logic                  start;
+  } settings_t;
+  settings_t [Groups-1:0] set_q;
+  assign set_start = set_q[0].start;  // every group's start is the same
+
+  for (genvar g = 0; g < Groups; g++) begin : gen_group
     always_ff @(posedge clk_i) begin
-      offset_q <= AddrWidth'(p) * AddrWidth'(stride_q);
-      addr_q   <= base + offset_q;
-      start_q2 <= start_q && port_en_q[p] && !(p == 0 && host_port_q);
+      set_q[g] <= '{mode: mode_q, base: base, stride: stride_q, beats: beats_q[CountWidth-1:0],
+                    rd_burst: rd_burst_q, wr_burst: wr_burst_q, rd_limit: rd_limit_q,
+                    wr_limit: wr_limit_q, strb: strb_q, seed: seed_q, start: start_q};
+    end
+  end
+
+  for (genvar p = 0; p < Ports; p++) begin : gen_port
+    // The port's address, two register stages after its group's (its offset,
+    // then the sum), settled long before a start; its start, one.
+    settings_t            set;
+    logic [AddrWidth-1:0] offset_q, addr_q;
+    logic                 start_q2, rst_nq;
+    assign set = set_q[p / 8];
+    always_ff @(posedge clk_i) begin
+      offset_q <= AddrWidth'(p) * AddrWidth'(set.stride);
+      addr_q   <= set.base + offset_q;
+      start_q2 <= set.start && port_en_q[p] && !(p == 0 && host_port_q);
+      rst_nq   <= rst_ni;
     end
 
     bringup_port #(
@@ -248,19 +279,19 @@ module bringup_core #(
       .CountWidth(CountWidth)
     ) u_port (
       .clk_i,
-      .rst_ni,
+      .rst_ni    (rst_nq),
       .start_i   (start_q2),
-      .rd_en_i   (mode_q[0]),
-      .wr_en_i   (mode_q[1]),
-      .check_i   (mode_q[2]),
+      .rd_en_i   (set.mode[0]),
+      .wr_en_i   (set.mode[1]),
+      .check_i   (set.mode[2]),
       .addr_i    (addr_q),
-      .beats_i   (beats_q[CountWidth-1:0]),
-      .rd_burst_i(rd_burst_q),
-      .wr_burst_i(wr_burst_q),
-      .rd_limit_i(rd_limit_q),
-      .wr_limit_i(wr_limit_q),
-      .wr_strb_i (strb_q),
-      .seed_i    (seed_q),
+      .beats_i   (set.beats),
+      .rd_burst_i(set.rd_burst),
+      .wr_burst_i(set.wr_burst),
+      .rd_limit_i(set.rd_limit),
+      .wr_limit_i(set.wr_limit),
+      .wr_strb_i (set.strb),
+      .seed_i    (set.seed),
       .busy_o    (busy[p]),
       .stat_sel_i(rd_addr_q[5:2]),
       .stat_o    (stat[p]),
@@ -369,7 +400,6 @@ module bringup_core #(
   // --- Reads: address taken (stage 1), the port's counter (2), its group's (3),
   // the answer (4) -----------------------------------------------------------------
 
-  localparam int unsigned Groups = (Ports + 7) / 8;
   logic [Groups-1:0][31:0] group_q;  // the counter of port rd_port_q's place in each group of 8
 
   logic        rd_is_port_q;  // the address is a port's counter

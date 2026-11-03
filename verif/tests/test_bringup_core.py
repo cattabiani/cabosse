@@ -51,9 +51,9 @@ class Result:
     mem: np.ndarray  # uint32 words
 
 
-def run(mem: np.ndarray, ops: list[Op], **plusargs: int) -> Result:
+def run(mem: np.ndarray, ops: list[Op], params=PARAMS, **plusargs: int) -> Result:
     words = np.concatenate([[len(mem)], mem, [len(ops)], np.array(ops, dtype=np.uint32).ravel()])
-    result = bulk.run_driver("bringup_core", words.astype(np.uint32), PARAMS, **plusargs)
+    result = bulk.run_driver("bringup_core", words.astype(np.uint32), params, **plusargs)
     assert result.returncode == 0, f"{plusargs}: {result.stderr.decode()}"
     out = np.frombuffer(result.stdout, dtype="<u4")
     n_reads = len(out) - len(mem)
@@ -136,6 +136,26 @@ def test_write_then_read(burst: int):
         assert 20 <= c["rd_first"] <= c["rd_cycles"], c
         assert c["rd_stalls"] >= c["rd_maxgap"] >= 1, c  # the memory pauses
         assert c["rd_occ_lo"] > 0, c
+
+
+@rtl.needs_verilator
+def test_ports_past_one_group():
+    """With more than 8 ports the settings and the start reach the ports
+    through two groups' registers: every port of both writes its region and
+    reads it back."""
+    n_ports, stride, beats = 10, 16 * 1024, 256
+    mem = blank()
+    ops = start(WRITE, port_en=(1 << n_ports) - 1, stride=stride, beats=beats)
+    ops += start(READ | CHECK, port_en=(1 << n_ports) - 1, stride=stride, beats=beats)
+    ops += counters(n_ports)
+    res = run(mem, ops, params=(("Ports", n_ports),), latency=20, rate=900)
+    want = mem.copy()
+    for p in range(n_ports):
+        lo = p * stride // 4
+        want[lo : lo + beats * 8] = pattern(p * stride, beats * 8)
+    np.testing.assert_array_equal(res.mem, want)
+    for c in runs(res.reads, n_ports)[0]:
+        assert c["rd_beats"] == beats and c["rd_bad"] == 0 and c["flags"] == 0, c
 
 
 @rtl.needs_verilator
