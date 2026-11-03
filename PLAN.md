@@ -1664,6 +1664,19 @@ host CPU's model; next, run again on the same AFI. To verify on F2:
 whether the write-combining buffer joins the halves (only the write
 rate hints at it; a count of partial-strobe beats in the design would
 show it, if the rate needs explaining).
+**F2 run 2 (2026-11-03, same AFI, main 1ca8a02):** host DMA works. Host
+CPU AMD EPYC 7R13 (no AVX-512). Both 64 MiB PCIS writes (offsets 0 and
+8 GiB) were read back by the engine on port 0 with no bad beat, and the
+host's PCIS reads (4 MiB each) found no bad word. Rates, one sample
+each: writes 106 MB/s at offset 0 and 2.0 GB/s at 8 GiB, reads 15-16
+MB/s. Why the first write is 19 times slower is not known (each
+command is a fresh process; to measure with repeats before M9 relies on
+the rate; either rate loads SmolLM2's weights in seconds). Everything
+else repeats run 1: HBM rates within 0.5% (most identical), latency tails
+within a few cycles (reports/data/f2/2026-11-03-f2run2.txt, .jsonl).
+M8's exit criteria (register access, DMA, HBM bandwidth per port and in
+total) are met; left in M8: the engine's timing-only build in the shell.
+Spend so far (estimates): builds 1-4 about $9, F2 runs 1-2 under $1.
 Data: reports/data/f2/2026-11-03-f2run1.txt and .jsonl
 (scripts/f2/bringup_report.py).
 
