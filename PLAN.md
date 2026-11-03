@@ -1657,9 +1657,13 @@ one port's rate in total. One-beat read latency at 250 MHz, ports 0 and
 31: min 43 cycles, median 43-44 (172-176 ns), p99 73-79. **Not met: host DMA.** The host tool's
 PCIS writes need AVX-512 (one 64-byte store per beat) and the F2 host
 CPU reports none, so nothing was written; the PCIS reads ran (4.8 and
-15 MB/s) against unknown data. Next: write with AVX2 (two 32-byte
-stores a line; the host path keeps byte strobes, so a split beat is
-still correct), log the CPU, and run again (the same AFI).
+15 MB/s) against unknown data. Fixed (m8/pcis-avx2): the tool writes
+with AVX2, two 32-byte stores a line (the host path keeps byte strobes,
+so a split line is still written right), and each result records the
+host CPU's model; next, run again on the same AFI. To verify on F2:
+whether the write-combining buffer joins the halves (only the write
+rate hints at it; a count of partial-strobe beats in the design would
+show it, if the rate needs explaining).
 Data: reports/data/f2/2026-11-03-f2run1.txt and .jsonl
 (scripts/f2/bringup_report.py).
 

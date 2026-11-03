@@ -17,6 +17,7 @@ import sys
 
 from bringup_plan import BEAT_BYTES, READ, WRITE
 
+HOST_EXTRAS = ("bad_words", "last_ok")  # PCIS results besides the rate
 ERROR_FLAG = {"rd": 0b0100, "wr": 0b1000}  # FLAGS: a read, a write error response (README.md)
 
 
@@ -130,8 +131,8 @@ def host_line(step: str, params: dict, result: dict) -> str:
             f"OCL read {ns['min']}/{ns['p50']}/{ns['p99']}/{ns['max']} ns "
             f"(min/p50/p99/max, n {params['n']})"
         )
-    words = f", bad words {result['bad_words']}" if "bad_words" in result else ""
-    return f"{step} offset {params['offset']:#x}: {result['gb_per_s'] * 1e3:.1f} MB/s{words}"
+    extra = "".join(f", {k.replace('_', ' ')} {result[k]}" for k in HOST_EXTRAS if k in result)
+    return f"{step} offset {params['offset']:#x}: {result['gb_per_s'] * 1e3:.1f} MB/s{extra}"
 
 
 def report(rows: list[dict]) -> list[str]:
@@ -141,7 +142,7 @@ def report(rows: list[dict]) -> list[str]:
     first = rows[0]
     out = [
         f"commit {first['commit']}, {first['agfi']} ({first['afi']}), "
-        f"{first['instance']} {first['instance_type']}"
+        f"{first['instance']} {first['instance_type']}, CPU {first.get('cpu', 'not recorded')}"
     ]
     mhz = None  # the core clock, once a clock step set it
     alone: list[dict] = []
