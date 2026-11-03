@@ -77,9 +77,15 @@
 // answered with an error.
 //
 // The ext port reads and writes any buffer's raw bits (BF16 in the low
-// half): the testbench now, the engine later. It must not use a buffer's read
-// or write port in a cycle the unit uses it: the unit's access wins and
-// nothing flags it. The engine's ports settle how (M7).
+// half): the engine's x and results (rtl/core.sv), or a testbench. It must
+// not use a buffer's read or write port in a cycle the unit uses it: the
+// unit's access wins and nothing flags it (commands.hazards keeps the
+// command list clear of that). A buffer whose bit Read2Mask has also has a
+// second copy of its banks, written with the first and read at
+// ext_r2_addr_i (the same buffer as ext_r_buf_i, data the cycle after): P,
+// for a VALUES pass's second head, which reads P's next row in the same
+// cycle as the first (D-069, proposed). Any other buffer gives the first
+// read's data on ext_r2_data_o, as the engine expects (rtl/engine.sv).
 
 module vec_unit
   import fp_pkg::*;
@@ -88,6 +94,7 @@ module vec_unit
   parameter  int unsigned     Bufs     = 22,
   parameter  int unsigned     Len      = 1024,
   parameter  logic [31:0]     Bf16Mask = 32'h4644,  // per id: X, QR, P, ATT, M (commands.buffers)
+  parameter  logic [31:0]     Read2Mask = 32'h0,    // per id: a second read port (P: 32'h200)
   parameter  int unsigned     AddrW    = 20,
   parameter  int unsigned     MulRegs  = 2,
   parameter  int unsigned     Partials = 128,  // a reduction's partial sums, S (D-030)
@@ -159,7 +166,9 @@ module vec_unit
   input  logic                         ext_r_valid_i,
   input  logic [BufW-1:0]              ext_r_buf_i,
   input  logic [AddrW-1:0]             ext_r_addr_i,
-  output logic [Lanes-1:0][31:0]       ext_r_data_o  // the cycle after
+  output logic [Lanes-1:0][31:0]       ext_r_data_o,  // the cycle after
+  input  logic [AddrW-1:0]             ext_r2_addr_i,
+  output logic [Lanes-1:0][31:0]       ext_r2_data_o  // the cycle after
 );
 
   // model/commands.py's opcodes and flags (docs/architecture.md, "Commands").
@@ -624,7 +633,7 @@ module vec_unit
 
   logic [Bufs-1:0][AddrW-1:0]        rd_addr, wr_addr;
   logic [Bufs-1:0][Lanes-1:0]        wr_mask;
-  logic [Bufs-1:0][Lanes-1:0][31:0]  wr_data, rd_data;
+  logic [Bufs-1:0][Lanes-1:0][31:0]  wr_data, rd_data, rd2_data;
 
   // The tree's write of a row's value (below): one element.
   logic             t_w_valid;
@@ -684,12 +693,38 @@ module vec_unit
       .rd_rot_i  (LW'(rd_addr[i])),
       .rd_data_o (rd)
     );
+    if (Read2Mask[i]) begin : gen_read2
+      logic [Lanes-1:0][DW-1:0] ra2;
+      logic [Lanes-1:0][W-1:0]  rd2;
+      for (genvar l = 0; l < Lanes; l++) begin : gen_lane
+        assign ra2[l] = bank_addr(ext_r2_addr_i, l);
+        assign rd2_data[i][l] = 32'(rd2[l]);
+      end
+      tile_buffer #(
+        .N    (Lanes),
+        .Depth(Depth),
+        .W    (W)
+      ) u_banks2 (
+        .clk_i,
+        .wr_valid_i(wr_mask[i]),
+        .wr_addr_i (wa),
+        .wr_data_i (wd),
+        .wr_rot_i  (LW'(wr_addr[i])),
+        .rd_addr_i (ra2),
+        .rd_rot_i  (LW'(ext_r2_addr_i)),
+        .rd_data_o (rd2)
+      );
+    end else begin : gen_no_read2
+      assign rd2_data[i] = rd_data[i];  // the first read's data
+    end
   end
-  assign rd_data[0] = '0;  // NONE
+  assign rd_data[0]  = '0;  // NONE
+  assign rd2_data[0] = '0;
 
   logic [BufW-1:0] ext_r_buf_q;
   always_ff @(posedge clk_i) ext_r_buf_q <= ext_r_buf_i;
-  assign ext_r_data_o = rd_data[ext_r_buf_q];
+  assign ext_r_data_o  = rd_data[ext_r_buf_q];
+  assign ext_r2_data_o = rd2_data[ext_r_buf_q];
 
   // --- Operands, the slots, the write -----------------------------------------
 
@@ -947,8 +982,9 @@ module vec_unit
   // verilator lint_off UNUSEDSIGNAL
   logic unused;
   // ext_r_valid_i: the banks read every cycle, so a read needs no enable.
+  // ext_r2_addr_i: read only where Read2Mask has a buffer.
   assign unused = ^{slot_valid[Lanes-1:1], ext_r_valid_i, rd_addr[0], wr_addr[0], wr_mask[0],
-                    wr_data[0]};
+                    wr_data[0], ext_r2_addr_i};
   // verilator lint_on UNUSEDSIGNAL
 
 endmodule

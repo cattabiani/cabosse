@@ -761,6 +761,25 @@ in M7 (the runtime reads LOGITS from the simulation, Q-33 stays M9's).
 of the model; tests check the hardware's decisions against the Python
 functions.
 
+**D-069 (2026-11-03, proposed; for the owner to confirm) — P gets a
+second read port, a copy of its banks.** In the core (`rtl/core.sv`) the
+engine reads x through the vector unit's ext port. A two-head `VALUES`
+pass (D-062: `2d ≤ L`, SmolLM2 at 128 lanes) reads P's rows of both heads
+in the same cycle, and P's row stride is a multiple of 16 (D-049), so the
+two reads need the same banks. The vector unit gets `Read2Mask`: a buffer
+in it keeps a second copy of its banks, written with the first and read by
+a second ext port; the core sets it for P only. Cost: P's memory twice,
+about 0.9 MB more on chip at the ladder's sizing (P is 917,504 bytes). The
+alternatives cost more elsewhere: a one-head `VALUES` pass halves its rate
+(D-062's numbers), reading P ahead into small buffers per head needs a
+stall the engine's x read does not have, and skewing P's banks by row (row
+h rotated by E·h, so the two heads' reads hit different banks) needs a
+choice of two read addresses per bank and the row in the vector unit's
+address logic; a P stride of 8 mod 16 would put the two reads on different
+banks of one copy, but S and P share STRIDE and D-049 aligns it to 16.
+*Why:* the smallest change that
+keeps D-062's two-head pass and the engine as it is.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1630,6 +1649,18 @@ does not check them; `SCORES` and `VALUES` are given after the
   ready back to the buffer's address is one cycle; if it fails 250 MHz,
   registering the decode makes it 2 cycles a command (SmolLM2: about 5 µs
   more a token, estimate).
+- [x] Step 4: `rtl/core.sv` (controller, engine, vector unit; the
+  engine's x and results on the vector unit's ext port), its Verilator
+  driver `verif/bulk/core.cpp` (the six calls on stdin/stdout) and
+  `sw/sim_platform.py`. The tiny model decodes bit-exact (tokens, logits,
+  KV cache) through the runtime: 3 prompts of 68, 74 and 80 tokens at 4
+  ports (38.0, 40.9, 44.3 s), one of 68 at 32 ports (123.3 s, after a
+  build of about 6.5 minutes and 10 GB). P has a second read port (D-069,
+  proposed). Found on the way: the engine reads x port 1 for its lanes past
+  d on every command, so the vector unit gives port 0's data on port 1 for
+  every buffer but P. `commands.validate` checks the buffers' length
+  against the device's. The core is not synthesized in Yosys (its 16-lane
+  vector unit needs more than 8 GB there, M6); Vivado builds it in M9.
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and

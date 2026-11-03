@@ -25,3 +25,4 @@ engine.sv
 vec_tree.sv
 vec_unit.sv
 controller.sv
+core.sv

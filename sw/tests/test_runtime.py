@@ -9,16 +9,10 @@ import pytest
 import runtime
 import torch
 from commands import REG, Layout
-from golden import arith, decoder, tiny
+from generation import SEED, check_generation, tiny_model
+from golden import decoder
 from golden_platform import GoldenPlatform
 from runtime import Runtime
-
-SEED = 7
-
-
-def tiny_model(seed: int = SEED, **config: int) -> decoder.Model:
-    c = tiny.tiny_config(**config)
-    return decoder.from_state_dict(c, tiny.random_weights(c, seed=seed))
 
 
 def open_golden(model: decoder.Model, ports: int, cap: int) -> tuple[Runtime, GoldenPlatform]:
@@ -37,17 +31,7 @@ def test_generate_is_the_golden_models(ports: int) -> None:
     rt, _ = open_golden(model, ports, cap)
     gen = torch.Generator().manual_seed(SEED)
     prompt = torch.randint(0, model.config.vocab_size, (5,), generator=gen).tolist()
-    tokens, logits = rt.generate(prompt, 6)
-    want_tokens, want_logits = decoder.generate(model, prompt, 6)
-    assert tokens == want_tokens, f"seed {SEED}"
-    assert torch.equal(arith.bits_f32(logits), arith.bits_f32(want_logits)), f"seed {SEED}"
-    cache = decoder.KVCache.empty(model, cap)
-    decoder.step(model, cache, prompt + tokens[:-1])
-    got, n = rt.kv_cache(), rt.position
-    for i in range(model.config.num_hidden_layers):
-        for name, want in (("k_cache", cache.k[i]), ("v_cache", cache.v[i])):
-            stored = got[rt.layout.addr(f"layers.{i}.{name}")][:, :n]
-            assert torch.equal(arith.bits_bf16(stored), arith.bits_bf16(want[:, :n])), (i, name)
+    check_generation(rt, model, prompt, 6, f"seed {SEED}, {ports} ports")
 
 
 def test_a_new_conversation_starts_at_position_0() -> None:

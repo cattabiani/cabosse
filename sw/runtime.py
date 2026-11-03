@@ -48,7 +48,7 @@ class Runtime:
         cap = c.max_position_embeddings if cap is None else cap
         layout = Layout.of(c, cap, ports=platform.ports, channel_bytes=platform.channel_bytes)
         cmds = commands.build(layout)
-        commands.validate(layout, cmds)
+        commands.validate(layout, cmds, platform.buffer_elements)
         p = platform
         found = p.reg_read(REG["ID"]), p.reg_read(REG["VERSION"])
         if found != (commands.ID, commands.VERSION):

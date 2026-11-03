@@ -44,6 +44,7 @@ class GoldenPlatform:
     def __init__(self, layout: Layout) -> None:
         self.layout = layout
         self.ports, self.channel_bytes = layout.ports, layout.channel_bytes
+        self.buffer_elements = None
         self.mem = Memory(layout.channel_bytes)
         self.regs = {REG["ID"]: commands.ID, REG["VERSION"]: commands.VERSION}
         self.command_buffer = bytearray(commands.COMMAND_BUFFER_BYTES)

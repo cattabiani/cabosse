@@ -1089,12 +1089,13 @@ def kv_store_command(
     mem[:, position] = arith.bf16(buffer_span(buf[cmd.a], cmd.n, cmd.m))
 
 
-def validate(layout: Layout, cmds: list[Command]) -> None:
+def validate(layout: Layout, cmds: list[Command], buffer_elements: int | None = None) -> None:
     """Raise ValueError on the first command the hardware cannot run
-    correctly, or on a layout it cannot hold: the controller checks only for
-    unknown opcodes (PLAN.md, M7's answers), so the runtime calls this before
-    writing a list. Ordering hazards included: the controller's waits and
-    stops (D-068) do not keep two commands off one read port."""
+    correctly, or on a layout it cannot hold (with buffers of
+    `buffer_elements` elements each; None: no limit): the controller checks
+    only for unknown opcodes (PLAN.md, M7's answers), so the runtime calls
+    this before writing a list. Ordering hazards included: the controller's
+    waits and stops (D-068) do not keep two commands off one read port."""
     lanes = layout.lanes
 
     def need(ok: bool, i: int, why: str) -> None:
@@ -1110,6 +1111,12 @@ def validate(layout: Layout, cmds: list[Command]) -> None:
         raise ValueError(
             f"layout: {layout.end_bytes:,} bytes, channel 0 holds {layout.channel_bytes:,}"
         )
+    if buffer_elements is not None:
+        longest = max(n for _, n in buffers(layout.config, layout.stride).values())
+        if longest > buffer_elements:
+            raise ValueError(
+                f"buffers of {longest:,} elements needed, the device has {buffer_elements:,}"
+            )
     for i, cmd in enumerate(cmds):
         need(cmd.op in OPS, i, "unknown opcode")
         need((cmd.op == Op.END) == (i == len(cmds) - 1), i, "END must be the last command, once")
