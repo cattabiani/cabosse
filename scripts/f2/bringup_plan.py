@@ -8,7 +8,7 @@ with the system's python3 and no packages.
 
 Usage: python3 bringup_plan.py TOOL OUT.jsonl [--quick]
 Environment: S3 (s3://bucket/prefix), PROVENANCE (JSON: commit, AFI, AGFI,
-instance, ...), merged into every line.
+instance, host CPU model, ...), merged into every line.
 """
 
 import json

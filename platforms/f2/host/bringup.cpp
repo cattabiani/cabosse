@@ -22,8 +22,14 @@
 ///   posted, so its time says nothing).
 /// - `pcis-write BYTES OFFSET SEED` and `pcis-read BYTES OFFSET SEED`: the
 ///   host writes or reads card memory through PCIS (BAR4, write-combining),
-///   the pattern of README.md, whole 64-byte beats; throughput (writes
+///   the pattern of README.md, whole 64-byte lines; throughput (writes
 ///   timed to a read that flushes them), and for reads the words unlike it.
+///   Writes are two 32-byte stores a line (AVX2; the F2 host has no
+///   AVX-512). Whether the write-combining buffer joins the halves into one
+///   64-byte write is to verify on F2; split halves carry half the strobes
+///   each, which the design passes on. `last_ok` (the last word read back)
+///   only shows the writes were flushed: pcis_check, the engine on port 0,
+///   checks every beat.
 ///
 /// Exit status 0, or 1 with {"error": ...} on stdout.
 
@@ -310,15 +316,19 @@ void own_port_0(const Regs& regs) {
                    "the host owning HBM port 0, HBM ready");
 }
 
-/// @brief Copy whole 64-byte lines into write-combining memory, one
-/// AVX-512 store each (a whole PCIS beat, whole strobes), then drain the
-/// write-combining buffers.
-__attribute__((target("avx512f"))) void store_lines(volatile uint32_t* dst, const uint32_t* src,
-                                                    uint64_t bytes) {
+/// @brief Copy whole 64-byte lines into write-combining memory, each as
+/// two 32-byte non-temporal stores in a row (AVX2: the F2 host has no
+/// AVX-512, F2 run 1), then drain the write-combining buffers. Our own
+/// stores, not the SDK's fpga_pci_write_burst, for the widest the host has.
+__attribute__((target("avx2"))) void store_lines(volatile uint32_t* dst, const uint32_t* src, uint64_t bytes) {
+  constexpr uint64_t kHalf = kLineBytes / 2;
+  char* const out = const_cast<char*>(reinterpret_cast<volatile char*>(dst));
+  const char* const in = reinterpret_cast<const char*>(src);
   for (uint64_t at = 0; at < bytes; at += kLineBytes) {
-    const __m512i line = _mm512_loadu_si512(reinterpret_cast<const char*>(src) + at);
-    _mm512_stream_si512(reinterpret_cast<__m512i*>(const_cast<char*>(reinterpret_cast<volatile char*>(dst)) + at),
-                        line);
+    const __m256i lo = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(in + at));
+    const __m256i hi = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(in + at + kHalf));
+    _mm256_stream_si256(reinterpret_cast<__m256i*>(out + at), lo);
+    _mm256_stream_si256(reinterpret_cast<__m256i*>(out + at + kHalf), hi);
   }
   _mm_sfence();
 }
@@ -326,7 +336,7 @@ __attribute__((target("avx512f"))) void store_lines(volatile uint32_t* dst, cons
 /// @brief `pcis-write BYTES OFFSET SEED`: the pattern from a host buffer,
 /// timed until a read that flushes the posted writes.
 Json pcis_write(const Regs& regs, uint64_t bytes, uint64_t offset, uint32_t seed) {
-  if (!__builtin_cpu_supports("avx512f")) throw std::runtime_error("PCIS writes need AVX-512 (64-byte stores)");
+  if (!__builtin_cpu_supports("avx2")) throw std::runtime_error("PCIS writes need AVX2 (32-byte stores)");
   own_port_0(regs);
   std::vector<uint32_t> host(bytes / 4);
   for (size_t i = 0; i < host.size(); ++i) host[i] = pattern(offset + 4 * i, seed);

@@ -23,6 +23,7 @@ PROVENANCE = {
     "afi": "afi-x",
     "instance": "i-x",
     "instance_type": "f2",
+    "cpu": "AMD EPYC",
 }
 
 
@@ -69,7 +70,16 @@ def test_report_blocks():
     clock = {"set_mhz": 250, "measured_mhz": 249.99}
     rows = [
         row("clock", {"mhz": 250}, clock),
-        row("pcis_write", {"bytes": 64, "offset": 0}, {"error": "no AVX-512"}),
+        row(
+            "pcis_write",
+            {"bytes": 64, "offset": 0},
+            {"error": "PCIS writes need AVX2 (32-byte stores)"},
+        ),
+        row(
+            "pcis_write",
+            {"bytes": 64, "offset": 64},
+            {"gb_per_s": 2.5, "last_ok": 1},
+        ),
         row("pcis_read", {"bytes": 64, "offset": 1 << 33}, {"gb_per_s": 0.005, "bad_words": 3}),
         row("clock", {"mhz": 250}, clock),
         row("fill", regs | {"mode": WRITE}, full),
@@ -85,7 +95,9 @@ def test_report_blocks():
         ),
     ]
     text = "\n".join(report.report(rows))
-    assert "pcis_write" in text and "error no AVX-512" in text
+    assert "pcis_write" in text and "error PCIS writes need AVX2" in text
+    assert "CPU AMD EPYC" in text
+    assert "pcis_write offset 0x40: 2500.0 MB/s, last ok 1" in text
     assert "pcis_read offset 0x200000000: 5.0 MB/s, bad words 3" in text
     assert "clock 250 MHz (measured 249.990" in text and "clock 125 MHz" in text
     assert "fill                   wr    8.0 GB/s total" in text

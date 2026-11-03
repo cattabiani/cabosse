@@ -63,7 +63,8 @@ meta() { curl -s -H "X-aws-ec2-metadata-token: $token" "http://169.254.169.254/l
 export S3
 PROVENANCE=$(python3 -c 'import json,sys; print(json.dumps(dict(zip(sys.argv[1::2], sys.argv[2::2]))))' \
   commit "$commit" aws_fpga "$aws_fpga" agfi "$AGFI" afi "$AFI" instance "$(meta instance-id)" \
-  instance_type "$(meta instance-type)" az "$(meta placement/availability-zone)")
+  instance_type "$(meta instance-type)" az "$(meta placement/availability-zone)" \
+  cpu "$(grep -m1 '^model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')")
 export PROVENANCE
 python3 /root/cabosse/scripts/f2/bringup_plan.py /root/cabosse/platforms/f2/host/bringup \
   /root/bringup.jsonl $QUICK
