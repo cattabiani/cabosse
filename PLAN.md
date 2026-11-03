@@ -1349,7 +1349,7 @@ iteration, a few placed builds, each with the owner's go.
   edges (exp's ties and integers of t, clamp, subnormal results; the
   inputs recip and rsqrt scale) and random bits, operations interleaved;
   slow: 10^8 per operation and the M1 exhaustive ranges (87 s on 16
-  cores). Every input of exp, recip and rsqrt (`CABOSSE_SWEEP=1`, on
+  cores). Every input of exp, recip and rsqrt (`CABOSSE_SWEEP=1`, `-m on_request`, on
   request): all 2^32 bit-exact for each, 21 min 26 s on 16 cores (exp
   457 s, recip 440 s, rsqrt 389 s; 2026-10-23, commit 05519c1). Hand
   mutations: 8 caught; one (exp's clamp at 151) gives the same bits (past

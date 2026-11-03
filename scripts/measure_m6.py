@@ -33,7 +33,7 @@ for sub in ("model", "model/tests", "verif"):
     sys.path.insert(0, str(REPO / sub))
 
 import perf  # noqa: E402
-from reporting import blocks, m6, measure  # noqa: E402
+from reporting import m6, measure  # noqa: E402
 
 import rtl  # noqa: E402  (puts .tools/ on PATH)
 
@@ -142,30 +142,6 @@ def latency() -> dict:
     return out
 
 
-def latency_tables(data: dict) -> str:
-    """The latencies found at each position, and each position's cycles."""
-    positions = [k for k in data if k != "provenance"]
-    names = sorted({n for p in positions for n in data[p]["latencies"]})
-    rows = [
-        [
-            n,
-            *(
-                "; ".join(f"{v} ({c}x)" for v, c in data[p]["latencies"].get(n, {}).items()) or "-"
-                for p in positions
-            ),
-        ]
-        for n in names
-    ]
-    head = ["latency (cycles found, count)", *(f"position {p}" for p in positions)]
-    cycles = []
-    for p in positions:
-        d, w = data[p], data[p]["worst"]
-        worst = f"{w['kind']}: {w['cycles']} against {w['model_cycles']:.0f} ({w['off']:+.1%})"
-        cycles.append([p, f"{d['cycles']:,}", f"{d['model_cycles']:,.0f}", worst])
-    head2 = ["position", "unit cycles", "perf model", "worst command"]
-    return blocks.table(head, rows) + "\n\n" + blocks.table(head2, cycles)
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("part", choices=("area", "latency", "show"))
@@ -177,7 +153,8 @@ def main() -> None:
     if "area" in data:
         print(m6.area_table(data["area"]))
     if "latency" in data:
-        print(latency_tables(data["latency"]))
+        latency = m6.without_provenance(data["latency"])
+        print(m6.latencies_table(latency) + "\n\n" + m6.cycles_table(latency))
     if not data:
         sys.exit(f"no data in {DATA}: run the `area` or `latency` part first")
 

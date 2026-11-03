@@ -95,5 +95,5 @@ def test_measure_deselects_a_test_that_exists(script: str) -> None:
     """The report scripts' measure leaves out the up-to-date test by its pytest
     id; pytest ignores an id that matches nothing, so check it here."""
     script = (paths.REPO / "scripts" / script).read_text()
-    for path, name in re.findall(r'"([\w/]+\.py)::(\w+)"', script):
-        assert f"def {name}(" in (paths.REPO / path).read_text()
+    path, name = re.search(r'UP_TO_DATE = "(.+)::(\w+)"', script).groups()
+    assert f"def {name}(" in (paths.REPO / path).read_text()

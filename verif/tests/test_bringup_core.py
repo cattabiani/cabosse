@@ -298,6 +298,7 @@ def test_host_port():
 
 
 @rtl.needs("slang")
+@pytest.mark.on_request
 @pytest.mark.skipif(not os.environ.get("CABOSSE_AWS_FPGA"), reason="needs CABOSSE_AWS_FPGA")
 def test_cl_top_elaborates() -> None:
     """The CL top (cabosse_bringup.sv) elaborates against the shell's ports
