@@ -1649,6 +1649,18 @@ does not check them; `SCORES` and `VALUES` are given after the
   ready back to the buffer's address is one cycle; if it fails 250 MHz,
   registering the decode makes it 2 cycles a command (SmolLM2: about 5 µs
   more a token, estimate).
+- [x] Step 4: `rtl/core.sv` (controller, engine, vector unit; the
+  engine's x and results on the vector unit's ext port), its Verilator
+  driver `verif/bulk/core.cpp` (the six calls on stdin/stdout) and
+  `sw/sim_platform.py`. The tiny model decodes bit-exact (tokens, logits,
+  KV cache) through the runtime: 3 prompts of 68, 74 and 80 tokens at 4
+  ports (38.0, 40.9, 44.3 s), one of 68 at 32 ports (123.3 s, after a
+  build of about 6.5 minutes and 10 GB). P has a second read port (D-069,
+  proposed). Found on the way: the engine reads x port 1 for its lanes past
+  d on every command, so the vector unit gives port 0's data on port 1 for
+  every buffer but P. `commands.validate` checks the buffers' length
+  against the device's. The core is not synthesized in Yosys (its 16-lane
+  vector unit needs more than 8 GB there, M6); Vivado builds it in M9.
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
