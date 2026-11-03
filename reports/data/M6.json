@@ -198,12 +198,12 @@
  },
  "tests": {
   "provenance": {
-   "commit": "ca03747efe06637b1d178a69592baeaf74934499",
+   "commit": "1a7981a511cb9b6a07930e22e9034628e485bed6",
    "dirty": false,
    "date": "2026-11-03",
    "machine": "Linux x86_64"
   },
-  "fast": "1 failed, 943 passed, 4 skipped, 39 deselected in 561.84s (0:09:21)",
-  "slow": "38 passed, 949 deselected in 1397.69s (0:23:17)"
+  "fast": "944 passed, 43 deselected in 572.80s (0:09:32)",
+  "slow": "38 passed, 949 deselected in 1403.34s (0:23:23)"
  }
 }

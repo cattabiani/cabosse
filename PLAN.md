@@ -984,7 +984,7 @@ step and drain, so a sequencing fix is made once); checkpoint report.
 - [x] Checkpoint: [reports/M5.md](reports/M5.md); the bandwidth criterion
   restated (D-046).
 
-### M6 — Vector unit
+### M6 — Vector unit ✅
 **What:** RMSNorm, softmax, SiLU/SwiGLU, RoPE, residual add, BF16 rounding,
 KV cache writes.
 **Done when:** each operation is bit-exact on random and real activations.
@@ -1487,6 +1487,10 @@ iteration, a few placed builds, each with the owner's go.
   MHz: WNS +0.028 and +0.031 ns, no failing endpoint (below the harness's
   +0.1 ns margin). Round 5's two structural fixes (PR #83) wait for M9's
   first build (D-066). Closed by the owner, 2026-11-02.
+- [x] Checkpoint report (reports/M6.md, scripts/report_m6.py): every exit
+  criterion met; owner approved, 2026-11-03. Tests behind an environment
+  variable (the 2^32 sweep, the CL top's elaboration) carry the `on_request`
+  marker and are deselected by default.
 
 ### M7 — Controller and a full token in simulation
 **What:** a controller that fetches and runs the command stream, a register
