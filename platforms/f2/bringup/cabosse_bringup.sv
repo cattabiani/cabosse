@@ -165,15 +165,17 @@ module cabosse_bringup #(
   );
 
   // The generator's resets come synchronized to their clocks. On clk, a
-  // register each for the core, the HBM and the OCL crossing: the
-  // generator's flop would drive them all (bringup_core.sv has a register
-  // per port). Synthesis keeps the copies (-keep_equivalent_registers).
-  logic rst_n, ref_rst_n, cross_rst_n;  // on clk, clk_ref, clk_main_a0
-  logic core_rst_nq, hbm_rst_nq, ocl_rst_nq;
+  // register each for the core, every 8 HBM ports and the OCL crossing:
+  // the generator's flop would drive them all (bringup_core.sv has a
+  // register per port). Synthesis keeps the copies
+  // (-keep_equivalent_registers).
+  logic                 rst_n, ref_rst_n, cross_rst_n;  // on clk, clk_ref, clk_main_a0
+  logic                 core_rst_nq, ocl_rst_nq;
+  logic [Ports/8-1:0]   hbm_rst_nq;
   assign rst_n       = clk_rst_n;
   always_ff @(posedge clk) begin
     core_rst_nq <= rst_n;
-    hbm_rst_nq  <= rst_n;
+    hbm_rst_nq  <= {(Ports / 8){rst_n}};
     ocl_rst_nq  <= rst_n;
   end
   assign ref_rst_n   = clk_ref_rst_n;
@@ -423,7 +425,7 @@ module cabosse_bringup #(
   // One HBM port's pins, P its two-digit name and I its index.
 `define CABOSSE_HBM_PORT(P, I) \
     .AXI_``P``_ACLK        (clk), \
-    .AXI_``P``_ARESET_N    (hbm_rst_nq), \
+    .AXI_``P``_ARESET_N    (hbm_rst_nq[(I) / 8]), \
     .AXI_``P``_ARADDR      (ar_addr[I]), \
     .AXI_``P``_ARBURST     (ar_burst[I]), \
     .AXI_``P``_ARID        (6'd0), \

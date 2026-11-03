@@ -1616,11 +1616,19 @@ endpoints, all on `clk_hbm_axi`; hold met
 (reports/data/f2/2026-11-02-bringup-build3.txt). Three families, all in
 the wrapper: the clock generator's reset straight into every port's
 flops, the host's channels between the PCIS SmartConnect and port 0,
-and the settings registers broadcast to 32 ports. Fixed in RTL (per-port
-reset registers, a register stage per group of 8 ports, three FIFO stages
-on each host channel); build 4 checks them. The tarball went to
-`create-fpga-image` only to check the AFI flow (owner: no F2 run on a
-design that misses timing).
+and the settings registers broadcast to 32 ports. Fixed in RTL: reset
+registers per port, per 8 HBM ports and for the OCL crossing; the
+settings, the start and the counters' read select through a register per
+group of 8 ports; two flop-only register slices (skid buffers,
+`bringup_pipe.sv`) on each host channel. Left as is, for build 4 to
+show: HBM port 0's ready into the host's last slice and the port 0 mux
+(a register there would make port 0's latency differ from the other
+ports'), and the SmartConnect's own paths (AWS's IP). The engine's
+timing-only build (M8's last step): check whether its flat `rst_ni`
+needs the same reset registers. The tarball went to
+`create-fpga-image` only to check the flow: AWS made the AFI
+(afi-05124618e6e5291ab, available) although the design misses timing;
+no F2 run on it (owner).
 
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over

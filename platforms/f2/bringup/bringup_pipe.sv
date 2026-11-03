@@ -6,6 +6,7 @@
 // (bringup_host.sv's way to the shell's PCIS, across an SLR). A stage is a
 // skid buffer: its output register, and a second register that takes the
 // beat arriving while the output waits; its ready is that register empty.
+// busy_o: a beat inside, in any stage (registered).
 
 module bringup_pipe #(
   parameter int unsigned Width  = 32,
@@ -16,6 +17,7 @@ module bringup_pipe #(
   input  logic             in_valid_i,
   output logic             in_ready_o,
   input  logic [Width-1:0] in_data_i,
+  output logic             busy_o,
   output logic             out_valid_o,
   input  logic             out_ready_i,
   output logic [Width-1:0] out_data_o
@@ -27,6 +29,8 @@ module bringup_pipe #(
 
   logic [Stages:0]            valid, ready;
   logic [Stages:0][Width-1:0] data;
+  logic [Stages-1:0]          held;  // a stage holds a beat
+  assign busy_o        = |held;
   assign valid[0]      = in_valid_i;
   assign in_ready_o    = ready[0];
   assign data[0]       = in_data_i;
@@ -38,10 +42,11 @@ module bringup_pipe #(
     logic             out_valid_q, skid_valid_q;
     logic [Width-1:0] out_q, skid_q;
     logic             take;  // the output register loads this cycle
-    assign take        = ready[s+1] || !out_valid_q;
-    assign ready[s]    = !skid_valid_q;
-    assign valid[s+1]  = out_valid_q;
-    assign data[s+1]   = out_q;
+    assign take       = ready[s+1] || !out_valid_q;
+    assign ready[s]   = !skid_valid_q;
+    assign valid[s+1] = out_valid_q;
+    assign data[s+1]  = out_q;
+    assign held[s]    = out_valid_q || skid_valid_q;
 
     always_ff @(posedge clk_i) begin
       if (!rst_ni) begin

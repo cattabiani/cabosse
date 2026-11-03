@@ -146,19 +146,25 @@ def test_write_then_read(burst: int):
 
 
 @rtl.needs_verilator
-def test_ports_past_one_group():
+@pytest.mark.parametrize("n_ports", [9, 32])
+def test_ports_past_one_group(n_ports: int):
     """With more than 8 ports the settings, the start and the counters' reads
-    pass two groups' registers: every port of both writes its region and
-    reads it back."""
-    n_ports, stride, beats = 9, 16 * 1024, 32
+    pass a register per group of 8: every port writes its region, then only
+    port 9 g + g of each group g reads it back, so each read's counters show
+    which group and place answered."""
+    stride, beats = MEM_BYTES // n_ports // 4096 * 4096, 32
+    readers = [p for p in range(n_ports) if p // 8 == p % 8]  # 0, 9, 18, 27
     mem = blank()
     ops = start(WRITE, port_en=(1 << n_ports) - 1, stride=stride, beats=beats)
-    ops += start(READ | CHECK, port_en=(1 << n_ports) - 1, stride=stride, beats=beats)
+    ops += start(READ | CHECK, port_en=sum(1 << p for p in readers), stride=stride, beats=beats)
     ops += counters(n_ports)
     res = run(mem, ops, params=(("Ports", n_ports),), latency=20, rate=900)
     np.testing.assert_array_equal(res.mem, written(mem, n_ports, stride, beats))
-    for c in runs(res.reads, n_ports)[0]:
-        assert c["rd_beats"] == beats and c["rd_bad"] == 0 and c["flags"] == 0, c
+    for p, c in enumerate(runs(res.reads, n_ports)[0]):
+        # A start clears the port's counters: the readers' write counts too.
+        reader = p in readers
+        assert (c["rd_beats"], c["wr_beats"]) == ((beats, 0) if reader else (0, beats)), (p, c)
+        assert c["rd_bad"] == 0 and c["flags"] == 0, (p, c)
 
 
 @rtl.needs_verilator
