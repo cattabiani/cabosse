@@ -1609,6 +1609,19 @@ its build flow (shell IP, AFI); the host tool and the F2 run script; the
 build and the F2 run (AWS, owner's OK each); the core's timing-only build
 in the shell.
 
+**Bring-up builds (2026-11-02):** builds 1 and 2 stopped in setup and
+synthesis (#91, #92). Build 3 (3c816e1) routed in 2 h 37 (Vivado peak
+9.2 GB, 69.7k LUTs) but misses 250 MHz: WNS −0.980 ns, 9,714 failing
+endpoints, all on `clk_hbm_axi`; hold met
+(reports/data/f2/2026-11-02-bringup-build3.txt). Three families, all in
+the wrapper: the clock generator's reset straight into every port's
+flops, the host's channels between the PCIS SmartConnect and port 0,
+and the settings registers broadcast to 32 ports. Fixed in RTL (per-port
+reset registers, a register stage per group of 8 ports, three FIFO stages
+on each host channel); build 4 checks them. The tarball went to
+`create-fpga-image` only to check the AFI flow (owner: no F2 run on a
+design that misses timing).
+
 ### M9 — SmolLM2-135M-Instruct on F2, measured
 **Done when:** bit-exact against the golden model. Tokens/s is measured over
 ≥ 1000 tokens and compared with the perf model and the bandwidth bound
