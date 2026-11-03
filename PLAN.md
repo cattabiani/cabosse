@@ -761,7 +761,7 @@ in M7 (the runtime reads LOGITS from the simulation, Q-33 stays M9's).
 of the model; tests check the hardware's decisions against the Python
 functions.
 
-**D-069 (2026-11-03, proposed; for the owner to confirm) — P gets a
+**D-069 (2026-11-03; confirmed by the owner 2026-11-03) — P gets a
 second read port, a copy of its banks.** In the core (`rtl/core.sv`) the
 engine reads x through the vector unit's ext port. A two-head `VALUES`
 pass (D-062: `2d ≤ L`, SmolLM2 at 128 lanes) reads P's rows of both heads
@@ -778,7 +778,10 @@ choice of two read addresses per bank and the row in the vector unit's
 address logic; a P stride of 8 mod 16 would put the two reads on different
 banks of one copy, but S and P share STRIDE and D-049 aligns it to 16.
 *Why:* the smallest change that
-keeps D-062's two-head pass and the engine as it is.
+keeps D-062's two-head pass and the engine as it is. *Check (owner):* M9
+adds up the whole design's on-chip memory against the device's block RAM
+and UltraRAM before relying on the copy; if it does not fit, `VALUES` runs
+one head a pass on P.
 
 ## Milestones
 
@@ -1655,8 +1658,8 @@ does not check them; `SCORES` and `VALUES` are given after the
   `sw/sim_platform.py`. The tiny model decodes bit-exact (tokens, logits,
   KV cache) through the runtime: 3 prompts of 68, 74 and 80 tokens at 4
   ports (38.0, 40.9, 44.3 s), one of 68 at 32 ports (123.3 s, after a
-  build of about 6.5 minutes and 10 GB). P has a second read port (D-069,
-  proposed). Found on the way: the engine reads x port 1 for its lanes past
+  build of about 6.5 minutes and 10 GB). P has a second read port
+  (D-069). Found on the way: the engine reads x port 1 for its lanes past
   d on every command, so the vector unit gives port 0's data on port 1 for
   every buffer but P. `commands.validate` checks the buffers' length
   against the device's. The core is not synthesized in Yosys (its 16-lane
@@ -1856,7 +1859,10 @@ crossing on the memory side. `VALUES` runs at most 2 heads a pass (the
 engine's `Heads`; the perf model follows it since M5, attention): at 256
 lanes that leaves half the lanes idle on p.V, and docs/perf.md's 256-lane
 row is limited by the engine at position 1023. Raise `Heads` to L / d
-there.
+there; each head past the first reads P at its own address, so D-069's
+copy of P becomes L / d - 1 copies. **From M7 (D-069):** the on-chip memory
+total (every buffer, P's copy included) against the device's, before the
+build relies on it.
 
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate

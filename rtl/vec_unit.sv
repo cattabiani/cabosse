@@ -84,7 +84,7 @@
 // second copy of its banks, written with the first and read at
 // ext_r2_addr_i (the same buffer as ext_r_buf_i, data the cycle after): P,
 // for a VALUES pass's second head, which reads P's next row in the same
-// cycle as the first (D-069, proposed). Any other buffer gives the first
+// cycle as the first (D-069). Any other buffer gives the first
 // read's data on ext_r2_data_o, as the engine expects (rtl/engine.sv).
 
 module vec_unit
