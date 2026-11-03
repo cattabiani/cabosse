@@ -1,0 +1,143 @@
+# F2 run 1 (M8), 2026-11-03, f2.6xlarge i-0a84d2ac4f66401db, eu-central-1b, 11:33-11:37 UTC.
+# AFI afi-09d01f5eb2ccb7888 / agfi-020a99a1e675c633b from bring-up build 4 (main 8e344e6);
+# host tool and plan from main 734b6f0 (scripts/f2/run_bringup.sh, bringup_plan.py).
+# Raw results: 2026-11-03-f2run1.jsonl (also s3://cabosse-builds-628837661672/dcp/2026-11-03-f2run1/).
+# This summary: python3 scripts/f2/bringup_report.py reports/data/f2/2026-11-03-f2run1.jsonl
+# Rates: beats x 32 B over each port's own cycle counter at the set core clock; "total" is
+# all beats over the slowest port's cycles. Ports read and write their own 512 MiB region
+# unless the step says otherwise (switch_*). The PCIS writes did not run (no AVX-512 on the
+# host CPU), so pcis_check and pcis_read compare against data never written.
+
+commit 734b6f0a3e6f1881bb96106374e8b72291e709c9, agfi-020a99a1e675c633b (afi-09d01f5eb2ccb7888), i-0a84d2ac4f66401db f2.6xlarge
+clock 250 MHz (measured 249.996; a port's limit 8.0 GB/s)
+OCL read 1170/1370/1470/24111 ns (min/p50/p99/max, n 10000)
+pcis_write {"bytes": 67108864, "offset": 0}: error PCIS writes need AVX-512 (64-byte stores)
+  pcis_check             rd    8.0 GB/s total,  1 ports  8.00- 8.00 GB/s, error ports 0, bad 2097152
+pcis_read offset 0x0: 4.8 MB/s, bad words 1048576
+pcis_write {"bytes": 67108864, "offset": 8589934592}: error PCIS writes need AVX-512 (64-byte stores)
+  pcis_check @0x200000000 rd    8.0 GB/s total,  1 ports  8.00- 8.00 GB/s, error ports 0, bad 2097152
+pcis_read offset 0x200000000: 15.1 MB/s, bad words 1048576
+clock 250 MHz (measured 249.996; a port's limit 8.0 GB/s)
+  fill                   wr  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_check_all         rd  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, bad 0
+  write_all              wr  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_write_all         rd  193.8 GB/s total, 32 ports  6.06- 6.07 GB/s, error ports 0, bad 0
+  read_write_all         wr  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_burst 1           rd  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, bad 0
+  write_burst 1          wr  192.0 GB/s total, 32 ports  6.00- 6.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_burst 2           rd  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, bad 0
+  write_burst 2          wr  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, max out 13, mean wait 26.0 cycles
+  read_burst 4           rd  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, bad 0
+  write_burst 4          wr  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, max out 12, mean wait 48.0 cycles
+  read_burst 8           rd  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, bad 0
+  write_burst 8          wr  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, max out 12, mean wait 92.0 cycles
+  read_burst 16          rd  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, bad 0
+  write_burst 16         wr  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_limit 1           rd    6.3 GB/s total, 32 ports  0.20- 0.20 GB/s, error ports 0, bad 0
+  write_limit 1          wr   17.1 GB/s total, 32 ports  0.53- 0.53 GB/s, error ports 0, max out 1, mean wait 14.0 cycles
+  read_limit 2           rd   12.6 GB/s total, 32 ports  0.39- 0.41 GB/s, error ports 0, bad 0
+  write_limit 2          wr   34.1 GB/s total, 32 ports  1.07- 1.07 GB/s, error ports 0, max out 2, mean wait 14.0 cycles
+  read_limit 4           rd   25.2 GB/s total, 32 ports  0.79- 0.82 GB/s, error ports 0, bad 0
+  write_limit 4          wr   68.3 GB/s total, 32 ports  2.13- 2.13 GB/s, error ports 0, max out 4, mean wait 14.0 cycles
+  read_limit 8           rd   50.4 GB/s total, 32 ports  1.58- 1.61 GB/s, error ports 0, bad 0
+  write_limit 8          wr  136.5 GB/s total, 32 ports  4.27- 4.27 GB/s, error ports 0, max out 8, mean wait 14.0 cycles
+  read_limit 16          rd  100.8 GB/s total, 32 ports  3.15- 3.15 GB/s, error ports 0, bad 0
+  write_limit 16         wr  192.0 GB/s total, 32 ports  6.00- 6.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_limit 32          rd  126.5 GB/s total, 32 ports  3.95- 3.95 GB/s, error ports 0, bad 0
+  write_limit 32         wr  192.0 GB/s total, 32 ports  6.00- 6.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_limit 64          rd  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, bad 0
+  write_limit 64         wr  192.0 GB/s total, 32 ports  6.00- 6.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_limit 128         rd  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, bad 0
+  write_limit 128        wr  192.0 GB/s total, 32 ports  6.00- 6.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  switch_local           rd  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, bad 0
+  switch_next_pc @0x20000000 rd  256.0 GB/s total, 32 ports  8.00- 8.00 GB/s, error ports 0, bad 0
+  switch_other_stack @0x200000000 rd   32.0 GB/s total, 32 ports  1.00- 2.67 GB/s, error ports 0, bad 0
+  switch_same_pc         rd    8.0 GB/s total, 32 ports  0.25- 1.33 GB/s, error ports 0, bad 0
+  write_partial_1beat    wr  192.0 GB/s total, 32 ports  6.00- 6.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  write_full_1beat       wr  192.0 GB/s total, 32 ports  6.00- 6.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_latency port 0      first beat 43/44/78.99/85 cycles (min/p50/p99/max, n 1000), p50 176 ns
+  read_latency port 31     first beat 43/43/73/85 cycles (min/p50/p99/max, n 1000), p50 172 ns
+  read_one (each alone)  rd  8.00- 8.00 GB/s, 32 ports, error ports 0, bad 0
+clock 200 MHz (measured 199.997; a port's limit 6.4 GB/s)
+  fill                   wr  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_check_all         rd  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, bad 0
+  write_all              wr  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_write_all         rd  201.3 GB/s total, 32 ports  6.29- 6.31 GB/s, error ports 0, bad 0
+  read_write_all         wr  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_burst 1           rd  102.4 GB/s total, 32 ports  3.20- 3.20 GB/s, error ports 0, bad 0
+  write_burst 1          wr  153.6 GB/s total, 32 ports  4.80- 4.80 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_burst 2           rd  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, bad 0
+  write_burst 2          wr  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, max out 13, mean wait 26.0 cycles
+  read_burst 4           rd  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, bad 0
+  write_burst 4          wr  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, max out 12, mean wait 48.0 cycles
+  read_burst 8           rd  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, bad 0
+  write_burst 8          wr  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, max out 12, mean wait 92.0 cycles
+  read_burst 16          rd  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, bad 0
+  write_burst 16         wr  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_limit 1           rd    5.8 GB/s total, 32 ports  0.18- 0.18 GB/s, error ports 0, bad 0
+  write_limit 1          wr   13.7 GB/s total, 32 ports  0.43- 0.43 GB/s, error ports 0, max out 1, mean wait 14.0 cycles
+  read_limit 2           rd   11.6 GB/s total, 32 ports  0.36- 0.36 GB/s, error ports 0, bad 0
+  write_limit 2          wr   27.3 GB/s total, 32 ports  0.85- 0.85 GB/s, error ports 0, max out 2, mean wait 14.0 cycles
+  read_limit 4           rd   22.8 GB/s total, 32 ports  0.71- 0.73 GB/s, error ports 0, bad 0
+  write_limit 4          wr   54.6 GB/s total, 32 ports  1.71- 1.71 GB/s, error ports 0, max out 4, mean wait 14.0 cycles
+  read_limit 8           rd   44.8 GB/s total, 32 ports  1.40- 1.45 GB/s, error ports 0, bad 0
+  write_limit 8          wr  109.2 GB/s total, 32 ports  3.41- 3.41 GB/s, error ports 0, max out 8, mean wait 14.0 cycles
+  read_limit 16          rd   89.5 GB/s total, 32 ports  2.80- 2.88 GB/s, error ports 0, bad 0
+  write_limit 16         wr  153.6 GB/s total, 32 ports  4.80- 4.80 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_limit 32          rd  101.6 GB/s total, 32 ports  3.17- 3.18 GB/s, error ports 0, bad 0
+  write_limit 32         wr  153.6 GB/s total, 32 ports  4.80- 4.80 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_limit 64          rd  102.4 GB/s total, 32 ports  3.20- 3.20 GB/s, error ports 0, bad 0
+  write_limit 64         wr  153.6 GB/s total, 32 ports  4.80- 4.80 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_limit 128         rd  102.4 GB/s total, 32 ports  3.20- 3.20 GB/s, error ports 0, bad 0
+  write_limit 128        wr  153.6 GB/s total, 32 ports  4.80- 4.80 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  switch_local           rd  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, bad 0
+  switch_next_pc @0x20000000 rd  204.8 GB/s total, 32 ports  6.40- 6.40 GB/s, error ports 0, bad 0
+  switch_other_stack @0x200000000 rd   25.6 GB/s total, 32 ports  0.80- 2.13 GB/s, error ports 0, bad 0
+  switch_same_pc         rd    6.4 GB/s total, 32 ports  0.20- 1.07 GB/s, error ports 0, bad 0
+  write_partial_1beat    wr  153.6 GB/s total, 32 ports  4.80- 4.80 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  write_full_1beat       wr  153.6 GB/s total, 32 ports  4.80- 4.80 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_latency port 0      first beat 38/39/64/71 cycles (min/p50/p99/max, n 1000), p50 195 ns
+  read_latency port 31     first beat 38/38/68/71 cycles (min/p50/p99/max, n 1000), p50 190 ns
+  read_one (each alone)  rd  6.40- 6.40 GB/s, 32 ports, error ports 0, bad 0
+clock 125 MHz (measured 124.998; a port's limit 4.0 GB/s)
+  fill                   wr  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_check_all         rd  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, bad 0
+  write_all              wr  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_write_all         rd  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, bad 0
+  read_write_all         wr  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_burst 1           rd   64.0 GB/s total, 32 ports  2.00- 2.00 GB/s, error ports 0, bad 0
+  write_burst 1          wr   96.0 GB/s total, 32 ports  3.00- 3.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_burst 2           rd  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, bad 0
+  write_burst 2          wr  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, max out 13, mean wait 26.0 cycles
+  read_burst 4           rd  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, bad 0
+  write_burst 4          wr  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, max out 12, mean wait 48.0 cycles
+  read_burst 8           rd  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, bad 0
+  write_burst 8          wr  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, max out 12, mean wait 92.0 cycles
+  read_burst 16          rd  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, bad 0
+  write_burst 16         wr  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, max out 12, mean wait 180.0 cycles
+  read_limit 1           rd    4.5 GB/s total, 32 ports  0.14- 0.14 GB/s, error ports 0, bad 0
+  write_limit 1          wr    8.5 GB/s total, 32 ports  0.27- 0.27 GB/s, error ports 0, max out 1, mean wait 14.0 cycles
+  read_limit 2           rd    9.0 GB/s total, 32 ports  0.28- 0.29 GB/s, error ports 0, bad 0
+  write_limit 2          wr   17.1 GB/s total, 32 ports  0.53- 0.53 GB/s, error ports 0, max out 2, mean wait 14.0 cycles
+  read_limit 4           rd   17.9 GB/s total, 32 ports  0.56- 0.57 GB/s, error ports 0, bad 0
+  write_limit 4          wr   34.1 GB/s total, 32 ports  1.07- 1.07 GB/s, error ports 0, max out 4, mean wait 14.0 cycles
+  read_limit 8           rd   35.2 GB/s total, 32 ports  1.10- 1.13 GB/s, error ports 0, bad 0
+  write_limit 8          wr   68.3 GB/s total, 32 ports  2.13- 2.13 GB/s, error ports 0, max out 8, mean wait 14.0 cycles
+  read_limit 16          rd   62.0 GB/s total, 32 ports  1.94- 1.94 GB/s, error ports 0, bad 0
+  write_limit 16         wr   96.0 GB/s total, 32 ports  3.00- 3.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_limit 32          rd   64.0 GB/s total, 32 ports  2.00- 2.00 GB/s, error ports 0, bad 0
+  write_limit 32         wr   96.0 GB/s total, 32 ports  3.00- 3.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_limit 64          rd   64.0 GB/s total, 32 ports  2.00- 2.00 GB/s, error ports 0, bad 0
+  write_limit 64         wr   96.0 GB/s total, 32 ports  3.00- 3.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_limit 128         rd   64.0 GB/s total, 32 ports  2.00- 2.00 GB/s, error ports 0, bad 0
+  write_limit 128        wr   96.0 GB/s total, 32 ports  3.00- 3.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  switch_local           rd  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, bad 0
+  switch_next_pc @0x20000000 rd  128.0 GB/s total, 32 ports  4.00- 4.00 GB/s, error ports 0, bad 0
+  switch_other_stack @0x200000000 rd   16.0 GB/s total, 32 ports  0.50- 1.33 GB/s, error ports 0, bad 0
+  switch_same_pc         rd    4.0 GB/s total, 32 ports  0.12- 0.67 GB/s, error ports 0, bad 0
+  write_partial_1beat    wr   96.0 GB/s total, 32 ports  3.00- 3.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  write_full_1beat       wr   96.0 GB/s total, 32 ports  3.00- 3.00 GB/s, error ports 0, max out 14, mean wait 18.3 cycles
+  read_latency port 0      first beat 30/31/46/52 cycles (min/p50/p99/max, n 1000), p50 248 ns
+  read_latency port 31     first beat 30/30/33/49 cycles (min/p50/p99/max, n 1000), p50 240 ns
+  read_one (each alone)  rd  4.00- 4.00 GB/s, 32 ports, error ports 0, bad 0
+clock 250 MHz (measured 249.996; a port's limit 8.0 GB/s)
