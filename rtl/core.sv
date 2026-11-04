@@ -121,8 +121,17 @@ module core #(
   logic [31:0]          cmd_scalar;
   logic [HeadWidth-1:0] cmd_group;
   logic                 cmd_bf16;
-  logic                 eng_valid, eng_ready, eng_wait, eng_go, eng_done, vec_valid, vec_ready;
-  logic                 vec_done, vec_err;
+  logic                 eng_wait, vec_err;
+  // The handshakes between the controller and the units, readable by the
+  // simulation (verif/bulk/core.cpp's trace: each command's cycles, M7);
+  // synthesis ignores the pragma.
+  logic eng_valid /* verilator public_flat_rd */;
+  logic eng_ready /* verilator public_flat_rd */;
+  logic eng_go    /* verilator public_flat_rd */;
+  logic eng_done  /* verilator public_flat_rd */;
+  logic vec_valid /* verilator public_flat_rd */;
+  logic vec_ready /* verilator public_flat_rd */;
+  logic vec_done  /* verilator public_flat_rd */;
   logic [1:0]           eng_op;
   logic [Ports-1:0]     eng_err;
 

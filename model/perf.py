@@ -341,6 +341,17 @@ def step(cmd: commands.Command, t: int, lanes: int, tiles_shared: bool) -> Step:
             )
 
 
+def steps(
+    cmds: list[commands.Command], t: int, lanes: int, tiles_shared: bool = False
+) -> list[Step]:
+    """step() of each command of a list when attention reads t positions,
+    with the list's waits and stops."""
+    return [
+        dataclasses.replace(step(cmd, t, lanes, tiles_shared), waits=w, stops=s)
+        for cmd, w, s in zip(cmds, commands.engine_waits(cmds), commands.stops(cmds), strict=True)
+    ]
+
+
 def ops(
     config: LlamaConfig,
     position: int,
@@ -362,8 +373,8 @@ def ops(
     dropped = {commands.Op.MAX} if max_in_drain else set()
     dropped |= {commands.Op.EXP, commands.Op.SUM} if softmax_fused else set()
     return [
-        dataclasses.replace(step(cmd, position + 1, lanes, kv_tiles_shared), waits=w, stops=s)
-        for cmd, w, s in zip(cmds, commands.engine_waits(cmds), commands.stops(cmds), strict=True)
+        s
+        for cmd, s in zip(cmds, steps(cmds, position + 1, lanes, kv_tiles_shared), strict=True)
         if not (cmd.flags & commands.Flag.LEN_T and cmd.op in dropped)
     ]
 

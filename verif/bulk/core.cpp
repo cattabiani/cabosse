@@ -19,6 +19,11 @@
 /// - 5 buffer read: buffer, first element, elements (host_r port, Lanes a
 ///   cycle). Answer: the elements' raw bits, a word each.
 /// - 6 quit.
+/// - 7 trace: the cycles (the driver's count, from its start) at which the
+///   controller handed the engine a command, sent it a go, the engine was
+///   done with one, the controller handed the vector unit a command, and it
+///   was done with one, since the last trace. Answer: for each of the five,
+///   in that order, a count, then the cycles, a low and a high word each.
 /// The memory is Ports channels of 2^ChanW bytes (calloc: the pages no one
 /// writes cost nothing); engine port p reads channel p, the vector unit's
 /// port the whole of it at global addresses. Plusargs: the memory's
@@ -49,6 +54,9 @@ constexpr size_t kBeatWords = kBeatBytes / 4;
 constexpr uint32_t kHello = 0x4342'5349;  // 'CBSI'
 constexpr int kExitAxi = 5;
 
+/// @brief The controller's handshakes with the units (request 7's order).
+enum Event : size_t { kEngTake, kEngGo, kEngDone, kVecTake, kVecDone, kEvents };
+
 /// @brief The core, its memory and the host's side of its ports.
 struct Bench {
   Vcore& dut;
@@ -56,6 +64,19 @@ struct Bench {
   AxiReadPort vec_rd;
   AxiWritePort vec_wr;
   uint64_t progress = 0;  ///< memory beats moved: a run's sign of life
+  uint64_t now = 0;       ///< cycles since the start
+  std::array<std::vector<uint64_t>, kEvents> trace;  ///< each event's cycles
+
+  /// @brief Note this cycle's handshakes (the core settled, before the edge).
+  void record() {
+    const auto& r = *dut.rootp;
+    const std::array<bool, kEvents> seen{r.core__DOT__eng_valid && r.core__DOT__eng_ready, r.core__DOT__eng_go != 0,
+                                         r.core__DOT__eng_done != 0, r.core__DOT__vec_valid && r.core__DOT__vec_ready,
+                                         r.core__DOT__vec_done != 0};
+    for (size_t e = 0; e < kEvents; ++e) {
+      if (seen[e]) trace[e].push_back(now);
+    }
+  }
 
   /// @brief One clock cycle: the memories' outputs onto the core, settle,
   /// the memories see the core's outputs, the rising edge.
@@ -98,8 +119,10 @@ struct Bench {
                    static_cast<bool>(dut.v_w_last_o)},
                   dut.v_b_ready_o);
     }
+    if (dut.rst_ni) record();
     dut.clk_i = 1;
     dut.eval();
+    ++now;
   }
 
   /// @brief n elements of a buffer from `first`, Lanes a cycle (host_r).
@@ -227,6 +250,16 @@ int main(int argc, char** argv) {
         case 6:
           dut->final();
           return 0;
+        case 7: {
+          std::vector<uint32_t> out;
+          for (auto& cycles : bench.trace) {
+            out.push_back(static_cast<uint32_t>(cycles.size()));
+            for (const uint64_t c : cycles) out.insert(out.end(), {static_cast<uint32_t>(c), static_cast<uint32_t>(c >> 32)});
+            cycles.clear();
+          }
+          answer(out);
+          break;
+        }
         default:
           throw std::out_of_range(std::format("unknown request {}", op));
       }

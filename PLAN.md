@@ -1664,6 +1664,24 @@ does not check them; `SCORES` and `VALUES` are given after the
   every buffer but P. `commands.validate` checks the buffers' length
   against the device's. The core is not synthesized in Yosys (its 16-lane
   vector unit needs more than 8 GB there, M6); Vivado builds it in M9.
+- [x] Step 5: SmolLM2 at 32 ports decodes bit-exact (tokens, logits, KV
+  cache): "The capital of France is" (5 tokens) and 8 new, 12 runs, in
+  1,214.8 s with the build cached (`slow` test and
+  `scripts/measure_m7.py smollm2`, reports/data/M7.json). The driver
+  traces the controller's handshakes with the units; `verif/breakdown.py`
+  gives each command's cycles against the perf model's (`perf.steps`,
+  the simulation's memory as a platform: a beat a cycle on every port).
+  Per token 469,828 to 469,918 cycles against the model's 482,607 in
+  order (2.6% under; 1.88 ms, 532 tokens/s at 250 MHz on this ideal
+  memory). The engine alone runs 63.1%, the vector unit alone 36.7%,
+  never both (the controller runs commands in order, D-045), the
+  controller alone 0.2%. MATVEC is within 0.1% of the model, MAX and SUM
+  too (18.3% of the token between them). The model overestimates LOAD
+  (2,620 against 7,037 cycles) and KV_STORE (3,090 against 5,190);
+  waiting engine commands start up in 61 to 74 cycles against the
+  model's 76. Not done: the core's trace is not checked against D-068's
+  ordering rules (`verif/controller.py`'s `check`; the trace lacks the
+  handover's unit and wait bits).
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
