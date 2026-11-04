@@ -17,7 +17,7 @@ by command and unit against the perf model (verif/breakdown.py). About
 checkpoint in weights/. Commit first: the data records the commit.
 
 `cpu` and `cuda` time D-067's baseline: SmolLM2's published BF16 weights
-in `transformers` (eager, its default attention), batch 1, the same prompt,
+in `transformers` (no compile, its default attention, recorded), batch 1, the same prompt,
 then N_DECODE greedy tokens through the KV cache, prefill excluded; the
 median of REPEATS runs after WARMUP. `cuda` needs torch's CUDA build in
 .venv (requirements-cuda.txt, D-070).
@@ -26,7 +26,6 @@ median of REPEATS runs after WARMUP. `cuda` needs torch's CUDA build in
 import argparse
 import collections
 import json
-import statistics
 import sys
 import time
 from pathlib import Path
@@ -36,12 +35,11 @@ for sub in ("model", "model/tests", "verif", "sw"):
     sys.path.insert(0, str(REPO / sub))
 
 import paths  # noqa: E402
-from reporting import blocks, measure  # noqa: E402
+from reporting import blocks, m7, measure  # noqa: E402
 
 DATA = REPO / "reports" / "data" / "M7.json"
 N_DECODE = 128
 WARMUP, REPEATS = 1, 5
-DEVICES = ("cpu", "cuda")  # D-067's parts
 
 
 def smollm2() -> dict:
@@ -103,26 +101,12 @@ def decode_tokens_per_s(device: str) -> dict:
         before
         | gpu
         | {
+            "attention": model.config._attn_implementation,
             "prompt": SMOLLM2_PROMPT,
             "n_decode": N_DECODE,
             "tokens_per_s": [round(r, 1) for r in rates[WARMUP:]],
         }
     )
-
-
-def baseline_summary(data: dict) -> str:
-    """D-067's rows: device, decode tokens/s (median), what it ran on."""
-    lines = ["D-067 baseline, SmolLM2 BF16, batch 1, greedy, decode tokens/s (median):"]
-    for device in DEVICES:
-        if device in data:
-            b = data[device]
-            on = f"{b['gpu']}, host " if "gpu" in b else ""
-            lines.append(
-                f"{device:4}  {statistics.median(b['tokens_per_s']):8.1f}  {on}{b['cpu']},"
-                f" {b['threads']} threads, load {b['load_average'][0]:.2f}; torch {b['torch']},"
-                f" transformers {b['transformers']}; {b['provenance']['date']}"
-            )
-    return "\n".join(lines)
 
 
 def summary(run: dict) -> str:
@@ -162,17 +146,18 @@ def summary(run: dict) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("part", choices=("smollm2", *DEVICES, "show"))
+    parser.add_argument("part", choices=("smollm2", *m7.DEVICES, "show"))
     args = parser.parse_args()
     data = json.loads(DATA.read_text()) if DATA.exists() else {}
     if args.part != "show":
-        run = decode_tokens_per_s(args.part) if args.part in DEVICES else smollm2()
-        data[args.part] = {"provenance": measure.provenance()} | run
+        provenance = measure.provenance()  # of the code before it runs
+        run = decode_tokens_per_s(args.part) if args.part in m7.DEVICES else smollm2()
+        data[args.part] = {"provenance": provenance} | run
         DATA.write_text(json.dumps(data, indent=1) + "\n")
     if "smollm2" in data:
         print(summary(data["smollm2"]))
-    if any(d in data for d in DEVICES):
-        print(baseline_summary(data))
+    if any(d in data for d in m7.DEVICES):
+        print(m7.baseline_text(data))
     if not data:
         sys.exit(f"no data in {DATA}: run a part first")
 

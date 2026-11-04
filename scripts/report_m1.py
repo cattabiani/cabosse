@@ -30,13 +30,12 @@ import fixtures  # noqa: E402
 import paths  # noqa: E402
 from golden import decoder  # noqa: E402
 from reporting import blocks, m1  # noqa: E402
-from reporting.measure import host, pytest_summary  # noqa: E402
+from reporting.measure import QUIET_LOAD, host, pytest_summary  # noqa: E402
 from reporting.measure import provenance as common_provenance  # noqa: E402
 
 POSITIONS = 256  # per comparison sequence
 DECODE_WARMUP = 4  # untimed decode steps first (caches, allocator)
 DECODE_STEPS = 32  # then timed decode steps
-QUIET_LOAD = 1.0  # 1-minute load average above which timing is suspect
 # pytest arguments. The report's own up-to-date test waits for this data.
 UP_TO_DATE = "model/tests/test_reporting.py::test_m1_report_is_up_to_date"
 SUITES = {"fast": ["--deselect", UP_TO_DATE], "slow": ["-m", "slow"]}

@@ -2,6 +2,7 @@
 # requirements.txt alone. After requirements.txt:
 #   .venv/bin/pip install -r requirements-cuda.txt
 # Needs the NVIDIA driver; the CUDA libraries come with the wheel (~3 GB).
-# `pip install -r requirements.txt` puts the CPU build back.
+# `pip install -r requirements.txt` puts torch's CPU build back; the nvidia-*
+# wheels stay (a new .venv for a clean CPU-only one).
 --index-url https://download.pytorch.org/whl/cu130
 torch==2.14.1+cu130; sys_platform == "linux" and platform_machine == "x86_64"

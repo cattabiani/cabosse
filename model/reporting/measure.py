@@ -4,6 +4,7 @@
 where the data comes from, and pytest's summary of a suite."""
 
 import datetime
+import importlib.metadata
 import os
 import platform
 import subprocess
@@ -11,6 +12,8 @@ import sys
 from pathlib import Path
 
 import paths
+
+QUIET_LOAD = 1.0  # 1-minute load average above which a timing is suspect
 
 
 def git(*args: str) -> str:
@@ -46,7 +49,6 @@ def host() -> dict:
     """What a timing on this machine ran on: CPU, torch's threads, the load
     average before measuring (1, 5, 15 min) and the software's versions."""
     import torch  # only for the timings
-    import transformers
 
     cpuinfo = Path("/proc/cpuinfo").read_text().splitlines()  # Linux: the reference platform
     cpu = next(line.split(":", 1)[1].strip() for line in cpuinfo if line.startswith("model name"))
@@ -56,7 +58,7 @@ def host() -> dict:
         "load_average": list(os.getloadavg()),
         "python": platform.python_version(),
         "torch": torch.__version__,
-        "transformers": transformers.__version__,
+        "transformers": importlib.metadata.version("transformers"),
     }
 
 
