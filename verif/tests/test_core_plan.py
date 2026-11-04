@@ -54,6 +54,8 @@ def test_timed_greedy_is_generate(tiny_model) -> None:
     assert len(run["wall_s"]) == len(run["cycles"]) == len(prompt) + 5
 
 
+# The fixture's logit hashes are pinned on x86-64 Linux; other hosts differ.
+@pytest.mark.skipif(not paths.REFERENCE_PLATFORM, reason=paths.REFERENCE_PLATFORM_NOTE)
 def test_the_tiny_fixture_passes(tmp_path, tiny_model, runs) -> None:
     lines = plan_lines(tmp_path, tiny_model, {"tiny_greedy.json": runs})
     steps = [line["step"] for line in lines]
