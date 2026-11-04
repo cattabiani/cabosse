@@ -90,6 +90,7 @@ def timed_greedy(rt: Runtime, prompt: list[int], n_new: int) -> dict:
         rows.append(hashlib.sha256(bits).hexdigest())
         return logits
 
+    assert prompt and n_new > 0, (len(prompt), n_new)
     rt.reset()
     for t in prompt:
         logits = step(t)
@@ -147,13 +148,17 @@ def check_run(log: Log, step: str, params: dict, rt: Runtime, want: dict, mhz: f
 
 
 def fixture_runs(log: Log, rt: Runtime, fixtures: dict[str, list[dict]], mhz: float) -> None:
-    """Every run of every fixture file (name -> runs), in order."""
+    """Every run of every fixture file (name -> runs), in order. A run with
+    a hash a position is the long fixture's. A run that raises is recorded
+    and the next one goes on (a driver that died fails them all quickly)."""
     for name, runs in fixtures.items():
         for k, want in enumerate(runs):
-            step = "long" if "long" in name else "fixture"
-            check_run(
-                log, step, {"fixture": name, "run": k, "n_new": len(want["tokens"])}, rt, want, mhz
-            )
+            step = "long" if isinstance(want["logits_sha256"], list) else "fixture"
+            params = {"fixture": name, "run": k, "n_new": len(want["tokens"])}
+            try:
+                check_run(log, step, params, rt, want, mhz)
+            except Exception as e:
+                log.record(step, params, {"error": repr(e)})
 
 
 def stored(name: str) -> dict:
@@ -162,7 +167,10 @@ def stored(name: str) -> dict:
 
 def set_clock(log: Log) -> dict:
     """core_clock CLOCK_MHZ, recorded: its JSON, or {"error": ...}."""
-    r = subprocess.run([str(CLOCK), str(CLOCK_MHZ)], capture_output=True, text=True)
+    try:
+        r = subprocess.run([str(CLOCK), str(CLOCK_MHZ)], capture_output=True, text=True)
+    except OSError as e:
+        return log.record("clock", {"mhz": CLOCK_MHZ}, {"error": repr(e)})
     try:
         result = json.loads(r.stdout.strip().splitlines()[-1])
     except IndexError, json.JSONDecodeError:

@@ -54,17 +54,17 @@ git clone -q --depth 1 -b $AWS_FPGA_REF https://github.com/aws/aws-fpga.git >>$l
 aws_fpga=$(git -C aws-fpga rev-parse HEAD)
 echo "aws-fpga $aws_fpga"
 source /etc/profile >>$log 2>&1
-cd aws-fpga && { source sdk_setup.sh >>$log 2>&1 || { echo "sdk_setup failed"; tail -40 $log; finish; }; }
-{ apt-get update -q && apt-get install -y -q g++-14; } >>$log 2>&1 || { echo "g++-14 install failed"; tail -20 $log; finish; }
+cd aws-fpga && { source sdk_setup.sh >>$log 2>&1 || { echo "CABOSSE-RESULT fail sdk_setup failed"; tail -40 $log; finish; }; }
+{ apt-get update -q && apt-get install -y -q g++-14; } >>$log 2>&1 || { echo "CABOSSE-RESULT fail g++-14 install failed"; tail -20 $log; finish; }
 make -C /root/cabosse/platforms/f2/host CXX=g++-14 core_driver core_clock >>$log 2>&1 \
-  || { echo "host tools build failed"; tail -40 $log; finish; }
+  || { echo "CABOSSE-RESULT fail host tools build failed"; tail -40 $log; finish; }
 { curl -LsSf https://astral.sh/uv/$UV_VERSION/install.sh | env UV_INSTALL_DIR=/root/.local/bin sh \
   && /root/.local/bin/uv venv -q -p $PYTHON_VERSION /root/venv \
-  && /root/.local/bin/uv pip install -q -p /root/venv/bin/python -r /root/cabosse/requirements.txt; } >>$log 2>&1 \
-  || { echo "venv failed"; tail -40 $log; finish; }
+  && /root/.local/bin/uv pip install -q -p /root/venv/bin/python --index-strategy unsafe-best-match -r /root/cabosse/requirements.txt; } >>$log 2>&1 \
+  || { echo "CABOSSE-RESULT fail venv failed"; tail -40 $log; finish; }
 export CABOSSE_WEIGHTS=/root/weights
 /root/venv/bin/hf download $MODEL --revision $MODEL_REVISION --local-dir $CABOSSE_WEIGHTS/SmolLM2-135M-Instruct \
-  >>$log 2>&1 || { echo "model download failed"; tail -20 $log; finish; }
+  >>$log 2>&1 || { echo "CABOSSE-RESULT fail model download failed"; tail -20 $log; finish; }
 /root/venv/bin/python --version
 echo "CABOSSE-END setup"
 
@@ -85,8 +85,10 @@ PROVENANCE=$(python3 -c 'import json,sys; print(json.dumps(dict(zip(sys.argv[1::
   cpu "$(grep -m1 '^model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')")
 export PROVENANCE
 /root/venv/bin/python /root/cabosse/scripts/f2/core_plan.py /root/core.jsonl $QUICK
-echo "plan exit $?"
-grep -c '"error"' /root/core.jsonl | sed 's/^/steps with an error: /'
+status=$?
+echo "plan exit $status"
+errors=$(grep -c '"error"' /root/core.jsonl)
+echo "steps with an error: $errors"
 echo "CABOSSE-END plan"
-echo "CABOSSE-RESULT done"
+[ $status = 0 ] && [ "$errors" = 0 ] && echo "CABOSSE-RESULT pass" || echo "CABOSSE-RESULT fail"
 finish

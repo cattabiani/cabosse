@@ -8,8 +8,8 @@
 /// generator's clocks. After an AFI's load the generator holds the design
 /// in reset until a clock is set (AWS_CLK_GEN_spec.md, M8), so the run
 /// script calls this once, before any core_driver. A clock change resets
-/// the design: never during a conversation. Exits 1 on an error, with a
-/// message on stderr.
+/// the design: never during a conversation. Exits 1 on an error (a wrong
+/// wrapper ID among them), with a message on stderr.
 
 #include <fpga_clkgen.h>
 #include <fpga_mgmt.h>
@@ -21,6 +21,7 @@
 #include <print>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #include "card.h"
 
@@ -55,6 +56,10 @@ std::string set_clock(uint32_t mhz) {
   const auto start = std::chrono::steady_clock::now();
   while (!(card->peek(card::kWrapStatus) & card::kWrapHbmReady)) {
     if (std::chrono::steady_clock::now() - start > kReadyTimeout) throw std::runtime_error("HBM not ready");
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  if (const uint32_t id = card->peek(card::kWrapId); id != card::kWrapIdValue) {
+    throw std::runtime_error(std::format("wrapper ID 0x{:08X}, not the core's CL", id));
   }
   fpga_clkgen_info info{};
   check(aws_clkgen_get_dynamic(kSlot, &info), "aws_clkgen_get_dynamic");
