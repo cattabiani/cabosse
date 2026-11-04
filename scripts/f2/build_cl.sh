@@ -3,7 +3,8 @@
 # Copyright 2026 The Cabosse Authors
 #
 # User data for one CPU instance (FPGA Developer AMI): the full shell build
-# of the bring-up CL (platforms/f2/bringup/, PLAN.md M8) with AWS's flow
+# of a CL, the bring-up design (platforms/f2/bringup/, PLAN.md M8) or the
+# core (platforms/f2/core/, M9), as DESIGN says, with AWS's flow
 # (aws_build_dcp_from_cl.py, Small Shell, recipe H0: clk_hbm_axi at 250 MHz,
 # D-065), then platforms/f2/timing/report.tcl on the routed checkpoint. The
 # log, the reports, the build's own log and the AFI tarball go to S3 as they
@@ -15,7 +16,8 @@
 
 REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga
-CL=cabosse_bringup
+DESIGN=bringup                 # or core: platforms/f2/$DESIGN/, its top cabosse_$DESIGN.sv
+CL=cabosse_$DESIGN
 DEADLINE_MIN=240               # safety net: power off even if something hangs
 S3=                            # s3://bucket/dcp/<build>: everything goes there (the role writes dcp/ only)
 
@@ -69,10 +71,10 @@ export CL_DIR=/root/aws-fpga/hdk/cl/examples/$CL
 design=$CL_DIR/design
 [ -d "$design" ] || { echo "CABOSSE-RESULT fail create_new_cl.py"; tail -20 $log; finish; }
 # The top in place of the template's, for AWS's scripts; synthesis reads our
-# sources from the repository, in order (synth_cabosse_bringup.tcl).
+# sources from the repository, in order (platforms/f2/synth_cl.tcl).
 rm -f $design/*.sv $design/${CL}_defines.vh  # keep cl_id_defines.vh (AWS's PCI IDs, as ours)
-cp /root/cabosse/platforms/f2/bringup/$CL.sv $design/
-cp /root/cabosse/platforms/f2/bringup/synth_$CL.tcl $CL_DIR/build/scripts/
+cp /root/cabosse/platforms/f2/$DESIGN/$CL.sv /root/cabosse/platforms/f2/cl_shell.svh $design/
+cp /root/cabosse/platforms/f2/synth_cl.tcl $CL_DIR/build/scripts/synth_$CL.tcl
 ls $design
 done_ cl
 
@@ -80,6 +82,7 @@ section build
 date -u +%FT%TZ
 export CABOSSE_BUILD=${commit:0:8}
 export CABOSSE_REPO=/root/cabosse
+export CABOSSE_DESIGN=$DESIGN
 cd $CL_DIR/build/scripts && \
   python3 aws_build_dcp_from_cl.py --cl $CL --mode small_shell --no-encrypt --aws_clk_gen \
     --clock_recipe_a A1 --clock_recipe_b B0 --clock_recipe_c C0 --clock_recipe_hbm H0

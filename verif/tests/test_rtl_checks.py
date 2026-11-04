@@ -24,11 +24,12 @@ MAX_ENGINE_CONTROL_DEPTH = 22
 # The controller's (a 16-command buffer), its value when written (M7): 31
 # with a divider for the group, 17 without.
 MAX_CONTROLLER_DEPTH = 17
-# (top, extra files, parameters): our modules, the harnesses and the bring-up
-# design in platforms/, then the units' flush-to-zero variants.
+# (top, extra files, parameters): our modules, the harnesses, the bring-up
+# design and the core's wrapper in platforms/, then the units' flush-to-zero variants.
 TOPS = (
     [(m, (), ()) for m in MODULES]
     + [(p.stem, rtl.extra_sources(p.stem), ()) for p in (*rtl.harnesses(), *rtl.BRINGUP)]
+    + [(p.stem, rtl.F2_CORE, ()) for p in rtl.F2_CORE if p.parent == rtl.F2_CORE_TOP.parent]
     + [(t, (), FTZ) for t in ("bf16_mac", "fp32_fma", "dot_lane")]
 )
 IDS = [top + ("-ftz" if params else "") for top, _, params in TOPS]
@@ -50,6 +51,7 @@ SYNTH_PARAMS = {
 NOT_SYNTHESIZED = {
     "core": "its vector unit takes 16 lanes (an HBM beat), more than 8 GB in Yosys (M6);"
     " Vivado builds it in M9",
+    "f2_core": "the core inside, as core",
 }
 SYNTH_TOPS = [t for t in TOPS if t[0] not in NOT_SYNTHESIZED]
 # (top, parameters, message): shapes that must not elaborate.
@@ -102,10 +104,14 @@ def test_there_is_rtl() -> None:
 def test_sources_lists_every_rtl_file() -> None:
     """rtl/sources.f names every .sv file under rtl/, and nothing else; the
     bring-up design's sources.f its folder's vendor-free modules (all but
-    the CL top, cabosse_bringup.sv)."""
+    the CL top, cabosse_bringup.sv), and the core wrapper's its own folder's
+    (all but cabosse_core.sv)."""
     assert set(rtl.file_list(rtl.SOURCES)) == set(rtl.RTL.rglob("*.sv"))
     folder = rtl.BRINGUP[0].parent
     assert set(rtl.BRINGUP) == set(folder.glob("*.sv")) - {rtl.BRINGUP_TOP}
+    folder = rtl.F2_CORE_TOP.parent
+    own = {p for p in rtl.F2_CORE if p.parent == folder}
+    assert own == set(folder.glob("*.sv")) - {rtl.F2_CORE_TOP}
 
 
 @rtl.needs_verilator

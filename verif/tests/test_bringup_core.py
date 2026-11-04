@@ -300,19 +300,24 @@ def test_host_port():
 @rtl.needs("slang")
 @pytest.mark.on_request
 @pytest.mark.skipif(not os.environ.get("CABOSSE_AWS_FPGA"), reason="needs CABOSSE_AWS_FPGA")
-def test_cl_top_elaborates() -> None:
-    """The CL top (cabosse_bringup.sv) elaborates against the shell's ports
-    (cl_ports.vh) and AWS's clock generator and DDR stub, from the aws-fpga
-    checkout (branch f2) that CABOSSE_AWS_FPGA names; AMD's IP stays unknown
-    (Vivado checks it)."""
+@pytest.mark.parametrize(
+    ("top", "sources"),
+    [(rtl.BRINGUP_TOP, rtl.BRINGUP), (rtl.F2_CORE_TOP, rtl.F2_CORE)],
+    ids=["bringup", "core"],
+)
+def test_cl_top_elaborates(top: Path, sources: tuple[Path, ...]) -> None:
+    """Each CL top (cabosse_bringup.sv, cabosse_core.sv) elaborates against
+    the shell's ports (cl_ports.vh) and AWS's clock generator and DDR stub,
+    from the aws-fpga checkout (branch f2) that CABOSSE_AWS_FPGA names;
+    AMD's IP stays unknown (Vivado checks it)."""
     hdk = Path(os.environ["CABOSSE_AWS_FPGA"]) / "hdk" / "common"
     aws = [
         hdk / "lib" / f
         for f in ("interfaces.sv", "lib_pipe.sv", "aws_clk_regs.sv", "aws_clk_gen.sv")
     ]
     aws.append(hdk / "shell_stable" / "design" / "sh_ddr" / "sh_ddr.stub.sv")
-    ours = [*rtl.file_list(rtl.SOURCES), *rtl.BRINGUP, rtl.BRINGUP_TOP]
-    argv = ["slang", "--ignore-unknown-modules", "--top", rtl.BRINGUP_TOP.stem]
+    ours = [*rtl.file_list(rtl.SOURCES), *sources, top]
+    argv = ["slang", "--ignore-unknown-modules", "--top", top.stem, "-I", str(rtl.CL_SHELL)]
     argv += ["-I", str(hdk / "shell_stable" / "design" / "interfaces"), *map(str, aws + ours)]
     result = subprocess.run(argv, capture_output=True, text=True)
     assert result.returncode == 0 and "0 errors, 0 warnings" in result.stdout, result.stdout

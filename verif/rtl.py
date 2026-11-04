@@ -67,13 +67,21 @@ def file_list(listed: Path) -> tuple[Path, ...]:
 # rtl/; its CL top (the shell, AWS's and AMD's IP) builds only in Vivado.
 BRINGUP = file_list(REPO / "platforms" / "f2" / "bringup" / "sources.f")
 BRINGUP_TOP = REPO / "platforms" / "f2" / "bringup" / "cabosse_bringup.sv"
+# The core's F2 wrapper (platforms/f2/core/, M9), the same way; it reuses
+# the bring-up's host port. The tops share platforms/f2/cl_shell.svh.
+F2_CORE = file_list(REPO / "platforms" / "f2" / "core" / "sources.f")
+F2_CORE_TOP = REPO / "platforms" / "f2" / "core" / "cabosse_core.sv"
+CL_SHELL = REPO / "platforms" / "f2"  # the include folder of cl_shell.svh
 
 
 def extra_sources(top: str) -> tuple[Path, ...]:
     """The files outside rtl/ that `top` needs after it: a timing harness's
-    own file, or the bring-up design's; none for a module of rtl/."""
+    own file, or the bring-up design's or the core wrapper's; none for a
+    module of rtl/."""
     if any(p.stem == top for p in BRINGUP):
         return BRINGUP
+    if any(p.stem == top for p in F2_CORE):
+        return F2_CORE
     return tuple(p for p in harnesses() if p.stem == top)
 
 

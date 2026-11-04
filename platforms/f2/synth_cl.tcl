@@ -1,17 +1,20 @@
 # SPDX-License-Identifier: Apache-2.0 WITH SHL-2.1
 # Copyright 2026 The Cabosse Authors
 #
-# Synthesis of the bring-up CL (cabosse_bringup.sv) in AWS's shell flow:
+# Synthesis of a CL in AWS's shell flow, the bring-up design
+# (bringup/cabosse_bringup.sv) or the core (core/cabosse_core.sv), by the
+# folder CABOSSE_DESIGN (environment: bringup or core) names:
 # aws_build_dcp_from_cl.py's build_all.tcl sources it as
-# $CL_DIR/build/scripts/synth_cabosse_bringup.tcl, with its variables set
+# $CL_DIR/build/scripts/synth_${CL}.tcl, with its variables set
 # (CL, DEVICE_TYPE, HDK_SHELL_DIR, HDK_IP_SRC_DIR, HDK_BD_SRC_DIR,
 # HDK_BD_GEN_DIR, src_post_enc_dir, constraints_dir). The shell's header and
 # footer (the shell's sources, constraints and the post-synthesis checkpoint)
 # and AWS's IP configurations come from the aws-fpga checkout. Our sources
 # come from the repository at CABOSSE_REPO (environment), in the order of
-# rtl/sources.f and platforms/f2/bringup/sources.f, then the CL top
-# (scripts/f2/build_bringup.sh also puts the top in the CL's design folder,
-# for AWS's scripts). CABOSSE_BUILD (environment): the commit, 8 hex digits,
+# rtl/sources.f and the design folder's sources.f, then the tops' shared
+# body (cl_shell.svh, a header Vivado finds by name, as AWS's cl_ports.vh)
+# and the CL top (scripts/f2/build_cl.sh also puts the top in the CL's
+# design folder, for AWS's scripts). CABOSSE_BUILD (environment): the commit, 8 hex digits,
 # read back in BUILD.
 
 source ${HDK_SHELL_DIR}/build/scripts/synth_cl_header.tcl
@@ -29,8 +32,11 @@ proc read_listed {listed} {
 print "Reading Cabosse sources"
 set repo $::env(CABOSSE_REPO)
 read_listed $repo/rtl/sources.f
-read_listed $repo/platforms/f2/bringup/sources.f
-read_verilog -sv $repo/platforms/f2/bringup/${CL}.sv
+set design $::env(CABOSSE_DESIGN)
+read_listed $repo/platforms/f2/$design/sources.f
+read_verilog -sv $repo/platforms/f2/cl_shell.svh
+set_property file_type {Verilog Header} [get_files cl_shell.svh]
+read_verilog -sv $repo/platforms/f2/$design/${CL}.sv
 
 print "Reading AWS's IP: HBM, OCL clock converter, the clock generator's register slice, debug bridge, PCIS SmartConnect"
 read_ip [list \

@@ -46,11 +46,12 @@ copied here (Amazon Software License).
   built only in Vivado; verif/tests/test_bringup_core.py elaborates it with
   slang when `CABOSSE_AWS_FPGA` names an aws-fpga checkout (`pytest -m
   on_request`).
-- `synth_cabosse_bringup.tcl`: its synthesis in AWS's shell flow.
+- `../synth_cl.tcl` (both designs): its synthesis in AWS's shell flow;
+  `../cl_shell.svh`: the shell body both CL tops include.
 
 ### Build
 
-`scripts/f2/build_bringup.sh` is the user data of one build instance
+`scripts/f2/build_cl.sh` (DESIGN=bringup) is the user data of one build instance
 (c6i.8xlarge, FPGA Developer AMI, the build instance profile): it makes a
 CL directory from AWS's template, puts our design in it, runs
 `aws_build_dcp_from_cl.py` (Small Shell, recipe H0) and our reports, and
@@ -164,6 +165,18 @@ port (`LOAD`, the KV stores, `OUTPUT`) shares HBM port 0 with engine port
 0, and the HBM switch carries it to the other channels
 (docs/architecture.md). PCIS reaches HBM port 0 through `HOST_PORT`, as in
 the bring-up: the host owns port 0 between tokens, the core during one.
+
+### Files
+
+- `core/f2_port0.sv`, `core/f2_core.sv` (listed in `core/sources.f`, with
+  the bring-up's `bringup_pipe.sv` and `bringup_host.sv`): the
+  vendor-free wrapper. `f2_core` puts channel p into engine port p's
+  addresses (the engine gives every port the same offset), and merges
+  engine port 0 and the vector unit onto HBM port 0 (`f2_port0`: reads in
+  turns, one ID, answers routed back in order).
+- `core/cabosse_core.sv`: the CL top, on `cl_shell.svh` as the bring-up's.
+- Build: `scripts/f2/build_cl.sh` with `DESIGN=core` (a 6 h deadline;
+  the engine's own placed builds peaked at 14 GB).
 
 ### Registers (OCL, BAR0)
 
