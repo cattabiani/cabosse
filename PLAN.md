@@ -1551,7 +1551,7 @@ iteration, a few placed builds, each with the owner's go.
   variable (the 2^32 sweep, the CL top's elaboration) carry the `on_request`
   marker and are deselected by default.
 
-### M7 — Controller and a full token in simulation
+### M7 — Controller and a full token in simulation ✅
 **What:** a controller that fetches and runs the command stream, a register
 file, the top level, and the `sw/` runtime driving simulation through the
 same interface as the hardware. At the end of the model's context window
@@ -1709,7 +1709,8 @@ does not check them; `SCORES` and `VALUES` are given after the
   CPU 82.3 and GPU 116.2 tokens/s (`transformers`, positions 5 to 132,
   measured); Cabosse 524.2 simulated at 250 MHz (position 11) and 513.4
   on F2 by the perf model (positions 5 to 132, estimate), neither with
-  the host's part of a token (Q-33). Checkpoint: the owner reviews.
+  the host's part of a token (Q-33).
+- [x] Checkpoint: the owner accepted M7 (2026-11-04). Next: M9.
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
