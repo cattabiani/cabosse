@@ -793,6 +793,20 @@ CPU build back. After the swap the default suite runs once more, to show
 the golden model is still bit-exact on that build. *Why:* the CPU and GPU
 rows then differ only in the device; CI keeps its CPU-only download.
 
+**D-071 (2026-11-04) — M9 runs the core as M7 left it; the logits come
+back over PCIS** (owner, 2026-11-04, M9's questions; defers D-055 and
+answers Q-33). M9's first build is the core as it is: 128 lanes, `Heads` =
+2, 250 MHz. D-055's margin and the 256-lane variant with HBM at 450 MHz
+(M5's note) wait for F2's measured numbers, like the speed work of D-058;
+they leave M9's exit criteria. `OUTPUT` writes LOGITS to card memory and
+the host reads it through PCIS. The report gives two speeds: the device's,
+from the controller's `CYCLES`, and the wall clock's, with the read.
+*Why:* at one clock (D-065) the memory delivers what the ports carry, one
+32-byte beat a cycle each (M8), so a margin needs the ports on a faster
+clock than the engine: a crossing per port, new RTL and timing risk before
+the first token. PCIS reads need no new design or host machinery; PCIM
+(Q-34) is decided once the first run measures the wall clock.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1898,7 +1912,7 @@ are 15-16 MB/s (results only, no bulk data).
 Compared with the Gemmini baseline (a different model) using normalized
 figures: weight bytes/s and MACs/s, and with llama.cpp on the F2 host's
 CPU at the same positions (D-056). The engine keeps a margin of 10-25% over
-the memory (D-055). A recording of a 1-2 turn chat with SmolLM2 on F2,
+the memory (D-055; deferred by D-071, no longer a criterion). A recording of a 1-2 turn chat with SmolLM2 on F2,
 with the command and its log saved (owner, 2026-11-03).
 **From M5:** with HBM at 450 MHz a port delivers about 1.8 beats per core
 cycle, so lanes per port becomes 8 (256 lanes on 32 ports), with a clock
@@ -1910,6 +1924,41 @@ there; each head past the first reads P at its own address, so D-069's
 copy of P becomes L / d - 1 copies. **From M7 (D-069):** the on-chip memory
 total (every buffer, P's copy included) against the device's, before the
 build relies on it.
+
+**Answers to the start-of-milestone questions (owner, 2026-11-04):**
+- Engine size and the logits' way to the host: D-071.
+- Host side: a C++23 driver in `platforms/f2/host/`, built on the F2
+  instance against `fpga_pci`, serves the runtime's six calls on stdin and
+  stdout with the simulation driver's protocol (one shared header for
+  both); `F2Platform` mirrors `SimPlatform`. The runtime, the tokenizer and
+  the checks run on the F2 host, in a venv the run script installs.
+- Bit-exact reference: a long fixture made on this PC, one prompt decoded
+  greedily to about 1000 new tokens (EOS ignored, so the positions are
+  fixed), its tokens and a hash of each token's logits. The golden model's
+  time per token is measured first, with an estimate for the owner before
+  the fixture is made. The 64-token fixtures run first on F2.
+- CPU baseline on the F2 host: llama.cpp at a pinned release, built
+  CPU-only on the instance (MIT; nothing vendored), the official checkpoint
+  converted to GGUF BF16 by its own script (format only), `llama-bench`
+  at depths matching our positions; and M7's `transformers` script on the
+  same CPU. Same session as the core's run.
+- Chat recording: two scripted user turns, the answer streamed live as
+  readable text (tokens decoded as they arrive, whole characters only, the
+  template's markers hidden), recorded with its real timing as an
+  asciicast v2 file the runtime writes itself; transcript, JSON log and
+  command saved with it. For a presentation, so the speed tokens appear at
+  matters.
+- Builds: each is a full one (timing checked, AFI if met, then the run),
+  with every log and report kept. Cloud: each launch (a build or an F2
+  session) up to about $10-15 goes ahead without asking first, no cap on
+  their number; each is reported after, with its cost.
+
+**Steps (one branch and PR each):** this plan; the on-chip memory total
+(D-069); `OUTPUT` to card memory (RTL, simulation, golden platform); the
+long fixture; the core's CL top and full build flow; the F2 host driver,
+`F2Platform` and the run script (PCIS rates with repeats, fixtures, ≥ 1000
+tokens, baselines, the chat recording); the build and the F2 runs (AWS);
+the report.
 
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
@@ -1935,4 +1984,5 @@ New ones are added as a table:
 | Q-30 | Cut the latency of dependent vector commands (D-053)? Options: residual adds and scalings on the engine's drain, as it already multiplies by `scale` (epilogue fusion); a short path through the chain for `ADD`, `MUL` and `FMA`; RMSNorm's three one-element commands on a small scalar unit; ROTATE_HALF as an addressing flag on `MUL` (today it goes through the 50-cycle chain), which saves RoPE one dependent command per rotation. All keep the bits. Measured (M6): 785 of SmolLM2's commands stop, 53 cycles each, about 42k cycles a token (0.17 ms). | After M9, on F2's measured numbers (D-058). |
 | Q-31 | Add D-054's fused softmax pass (`exp(a - b)` per row and the row's sum, one command) and the max in the engine's drain? Same bits; softmax reads the scores twice instead of five times (perf model, in order, estimate: SmolLM2 609 → 618 tokens/s at position 0, 148 → 198 at 8191). The fused sum comes after the chain, and `SUMSQ` keeps `fma(x, x, p)`, so either a second accumulation point beside the first FMA or every reduction on an FMA after the chain (about 50 cycles more a reduction command, 32 DSPs). Deferred by D-057. | Once a whole token runs and is measured (M7/M8 or later). |
 | Q-32 | Let a reduction's short rows stop queueing on the tree (D-050)? A row's last group waits for the tree to take the row before, so rows end at least 159 cycles apart (measured): `SUM` and `MAX` over 9 rows of t take about 9 × 159 cycles while t is below about 2,500, 86k of the vector unit's 176k cycles at position 0 for SmolLM2. Options: skip the tree's levels whose right half no element reached (those partials stay +0, or the canonical NaN for `MAX`, so the bits stay, to verify by test); more tree adders (`TreeAdders`). | After M9, on F2's measured numbers (D-058). |
-| Q-33 | How does each token's output (`OUTPUT`: SmolLM2's logits are 196 KB, Qwen2.5-0.5B's 608 KB) reach the host? The host reading card memory through PCIS (no driver; about 3 ms a token for SmolLM2 at about 1 µs per 64 bytes, estimate), the design writing host memory through PCIM (a pinned buffer and its physical address), or the next token picked on chip (greedy only; sampling needs the logits). | After M8 measures PCIS reads and checks the host side (IOMMU, hugepages); decided for M7/M9. |
+| Q-33 | How does each token's output (`OUTPUT`: SmolLM2's logits are 196 KB, Qwen2.5-0.5B's 608 KB) reach the host? The host reading card memory through PCIS (no driver; about 3 ms a token for SmolLM2 at about 1 µs per 64 bytes, estimate), the design writing host memory through PCIM (a pinned buffer and its physical address), or the next token picked on chip (greedy only; sampling needs the logits). | Answered (owner, 2026-11-04): PCIS reads first (D-071); PCIM is Q-34. |
+| Q-34 | Should `OUTPUT` write the logits to host memory through PCIM (a write engine in the wrapper, a pinned host buffer and its physical address, IOMMU and hugepages checked) so the wall clock's tokens/s comes close to the device's? With PCIS reads at the 15-16 MB/s M8 measured, SmolLM2's 196 KB of logits take about 13 ms a token against about 2 ms of compute (estimate). Matters for the chat recording. | After M9's first F2 run measures the wall clock (D-071). |
