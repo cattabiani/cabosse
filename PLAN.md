@@ -783,6 +783,16 @@ adds up the whole design's on-chip memory against the device's block RAM
 and UltraRAM before relying on the copy; if it does not fit, `VALUES` runs
 one head a pass on P.
 
+**D-070 (2026-11-04) — The GPU baseline runs in `.venv`, with a local
+CUDA build of torch** (owner, 2026-11-04; amends D-067's "any environment").
+`requirements-cuda.txt` swaps `.venv`'s torch for the same version's CUDA
+build (`+cu130`, PyTorch's index); only this PC installs it, CI installs
+`requirements.txt` alone. The NVIDIA driver is the system's, the CUDA
+libraries come with the wheel. Installing `requirements.txt` again puts the
+CPU build back. After the swap the default suite runs once more, to show
+the golden model is still bit-exact on that build. *Why:* the CPU and GPU
+rows then differ only in the device; CI keeps its CPU-only download.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1682,6 +1692,16 @@ does not check them; `SCORES` and `VALUES` are given after the
   model's 76. Not done: the core's trace is not checked against D-068's
   ordering rules (`verif/controller.py`'s `check`; the trace lacks the
   handover's unit and wait bits).
+- [x] Step 6: D-067's baseline (`scripts/measure_m7.py cpu`, `cuda`;
+  D-070's CUDA build in `.venv`, the default suite passed on it: 1005
+  passed, 1 skipped). SmolLM2 BF16 in `transformers` (SDPA attention, no
+  compile), batch 1, greedy, 128 decode tokens after the prompt, median of
+  5: CPU (Ryzen 7 7800X3D, 8 threads) 83.6 tokens/s, GPU (RTX 4070 Ti)
+  117.1 tokens/s, both on a quiet machine. The CPU's median moved from
+  77.3 to 83.6 over four sessions the same day, the GPU's from 116.6 to
+  119.2: about 8% and 2% between sessions (measured). At batch 1 the GPU
+  is likely held by the host's per-kernel launches, not by its memory
+  (not measured: no profile).
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and

@@ -7,7 +7,7 @@ import re
 
 import paths
 import pytest
-from reporting import blocks, m1, m2, m3, m4, m5, m6
+from reporting import blocks, m1, m2, m3, m4, m5, m6, m7, measure
 
 TEXT = """# Title
 
@@ -97,3 +97,21 @@ def test_measure_deselects_a_test_that_exists(script: str) -> None:
     script = (paths.REPO / "scripts" / script).read_text()
     path, name = re.search(r'UP_TO_DATE = "(.+)::(\w+)"', script).groups()
     assert f"def {name}(" in (paths.REPO / path).read_text()
+
+
+def test_host_records_what_m1_and_m7_show() -> None:
+    assert {"cpu", "threads", "load_average", "python", "torch", "transformers"} <= set(
+        measure.host()
+    )
+
+
+def test_baseline_text_shows_each_device_and_a_busy_machine() -> None:
+    host = {"cpu": "a CPU", "threads": 8, "torch": "t", "transformers": "x", "attention": "sdpa"}
+    row = host | {"provenance": {"date": "d"}, "tokens_per_s": [1.0, 3.0, 2.0]}
+    data = {
+        "cpu": row | {"load_average": [0.2, 0, 0]},
+        "cuda": row | {"load_average": [2.0, 0, 0], "gpu": "a GPU"},
+    }
+    cpu, cuda = m7.baseline_text(data).splitlines()[1:]
+    assert cpu.split()[:2] == ["cpu", "2.0"] and "busy" not in cpu
+    assert "a GPU, host a CPU" in cuda and "busy" in cuda

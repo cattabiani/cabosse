@@ -15,15 +15,12 @@ records the commit it was measured on. Run it under the memory cap.
 
 import argparse
 import json
-import os
-import platform
 import statistics
 import sys
 import time
 from pathlib import Path
 
 import torch
-import transformers
 from transformers import AutoTokenizer, LlamaForCausalLM
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "model"))
@@ -33,29 +30,19 @@ import fixtures  # noqa: E402
 import paths  # noqa: E402
 from golden import decoder  # noqa: E402
 from reporting import blocks, m1  # noqa: E402
+from reporting.measure import QUIET_LOAD, host, pytest_summary  # noqa: E402
 from reporting.measure import provenance as common_provenance  # noqa: E402
-from reporting.measure import pytest_summary  # noqa: E402
 
 POSITIONS = 256  # per comparison sequence
 DECODE_WARMUP = 4  # untimed decode steps first (caches, allocator)
 DECODE_STEPS = 32  # then timed decode steps
-QUIET_LOAD = 1.0  # 1-minute load average above which timing is suspect
 # pytest arguments. The report's own up-to-date test waits for this data.
 UP_TO_DATE = "model/tests/test_reporting.py::test_m1_report_is_up_to_date"
 SUITES = {"fast": ["--deselect", UP_TO_DATE], "slow": ["-m", "slow"]}
 
 
 def provenance() -> dict:
-    cpuinfo = Path("/proc/cpuinfo").read_text().splitlines()  # Linux: the reference platform
-    cpu = next(line.split(":", 1)[1].strip() for line in cpuinfo if line.startswith("model name"))
-    return common_provenance() | {
-        "cpu": cpu,
-        "threads": torch.get_num_threads(),
-        "load_average": list(os.getloadavg()),  # 1, 5, 15 min, before measuring
-        "python": platform.python_version(),
-        "torch": torch.__version__,
-        "transformers": transformers.__version__,
-    }
+    return common_provenance() | host()
 
 
 def comparison(tokenizer, reference, bf16, golden: decoder.Model) -> dict:

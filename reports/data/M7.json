@@ -12200,5 +12200,63 @@
     ]
    }
   ]
+ },
+ "cpu": {
+  "provenance": {
+   "commit": "bbdd166760cf54ed7f389a78e217df41d1ab8e0a",
+   "dirty": false,
+   "date": "2026-11-04",
+   "machine": "Linux x86_64"
+  },
+  "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+  "threads": 8,
+  "load_average": [
+   0.39697265625,
+   0.93798828125,
+   1.09375
+  ],
+  "python": "3.14.4",
+  "torch": "2.14.1+cu130",
+  "transformers": "5.18.0",
+  "attention": "sdpa",
+  "prompt": "The capital of France is",
+  "n_decode": 128,
+  "tokens_per_s": [
+   83.6,
+   83.3,
+   83.6,
+   84.8,
+   84.5
+  ]
+ },
+ "cuda": {
+  "provenance": {
+   "commit": "bbdd166760cf54ed7f389a78e217df41d1ab8e0a",
+   "dirty": false,
+   "date": "2026-11-04",
+   "machine": "Linux x86_64"
+  },
+  "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
+  "threads": 8,
+  "load_average": [
+   0.5908203125,
+   0.95068359375,
+   1.0859375
+  ],
+  "python": "3.14.4",
+  "torch": "2.14.1+cu130",
+  "transformers": "5.18.0",
+  "gpu": "NVIDIA GeForce RTX 4070 Ti",
+  "cuda": "13.0",
+  "attention": "sdpa",
+  "prompt": "The capital of France is",
+  "n_decode": 128,
+  "tokens_per_s": [
+   116.8,
+   117.0,
+   117.3,
+   117.3,
+   117.1
+  ]
  }
 }
