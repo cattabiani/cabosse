@@ -51,6 +51,7 @@ NOT_SYNTHESIZED = {
     "core": "its vector unit takes 16 lanes (an HBM beat), more than 8 GB in Yosys (M6);"
     " Vivado builds it in M9",
 }
+SYNTH_TOPS = [t for t in TOPS if t[0] not in NOT_SYNTHESIZED]
 # (top, parameters, message): shapes that must not elaborate.
 BAD_SHAPES = [
     # fp_product: its callers delay the addend by Regs cycles; a sixth
@@ -114,11 +115,17 @@ def test_lint_is_clean(top: str, extra: tuple, params: tuple) -> None:
     assert result.returncode == 0 and not result.stderr.strip(), result.stderr
 
 
+def test_not_synthesized_are_tops() -> None:
+    """NOT_SYNTHESIZED names modules that exist (left out of test_synthesizes,
+    not skipped: a skip reads as a missing tool)."""
+    assert set(NOT_SYNTHESIZED) <= {top for top, _, _ in TOPS}
+
+
 @rtl.needs_yosys
-@pytest.mark.parametrize(("top", "extra", "params"), TOPS, ids=IDS)
+@pytest.mark.parametrize(
+    ("top", "extra", "params"), SYNTH_TOPS, ids=[IDS[TOPS.index(t)] for t in SYNTH_TOPS]
+)
 def test_synthesizes(top: str, extra: tuple, params: tuple) -> None:
-    if top in NOT_SYNTHESIZED:
-        pytest.skip(NOT_SYNTHESIZED[top])
     result = rtl.synthesize(top, extra, (*SYNTH_PARAMS.get(top, ()), *params))
     assert result.returncode == 0, result.stdout + result.stderr
 
