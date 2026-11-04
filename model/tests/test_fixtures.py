@@ -74,3 +74,26 @@ def test_smollm2_greedy_matches_fixture() -> None:
         logits = decoder.forward(model, prompt + run["tokens"][:-1])
         assert logits[len(prompt) - 1 :].argmax(-1).tolist() == run["tokens"], run["text"]
         assert arith.bits_sha256(logits) == run["logits_sha256"]
+
+
+@pytest.mark.slow
+@reference_only
+@pytest.mark.skipif(not paths.SMOLLM2.exists(), reason=f"needs the checkpoint in {paths.SMOLLM2}")
+def test_smollm2_long_greedy_matches_fixture() -> None:
+    """M9's long fixture: one teacher-forced pass, each position's logit
+    bits against its own hash, so a failure names the first bad position.
+    About 10 minutes (measured, 16 cores). Runs locally, not in CI."""
+    from transformers import AutoTokenizer
+
+    run = stored("smollm2_long_greedy.json")
+    tokenizer = AutoTokenizer.from_pretrained(paths.SMOLLM2)
+    prompt = run["prompt"]
+    assert compare.chat_prompt(tokenizer, fixtures.LONG_PROMPT) == prompt
+    assert len(run["tokens"]) == fixtures.LONG_N_NEW
+    logits = decoder.forward(decoder.load(paths.SMOLLM2), prompt + run["tokens"][:-1])
+    got = [arith.bits_sha256(row) for row in logits]
+    bad = next(
+        (i for i, (a, b) in enumerate(zip(got, run["logits_sha256"], strict=True)) if a != b), None
+    )
+    assert bad is None, f"first mismatch at position {bad}"
+    assert logits[len(prompt) - 1 :].argmax(-1).tolist() == run["tokens"]

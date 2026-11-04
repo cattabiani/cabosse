@@ -1983,6 +1983,13 @@ The perf model counts its beats like a store's: SmolLM2's F2 estimate
 goes from 513.4 to 506.9 tokens/s (about 25 µs a token, estimate);
 docs/perf.md and the M2, M6 and M7 reports render the current model.
 
+**Long fixture (2026-11-04):** `model/tests/fixtures/smollm2_long_greedy.json`
+(`scripts/make_fixtures.py --long`): `compare.PROMPTS[1]` as a chat prompt
+(46 tokens), 1000 greedy tokens past EOS, one logits hash per position
+(1045). Made in 22:44 on 16 cores (the golden model takes 1.26 s a step
+near position 16, 1.47 s at 1000; measured). Its slow test, one
+teacher-forced pass, takes about 10 minutes.
+
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.

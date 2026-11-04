@@ -7,6 +7,7 @@ change to the numerics, and review the diff before committing. The SmolLM2
 fixture needs the checkpoint and takes about 5 minutes. Examples:
     python scripts/make_fixtures.py            # both
     python scripts/make_fixtures.py --tiny     # tiny config only
+    python scripts/make_fixtures.py --long     # only M9's long fixture (~23 min)
 """
 
 import argparse
@@ -31,10 +32,14 @@ def main() -> None:
         description=__doc__, formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument("--tiny", action="store_true", help="only the tiny-config fixture")
+    parser.add_argument("--long", action="store_true", help="only the long SmolLM2 fixture")
     parser.add_argument("--weights", type=Path, default=paths.SMOLLM2)
     args = parser.parse_args()
     if not paths.REFERENCE_PLATFORM:
         sys.exit(paths.REFERENCE_PLATFORM_NOTE)
+    if args.long:
+        write("smollm2_long_greedy.json", fixtures.smollm2_long_fixture(args.weights))
+        return
     write("tiny_greedy.json", fixtures.tiny_fixture())
     if not args.tiny:
         write("smollm2_greedy.json", fixtures.smollm2_fixture(args.weights))
