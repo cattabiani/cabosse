@@ -2,20 +2,19 @@
 # Copyright 2026 The Cabosse Authors
 """M8's measurements on F2 (PLAN.md; platforms/f2/README.md): runs the host
 tool (platforms/f2/host/bringup) step by step and appends each result, with
-its provenance, to a JSON-lines file, copied to S3 after every step when S3
-is set. Runs on the F2 instance with the AFI loaded (scripts/f2/run_bringup.sh),
-with the system's python3 and no packages.
+its provenance, to a JSON-lines file (plan_log.py). Runs on the F2
+instance with the AFI loaded (scripts/f2/run_bringup.sh), with the system's
+python3 and no packages.
 
 Usage: python3 bringup_plan.py TOOL OUT.jsonl [--quick]
-Environment: S3 (s3://bucket/prefix), PROVENANCE (JSON: commit, AFI, AGFI,
-instance, host CPU model, ...), merged into every line.
+Environment: S3 and PROVENANCE (plan_log.py).
 """
 
 import json
-import os
 import subprocess
 import sys
-import time
+
+from plan_log import Log
 
 PORTS = 32
 REGION_BYTES = 512 << 20  # each port's own pseudo channel: 16 GiB / 32
@@ -32,17 +31,14 @@ LATENCY_SAMPLES = 1000
 HOST_BYTES = 64 << 20  # PCIS writes
 HOST_READ_BYTES = 4 << 20  # PCIS reads: slow, a word at a time
 OCL_SAMPLES = 10000
-UPLOAD_S = 30  # results to S3 at most this often, and at the end
 
 
-class Plan:
-    """The tool, the output file and the provenance of every line."""
+class Plan(Log):
+    """The tool and its log."""
 
     def __init__(self, tool: str, out: str, quick: bool) -> None:
-        self.tool, self.out, self.quick = tool, out, quick
-        self.provenance = json.loads(os.environ.get("PROVENANCE", "{}"))
-        self.s3 = os.environ.get("S3", "")
-        self.uploaded = 0.0  # when the file last went to S3
+        super().__init__(out)
+        self.tool, self.quick = tool, quick
 
     def call(self, *args: object) -> dict:
         """One tool command; its JSON, or {"error": ...}."""
@@ -57,23 +53,6 @@ class Plan:
     def no_json(result: subprocess.CompletedProcess) -> dict:
         """The error of a command that printed no JSON."""
         return {"error": f"no JSON (exit {result.returncode})", "stderr": result.stderr[-2000:]}
-
-    def upload(self, now: bool = False) -> None:
-        """The file to S3, at most every UPLOAD_S unless now."""
-        if self.s3 and (now or time.monotonic() - self.uploaded > UPLOAD_S):
-            dst = f"{self.s3}/{os.path.basename(self.out)}"
-            subprocess.run(["aws", "s3", "cp", "--only-show-errors", self.out, dst])
-            self.uploaded = time.monotonic()
-
-    def record(self, step: str, params: dict, result: dict) -> dict:
-        """Append a step's result to the file (and S3); return it."""
-        line = {"step": step, "time": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-        line |= self.provenance | {"params": params, "result": result}
-        with open(self.out, "a") as f:
-            f.write(json.dumps(line) + "\n")
-        self.upload()
-        print(step, json.dumps(params), "error" if "error" in result else "ok", flush=True)
-        return result
 
     @staticmethod
     def settings(**regs: int) -> dict:

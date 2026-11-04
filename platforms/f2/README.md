@@ -207,3 +207,18 @@ PCIS writes are two 32-byte AVX2 stores a line; partial lines are byte
 stores, carried as strobes. `sw/tests/test_f2_platform.py` runs it on a
 fake card (`sw/tests/card_fake.cpp`), which fails a start while the host
 holds port 0 and a memory access while the core holds it.
+
+`host/core_clock.cpp` (`make core_clock`) sets clk_hbm_axi once after the
+AFI's load (the clock generator holds the design in reset until then),
+waits for HBM ready and prints the wrapper's ID, BUILD and parameters.
+
+### On F2 (core)
+
+`scripts/f2/run_core.sh` is the user data of one f2.6xlarge (`AGFI`, `S3`
+set at launch): it builds the host tools, makes a venv with uv (Python
+3.14 and `requirements.txt`), downloads SmolLM2 at the fixtures' revision,
+loads the AFI and runs `scripts/f2/core_plan.py`: the clock, PCIS write and
+read rates through the driver (5 repeats), the model's load at 2048
+positions, the three 64-token fixtures and the long fixture, each token
+checked bit for bit with its wall time and CYCLES. One JSON line a step,
+copied to S3 as it comes.
