@@ -12,7 +12,7 @@ CXXFLAGS = -std=c++23 -O2 -Wall -Wextra -Werror -I$(SDK_DIR)/userspace/include
 LDFLAGS = -L$(SDK_DIR)/userspace/lib/so -Wl,-rpath,$(SDK_DIR)/userspace/lib/so
 LDLIBS = -lfpga_mgmt
 
-all: bringup core_driver
+all: bringup core_driver core_clock
 
 # M8's bring-up tool.
 bringup: bringup.cpp
@@ -23,7 +23,10 @@ bringup: bringup.cpp
 core_driver: core_driver.cpp card_f2.cpp card.h ../../../sw/driver_protocol.h
 	$(CXX) $(CXXFLAGS) -o $@ core_driver.cpp card_f2.cpp $(LDFLAGS) $(LDLIBS)
 
+core_clock: core_clock.cpp card_f2.cpp card.h
+	$(CXX) $(CXXFLAGS) -o $@ core_clock.cpp card_f2.cpp $(LDFLAGS) $(LDLIBS)
+
 clean:
-	rm -f bringup core_driver
+	rm -f bringup core_driver core_clock
 
 .PHONY: all clean
