@@ -157,6 +157,14 @@ def test_controller_logic_depth() -> None:
     assert depth <= MAX_CONTROLLER_DEPTH, f"controller: {depth} cells deep"
 
 
+@rtl.needs_yosys
+def test_memories_found() -> None:
+    """rtl.memories finds a FIFO's storage with its width and depth (M9's
+    on-chip memory total rests on it)."""
+    found = rtl.memories("stream_fifo", params=[("Width", 40), ("Depth", 8)])
+    assert found == {("mem_q", 40, 8): 1}, found
+
+
 @rtl.needs_verilator
 @pytest.mark.parametrize(("top", "params", "message"), BAD_SHAPES)
 def test_rejects_a_bad_shape(top: str, params: tuple, message: str) -> None:

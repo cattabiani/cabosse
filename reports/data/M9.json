@@ -1,0 +1,349 @@
+{
+ "memory": {
+  "provenance": {
+   "commit": "69cf0c004254b0d8609d9251dc2f9bce7c37ccbb",
+   "dirty": false,
+   "date": "2026-11-04",
+   "machine": "Linux x86_64"
+  },
+  "params": {
+   "Ports": 32,
+   "Len": 49152,
+   "ChanW": 26
+  },
+  "memories": [
+   {
+    "name": "u_vec.gen_buf[*].u_banks.u_banks.gen_bank[*].mem_q",
+    "width_bits": 32,
+    "depth": 3072,
+    "count": 256
+   },
+   {
+    "name": "u_vec.gen_buf[*].u_banks.u_banks.gen_bank[*].mem_q",
+    "width_bits": 16,
+    "depth": 3072,
+    "count": 80
+   },
+   {
+    "name": "u_engine.gen_dma[*].u_dma.gen_slice[*].u_data.mem_q",
+    "width_bits": 64,
+    "depth": 128,
+    "count": 128
+   },
+   {
+    "name": "u_vec.gen_buf[*].gen_read2.u_banks2.u_banks.gen_bank[*].mem_q",
+    "width_bits": 16,
+    "depth": 3072,
+    "count": 16
+   },
+   {
+    "name": "u_controller.gen_bank[*].bank",
+    "width_bits": 32,
+    "depth": 2048,
+    "count": 8
+   },
+   {
+    "name": "u_engine.gen_lane[*].u_lane.bank_q",
+    "width_bits": 512,
+    "depth": 2,
+    "count": 128
+   },
+   {
+    "name": "u_vec.gen_slot[*].u_chain.gen_stage[*].d_q",
+    "width_bits": 113,
+    "depth": 6,
+    "count": 112
+   },
+   {
+    "name": "u_engine.gen_lane[*].u_lane.gen_queue[*].q_q",
+    "width_bits": 32,
+    "depth": 8,
+    "count": 128
+   },
+   {
+    "name": "u_engine.gen_lane[*].u_lane.gen_queue[*].q_q",
+    "width_bits": 32,
+    "depth": 4,
+    "count": 128
+   },
+   {
+    "name": "u_vec.u_kv_queue.mem_q",
+    "width_bits": 256,
+    "depth": 64,
+    "count": 1
+   },
+   {
+    "name": "u_vec.u_rd.gen_slice[*].u_data.mem_q",
+    "width_bits": 256,
+    "depth": 64,
+    "count": 1
+   },
+   {
+    "name": "u_vec.gen_slot[*].u_chain.st_q",
+    "width_bits": 113,
+    "depth": 8,
+    "count": 16
+   },
+   {
+    "name": "u_vec.gen_slot[*].u_chain.gen_stage[*].u_fma.u_fma.c_q",
+    "width_bits": 32,
+    "depth": 3,
+    "count": 112
+   },
+   {
+    "name": "u_engine.gen_lane[*].u_lane.fifo_q",
+    "width_bits": 32,
+    "depth": 2,
+    "count": 128
+   },
+   {
+    "name": "u_engine.gen_lane[*].u_lane.gen_queue[*].q_q",
+    "width_bits": 32,
+    "depth": 2,
+    "count": 128
+   },
+   {
+    "name": "u_engine.gen_lane[*].u_lane.tag_q",
+    "width_bits": 9,
+    "depth": 7,
+    "count": 128
+   },
+   {
+    "name": "u_vec.u_kv_bursts.mem_q",
+    "width_bits": 42,
+    "depth": 64,
+    "count": 1
+   },
+   {
+    "name": "u_engine.gen_queue[*].u_queue.mem_q",
+    "width_bits": 198,
+    "depth": 4,
+    "count": 3
+   },
+   {
+    "name": "u_vec.dest_q",
+    "width_bits": 44,
+    "depth": 50,
+    "count": 1
+   },
+   {
+    "name": "u_engine.gen_group[*].pipe_q",
+    "width_bits": 49,
+    "depth": 5,
+    "count": 8
+   },
+   {
+    "name": "u_engine.gen_scale[*].u_mul.u_fma.c_q",
+    "width_bits": 32,
+    "depth": 6,
+    "count": 8
+   },
+   {
+    "name": "u_engine.gen_group[*].x_q",
+    "width_bits": 128,
+    "depth": 1,
+    "count": 8
+   },
+   {
+    "name": "u_engine.gen_lane[*].u_lane.tree_lvl_q",
+    "width_bits": 2,
+    "depth": 3,
+    "count": 128
+   },
+   {
+    "name": "u_engine.wr_q",
+    "width_bits": 39,
+    "depth": 10,
+    "count": 1
+   },
+   {
+    "name": "u_engine.gen_lane[*].u_lane.tree_root_q",
+    "width_bits": 1,
+    "depth": 3,
+    "count": 128
+   },
+   {
+    "name": "u_vec.u_kv_fmts.mem_q",
+    "width_bits": 6,
+    "depth": 64,
+    "count": 1
+   },
+   {
+    "name": "u_vec.u_wr.u_lens.mem_q",
+    "width_bits": 3,
+    "depth": 128,
+    "count": 1
+   },
+   {
+    "name": "u_vec.acc_q",
+    "width_bits": 49,
+    "depth": 7,
+    "count": 1
+   },
+   {
+    "name": "u_vec.u_wr.u_tags.mem_q",
+    "width_bits": 1,
+    "depth": 130,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$10",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$14",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$18",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$2",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$22",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$26",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$30",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$34",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$38",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$42",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$46",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$50",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$54",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$58",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$6",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "$auto$proc_rom.cc:155:do_switch$62",
+    "width_bits": 4,
+    "depth": 32,
+    "count": 1
+   },
+   {
+    "name": "u_engine.cover_q",
+    "width_bits": 32,
+    "depth": 4,
+    "count": 1
+   },
+   {
+    "name": "u_vec.u_tree.back_q",
+    "width_bits": 40,
+    "depth": 3,
+    "count": 1
+   },
+   {
+    "name": "u_controller.u_gos.mem_q",
+    "width_bits": 13,
+    "depth": 8,
+    "count": 1
+   },
+   {
+    "name": "u_vec.u_wr.u_aw.mem_q",
+    "width_bits": 37,
+    "depth": 2,
+    "count": 1
+   },
+   {
+    "name": "u_vec.u_tags.mem_q",
+    "width_bits": 1,
+    "depth": 64,
+    "count": 1
+   },
+   {
+    "name": "u_vec.gen_slot[*].u_chain.gen_stage[*].u_fma.u_fma.valid_q",
+    "width_bits": 1,
+    "depth": 3,
+    "count": 7
+   },
+   {
+    "name": "u_engine.gone_grp_q",
+    "width_bits": 4,
+    "depth": 2,
+    "count": 1
+   },
+   {
+    "name": "u_vec.gen_slot[*].u_chain.valid_q",
+    "width_bits": 1,
+    "depth": 8,
+    "count": 1
+   }
+  ],
+  "total_bytes": 3976626,
+  "large_bytes": 3805184,
+  "estimate_ramb36_only": 984,
+  "estimate_uram_only": 368,
+  "device": {
+   "RAMB36": {
+    "count": 2016,
+    "source": "Vivado, bring-up build 4's utilization (reports/data/f2/2026-11-03-bringup-build4.txt)"
+   },
+   "URAM288": {
+    "count": 960,
+    "source": "VU47P datasheet, to verify in M9's build report"
+   }
+  }
+ }
+}
