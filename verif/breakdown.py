@@ -12,8 +12,11 @@ command (with its start-up when it waits), perf.vector_cycles (done to
 done, D-053) for the vector unit's, from the steps perf.seconds sums. The
 core runs the whole command list and reads K and V tiles once per query
 head: none of the design's flags (perf.ops) applies. The simulation's memory
-answers a beat a cycle on every port after a cycle (axi_mem.h's defaults):
-sim_platform() is the perf model's platform for that memory."""
+answers a beat a cycle on every port (axi_mem.h): sim_platform() is the
+perf model's platform for it. The model's LOAD and store latencies hold F2's
+70 cycles (M6, design v0): SmolLM2 runs at that latency
+(generation.smollm2_on_sim); the tiny tests at the memory's default of 1
+cycle, which they overestimate."""
 
 import numpy as np
 import perf

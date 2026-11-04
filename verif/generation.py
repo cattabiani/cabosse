@@ -53,14 +53,16 @@ def smollm2_on_sim(
     model: decoder.Model,
 ) -> tuple[Runtime, list[tuple[int, dict[str, np.ndarray], int]]]:
     """SMOLLM2_PROMPT and SMOLLM2_N_NEW tokens of SmolLM2 on the simulated
-    core, checked (check_generation): the runtime, and each run's position,
-    trace and CYCLES (SimPlatform.runs). Builds the 32-port core (about 6.5 minutes
-    and 10 GB) if it is not built."""
-    from sim_platform import SimPlatform  # the simulation stack, only here
+    core at F2's memory (decode.F2_MEMORY, as M5's and M6's real-data runs),
+    checked (check_generation): the runtime, and each run's position, trace
+    and CYCLES (SimPlatform.runs). Builds the 32-port core (about 6.5
+    minutes and 10 GB) if it is not built."""
+    from decode import F2_MEMORY  # the simulation stack, only here
+    from sim_platform import SimPlatform
     from transformers import AutoTokenizer
 
     prompt = AutoTokenizer.from_pretrained(paths.SMOLLM2)(SMOLLM2_PROMPT)["input_ids"]
-    with SimPlatform(SMOLLM2_PORTS, SMOLLM2_CHAN_W, SMOLLM2_LENGTH) as p:
+    with SimPlatform(SMOLLM2_PORTS, SMOLLM2_CHAN_W, SMOLLM2_LENGTH, **F2_MEMORY) as p:
         rt = Runtime.open(p, model, SMOLLM2_CAP)
         check_generation(rt, model, prompt, SMOLLM2_N_NEW, f"SmolLM2, {SMOLLM2_PORTS} ports")
     return rt, p.runs
