@@ -113,6 +113,12 @@ def test_measure_deselects_a_test_that_exists(script: str) -> None:
     assert f"def {name}(" in (paths.REPO / path).read_text()
 
 
+def test_cpu_name_without_proc_cpuinfo(monkeypatch: pytest.MonkeyPatch) -> None:
+    """macOS has no /proc/cpuinfo, ARM Linux no model name in it (CI)."""
+    monkeypatch.setattr(measure.Path, "exists", lambda self: False)
+    assert measure.cpu_name()
+
+
 def test_host_records_what_m1_and_m7_show() -> None:
     assert {"cpu", "threads", "load_average", "python", "torch", "transformers"} <= set(
         measure.host()
