@@ -1,7 +1,7 @@
 {
  "smollm2": {
   "provenance": {
-   "commit": "063b06f0174e4183845fcc0a74c03f074e7a6e74",
+   "commit": "0029d380abe9b205e76ffea401f59bd87b393309",
    "dirty": false,
    "date": "2026-11-04",
    "machine": "Linux x86_64"
@@ -11,15 +11,15 @@
   "prompt": "The capital of France is",
   "n_new": 8,
   "bit_exact": true,
-  "seconds": 1214.8,
+  "seconds": 1254.1,
   "engine_startup_cycles": 76.0,
   "tokens": [
    {
     "position": 0,
-    "cycles": 469833,
+    "cycles": 476829,
     "units": {
-     "engine only": 296243,
-     "vector only": 172470,
+     "engine only": 296753,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -33,10 +33,10 @@
    },
    {
     "position": 1,
-    "cycles": 469828,
+    "cycles": 476824,
     "units": {
-     "engine only": 296238,
-     "vector only": 172470,
+     "engine only": 296748,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -50,10 +50,10 @@
    },
    {
     "position": 2,
-    "cycles": 469828,
+    "cycles": 476824,
     "units": {
-     "engine only": 296238,
-     "vector only": 172470,
+     "engine only": 296748,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -67,10 +67,10 @@
    },
    {
     "position": 3,
-    "cycles": 469828,
+    "cycles": 476824,
     "units": {
-     "engine only": 296238,
-     "vector only": 172470,
+     "engine only": 296748,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -84,10 +84,10 @@
    },
    {
     "position": 4,
-    "cycles": 469858,
+    "cycles": 476854,
     "units": {
-     "engine only": 296268,
-     "vector only": 172470,
+     "engine only": 296778,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -101,10 +101,10 @@
    },
    {
     "position": 5,
-    "cycles": 469858,
+    "cycles": 476854,
     "units": {
-     "engine only": 296268,
-     "vector only": 172470,
+     "engine only": 296778,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -118,10 +118,10 @@
    },
    {
     "position": 6,
-    "cycles": 469858,
+    "cycles": 476854,
     "units": {
-     "engine only": 296268,
-     "vector only": 172470,
+     "engine only": 296778,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -135,10 +135,10 @@
    },
    {
     "position": 7,
-    "cycles": 469858,
+    "cycles": 476854,
     "units": {
-     "engine only": 296268,
-     "vector only": 172470,
+     "engine only": 296778,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -152,10 +152,10 @@
    },
    {
     "position": 8,
-    "cycles": 469918,
+    "cycles": 476914,
     "units": {
-     "engine only": 296328,
-     "vector only": 172470,
+     "engine only": 296838,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -169,10 +169,10 @@
    },
    {
     "position": 9,
-    "cycles": 469918,
+    "cycles": 476914,
     "units": {
-     "engine only": 296328,
-     "vector only": 172470,
+     "engine only": 296838,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -186,10 +186,10 @@
    },
    {
     "position": 10,
-    "cycles": 469918,
+    "cycles": 476914,
     "units": {
-     "engine only": 296328,
-     "vector only": 172470,
+     "engine only": 296838,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -203,10 +203,10 @@
    },
    {
     "position": 11,
-    "cycles": 469918,
+    "cycles": 476914,
     "units": {
-     "engine only": 296328,
-     "vector only": 172470,
+     "engine only": 296838,
+     "vector only": 178956,
      "both": 0,
      "neither": 1120
     },
@@ -224,7 +224,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 93,
+      "cycles": 162,
       "model_cycles": 163.0
      },
      {
@@ -233,7 +233,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 13,
+      "cycles": 82,
       "model_cycles": 82.0
      },
      {
@@ -242,7 +242,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 13,
+      "cycles": 82,
       "model_cycles": 82.0
      },
      {
@@ -251,7 +251,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -368,7 +368,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -476,7 +476,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -503,7 +503,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -647,7 +647,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -764,7 +764,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -872,7 +872,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -899,7 +899,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -1043,7 +1043,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -1160,7 +1160,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -1268,7 +1268,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -1295,7 +1295,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -1439,7 +1439,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -1556,7 +1556,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -1664,7 +1664,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -1691,7 +1691,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -1835,7 +1835,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -1952,7 +1952,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -2060,7 +2060,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -2087,7 +2087,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -2231,7 +2231,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -2348,7 +2348,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -2456,7 +2456,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -2483,7 +2483,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -2627,7 +2627,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -2744,7 +2744,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -2852,7 +2852,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -2879,7 +2879,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -3023,7 +3023,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -3140,7 +3140,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -3248,7 +3248,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -3275,7 +3275,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -3419,7 +3419,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -3536,7 +3536,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -3644,7 +3644,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -3671,7 +3671,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -3815,7 +3815,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -3932,7 +3932,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -4040,7 +4040,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -4067,7 +4067,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -4211,7 +4211,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -4328,7 +4328,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -4436,7 +4436,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -4463,7 +4463,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -4607,7 +4607,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -4724,7 +4724,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -4832,7 +4832,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -4859,7 +4859,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -5003,7 +5003,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -5120,7 +5120,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -5228,7 +5228,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -5255,7 +5255,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -5399,7 +5399,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -5516,7 +5516,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -5624,7 +5624,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -5651,7 +5651,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -5795,7 +5795,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -5912,7 +5912,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -6020,7 +6020,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -6047,7 +6047,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -6191,7 +6191,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -6308,7 +6308,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -6416,7 +6416,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -6443,7 +6443,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -6587,7 +6587,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -6704,7 +6704,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -6812,7 +6812,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -6839,7 +6839,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -6983,7 +6983,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -7100,7 +7100,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -7208,7 +7208,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -7235,7 +7235,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -7379,7 +7379,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -7496,7 +7496,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -7604,7 +7604,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -7631,7 +7631,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -7775,7 +7775,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -7892,7 +7892,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -8000,7 +8000,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -8027,7 +8027,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -8171,7 +8171,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -8288,7 +8288,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -8396,7 +8396,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -8423,7 +8423,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -8567,7 +8567,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -8684,7 +8684,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -8792,7 +8792,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -8819,7 +8819,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -8963,7 +8963,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -9080,7 +9080,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -9188,7 +9188,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -9215,7 +9215,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -9359,7 +9359,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -9476,7 +9476,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -9584,7 +9584,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -9611,7 +9611,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -9755,7 +9755,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -9872,7 +9872,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -9980,7 +9980,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -10007,7 +10007,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -10151,7 +10151,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -10268,7 +10268,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -10376,7 +10376,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -10403,7 +10403,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -10547,7 +10547,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -10664,7 +10664,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -10772,7 +10772,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -10799,7 +10799,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -10943,7 +10943,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -11060,7 +11060,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -11168,7 +11168,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -11195,7 +11195,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -11339,7 +11339,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -11456,7 +11456,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -11564,7 +11564,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -11591,7 +11591,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -11735,7 +11735,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -11852,7 +11852,7 @@
       "kind": "kv_store",
       "waits": false,
       "stops": true,
-      "cycles": 103,
+      "cycles": 172,
       "model_cycles": 173.0
      },
      {
@@ -11960,7 +11960,7 @@
       "kind": "values",
       "waits": true,
       "stops": false,
-      "cycles": 136,
+      "cycles": 153,
       "model_cycles": 151.0
      },
      {
@@ -11987,7 +11987,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
@@ -12131,7 +12131,7 @@
       "kind": "load",
       "waits": false,
       "stops": false,
-      "cycles": 41,
+      "cycles": 110,
       "model_cycles": 110.0
      },
      {
