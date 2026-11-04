@@ -14,16 +14,7 @@ import pytest
 import torch
 import vector
 from commands import Buf
-from generation import (
-    SEED,
-    SMOLLM2_CAP,
-    SMOLLM2_CHAN_W,
-    SMOLLM2_LENGTH,
-    SMOLLM2_PORTS,
-    SMOLLM2_PROMPT,
-    check_generation,
-    tiny_model,
-)
+from generation import SEED, SMOLLM2_PORTS, check_generation, smollm2_on_sim, tiny_model
 from runtime import Runtime
 from sim_platform import SimPlatform
 
@@ -41,12 +32,12 @@ def prompts(n: int, vocab: int) -> list[list[int]]:
     return [torch.randint(0, vocab, (4 + 6 * k,), generator=gen).tolist() for k in range(n)]
 
 
-def check_breakdown(cmds: list[commands.Command], runs: list, label: str) -> None:
+def check_breakdown(cmds: list[commands.Command], runs: list, ports: int, label: str) -> None:
     """Each run's trace has every unit command's handover, go and done
     (breakdown.token asserts the counts), and the units' busy cycles fit in
     CYCLES."""
     for position, (trace, cycles) in enumerate(runs):
-        b = breakdown.token(cmds, trace, cycles, position)
+        b = breakdown.token(cmds, trace, cycles, position, ports)
         assert b["units"]["neither"] >= 0, (label, position, b["units"], cycles)
         assert all(r["cycles"] > 0 for r in b["commands"]), (label, position)
 
@@ -55,8 +46,7 @@ def generate_on_sim(ports: int, n_prompts: int) -> None:
     """n_prompts conversations of N_NEW tokens on one simulated core, each
     token's trace checked (check_breakdown)."""
     model = tiny_model()
-    with SimPlatform(ports, CHAN_W, LENGTH) as sim:
-        p = breakdown.TracedPlatform(sim)
+    with SimPlatform(ports, CHAN_W, LENGTH) as p:
         rt = Runtime.open(p, model, CAP)
         cmds = commands.build(rt.layout)
         for k, prompt in enumerate(prompts(n_prompts, model.config.vocab_size)):
@@ -66,7 +56,7 @@ def generate_on_sim(ports: int, n_prompts: int) -> None:
             start = time.monotonic()
             check_generation(rt, model, prompt, N_NEW, label)
             seconds = time.monotonic() - start
-            check_breakdown(cmds, p.runs, label)
+            check_breakdown(cmds, p.runs, ports, label)
             print(f"{label}: {rt.position + 1} tokens in {seconds:.1f} s, last {rt.cycles} cycles")
 
 
@@ -97,12 +87,8 @@ def test_tiny_decodes_bit_exact_at_32_ports() -> None:
 def test_smollm2_decodes_bit_exact_at_32_ports() -> None:
     """M7's criterion: SmolLM2 bit-exact for 8 tokens on F2's 32 ports (a
     build of about 6.5 minutes and 10 GB, then about 2 minutes a token,
-    estimate: run it under MemoryMax=12G)."""
+    estimate: run it under MemoryMax=12G), each token's trace checked."""
     from golden import decoder
-    from transformers import AutoTokenizer
 
-    model = decoder.load(paths.SMOLLM2)
-    prompt = AutoTokenizer.from_pretrained(paths.SMOLLM2)(SMOLLM2_PROMPT)["input_ids"]
-    with SimPlatform(SMOLLM2_PORTS, SMOLLM2_CHAN_W, SMOLLM2_LENGTH) as p:
-        rt = Runtime.open(p, model, SMOLLM2_CAP)
-        check_generation(rt, model, prompt, 8, f"SmolLM2, {SMOLLM2_PORTS} ports")
+    rt, runs = smollm2_on_sim(decoder.load(paths.SMOLLM2))
+    check_breakdown(commands.build(rt.layout), runs, SMOLLM2_PORTS, "SmolLM2")

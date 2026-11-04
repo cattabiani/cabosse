@@ -12,7 +12,7 @@ from pathlib import Path
 import bulk
 import numpy as np
 import torch
-from commands import Buf
+from commands import REG, Buf
 
 HELLO = 0x43425349  # 'CBSI'
 REG_WRITE, REG_READ, MEM_WRITE, MEM_READ, RUN, BUF_READ, QUIT, TRACE = range(8)
@@ -26,7 +26,8 @@ class SimError(RuntimeError):
 
 class SimPlatform:
     """A Platform on rtl/core.sv: `ports` HBM ports (one channel each, of
-    2^chan_w bytes) and buffers of `length` elements."""
+    2^chan_w bytes) and buffers of `length` elements. `runs` holds each
+    run's trace and CYCLES (verif/breakdown.py)."""
 
     def __init__(self, ports: int, chan_w: int, length: int, **plusargs: int) -> None:
         params = (("Ports", ports), ("ChanW", chan_w), ("Len", length))
@@ -43,6 +44,7 @@ class SimPlatform:
             raise
         self.ports, self.buffer_elements = ports, length
         self.channel_bytes = 1 << chan_w
+        self.runs: list[tuple[dict[str, np.ndarray], int]] = []
 
     def send(self, *words: int, data: bytes = b"") -> None:
         assert self.proc.stdin is not None
@@ -78,6 +80,8 @@ class SimPlatform:
     def run_until_done(self) -> None:
         self.send(RUN)
         self.words(1)  # STATUS: the runtime reads it
+        cycles = self.reg_read(REG["CYCLES_LO"]) | self.reg_read(REG["CYCLES_HI"]) << 32
+        self.runs.append((self.trace(), cycles))
 
     def read_buffer(self, buf: Buf, first: int, n: int) -> np.ndarray:
         """A buffer's raw bits (BF16 in the low half), a uint32 each."""
@@ -89,7 +93,7 @@ class SimPlatform:
 
     def trace(self) -> dict[str, np.ndarray]:
         """The cycles (the simulation's count) of each handshake in EVENTS
-        since the last trace, as uint64."""
+        since the last trace (the last run), as uint64."""
         self.send(TRACE)
         out = {}
         for name in EVENTS:
