@@ -4,9 +4,11 @@
 where the data comes from, and pytest's summary of a suite."""
 
 import datetime
+import os
 import platform
 import subprocess
 import sys
+from pathlib import Path
 
 import paths
 
@@ -37,6 +39,24 @@ def provenance() -> dict:
         "dirty": dirty,
         "date": datetime.date.today().isoformat(),
         "machine": f"{platform.system()} {platform.machine()}",
+    }
+
+
+def host() -> dict:
+    """What a timing on this machine ran on: CPU, torch's threads, the load
+    average before measuring (1, 5, 15 min) and the software's versions."""
+    import torch  # only for the timings
+    import transformers
+
+    cpuinfo = Path("/proc/cpuinfo").read_text().splitlines()  # Linux: the reference platform
+    cpu = next(line.split(":", 1)[1].strip() for line in cpuinfo if line.startswith("model name"))
+    return {
+        "cpu": cpu,
+        "threads": torch.get_num_threads(),
+        "load_average": list(os.getloadavg()),
+        "python": platform.python_version(),
+        "torch": torch.__version__,
+        "transformers": transformers.__version__,
     }
 
 
