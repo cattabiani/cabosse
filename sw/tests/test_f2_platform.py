@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """The F2 platform's driver (platforms/f2/host/core_driver.cpp) on a fake
-card (card_fake.cpp): the protocol, memory at any alignment, the handovers of HBM port 0 (the
-fake fails a start while the host holds it, memory while the core does),
-and bad requests. The real card is M9's F2 run."""
+card (card_fake.cpp): the protocol, memory at any alignment, the
+handovers of HBM port 0 (the fake fails a start while the host holds it,
+memory while the core does), a token's done only once it ran, and bad
+requests. The real card is M9's F2 run."""
 
-import os
-import subprocess
 from pathlib import Path
 
+import bulk
 import pytest
 import torch
 from commands import REG
@@ -18,21 +18,17 @@ from f2_platform import F2Platform
 import rtl
 
 HOST = rtl.REPO / "platforms" / "f2" / "host"
+FAKE_CARD = Path(__file__).parent / "card_fake.cpp"
 FAKE = {"FAKE_PORTS": "4", "FAKE_CHAN_W": "12", "FAKE_LEN": "1024"}
 SEED = 20261104
+# A C++23 compiler with <print>, as the RTL tests' (CI's rtl job sets CXX).
+pytestmark = rtl.needs_verilator
 
 
 @pytest.fixture(scope="module")
 def driver() -> Path:
-    """core_driver built against the fake card, with CXX (else g++)."""
-    binary = rtl.BUILD / "core_driver_fake"
-    binary.parent.mkdir(parents=True, exist_ok=True)
-    cxx = os.environ.get("CXX", "g++")
-    argv = [cxx, "-std=c++23", "-O1", "-Wall", "-Wextra", "-Werror", "-o", str(binary)]
-    argv += [str(HOST / "core_driver.cpp"), str(Path(__file__).parent / "card_fake.cpp")]
-    result = subprocess.run(argv, capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr[-4000:]
-    return binary
+    """core_driver built against the fake card."""
+    return bulk.build_program("core_driver_fake", (HOST / "core_driver.cpp", FAKE_CARD))
 
 
 @pytest.fixture
@@ -56,9 +52,13 @@ def test_memory_round_trip(platform: F2Platform, addr: int, n: int) -> None:
 
 
 def test_token_between_memory(platform: F2Platform) -> None:
-    """Memory, a token, memory again: each needs its handover."""
+    """Memory, two tokens, memory again: each needs its handover, and a
+    token is done only once STATUS showed it running (the fake's first read
+    after a start is the last token's STATUS)."""
     logits = torch.arange(16, dtype=torch.float32) - 3.5
     platform.mem_write(0x2000, logits.view(torch.uint8))
+    platform.reg_write(REG["CONTROL"], 1)
+    platform.run_until_done()
     platform.reg_write(REG["CONTROL"], 1)
     platform.run_until_done()
     assert platform.reg_read(REG["STATUS"]) == 2

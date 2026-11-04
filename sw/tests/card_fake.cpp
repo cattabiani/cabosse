@@ -6,10 +6,11 @@
 /// registers a map that reads back what was written, the memory a vector.
 /// The wrapper's registers answer as the CL's would (ID, HBM ready,
 /// HOST_PORT shown in STATUS; Ports, ChanW and Len from the environment's
-/// FAKE_PORTS, FAKE_CHAN_W, FAKE_LEN), and a start (CONTROL bit 0) makes the
-/// core's STATUS done. It checks the driver's handovers: memory touched
-/// while the core holds HBM port 0, or a start while the host holds it,
-/// throws.
+/// FAKE_PORTS, FAKE_CHAN_W, FAKE_LEN), and a start (CONTROL bit 0) runs a
+/// token as OCL can show it: the first STATUS read after it still the last
+/// token's (the read passed the posted start), then busy, then done. It
+/// checks the driver's handovers: memory touched while the core holds HBM
+/// port 0, or a start while the host holds it, throws.
 
 #include <algorithm>
 #include <cstdlib>
@@ -43,6 +44,13 @@ class FakeCard final : public card::Card {
       case card::kWrapPorts: return ports_;
       case card::kWrapChanW: return chan_w_;
       case card::kWrapLen: return len_;
+      case kStatus: {
+        const uint32_t s = regs_[kStatus];
+        if (token_reads_ == 2) regs_[kStatus] = kBusy;
+        if (token_reads_ == 1) regs_[kStatus] = kDone;
+        if (token_reads_ > 0) --token_reads_;
+        return s;
+      }
       default: return regs_[offset];
     }
   }
@@ -52,7 +60,7 @@ class FakeCard final : public card::Card {
       host_owns_ = value & 1;
     } else if (offset == 0x08 && (value & 1)) {  // CONTROL's start
       if (host_owns_) throw std::runtime_error("a start while the host holds HBM port 0");
-      regs_[0x0C] = 2;  // STATUS done
+      token_reads_ = 2;
     } else {
       regs_[offset] = value;
     }
@@ -71,6 +79,9 @@ class FakeCard final : public card::Card {
   std::vector<std::byte> mem_;
   std::map<uint64_t, uint32_t> regs_;
   bool host_owns_ = true;  // the wrapper's reset value
+  int token_reads_ = 0;    // STATUS reads left before the token is done
+  static constexpr uint64_t kStatus = 0x0C;
+  static constexpr uint32_t kBusy = 1, kDone = 2;
 
   std::span<std::byte> at(uint64_t addr, uint64_t n) {
     if (!host_owns_) throw std::runtime_error("memory touched while the core holds HBM port 0");

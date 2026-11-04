@@ -293,7 +293,7 @@ module vec_unit
   logic [AddrW-1:0] row_q, base_q, g_q;  // row, its first element, the group's offset in it
   group_t           grp;
   logic             grp_fire, row_end;
-  logic [AddrW-1:0] half, seg_end, count, g_next, addr, gi;
+  logic [AddrW-1:0] half, seg_end, grp_most, count, g_next, addr, gi;
   logic             rotate, first_half;
   logic             red_q;   // a reduction runs: no command is taken until its last row is written
   logic             pend_q;  // a row's last group went, its partials not yet in the tree
@@ -318,8 +318,8 @@ module vec_unit
     first_half = g_q < half;
     seg_end    = rotate && first_half ? half : cur_q.len;
     // OUTPUT's groups: Lanes / 2 FP32 values, one beat each.
-    count      = seg_end - g_q > AddrW'(is_out ? Lanes / 2 : Lanes)
-               ? AddrW'(is_out ? Lanes / 2 : Lanes) : seg_end - g_q;
+    grp_most   = AddrW'(is_out ? Lanes / 2 : Lanes);
+    count      = seg_end - g_q > grp_most ? grp_most : seg_end - g_q;
     g_next     = g_q + count;
     row_end    = g_next == cur_q.len;
     addr       = base_q + g_q;

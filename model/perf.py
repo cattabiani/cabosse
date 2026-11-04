@@ -472,11 +472,15 @@ def engine_cycles(
 
 def vector_issue(s: Step, lanes: float) -> tuple[int, int]:
     """A vector-unit step's groups in a row (`lanes` elements each), and the
-    cycles it issues for, latencies apart: its groups, a LOAD its beats."""
+    cycles it issues for, latencies apart: its groups, a LOAD its beats,
+    OUTPUT its beats (groups of a beat of FP32)."""
     rows, length = s.walk
     row_groups = math.ceil(length / lanes)
     if s.kind == "load":
         return row_groups, math.ceil(s.weight_bytes / commands.BEAT_BYTES)
+    if s.kind == "output":
+        beats = math.ceil(s.output_bytes / commands.BEAT_BYTES)
+        return beats, beats
     return row_groups, rows * row_groups
 
 

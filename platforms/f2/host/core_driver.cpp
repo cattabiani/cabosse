@@ -18,12 +18,14 @@
 /// input cut short), 3 if a run or a port handover takes longer than its
 /// timeout, 1 on a card error, each with a message on stderr.
 
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <format>
 #include <print>
 #include <span>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include "../../../sw/driver_protocol.h"
@@ -32,7 +34,7 @@
 namespace {
 
 constexpr uint64_t kControl = 0x08, kStatus = 0x0C;  // the core's (model/commands.py, REGISTERS)
-constexpr uint32_t kStart = 1, kStatusDone = 2, kStatusError = 4;
+constexpr uint32_t kStart = 1, kStatusBusy = 1, kStatusDone = 2, kStatusError = 4;
 constexpr auto kRunTimeout = std::chrono::seconds(60);
 constexpr auto kHandoverTimeout = std::chrono::seconds(5);
 constexpr int kExitCard = 1, kExitBadInput = 2, kExitHang = 3;
@@ -47,25 +49,14 @@ struct Hang : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
 
-/// @brief Read words from stdin.
-/// @param words where they go, as many as it holds.
-/// @return false at the end of the input.
-bool read_exact(std::span<uint32_t> words) {
-  return std::fread(words.data(), sizeof(uint32_t), words.size(), stdin) == words.size();
-}
-
-/// @brief Write words to stdout and flush: the parent waits for them.
-/// @param words the answer.
-void answer(std::span<const uint32_t> words) {
-  std::fwrite(words.data(), sizeof(uint32_t), words.size(), stdout);
-  std::fflush(stdout);
-}
+using protocol::answer, protocol::read_exact;
 
 /// @brief The card and who holds HBM port 0.
 struct Driver {
   card::Card& card;
   uint64_t memory_bytes;  ///< Ports channels of 2^ChanW bytes
   bool host_owns = true;  ///< HOST_PORT's value, as last set
+  bool started = false;   ///< a start sent, its arrival not seen yet
 
   /// @brief Give HBM port 0 to the host (PCIS) or to the core, and wait
   /// until the wrapper's STATUS shows it.
@@ -95,14 +86,17 @@ struct Driver {
     return {addr, a[2]};
   }
 
-  /// @brief Poll the core's STATUS until done or error.
+  /// @brief Poll the core's STATUS until done or error. The start is a
+  /// posted write, and OCL's reads may pass it: until STATUS shows the
+  /// token running (busy) or failed, a done is the last token's.
   /// @return STATUS.
   /// @throws Hang after kRunTimeout.
   uint32_t run() {
     const auto start = std::chrono::steady_clock::now();
     for (;;) {
       const uint32_t s = card.peek(kStatus);
-      if (s & (kStatusDone | kStatusError)) return s;
+      if (s & (kStatusBusy | kStatusError)) started = false;
+      if (!started && (s & (kStatusDone | kStatusError))) return s;
       if (std::chrono::steady_clock::now() - start > kRunTimeout) throw Hang("run: no done or error");
     }
   }
@@ -114,7 +108,10 @@ struct Driver {
       switch (op) {
         case protocol::kRegWrite:
           if (!read_exact(a)) throw BadRequest("register write");
-          if (a[0] == kControl && (a[1] & kStart)) own(false);
+          if (a[0] == kControl && (a[1] & kStart)) {
+            own(false);
+            started = true;
+          }
           card.poke(a[0], a[1]);
           break;
         case protocol::kRegRead: {

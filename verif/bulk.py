@@ -81,20 +81,20 @@ def forget_build(top: str, params: tuple[tuple[str, int], ...] = ()) -> None:
         _BUILT.pop((top, params), None)
 
 
-def build_program(name: str) -> Path:
-    """Compile verif/bulk/<name>.cpp alone, with no RTL (a test of a model
-    the drivers share), once per test session, with CXX (else g++); needs
-    C++23 with <print>, as the drivers."""
+def build_program(name: str, sources: tuple[Path, ...] = ()) -> Path:
+    """Compile verif/bulk/<name>.cpp (or `sources`) alone, with no RTL (a
+    test of a model the drivers share, or of a host program), once per test
+    session, with CXX (else g++); needs C++23 with <print>, as the drivers."""
     with _BUILD_LOCK:
-        return _build_program(name)
+        return _build_program(name, sources or (DRIVERS / f"{name}.cpp",))
 
 
 @functools.cache
-def _build_program(name: str) -> Path:
+def _build_program(name: str, sources: tuple[Path, ...]) -> Path:
     binary = rtl.BUILD / name
     binary.parent.mkdir(parents=True, exist_ok=True)
     cxx = os.environ.get("CXX", "g++")
-    argv = [cxx, "-std=c++23", "-O1", "-o", str(binary), str(DRIVERS / f"{name}.cpp")]
+    argv = [cxx, "-std=c++23", "-O1", "-Wall", "-Wextra", "-o", str(binary), *map(str, sources)]
     result = subprocess.run(argv, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr[-4000:]
     return binary

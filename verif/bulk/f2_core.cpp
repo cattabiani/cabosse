@@ -128,17 +128,7 @@ struct Bench {
   }
 };
 
-/// @brief Read words from stdin.
-/// @return false at the end of the input.
-bool read_exact(std::span<uint32_t> words) {
-  return std::fread(words.data(), sizeof(uint32_t), words.size(), stdin) == words.size();
-}
-
-/// @brief Write words to stdout and flush: the parent waits for them.
-void answer(std::span<const uint32_t> words) {
-  std::fwrite(words.data(), sizeof(uint32_t), words.size(), stdout);
-  std::fflush(stdout);
-}
+using protocol::answer, protocol::read_exact;
 
 /// @brief The bytes [addr, addr + n) of the memory.
 /// @throws std::out_of_range past its end.

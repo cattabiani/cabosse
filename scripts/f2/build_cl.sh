@@ -18,7 +18,7 @@ REF=main                       # branch of github.com/cattabiani/cabosse; set an
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga
 DESIGN=bringup                 # or core: platforms/f2/$DESIGN/, its top cabosse_$DESIGN.sv
 CL=cabosse_$DESIGN
-DEADLINE_MIN=240               # safety net: power off even if something hangs
+DEADLINE_MIN=$([ "$DESIGN" = core ] && echo 360 || echo 240)  # safety net: power off even if something hangs
 S3=                            # s3://bucket/dcp/<build>: everything goes there (the role writes dcp/ only)
 
 shutdown -h +$DEADLINE_MIN

@@ -11,6 +11,8 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
+#include <span>
 
 namespace protocol {
 
@@ -27,5 +29,19 @@ enum Request : uint32_t {
   kQuit = 6,
   kTrace = 7,  ///< simulation only: the controller's handshakes.
 };
+
+/// @brief Read words from stdin.
+/// @param words where they go, as many as it holds.
+/// @return false at the end of the input.
+inline bool read_exact(std::span<uint32_t> words) {
+  return std::fread(words.data(), sizeof(uint32_t), words.size(), stdin) == words.size();
+}
+
+/// @brief Write words to stdout and flush: the parent waits for them.
+/// @param words the answer.
+inline void answer(std::span<const uint32_t> words) {
+  std::fwrite(words.data(), sizeof(uint32_t), words.size(), stdout);
+  std::fflush(stdout);
+}
 
 }  // namespace protocol

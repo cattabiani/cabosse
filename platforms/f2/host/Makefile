@@ -21,7 +21,7 @@ bringup: bringup.cpp
 # The runtime's driver (sw/f2_platform.py); sw/tests/test_f2_platform.py
 # builds it against a fake card instead.
 core_driver: core_driver.cpp card_f2.cpp card.h ../../../sw/driver_protocol.h
-	$(CXX) $(CXXFLAGS) -mavx2 -o $@ core_driver.cpp card_f2.cpp $(LDFLAGS) $(LDLIBS)
+	$(CXX) $(CXXFLAGS) -o $@ core_driver.cpp card_f2.cpp $(LDFLAGS) $(LDLIBS)
 
 clean:
 	rm -f bringup core_driver
