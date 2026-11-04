@@ -88,8 +88,22 @@ def test_m6_report_is_up_to_date() -> None:
     assert m6.render() == m6.PATH.read_text()
 
 
+def test_m7_report_is_up_to_date() -> None:
+    """reports/M7.md matches its data. After measuring, run:
+    python scripts/report_m7.py render"""
+    assert m7.render() == m7.PATH.read_text()
+
+
 @pytest.mark.parametrize(
-    "script", ["report_m1.py", "report_m3.py", "report_m4.py", "report_m5.py", "report_m6.py"]
+    "script",
+    [
+        "report_m1.py",
+        "report_m3.py",
+        "report_m4.py",
+        "report_m5.py",
+        "report_m6.py",
+        "report_m7.py",
+    ],
 )
 def test_measure_deselects_a_test_that_exists(script: str) -> None:
     """The report scripts' measure leaves out the up-to-date test by its pytest
