@@ -3,7 +3,9 @@
 # x86 Linux, ARM Linux, and ARM macOS (different SIMD code paths in torch),
 # and the RTL (lint, synthesis, simulation) on x86 Linux, the 128-lane engine
 # in a job of its own. The exhaustive tests (minutes) run on pushes to main
-# and on demand; the RTL's run locally.
+# and on demand; the RTL's run locally. On a pull request the RTL jobs (about
+# 45 minutes) run only if it touches what they test; pushes to main and
+# manual runs always run them.
 name: tests
 
 on:
@@ -30,7 +32,31 @@ jobs:
       - run: ruff check .
       - run: pytest
 
+  changes:  # does a pull request touch what the RTL jobs test?
+    runs-on: ubuntu-latest
+    outputs:
+      rtl: ${{ steps.diff.outputs.rtl }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [ "${{ github.event_name }}" != pull_request ]; then
+            echo rtl=true >> "$GITHUB_OUTPUT"
+          elif git diff --name-only "$BASE...HEAD" \
+              | grep -vE '^model/(reporting/|tests/test_|tests/fixtures/|fixtures\.py|compare\.py)' \
+              | grep -qE '^(rtl/|verif/|model/|sw/|platforms/|scripts/get_rtl_tools\.sh|scripts/f2/|requirements\.txt|pyproject\.toml|\.github/workflows/)'; then
+            echo rtl=true >> "$GITHUB_OUTPUT"
+          else
+            echo rtl=false >> "$GITHUB_OUTPUT"
+          fi
+
   rtl:
+    needs: changes
+    if: needs.changes.outputs.rtl == 'true'
     runs-on: ubuntu-24.04
     env:
       CABOSSE_REQUIRE_RTL: "1"  # a missing tool fails instead of skipping
@@ -43,9 +69,11 @@ jobs:
           cache: pip
       - run: scripts/get_rtl_tools.sh
       - run: pip install -r requirements.txt
-      - run: pytest verif -m "not slow and not wide and not on_request"
+      - run: pytest verif -m "not slow and not wide and not on_request" --durations=25
 
   rtl-wide:  # the 128-lane engine: a build of minutes, beside the rtl job
+    needs: changes
+    if: needs.changes.outputs.rtl == 'true'
     runs-on: ubuntu-24.04
     env:
       CABOSSE_REQUIRE_RTL: "1"
@@ -58,7 +86,7 @@ jobs:
           cache: pip
       - run: scripts/get_rtl_tools.sh
       - run: pip install -r requirements.txt
-      - run: pytest verif -m "wide and not slow and not on_request"
+      - run: pytest verif -m "wide and not slow and not on_request" --durations=25
 
   exhaustive:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
