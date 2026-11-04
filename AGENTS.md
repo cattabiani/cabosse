@@ -67,7 +67,8 @@ one is wrong, say so and explain why, and let the owner decide.
 6. **Do not add dependencies** (Python packages, tools, vendored IP) without
    asking. Every dependency needs a license compatible with the project.
    Python packages may be installed into the project's `.venv` and must be
-   pinned in `requirements.txt`. **Never install anything outside `.venv`**
+   pinned in `requirements.txt` (torch's local CUDA build: in
+   `requirements-cuda.txt`, D-070). **Never install anything outside `.venv`**
    (apt, system-wide, tarballs) on the owner's machine; rule 2 covers the
    AWS instances. If a program is missing, say what it is and why it is
    needed, and suggest the install command. The owner installs it.

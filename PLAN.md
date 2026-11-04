@@ -783,6 +783,16 @@ adds up the whole design's on-chip memory against the device's block RAM
 and UltraRAM before relying on the copy; if it does not fit, `VALUES` runs
 one head a pass on P.
 
+**D-070 (2026-11-04) — The GPU baseline runs in `.venv`, with a local
+CUDA build of torch** (owner, 2026-11-04; amends D-067's "any environment").
+`requirements-cuda.txt` swaps `.venv`'s torch for the same version's CUDA
+build (`+cu130`, PyTorch's index); only this PC installs it, CI installs
+`requirements.txt` alone. The NVIDIA driver is the system's, the CUDA
+libraries come with the wheel. Installing `requirements.txt` again puts the
+CPU build back. After the swap the default suite runs once more, to show
+the golden model is still bit-exact on that build. *Why:* the CPU and GPU
+rows then differ only in the device; CI keeps its CPU-only download.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
