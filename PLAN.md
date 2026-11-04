@@ -1700,7 +1700,8 @@ does not check them; `SCORES` and `VALUES` are given after the
   117.1 tokens/s, both on a quiet machine. The CPU's median moved from
   77.3 to 83.6 over four sessions the same day, the GPU's from 116.6 to
   119.2: about 8% and 2% between sessions (measured). At batch 1 the GPU
-  is held by the host's per-kernel launches, not by its memory.
+  is likely held by the host's per-kernel launches, not by its memory
+  (not measured: no profile).
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
