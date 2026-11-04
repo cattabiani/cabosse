@@ -45,15 +45,22 @@ def provenance() -> dict:
     }
 
 
+def cpu_name() -> str:
+    """The CPU's model name from /proc/cpuinfo (Linux on x86, the reference
+    platform), else what Python knows (macOS, ARM Linux without one)."""
+    cpuinfo = Path("/proc/cpuinfo")
+    lines = cpuinfo.read_text().splitlines() if cpuinfo.exists() else []
+    names = (line.split(":", 1)[1].strip() for line in lines if line.startswith("model name"))
+    return next(names, platform.processor() or platform.machine())
+
+
 def host() -> dict:
     """What a timing on this machine ran on: CPU, torch's threads, the load
     average before measuring (1, 5, 15 min) and the software's versions."""
     import torch  # only for the timings
 
-    cpuinfo = Path("/proc/cpuinfo").read_text().splitlines()  # Linux: the reference platform
-    cpu = next(line.split(":", 1)[1].strip() for line in cpuinfo if line.startswith("model name"))
     return {
-        "cpu": cpu,
+        "cpu": cpu_name(),
         "threads": torch.get_num_threads(),
         "load_average": list(os.getloadavg()),
         "python": platform.python_version(),
