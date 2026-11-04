@@ -26,6 +26,9 @@ TINY_PROMPT_LENGTHS = (5, 9, 16)
 # spread the choices.
 TINY_LM_HEAD_SCALE = 4
 SMOLLM2_PROMPTS = compare.PROMPTS[:3]
+# M9's long fixture: one prompt, greedy past EOS so the positions are fixed.
+LONG_N_NEW = 1000
+LONG_PROMPT = compare.PROMPTS[1]
 
 
 def greedy_run(model: decoder.Model, prompt: list[int]) -> dict:
@@ -75,3 +78,19 @@ def smollm2_fixture(path: Path) -> dict:
         runs.append(run)
         print(f"{text!r}: first difference from transformers FP32 at {diverge}")
     return {"weights": path.name, "runs": runs}
+
+
+def smollm2_long_fixture(path: Path) -> dict:
+    """SmolLM2-135M-Instruct, one chat prompt decoded greedily to LONG_N_NEW
+    tokens (M9's bit-exact reference on F2). One hash per position run, so a
+    mismatch names its position. 23 minutes on 16 cores (measured)."""
+    tokenizer = AutoTokenizer.from_pretrained(path)
+    prompt = compare.chat_prompt(tokenizer, LONG_PROMPT)
+    tokens, logits = decoder.generate(decoder.load(path), prompt, LONG_N_NEW)
+    return {
+        "weights": path.name,
+        "prompt": prompt,
+        "tokens": tokens,
+        "logits_sha256": [arith.bits_sha256(row) for row in logits],
+        "text": tokenizer.decode(tokens),
+    }
