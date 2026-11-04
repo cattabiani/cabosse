@@ -4,8 +4,9 @@
 // The vector unit (D-030, D-048, D-050; docs/architecture.md, "Vector unit"):
 // the on-chip buffers, the elementwise commands ADD, MUL, FMA, EXP, RECIP,
 // RSQRT and ROTATE_HALF, the reductions SUM, SUMSQ and MAX
-// (model/commands.py, golden: vector_command), and LOAD, KV_STORE and
-// V_STORE through its AXI port (golden: load_command, kv_store_command).
+// (model/commands.py, golden: vector_command), and LOAD, KV_STORE,
+// V_STORE and OUTPUT through its AXI port (golden: load_command,
+// kv_store_command, output_command).
 //
 // Buffers: ids 1 to Bufs - 1 (0 is NONE), each of Len elements, FP32 or,
 // where Bf16Mask has the id's bit, BF16. A buffer reads and writes up to
@@ -69,8 +70,11 @@
 //   (and the copy m / LanesPerPort channels on), at beat q / E of the head's
 //   region of cap / E beats, dimension d + i in element E * i + q mod E.
 // The walk queues each group's first burst address as it reads the group;
-// the writer sends the bursts and their beats in that order. A KV_STORE or
-// V_STORE is done once its last write is answered (D-044); the unit takes
+// the writer sends the bursts and their beats in that order.
+// OUTPUT (a's n FP32 values, n a multiple of Lanes / 2; addr beat-aligned;
+// D-071) goes the stores' way unrounded: groups of Lanes / 2 values, each a
+// one-beat burst at addr + 4 * its first element. A store
+// (OUTPUT too) is done once its last write is answered (D-044); the unit takes
 // later commands meanwhile, and done_o stays one pulse per command in order:
 // a done waits behind an earlier store's (a queue of the dones, one cycle
 // later than the write that ends a command). err_o (sticky): a read or write
@@ -172,7 +176,7 @@ module vec_unit
 );
 
   // model/commands.py's opcodes and flags (docs/architecture.md, "Commands").
-  localparam logic [4:0] OpLoad = 5'd1, OpKvStore = 5'd3, OpVStore = 5'd17;
+  localparam logic [4:0] OpLoad = 5'd1, OpKvStore = 5'd3, OpOutput = 5'd6, OpVStore = 5'd17;
   localparam logic [4:0] OpAdd = 5'd7, OpMul = 5'd8, OpFma = 5'd9, OpExp = 5'd10;
   localparam logic [4:0] OpRecip = 5'd11, OpRsqrt = 5'd12, OpSum = 5'd13, OpSumsq = 5'd14;
   localparam logic [4:0] OpMax = 5'd15, OpRotateHalf = 5'd16;
@@ -252,8 +256,9 @@ module vec_unit
     return op inside {OpAdd, OpMul, OpFma, OpExp, OpRecip, OpRsqrt};
   endfunction
 
+  // The stores: KV_STORE, V_STORE and OUTPUT (all through the stores' queue).
   function automatic logic store(logic [4:0] op);
-    return op inside {OpKvStore, OpVStore};
+    return op inside {OpKvStore, OpVStore, OpOutput};
   endfunction
 
   function automatic logic reduction(logic [4:0] op);
@@ -275,10 +280,11 @@ module vec_unit
     flat = elementwise(op) && !flags[BPerRow] && !flags[BRow] && !flags[LenT];
     w = '{op: op, dst: dst, a: a, b: b, c: c, flags: flags, scalar: scalar, addr: addr, cap: cap,
           default: '0};
-    w.rows       = flat || op == OpLoad ? AddrW'(1) : n;
-    w.len        = flags[LenT] ? t : flat ? AddrW'(n * m) : m;
+    w.rows       = flat || op == OpLoad || op == OpOutput ? AddrW'(1) : n;
+    w.len        = flags[LenT] ? t : op == OpOutput ? n : flat ? AddrW'(n * m) : m;
     w.row_stride = flags[LenT] ? stride : m;
-    w.mrow       = store(op) || flags[ByPosition] ? t - 1'b1 : flags[ByToken] ? token : '0;
+    w.mrow       = op == OpOutput ? '0
+                 : store(op) || flags[ByPosition] ? t - 1'b1 : flags[ByToken] ? token : '0;
     return w;
   endfunction
 
@@ -292,7 +298,7 @@ module vec_unit
   logic             red_q;   // a reduction runs: no command is taken until its last row is written
   logic             pend_q;  // a row's last group went, its partials not yet in the tree
   logic             tree_busy, stall;
-  logic             is_load, is_store, is_k, is_v, ld_issue_q, ld_ready, kv_room;
+  logic             is_load, is_store, is_k, is_v, is_out, ld_issue_q, ld_ready, kv_room;
   logic [MW-1:0]    kv_credit_q;  // the stores' queue: places no group read so far will take
   logic             prep_q;       // a LOAD or store taken last cycle: its addresses next
   logic             tags_ready;   // a done tag has a place: fewer than Dones commands open
@@ -304,13 +310,16 @@ module vec_unit
   assign is_store = store(cur_q.op);
   assign is_k     = cur_q.op == OpKvStore;
   assign is_v     = cur_q.op == OpVStore;
+  assign is_out   = cur_q.op == OpOutput;
 
   always_comb begin
     half       = cur_q.len >> 1;
     rotate     = cur_q.op == OpRotateHalf;
     first_half = g_q < half;
     seg_end    = rotate && first_half ? half : cur_q.len;
-    count      = seg_end - g_q > AddrW'(Lanes) ? AddrW'(Lanes) : seg_end - g_q;
+    // OUTPUT's groups: Lanes / 2 FP32 values, one beat each.
+    count      = seg_end - g_q > AddrW'(is_out ? Lanes / 2 : Lanes)
+               ? AddrW'(is_out ? Lanes / 2 : Lanes) : seg_end - g_q;
     g_next     = g_q + count;
     row_end    = g_next == cur_q.len;
     addr       = base_q + g_q;
@@ -468,12 +477,12 @@ module vec_unit
   // channel; header) and its beats' format join theirs.
   typedef struct packed {
     logic [MemAddrW-1:0] addr;
-    logic                v, two, last;  // V, its 2 copies; the command's last group
-    logic [KvW-1:0]      step;          // V: the copy's channels on
+    logic                v, o, two, last;  // V, OUTPUT, V's 2 copies; the command's last group
+    logic [KvW-1:0]      step;             // V: the copy's channels on
   } kv_burst_t;
 
   typedef struct packed {
-    logic          v;
+    logic          v, o;
     logic          two;
     logic [LW-1:0] pos;  // q mod Lanes: K's slot, V's element in its chunk
   } kv_fmt_t;
@@ -492,11 +501,14 @@ module vec_unit
   // verilator lint_on UNUSEDSIGNAL
   assign kv_room = kv_credit_q != '0;
   assign kv_push = grp_fire && is_store;
+  // OUTPUT's group: its beat at addr + 4 bytes an element.
   assign kb_in   = '{addr: mbase_q + kv_off_q + (is_v ? MemAddrW'(g_q >> PpW) << ChanW
+                                               : is_out ? MemAddrW'(g_q) << 2
                                                       : MemAddrW'(g_q >> EW) << BeatW),
-                     v: is_v, two: is_v && cur_q.len <= AddrW'(KvPorts * LanesPerPort / 2),
+                     v: is_v, o: is_out,
+                     two: is_v && cur_q.len <= AddrW'(KvPorts * LanesPerPort / 2),
                      last: grp.is.last, step: KvW'(cur_q.len >> PpW)};
-  assign kf_in   = '{v: is_v, two: kb_in.two, pos: cur_q.mrow[LW-1:0]};
+  assign kf_in   = '{v: is_v, o: is_out, two: kb_in.two, pos: cur_q.mrow[LW-1:0]};
 
   stream_fifo #(.Width(DataWidth), .Depth(MemDepth)) u_kv_queue (
     .clk_i,
@@ -546,7 +558,8 @@ module vec_unit
   endfunction
 
   // A group's bursts: K's one of LanesPerPort beats; V's E of one beat,
-  // then the copy's. Its last carries the command's last group's tag.
+  // then the copy's; OUTPUT's one of one beat. Its last carries the
+  // command's last group's tag.
   assign kb_last = !kb.v || v_group_end(kb_q, kb.two);
   assign kb_go   = kb_valid && wr_ready;
 
@@ -559,7 +572,8 @@ module vec_unit
   // slot, V's chunk of LanesPerPort dimensions each E times (dimension i of
   // the chunk in elements E * i to E * i + E - 1); the strobes pick K's slot,
   // V's element of each.
-  assign wb_last = kf.v ? v_group_end(wb_q[EW:0], kf.two) : wb_q[PpW-1:0] == PpW'(LanesPerPort - 1);
+  assign wb_last = kf.o || (kf.v ? v_group_end(wb_q[EW:0], kf.two)
+                                  : wb_q[PpW-1:0] == PpW'(LanesPerPort - 1));
   assign beat_go = q_valid && in_ready;
   assign q_take  = beat_go && wb_last;
 
@@ -569,8 +583,8 @@ module vec_unit
       logic          on;
       el = kf.v ? LW'(wb_q[EW-1:0] * LanesPerPort + l / E) : LW'(wb_q[PpW-1:0] * E + l % E);
       on = kf.v ? LW'(l % E) == LW'(kf.pos % E) : LW'(l / E) == LW'(kf.pos % LanesPerPort);
-      kv_w_data[16*l+:16] = q_beat[16*el+:16];
-      kv_w_strb[2*l+:2]   = {2{on}};
+      kv_w_data[16*l+:16] = kf.o ? q_beat[16*l+:16] : q_beat[16*el+:16];
+      kv_w_strb[2*l+:2]   = {2{on || kf.o}};  // OUTPUT: whole beats (n a multiple of Lanes / 2)
     end
   end
 
@@ -591,7 +605,7 @@ module vec_unit
     .cmd_ready_o(wr_ready),
     .cmd_addr_i (kb.addr + (kb.v ? MemAddrW'(kb_q[EW-1:0]) + (kb_q[EW] ? MemAddrW'(kb.step) : '0)
                                    << ChanW : '0)),
-    .cmd_beats_i(kb.v ? LenW'(1) : LenW'(LanesPerPort)),
+    .cmd_beats_i(kb.v || kb.o ? LenW'(1) : LenW'(LanesPerPort)),
     .cmd_tag_i  (kb.last && kb_last),
     .in_valid_i (q_valid),
     .in_ready_o (in_ready),
@@ -743,17 +757,19 @@ module vec_unit
       OpExp:   return ChainExp;
       OpRecip: return ChainRecip;
       OpRsqrt: return ChainRsqrt;
-      OpRotateHalf, OpLoad, OpKvStore, OpVStore: return ChainPass;
+      OpRotateHalf, OpLoad, OpKvStore, OpVStore, OpOutput: return ChainPass;
       default: return ChainAdd;  // ADD; SUM; MAX's x through add(x, -0)
     endcase
   endfunction
 
   // Where a group's results go: a buffer, the partials (a reduction's, so
-  // nowhere from here), the stores' queue.
+  // nowhere from here), the stores' queue rounded to BF16 (KV_STORE,
+  // V_STORE) or as FP32 (OUTPUT).
   typedef enum logic [1:0] {
     SinkBuf,
     SinkNone,
-    SinkKv
+    SinkKv,
+    SinkOut
   } sink_e;
 
   // What the write needs, alongside the slots.
@@ -917,7 +933,8 @@ module vec_unit
   always_ff @(posedge clk_i) begin
     dest_q[0] <= '{dst: grp_q.dst, addr: grp_q.addr,
                    mask: grp_q.mask, last: grp_q.last,
-                   sink: reduction(grp_q.op) ? SinkNone : store(grp_q.op) ? SinkKv : SinkBuf};
+                   sink: reduction(grp_q.op) ? SinkNone : grp_q.op == OpOutput ? SinkOut
+                       : store(grp_q.op) ? SinkKv : SinkBuf};
     for (int unsigned j = 1; j < ChainLat; j++) dest_q[j] <= dest_q[j-1];
   end
 
@@ -930,15 +947,16 @@ module vec_unit
   assign u_w_buf       = d.dst;
   assign u_w_addr      = d.addr;
   assign u_w_mask      = d.mask;
-  assign kv_beat_valid = slot_valid[0] && d.sink == SinkKv;
+  assign kv_beat_valid = slot_valid[0] && (d.sink == SinkKv || d.sink == SinkOut);
   for (genvar l = 0; l < Lanes; l++) begin : gen_round
     logic [15:0] r;
     fp32_to_bf16 u_round (
       .a_i(y[l]),
       .y_o(r)
     );
-    assign u_w_data[l]        = Bf16Mask[d.dst] ? {16'h0, r} : y[l];
-    assign kv_beat[16*l+:16] = r;
+    assign u_w_data[l] = Bf16Mask[d.dst] ? {16'h0, r} : y[l];
+    // OUTPUT's beat: lanes 0 .. Lanes / 2 - 1 as FP32; the stores' rounded.
+    assign kv_beat[16*l+:16] = d.sink == SinkOut ? y[l/2][16*(l%2)+:16] : r;
   end
 
   // --- Dones, in order ----------------------------------------------------------

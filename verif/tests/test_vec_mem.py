@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""rtl/vec_unit.sv's LOAD, KV_STORE and V_STORE through its AXI port,
-against commands.load_command and kv_store_command: every buffer and the
+"""rtl/vec_unit.sv's LOAD, KV_STORE, V_STORE and OUTPUT through its AXI
+port, against commands.load_command, kv_store_command and output_command: every buffer and the
 whole memory bit for bit afterwards, the caches in the engine's order
 (vector.write_cache, D-062; so a write past a row, into the wrong channel or
 the wrong bytes of a beat shows), with the memory model's own checks
@@ -11,7 +11,7 @@ LOAD in every row mode (the tensor, its row token, its row position), from
 BF16 and FP32, into FP32 and BF16 buffers, rows of one beat and many;
 KV_STORE and V_STORE (one copy and two) for several heads and positions in
 every channel, done after the last write response while later commands
-run; random sequences of all three mixed with the other commands, with slow
+run; OUTPUT's FP32 beats; random sequences of all three mixed with the other commands, with slow
 and pausing memories; error responses."""
 
 import dataclasses
@@ -164,6 +164,35 @@ def test_store(op: Op, m: int, position: int) -> None:
     )
     assert len(result.answers) == n_bursts(cmd), result.answers
     assert result.done[0] > result.answers.max(), (result.done, result.answers)
+
+
+# OUTPUT: a beat, several, a long row (LOGITS-like), from FP32 buffers.
+OUTPUT_CASES = [(Buf.H, 8), (Buf.LOGITS, 24), (Buf.LOGITS, 256), (Buf.H, LENGTH)]
+
+
+@rtl.needs_verilator
+@pytest.mark.parametrize(("a", "n"), OUTPUT_CASES)
+def test_output(a: Buf, n: int) -> None:
+    """OUTPUT (D-071) from a slow, pausing memory: a's n FP32 values as they
+    are, a one-beat burst each 8, every other byte unchanged, done after
+    the last write response; then a vector command and a KV_STORE behind it."""
+    rng = np.random.default_rng(SEED + n)
+    steps = [
+        Step(Command(Op.OUTPUT, a=a, n=n, addr=LOAD_ADDR)),
+        Step(Command(Op.ADD, Buf.T, Buf.H, Buf.W, n=1, m=64)),
+        Step(kv_store(Buf.KR, 2, 64), t=3),
+    ]
+    result = vector.check(
+        steps,
+        vector.random_buffers(rng, LENGTH),
+        LENGTH,
+        f"OUTPUT of {n} from {a.name}",
+        random_memory(rng),
+        **SLOW_WRITES,
+    )
+    bursts = n // (vector.LANES // 2)
+    assert len(result.answers) == bursts + n_bursts(steps[2].cmd), result.answers
+    assert result.done[0] > np.sort(result.answers)[bursts - 1], (result.done, result.answers)
 
 
 @rtl.needs_verilator

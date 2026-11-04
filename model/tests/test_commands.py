@@ -80,7 +80,7 @@ def tensor_ends(layout: commands.Layout) -> dict[str, int]:
     end of its region."""
     ends = {}
     for kind_loaded, region_end in ((False, layout.engine_bytes), (True, layout.end_bytes)):
-        names = [n for n, k in layout.kinds.items() if (k == commands.Kind.LOADED) == kind_loaded]
+        names = [n for n, k in layout.kinds.items() if (k in commands.RAW) == kind_loaded]
         names.sort(key=layout.addr)
         bounds = [layout.addr(n) for n in names[1:]] + [region_end]
         ends |= dict(zip(names, bounds, strict=True))
@@ -91,12 +91,13 @@ def tensor_ends(layout: commands.Layout) -> dict[str, int]:
 @pytest.mark.parametrize("tied", [True, False])
 def test_layout_is_aligned_and_does_not_overlap(tied: bool, ports: int) -> None:
     """D-040: the engine's tensors at the same offset in every channel, each
-    reserving its largest share there; LOAD's above them in channel 0."""
+    reserving its largest share there; LOAD's and the logits above them in
+    channel 0."""
     layout = commands.Layout.of(tiny.tiny_config(tied=tied), cap=4 * ports, ports=ports)
     assert all(a % commands.ALIGN == 0 for a, _, _ in layout.tensors.values())
-    loaded = {n for n, k in layout.kinds.items() if k == commands.Kind.LOADED}
+    loaded = {n for n, k in layout.kinds.items() if k in commands.RAW}
     assert {n.rsplit(".", 1)[-1] for n in loaded} == {
-        "embed", "rope_cos", "rope_sin", "attn_norm", "mlp_norm", "final_norm"
+        "embed", "rope_cos", "rope_sin", "attn_norm", "mlp_norm", "final_norm", "logits"
     }  # fmt: skip
     for name, end in tensor_ends(layout).items():
         addr, shape, dtype = layout.tensors[name]
@@ -499,7 +500,7 @@ def test_the_command_after_the_engine_stops(name: str, cmds: list[commands.Comma
     for i in range(1, len(cmds)):
         before, cmd = cmds[i - 1], cmds[i]
         if before.op in commands.ENGINE_OPS and cmd.op not in commands.ENGINE_OPS:
-            assert stops[i] or cmd.op in (commands.Op.OUTPUT, commands.Op.END), (name, i, cmd)
+            assert stops[i] or cmd.op == commands.Op.END, (name, i, cmd)
 
 
 @pytest.mark.parametrize("write_after_reads", [True, False])

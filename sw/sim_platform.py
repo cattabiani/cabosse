@@ -2,7 +2,7 @@
 # Copyright 2026 The Cabosse Authors
 """The simulation platform (PLAN.md, M7's answers): rtl/core.sv under
 Verilator, its driver (verif/bulk/core.cpp) a child process serving the
-six calls on stdin and stdout, so a crash in the simulation does not take
+five calls on stdin and stdout, so a crash in the simulation does not take
 Python down. The build's parameters fix the ports, the channels' size and
 the buffers' length (one Len for every buffer)."""
 
@@ -10,7 +10,6 @@ from pathlib import Path
 
 import bulk
 import numpy as np
-import torch
 from commands import REG, Buf
 from driver_process import BUF_READ, RUN, TRACE, DriverError, DriverProcess
 
@@ -19,13 +18,17 @@ EVENTS = ("eng_take", "eng_go", "eng_done", "vec_take", "vec_done")
 
 
 class SimPlatform(DriverProcess):
-    """A Platform on rtl/core.sv: `ports` HBM ports (one channel each, of
-    2^chan_w bytes) and buffers of `length` elements. `runs` holds each
-    run's POSITION, trace and CYCLES (verif/breakdown.py)."""
+    """A Platform on rtl/core.sv, or on `top` f2_core (the core in its F2
+    wrapper, platforms/f2/core/: one memory at global addresses, HBM port 0
+    handed over as on F2; verif/bulk/f2_core.cpp): `ports` HBM ports (one
+    channel each, of 2^chan_w bytes) and buffers of `length` elements.
+    `runs` holds each run's POSITION, trace and CYCLES (verif/breakdown.py)."""
 
-    def __init__(self, ports: int, chan_w: int, length: int, **plusargs: int) -> None:
+    def __init__(
+        self, ports: int, chan_w: int, length: int, top: str = "core", **plusargs: int
+    ) -> None:
         params = (("Ports", ports), ("ChanW", chan_w), ("Len", length))
-        binary: Path = bulk.build("core", params)
+        binary: Path = bulk.build(top, params)
         super().__init__([str(binary), *(f"+{k}={v}" for k, v in plusargs.items())])
         found = (self.ports, self.channel_bytes, self.buffer_elements)
         if found != (ports, 1 << chan_w, length):
@@ -44,9 +47,6 @@ class SimPlatform(DriverProcess):
         """A buffer's raw bits (BF16 in the low half), a uint32 each."""
         self.send(BUF_READ, buf, first, n)
         return self.words(n).copy()
-
-    def read_logits(self, n: int) -> torch.Tensor:
-        return torch.from_numpy(self.read_buffer(Buf.LOGITS, 0, n).view(np.float32).copy())
 
     def trace(self) -> dict[str, np.ndarray]:
         """The cycles (the simulation's count) of each handshake in EVENTS

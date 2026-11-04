@@ -1971,6 +1971,18 @@ the 960 UltraRAMs (estimates; the device's UltraRAM count is the
 datasheet's, to verify). It fits; the build's utilization report has the
 real mapping.
 
+**`OUTPUT` (D-071's implementation, 2026-11-04):** `OUTPUT` carries its
+HBM address in the command (`addr`, a "logits" region of the layout in
+channel 0, beside the tensors `LOAD` reads), so the list stays a pure
+function of the layout; `LOGITS_LO/HI` are unused. The vector unit runs
+it as a third store: groups of 8 FP32 values, each one beat, unrounded,
+one-beat bursts, done once its writes are answered (n a multiple of 8,
+addr beat-aligned). The runtime reads the logits with `mem_read` on
+every platform, so the simulation tests F2's path; `read_logits` is gone.
+The perf model counts its beats like a store's: SmolLM2's F2 estimate
+goes from 513.4 to 506.9 tokens/s (about 25 µs a token, estimate);
+docs/perf.md and the M2, M6 and M7 reports render the current model.
+
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.

@@ -18,7 +18,7 @@
 // synchronous RAM, read at the next pc so it is there the cycle after a
 // handover) and handed over when its unit takes it and these hold (D-068,
 // model/commands.py: stops, engine_waits, kv_waits):
-// - stop: a command off the engine (vector unit, OUTPUT, END) that reads a
+// - stop: a command off the engine (the vector unit's, END) that reads a
 //   buffer written since the last stop waits until every command handed over
 //   is done; its handover clears the written set (D-045).
 // - wait: an engine command whose input buffer's last writer no earlier
@@ -30,7 +30,8 @@
 //   done. kv_waits asks for the last store to the cache it reads; the last
 //   store of its kind is that one or a later one, whose done comes later
 //   (the vector unit's dones are in order).
-// - OUTPUT is done at once (M7: the host reads LOGITS; Q-33 is M9's).
+// - OUTPUT goes to the vector unit like its other commands (D-071: it
+//   writes the logits to HBM, done once its writes are answered).
 // - END waits until every command is done and every go sent, then sets
 //   STATUS done, pulses irq_o and keeps the token's cycles in CYCLES.
 // Every command handed over writes its dst into the written set and becomes
@@ -148,7 +149,6 @@ module controller #(
   localparam logic [7:0] OpKvStore = 8'd3;
   localparam logic [7:0] OpScores  = 8'd4;
   localparam logic [7:0] OpValues  = 8'd5;
-  localparam logic [7:0] OpOutput  = 8'd6;
   localparam logic [7:0] OpVStore  = 8'd17;  // the last opcode
 
   localparam logic [3:0] ErrOpcode = 4'd1;
@@ -300,7 +300,7 @@ module controller #(
 
   assign known  = op <= OpVStore;
   assign is_eng = op == OpMatvec || op == OpScores || op == OpValues;
-  assign is_vec = known && !is_eng && op != OpEnd && op != OpOutput;
+  assign is_vec = known && !is_eng && op != OpEnd;  // OUTPUT too (D-071)
 
   always_comb begin
     reads   = '0;
@@ -353,8 +353,7 @@ module controller #(
   assign vec_valid_o = active && is_vec && stop_ok;
   assign eng_op_o    = op == OpScores ? 2'd1 : op == OpValues ? 2'd2 : 2'd0;
   assign eng_wait_o  = need_wait;
-  assign fire        = (eng_valid_o && eng_ready_i) || (vec_valid_o && vec_ready_i)
-                    || (active && op == OpOutput && stop_ok);
+  assign fire        = (eng_valid_o && eng_ready_i) || (vec_valid_o && vec_ready_i);
 
   always_ff @(posedge clk_i) begin
     fresh_q <= start || fire;

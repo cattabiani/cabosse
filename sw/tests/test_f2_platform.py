@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """The F2 platform's driver (platforms/f2/host/core_driver.cpp) on a fake
-card (card_fake.cpp): the protocol, memory at any alignment, the logits
-read where LOGITS_HI:LOGITS_LO points, the handovers of HBM port 0 (the
+card (card_fake.cpp): the protocol, memory at any alignment, the handovers of HBM port 0 (the
 fake fails a start while the host holds it, memory while the core does),
 and bad requests. The real card is M9's F2 run."""
 
@@ -56,16 +55,14 @@ def test_memory_round_trip(platform: F2Platform, addr: int, n: int) -> None:
     assert torch.equal(platform.mem_read(addr, n), data), f"seed {SEED + addr}"
 
 
-def test_token_and_logits(platform: F2Platform) -> None:
+def test_token_between_memory(platform: F2Platform) -> None:
     """Memory, a token, memory again: each needs its handover."""
-    logits = torch.arange(10, dtype=torch.float32) - 3.5
+    logits = torch.arange(16, dtype=torch.float32) - 3.5
     platform.mem_write(0x2000, logits.view(torch.uint8))
-    platform.reg_write(REG["LOGITS_LO"], 0x2000)
-    platform.reg_write(REG["LOGITS_HI"], 0)
     platform.reg_write(REG["CONTROL"], 1)
     platform.run_until_done()
     assert platform.reg_read(REG["STATUS"]) == 2
-    assert torch.equal(platform.read_logits(10), logits)
+    assert torch.equal(platform.mem_read(0x2000, 64).view(torch.float32), logits)
 
 
 @pytest.mark.parametrize(

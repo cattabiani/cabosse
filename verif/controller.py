@@ -73,13 +73,13 @@ def run(
 
 def check(cmds: list[Command], tok: Token) -> None:
     """Assert that the token ran `cmds` as D-068 says: every command but
-    OUTPUT and END handed over once, in list order, to its unit; the
+    END handed over once, in list order, to its unit; the
     engine's wait bits engine_waits'; each stop after every earlier done;
     each go after its writer's done and its command's handover, in order;
     SCORES and VALUES after their store's done; STATUS done after every
     done, with CYCLES."""
     units = [c.op not in commands.ENGINE_OPS for c in cmds]
-    issued = [i for i, c in enumerate(cmds) if c.op not in (Op.OUTPUT, Op.END)]
+    issued = [i for i, c in enumerate(cmds) if c.op != Op.END]
     assert [h[1] for h in tok.handovers] == [int(units[i]) for i in issued], "units or order"
     at = {i: h[0] for i, h in zip(issued, tok.handovers, strict=True)}  # handover cycle
     assert all(at[a] < at[b] for a, b in itertools.pairwise(issued)), "list order"

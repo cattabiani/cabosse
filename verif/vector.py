@@ -143,10 +143,16 @@ def write_cache(
 def memory_command(
     s: Step, buf: dict[Buf, torch.Tensor], mem: np.ndarray, base: int, kv_ports: int, chan_w: int
 ) -> None:
-    """LOAD, KV_STORE or V_STORE on the buffers and the memory's words (an
-    image of the bytes from `base`), in place, by commands.load_command and
-    kv_store_command."""
+    """LOAD, KV_STORE, V_STORE or OUTPUT on the buffers and the memory's
+    words (an image of the bytes from `base`), in place, by
+    commands.load_command, kv_store_command and output_command."""
     c, position = s.cmd, s.t - 1
+    if c.op == Op.OUTPUT:
+        out = torch.zeros(c.n, dtype=commands.F32)
+        commands.output_command(c, buf, out)
+        at = (c.addr - base) // 4
+        mem[at : at + c.n] = out.view(torch.int32).numpy().view(np.uint32)
+        return
     if c.op == Op.LOAD:
         # The row LOAD reads, as every row of a tensor (stride 0): the image
         # need not hold the rest.
@@ -178,7 +184,7 @@ def golden(
     buf = {b: x.clone() for b, x in start.items()}
     mem = mem.copy()
     for s in steps:
-        if s.cmd.op == Op.LOAD or s.cmd.op in commands.STORE_OPS:
+        if s.cmd.op in (Op.LOAD, Op.OUTPUT) or s.cmd.op in commands.STORE_OPS:
             memory_command(s, buf, mem, base, kv_ports, chan_w)
         else:
             commands.vector_command(s.cmd, buf, s.t, s.stride)

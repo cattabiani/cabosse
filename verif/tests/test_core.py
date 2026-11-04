@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """The whole core (rtl/core.sv) driven by the runtime through the
-simulation platform (PLAN.md, M7): greedy decoding on the tiny model gives
-the golden model's tokens, logits and KV cache bit for bit."""
+simulation platform (PLAN.md, M7), and the core in its F2 wrapper (M9):
+greedy decoding on the tiny model gives the golden model's tokens, logits
+and KV cache bit for bit."""
 
 import re
 import time
@@ -43,11 +44,12 @@ def check_breakdown(cmds: list[commands.Command], runs: list, ports: int, label:
         assert all(r["cycles"] > 0 for r in b["commands"]), (label, position)
 
 
-def generate_on_sim(ports: int, n_prompts: int) -> None:
-    """n_prompts conversations of N_NEW tokens on one simulated core, each
-    token's trace checked (check_breakdown)."""
+def generate_on_sim(ports: int, n_prompts: int, top: str = "core") -> None:
+    """n_prompts conversations of N_NEW tokens on one simulated core (or
+    `top`, the core in its F2 wrapper), each token's trace checked
+    (check_breakdown)."""
     model = tiny_model()
-    with SimPlatform(ports, CHAN_W, LENGTH) as p:
+    with SimPlatform(ports, CHAN_W, LENGTH, top) as p:
         rt = Runtime.open(p, model, CAP)
         cmds = commands.build(rt.layout)
         for k, prompt in enumerate(prompts(n_prompts, model.config.vocab_size)):
@@ -73,6 +75,14 @@ def test_the_cores_buffer_ids_are_the_command_lists() -> None:
 def test_tiny_decodes_bit_exact_at_4_ports() -> None:
     """3 prompts x 64 tokens (M7's criterion), one head a VALUES pass."""
     generate_on_sim(4, PROMPTS)
+
+
+@rtl.needs_verilator
+def test_tiny_decodes_bit_exact_in_the_f2_wrapper() -> None:
+    """The same in platforms/f2/core/f2_core.sv (M9): each engine port's
+    channel in its addresses, engine port 0 and the vector unit sharing
+    HBM port 0, the host's handovers of it, all on one memory."""
+    generate_on_sim(4, 1, "f2_core")
 
 
 @pytest.mark.wide

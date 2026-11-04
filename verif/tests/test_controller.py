@@ -107,7 +107,7 @@ def test_a_list_without_end_stops() -> None:
 def test_check_catches_a_missing_wait() -> None:
     """The check is not vacuous: a token whose waits differ fails it."""
     cmds, _ = tiny_list(4)
-    issued = [c for c in cmds if c.op not in (Op.OUTPUT, Op.END)]
+    issued = [c for c in cmds if c.op != Op.END]
     unit = [int(c.op not in commands.ENGINE_OPS) for c in issued]
     tok = controller.Token(
         handovers=[(10 * i, u, 0, 0) for i, u in enumerate(unit)],
