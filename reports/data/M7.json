@@ -1,24 +1,18 @@
 {
  "smollm2": {
   "provenance": {
-   "commit": "4bb3a82ed47eabbb42ef0cc51af780e63fee0008",
+   "commit": "063b06f0174e4183845fcc0a74c03f074e7a6e74",
    "dirty": false,
-   "date": "2026-11-03",
+   "date": "2026-11-04",
    "machine": "Linux x86_64"
   },
   "ports": 32,
   "cap": 256,
-  "prompt": [
-   504,
-   3575,
-   282,
-   4649,
-   314
-  ],
+  "prompt": "The capital of France is",
   "n_new": 8,
   "bit_exact": true,
-  "build_seconds": 578.8,
-  "run_seconds": 1231.8,
+  "seconds": 1214.8,
+  "engine_startup_cycles": 76.0,
   "tokens": [
    {
     "position": 0,
