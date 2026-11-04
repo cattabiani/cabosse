@@ -1,7 +1,7 @@
 {
  "smollm2": {
   "provenance": {
-   "commit": "0029d380abe9b205e76ffea401f59bd87b393309",
+   "commit": "7940da42ca25389c01a5adcc39cabba1fb85763b",
    "dirty": false,
    "date": "2026-11-04",
    "machine": "Linux x86_64"
@@ -11,7 +11,13 @@
   "prompt": "The capital of France is",
   "n_new": 8,
   "bit_exact": true,
-  "seconds": 1254.1,
+  "memory": {
+   "latency": 70,
+   "outstanding": 8,
+   "wlatency": 70,
+   "woutstanding": 128
+  },
+  "seconds": 1204.5,
   "engine_startup_cycles": 76.0,
   "tokens": [
    {
@@ -12203,7 +12209,7 @@
  },
  "cpu": {
   "provenance": {
-   "commit": "bbdd166760cf54ed7f389a78e217df41d1ab8e0a",
+   "commit": "7940da42ca25389c01a5adcc39cabba1fb85763b",
    "dirty": false,
    "date": "2026-11-04",
    "machine": "Linux x86_64"
@@ -12211,9 +12217,9 @@
   "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
   "threads": 8,
   "load_average": [
-   0.39697265625,
-   0.93798828125,
-   1.09375
+   0.69482421875,
+   1.2177734375,
+   1.15966796875
   ],
   "python": "3.14.4",
   "torch": "2.14.1+cu130",
@@ -12221,17 +12227,18 @@
   "attention": "sdpa",
   "prompt": "The capital of France is",
   "n_decode": 128,
+  "warmup": 1,
   "tokens_per_s": [
-   83.6,
-   83.3,
-   83.6,
-   84.8,
-   84.5
+   81.9,
+   83.1,
+   82.6,
+   81.1,
+   82.3
   ]
  },
  "cuda": {
   "provenance": {
-   "commit": "bbdd166760cf54ed7f389a78e217df41d1ab8e0a",
+   "commit": "7940da42ca25389c01a5adcc39cabba1fb85763b",
    "dirty": false,
    "date": "2026-11-04",
    "machine": "Linux x86_64"
@@ -12239,9 +12246,9 @@
   "cpu": "AMD Ryzen 7 7800X3D 8-Core Processor",
   "threads": 8,
   "load_average": [
-   0.5908203125,
-   0.95068359375,
-   1.0859375
+   0.69384765625,
+   1.15576171875,
+   1.1474609375
   ],
   "python": "3.14.4",
   "torch": "2.14.1+cu130",
@@ -12251,12 +12258,23 @@
   "attention": "sdpa",
   "prompt": "The capital of France is",
   "n_decode": 128,
+  "warmup": 1,
   "tokens_per_s": [
-   116.8,
-   117.0,
-   117.3,
-   117.3,
-   117.1
+   115.1,
+   115.1,
+   116.2,
+   117.2,
+   117.9
   ]
+ },
+ "tests": {
+  "provenance": {
+   "commit": "7940da42ca25389c01a5adcc39cabba1fb85763b",
+   "dirty": false,
+   "date": "2026-11-04",
+   "machine": "Linux x86_64"
+  },
+  "fast": "1009 passed, 44 deselected in 833.60s (0:13:53)",
+  "slow": "39 passed, 1014 deselected in 2689.94s (0:44:49)"
  }
 }
