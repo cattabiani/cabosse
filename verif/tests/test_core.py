@@ -35,8 +35,9 @@ def prompts(n: int, vocab: int) -> list[list[int]]:
 def check_breakdown(cmds: list[commands.Command], runs: list, ports: int, label: str) -> None:
     """Each run's trace has every unit command's handover, go and done
     (breakdown.token asserts the counts), and the units' busy cycles fit in
-    CYCLES."""
-    for position, (trace, cycles) in enumerate(runs):
+    CYCLES. `runs` is a conversation's from its start."""
+    assert [r[0] for r in runs] == list(range(len(runs))), (label, "positions")
+    for position, trace, cycles in runs:
         b = breakdown.token(cmds, trace, cycles, position, ports)
         assert b["units"]["neither"] >= 0, (label, position, b["units"], cycles)
         assert all(r["cycles"] > 0 for r in b["commands"]), (label, position)
@@ -86,8 +87,8 @@ def test_tiny_decodes_bit_exact_at_32_ports() -> None:
 @rtl.needs_verilator
 def test_smollm2_decodes_bit_exact_at_32_ports() -> None:
     """M7's criterion: SmolLM2 bit-exact for 8 tokens on F2's 32 ports (a
-    build of about 6.5 minutes and 10 GB, then about 2 minutes a token,
-    estimate: run it under MemoryMax=12G), each token's trace checked."""
+    build of about 6.5 minutes and 10 GB, then about 100 s a token: run it
+    under MemoryMax=12G), each token's trace checked."""
     from golden import decoder
 
     rt, runs = smollm2_on_sim(decoder.load(paths.SMOLLM2))

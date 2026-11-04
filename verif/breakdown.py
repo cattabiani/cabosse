@@ -10,8 +10,8 @@ done on its unit and (an engine command that waits) its go, to its done.
 The perf model gives the same per command: perf.engine_cycles for an engine
 command (with its start-up when it waits), perf.vector_cycles (done to
 done, D-053) for the vector unit's, from the steps perf.seconds sums. The
-core runs the whole command list (perf.ops drops softmax's commands only
-for the design's flags, which v0 leaves off). The simulation's memory
+core runs the whole command list and reads K and V tiles once per query
+head: none of the design's flags (perf.ops) applies. The simulation's memory
 answers a beat a cycle on every port after a cycle (axi_mem.h's defaults):
 sim_platform() is the perf model's platform for that memory."""
 
@@ -41,10 +41,11 @@ def unit_spans(
     is the latest of its handover, the previous done and its go (go: the
     command's index on the unit -> the go's cycle)."""
     assert len(take) == len(done), (len(take), len(done))
+    go = go or {}
     start = np.empty(len(take), dtype=np.int64)
     before = 0
     for k, (t, d) in enumerate(zip(take.tolist(), done.tolist(), strict=True)):
-        start[k] = max(t, before, (go or {}).get(k, 0))
+        start[k] = max(t, before, go.get(k, 0))
         before = d
     return start, done.astype(np.int64)
 
@@ -64,7 +65,7 @@ def token(
     """One token's breakdown on a core of `ports` ports: each unit command's
     cycles and the model's, the units' busy cycles, and the perf model's
     terms (in cycles)."""
-    steps = perf.steps(cmds, position + 1, int(DESIGN["lanes"]), bool(DESIGN["kv_tiles_shared"]))
+    steps = perf.steps(cmds, position + 1, int(DESIGN["lanes"]))
     work = perf.Work.of(steps)
     eng = [i for i, s in enumerate(steps) if s.engine_shapes]
     vec = [i for i, s in enumerate(steps) if s.walk is not None]

@@ -44,7 +44,7 @@ def smollm2() -> dict:
     rt, runs = smollm2_on_sim(decoder.load(paths.SMOLLM2))
     seconds = time.monotonic() - start
     cmds = commands.build(rt.layout)
-    tokens = [breakdown.token(cmds, tr, cyc, k, SMOLLM2_PORTS) for k, (tr, cyc) in enumerate(runs)]
+    tokens = [breakdown.token(cmds, tr, cyc, k, SMOLLM2_PORTS) for k, tr, cyc in runs]
     for t in tokens[:-1]:
         del t["commands"]
     return {

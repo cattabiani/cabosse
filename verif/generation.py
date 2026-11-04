@@ -9,7 +9,6 @@ import paths
 import torch
 from golden import arith, decoder, tiny
 from runtime import Runtime
-from sim_platform import SimPlatform
 
 SEED = 7
 # SmolLM2 on the simulated core (verif/tests/test_core.py,
@@ -52,11 +51,12 @@ def check_generation(
 
 def smollm2_on_sim(
     model: decoder.Model,
-) -> tuple[Runtime, list[tuple[dict[str, np.ndarray], int]]]:
+) -> tuple[Runtime, list[tuple[int, dict[str, np.ndarray], int]]]:
     """SMOLLM2_PROMPT and SMOLLM2_N_NEW tokens of SmolLM2 on the simulated
-    core, checked (check_generation): the runtime, and each run's trace and
-    CYCLES (SimPlatform.runs). Builds the 32-port core (about 6.5 minutes
+    core, checked (check_generation): the runtime, and each run's position,
+    trace and CYCLES (SimPlatform.runs). Builds the 32-port core (about 6.5 minutes
     and 10 GB) if it is not built."""
+    from sim_platform import SimPlatform  # the simulation stack, only here
     from transformers import AutoTokenizer
 
     prompt = AutoTokenizer.from_pretrained(paths.SMOLLM2)(SMOLLM2_PROMPT)["input_ids"]
