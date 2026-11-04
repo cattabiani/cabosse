@@ -120,6 +120,8 @@ def startups(run: dict) -> list[int]:
 
 def startup_text(run: dict) -> str:
     found = startups(run)
+    if not found:
+        return "No engine command waits for an earlier result."
     return (
         f"The {len(found)} engine commands that wait for an earlier result start in"
         f" {min(found)} to {max(found)} cycles (median {statistics.median(found):.0f});"
@@ -153,17 +155,35 @@ def smollm2_text(run: dict) -> str:
     )
 
 
-def f2_tokens_per_s(position: int) -> float:
-    """The perf model's in-order decode speed of SmolLM2 on F2 (estimate)."""
+def prompt_tokens(run: dict) -> int:
+    return len(run["tokens"]) - run["n_new"] + 1  # the last token is not run
+
+
+def baseline_positions(data: dict) -> range:
+    """The positions the CPU and GPU decode: after the prompt, n_decode."""
+    first = prompt_tokens(data["smollm2"])
+    return range(first, first + data[DEVICES[0]]["n_decode"])
+
+
+def f2_tokens_per_s(positions: range) -> float:
+    """The perf model's in-order decode speed of SmolLM2 on F2 over these
+    positions, one token each (estimate)."""
     config = perf.load_config(MODEL)
-    return perf.predict(config, m6.platform(), m6.design(), position).tokens_per_s_in_order
+    seconds = sum(
+        1 / perf.predict(config, m6.platform(), m6.design(), p).tokens_per_s_in_order
+        for p in positions
+    )
+    return len(positions) / seconds
 
 
 def speed_rows(data: dict) -> list[list]:
     """Decode tokens/s: the CPU and GPU (measured), the simulated core at
     the design's clock, the perf model on F2 (estimate)."""
+    positions = baseline_positions(data)
+    span = f"positions {positions[0]} to {positions[-1]}"
     rows = [
-        [DEVICE_NAMES[d], f"{median(data[d]):.1f}", ran_on(data[d]), "measured"] for d in DEVICES
+        [DEVICE_NAMES[d], f"{median(data[d]):.1f}", f"{ran_on(data[d])}; {span}", "measured"]
+        for d in DEVICES
     ]
     run = data["smollm2"]
     last = run["tokens"][-1]
@@ -172,16 +192,16 @@ def speed_rows(data: dict) -> list[list]:
         [
             "Cabosse, simulated",
             f"{clock / last['cycles']:.1f}",
-            f"rtl/core.sv at {clock / 1e6:.0f} MHz, position {last['position']}"
-            " (the memory above); no host",
+            f"rtl/core.sv at {clock / 1e6:.0f} MHz, the memory above; no host;"
+            f" position {last['position']} only",
             "simulated",
         ]
     )
     rows.append(
         [
             "Cabosse on F2",
-            f"{f2_tokens_per_s(last['position']):.1f}",
-            f"perf model, design {m6.DESIGN}, F2's measured HBM rate, in order; no host",
+            f"{f2_tokens_per_s(positions):.1f}",
+            f"perf model, design {m6.DESIGN}, F2's measured HBM rate, in order; no host; {span}",
             "estimate",
         ]
     )
@@ -208,7 +228,10 @@ def generated() -> dict[str, str]:
     tests, run = data["tests"], data["smollm2"]
     fast_ok, slow_ok = blocks.tests_passed(tests["fast"]), blocks.tests_passed(tests["slow"])
     in_order = [share(t["cycles"], t["model"]["in order"]) for t in run["tokens"]]
-    prompt = len(run["tokens"]) - run["n_new"] + 1  # the last token is not run
+    prompt = prompt_tokens(run)
+    compared = all("model" in t for t in run["tokens"]) and all(
+        "model_cycles" in r for r in run["tokens"][-1]["commands"]
+    )
     speeds = speed_rows(data)
     exit_rows = [
         [
@@ -225,7 +248,7 @@ def generated() -> dict[str, str]:
         [
             "The cycle breakdown per token compared with the perf model",
             f"every token {spread(in_order)} off the model in order; each command below",
-            "yes",
+            blocks.met(compared),
         ],
         [
             "Decode speed compared with a CPU and a GPU on the same model (D-067)",
