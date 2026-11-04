@@ -4,6 +4,8 @@
 reports/data/M7.json, each part replacing its own key:
 
     python scripts/measure_m7.py smollm2   # SmolLM2 on rtl/core.sv, 32 ports
+    python scripts/measure_m7.py cpu       # D-067: transformers on this PC's CPU
+    python scripts/measure_m7.py cuda      # D-067: on its GPU (a CUDA torch build)
     python scripts/measure_m7.py show      # print the tables from the saved data
 
 `smollm2` builds the 32-port core (about 6.5 minutes and 10 GB) and decodes
@@ -13,6 +15,13 @@ bit for bit against the golden model; each token's cycles go into the data
 by command and unit against the perf model (verif/breakdown.py). About
 100 s a token: run it under the memory cap (MemoryMax=12G). It needs the
 checkpoint in weights/. Commit first: the data records the commit.
+
+`cpu` and `cuda` time D-067's baseline: SmolLM2's published BF16 weights
+in `transformers` (eager, its default attention), batch 1, the same prompt,
+then N_DECODE greedy tokens through the KV cache, prefill excluded; the
+median of REPEATS runs after WARMUP. `cuda` needs an environment with a
+CUDA build of torch (D-067 keeps it out of requirements.txt) and the same
+transformers.
 """
 
 import argparse
@@ -30,6 +39,8 @@ import paths  # noqa: E402
 from reporting import blocks, measure  # noqa: E402
 
 DATA = REPO / "reports" / "data" / "M7.json"
+N_DECODE = 128
+WARMUP, REPEATS = 1, 5
 
 
 def smollm2() -> dict:
@@ -57,6 +68,72 @@ def smollm2() -> dict:
         "engine_startup_cycles": breakdown.DESIGN["engine_startup_cycles"],
         "tokens": tokens,
     }
+
+
+def decode_tokens_per_s(device: str) -> dict:
+    """D-067's decode speed on `device`, and what it ran on."""
+    import platform
+
+    import torch
+    import transformers
+    from generation import SMOLLM2_PROMPT
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    model = AutoModelForCausalLM.from_pretrained(paths.SMOLLM2, dtype=torch.bfloat16)
+    model = model.to(device).eval()
+    prompt = AutoTokenizer.from_pretrained(paths.SMOLLM2)(SMOLLM2_PROMPT)["input_ids"]
+    ids = torch.tensor([prompt], device=device)
+    sync = torch.cuda.synchronize if device == "cuda" else lambda: None
+    rates = []
+    with torch.inference_mode():
+        for _ in range(WARMUP + REPEATS):
+            out = model(ids, use_cache=True)  # prefill, not timed
+            sync()
+            start = time.perf_counter()
+            for _ in range(N_DECODE):
+                token = out.logits[:, -1].argmax(-1, keepdim=True)
+                out = model(token, past_key_values=out.past_key_values, use_cache=True)
+            sync()
+            rates.append(N_DECODE / (time.perf_counter() - start))
+    rates = rates[WARMUP:]
+    if device == "cuda":
+        hardware = torch.cuda.get_device_name()
+    else:
+        cpuinfo = Path("/proc/cpuinfo").read_text().splitlines()
+        hardware = next(line.split(":", 1)[1].strip() for line in cpuinfo if "model name" in line)
+        hardware += f", {torch.get_num_threads()} threads"
+    return {
+        "hardware": hardware,
+        "python": platform.python_version(),
+        "torch": torch.__version__,
+        "cuda": torch.version.cuda,
+        "transformers": transformers.__version__,
+        "prompt": SMOLLM2_PROMPT,
+        "n_decode": N_DECODE,
+        "tokens_per_s": [round(r, 1) for r in rates],
+        "median_tokens_per_s": round(sorted(rates)[len(rates) // 2], 1),
+    }
+
+
+def cpu() -> dict:
+    return decode_tokens_per_s("cpu")
+
+
+def cuda() -> dict:
+    return decode_tokens_per_s("cuda")
+
+
+def baseline_summary(data: dict) -> str:
+    """D-067's rows: device, decode tokens/s (median), what it ran on."""
+    lines = ["D-067 baseline, SmolLM2 BF16, batch 1, greedy, decode tokens/s:"]
+    for part in ("cpu", "cuda"):
+        if part in data:
+            b = data[part]
+            lines.append(
+                f"{part:4}  {b['median_tokens_per_s']:8.1f}  {b['hardware']}; torch {b['torch']},"
+                f" transformers {b['transformers']}; {b['provenance']['date']}"
+            )
+    return "\n".join(lines)
 
 
 def summary(run: dict) -> str:
@@ -96,7 +173,7 @@ def summary(run: dict) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("part", choices=("smollm2", "show"))
+    parser.add_argument("part", choices=("smollm2", "cpu", "cuda", "show"))
     args = parser.parse_args()
     data = json.loads(DATA.read_text()) if DATA.exists() else {}
     if args.part != "show":
@@ -104,8 +181,10 @@ def main() -> None:
         DATA.write_text(json.dumps(data, indent=1) + "\n")
     if "smollm2" in data:
         print(summary(data["smollm2"]))
+    if "cpu" in data or "cuda" in data:
+        print(baseline_summary(data))
     if not data:
-        sys.exit(f"no data in {DATA}: run the `smollm2` part first")
+        sys.exit(f"no data in {DATA}: run a part first")
 
 
 if __name__ == "__main__":
