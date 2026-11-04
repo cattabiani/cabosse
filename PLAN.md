@@ -1703,6 +1703,13 @@ does not check them; `SCORES` and `VALUES` are given after the
   119.2: about 8% and 2% between sessions (measured). At batch 1 the GPU
   is likely held by the host's per-kernel launches, not by its memory
   (not measured: no profile).
+- [x] Step 7: [reports/M7.md](reports/M7.md) (`scripts/report_m7.py`,
+  `model/reporting/m7.py`). All M7 exit criteria are met: fast suite 1009
+  passed, slow 39 passed (SmolLM2 on the core included). Decode, SmolLM2:
+  CPU 82.3 and GPU 116.2 tokens/s (`transformers`, positions 5 to 132,
+  measured); Cabosse 524.2 simulated at 250 MHz (position 11) and 513.4
+  on F2 by the perf model (positions 5 to 132, estimate), neither with
+  the host's part of a token (Q-33). Checkpoint: the owner reviews.
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
