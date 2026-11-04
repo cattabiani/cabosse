@@ -1692,6 +1692,15 @@ does not check them; `SCORES` and `VALUES` are given after the
   model's 76. Not done: the core's trace is not checked against D-068's
   ordering rules (`verif/controller.py`'s `check`; the trace lacks the
   handover's unit and wait bits).
+- [x] Step 6: D-067's baseline (`scripts/measure_m7.py cpu`, `cuda`;
+  D-070's CUDA build in `.venv`, the default suite passed on it: 1005
+  passed, 1 skipped). SmolLM2 BF16 in `transformers` (SDPA attention, no
+  compile), batch 1, greedy, 128 decode tokens after the prompt, median of
+  5: CPU (Ryzen 7 7800X3D, 8 threads) 83.6 tokens/s, GPU (RTX 4070 Ti)
+  117.1 tokens/s, both on a quiet machine. The CPU's median moved from
+  77.3 to 83.6 over four sessions the same day, the GPU's from 116.6 to
+  119.2: about 8% and 2% between sessions (measured). At batch 1 the GPU
+  is held by the host's per-kernel launches, not by its memory.
 
 ### M8 — F2 bring-up (no model) ✅
 **What:** F2 wrapper with a trivial test design: registers, host DMA, and
