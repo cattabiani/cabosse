@@ -8,7 +8,8 @@
 /// ports in a memory model (axi_mem.h).
 ///
 /// At start it writes kHello, Ports, ChanW and Len. Then requests,
-/// little-endian uint32 words, each an opcode and its arguments:
+/// little-endian uint32 words, each an opcode (sw/driver_protocol.h) and its
+/// arguments:
 /// - 0 register write: offset, value (AXI-Lite). No answer.
 /// - 1 register read: offset. Answer: the value.
 /// - 2 memory write: address low, high, bytes, then the bytes padded to
@@ -39,6 +40,7 @@
 #include "Vcore___024root.h"
 #include "axi_bench.h"
 #include "axil.h"
+#include "../../sw/driver_protocol.h"
 
 namespace {
 
@@ -51,7 +53,6 @@ constexpr size_t kLanes = Params::core__DOT__Lanes;
 constexpr size_t kAddrBits = 34;
 constexpr size_t kBeatBytes = 32;
 constexpr size_t kBeatWords = kBeatBytes / 4;
-constexpr uint32_t kHello = 0x4342'5349;  // 'CBSI'
 constexpr int kExitAxi = 5;
 
 /// @brief The controller's handshakes with the units (request 7's order).
@@ -200,22 +201,22 @@ int main(int argc, char** argv) {
   dut->host_r_valid_i = 0;
   try {
     reset(bench);
-    const std::array<uint32_t, 4> hello{kHello, kPorts, kChanW, kLen};
+    const std::array<uint32_t, 4> hello{protocol::kHello, kPorts, kChanW, kLen};
     answer(hello);
     std::array<uint32_t, 3> a{};
     for (uint32_t op = 0; read_exact(std::span(&op, 1));) {
       switch (op) {
-        case 0:
+        case protocol::kRegWrite:
           if (!read_exact(std::span(a).first(2))) throw std::out_of_range("register write");
           axil_write(bench, a[0], a[1]);
           break;
-        case 1: {
+        case protocol::kRegRead: {
           if (!read_exact(std::span(a).first(1))) throw std::out_of_range("register read");
           const uint32_t v = axil_read(bench, a[0]);
           answer(std::span(&v, 1));
           break;
         }
-        case 2: {
+        case protocol::kMemWrite: {
           if (!read_exact(a)) throw std::out_of_range("memory write");
           std::vector<uint32_t> words((a[2] + 3) / 4);
           if (!read_exact(words)) throw std::out_of_range("memory write's bytes");
@@ -223,7 +224,7 @@ int main(int argc, char** argv) {
           std::ranges::copy(std::as_bytes(std::span(words)).first(dst.size()), dst.begin());
           break;
         }
-        case 3: {
+        case protocol::kMemRead: {
           if (!read_exact(a)) throw std::out_of_range("memory read");
           const auto src = bytes_at(mem, uint64_t{a[1]} << 32 | a[0], a[2]);
           std::vector<uint32_t> words((a[2] + 3) / 4);
@@ -231,7 +232,7 @@ int main(int argc, char** argv) {
           answer(words);
           break;
         }
-        case 4: {
+        case protocol::kRun: {
           const auto status = axil_until_status(bench, poll, [&] { return bench.progress; });
           if (!status) {
             std::println(stderr, "hung: no memory traffic for {} cycles", kMaxIdleCycles);
@@ -240,17 +241,17 @@ int main(int argc, char** argv) {
           answer(std::span(&*status, 1));
           break;
         }
-        case 5: {
+        case protocol::kBufRead: {
           if (!read_exact(a)) throw std::out_of_range("buffer read");
           if (a[0] == 0 || a[0] >= kBufs) throw std::out_of_range(std::format("buffer {}", a[0]));
           if (a[1] > kLen || a[2] > kLen - a[1]) throw std::out_of_range("buffer read past the buffer");
           answer(bench.read_buffer(a[0], a[1], a[2]));
           break;
         }
-        case 6:
+        case protocol::kQuit:
           dut->final();
           return 0;
-        case 7: {
+        case protocol::kTrace: {
           std::vector<uint32_t> out;
           for (auto& cycles : bench.trace) {
             out.push_back(static_cast<uint32_t>(cycles.size()));
