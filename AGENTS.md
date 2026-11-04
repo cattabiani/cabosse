@@ -111,6 +111,16 @@ one is wrong, say so and explain why, and let the owner decide.
   numerics, code review and simplification use the default model at high
   effort. Give the subagent the context it needs in the prompt so it does
   not have to rediscover it.
+- Keep token use low, and propose the limits yourself without waiting to
+  be asked (owner, 2026-11-04). One step per session: when a step ends
+  (PR merged, handoff notes current), tell the owner it is a good moment
+  for `/clear`. Tell the owner when the next work is mechanical (running
+  tests, rendering reports, merging) and `/model sonnet` would do, and
+  when it needs the stronger model again (RTL, numerics, debugging).
+  Review at the effort the change needs: low or medium for docs, scripts
+  and Python-only changes, high for RTL and anything a paid build depends
+  on. Read only the lines you need (search, line ranges), not whole files.
+  Keep replies and status lines short.
 - When you make a decision that is not already in PLAN.md, write it down:
   either as a proposed decision for the owner to confirm, or as an open
   question.

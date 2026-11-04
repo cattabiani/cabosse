@@ -49,8 +49,7 @@ class GoldenPlatform:
         self.regs = {REG["ID"]: commands.ID, REG["VERSION"]: commands.VERSION}
         self.command_buffer = bytearray(commands.COMMAND_BUFFER_BYTES)
         self.hbm: dict[int, torch.Tensor] | None = None  # memory as tensors, once read
-        self.caches_stale = False  # the stores wrote self.hbm, not yet self.mem
-        self.logits: torch.Tensor | None = None
+        self.stale = False  # the stores and OUTPUT wrote self.hbm, not yet self.mem
         # Rows no store has written hold NaN, as in commands.load(), so a
         # read of one shows (the hardware's are whatever was there).
         stale = {
@@ -79,21 +78,26 @@ class GoldenPlatform:
         return self.regs.get(offset, 0)
 
     def mem_write(self, addr: int, data: torch.Tensor) -> None:
-        self.sync_caches()
+        self.sync()
         self.mem.write(addr, data)
         self.hbm = None
 
     def mem_read(self, addr: int, n_bytes: int) -> torch.Tensor:
-        self.sync_caches()
+        logits, (_, shape, dtype) = self.layout.addr("logits"), self.layout.tensors["logits"]
+        if logits <= addr and addr + n_bytes <= logits + commands.n_bytes(shape, dtype):
+            self.sync(frozenset({commands.Kind.OUTPUT}))  # each token's: not the caches
+        else:
+            self.sync()
         return self.mem.read(addr, n_bytes)
 
-    def sync_caches(self) -> None:
-        """Write what the stores wrote into the bytes when they are next
-        used (whole caches: slow at long caps, fine for tests)."""
-        if self.caches_stale and self.hbm is not None:
-            for addr, data in commands.channel_writes(self.layout, self.hbm, commands.CACHES):
+    def sync(self, kinds: frozenset[commands.Kind] = commands.WRITTEN) -> None:
+        """Write what the stores and OUTPUT wrote (of `kinds`) into the bytes
+        when they are next used (whole caches: slow at long caps, fine for
+        tests)."""
+        if self.stale and self.hbm is not None:
+            for addr, data in commands.channel_writes(self.layout, self.hbm, kinds):
                 self.mem.write(addr, data)
-        self.caches_stale = False
+        self.stale = self.stale and kinds != commands.WRITTEN
 
     def run_until_done(self) -> None:
         assert self.regs.get(REG["STATUS"]) == commands.STATUS_BUSY, "no CONTROL start"
@@ -109,10 +113,6 @@ class GoldenPlatform:
             self.hbm = commands.channel_reads(self.layout, self.mem.read)
         token, position = self.regs.get(REG["TOKEN"], 0), self.regs.get(REG["POSITION"], 0)
         layout = dataclasses.replace(self.layout, stride=self.regs[REG["STRIDE"]])
-        self.logits = commands.run(cmds, layout, self.hbm, token, position)
-        self.caches_stale = True
+        commands.run(cmds, layout, self.hbm, token, position)
+        self.stale = True
         self.regs[REG["STATUS"]] = commands.STATUS_DONE
-
-    def read_logits(self, n: int) -> torch.Tensor:
-        assert self.logits is not None, "no token run"
-        return self.logits[:n].clone()

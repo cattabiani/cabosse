@@ -1,17 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
 """A whole decode step on rtl/vec_unit.sv (verif/tests/test_vec_decode.py,
-scripts/measure_m6.py): every vector, LOAD, KV_STORE and V_STORE command of
-commands.build()'s list in one run, the engine's commands stood in by the
-driver's engine steps with commands.run()'s results (OUTPUT and END are
-not the unit's), and its check bit for bit against run().
+scripts/measure_m6.py): every vector, LOAD, KV_STORE, V_STORE and OUTPUT
+command of commands.build()'s list in one run, the engine's commands stood
+in by the driver's engine steps with commands.run()'s results (END is not
+the unit's), and its check bit for bit against run().
 
 The memory holds only what the unit reads and writes (PLAN.md, M6's
 real-data answers), so it keeps a map of its own, smaller than Layout's
 D-040 one (whose channel 0 holds the engine's region too): it puts
 each KV cache at a low offset in every channel, in the engine's order
-(D-062), the tensors LOAD reads after the channels, and the rest (the
-engine's) past the memory."""
+(D-062), the tensors LOAD reads and the logits after the channels, and the
+rest (the engine's) past the memory."""
 
 import dataclasses
 
@@ -54,7 +54,7 @@ def mapped(layout: Layout, kv_ports: int, chan_w: int) -> Layout:
     channels, the rest past the memory."""
     cmds = commands.build(layout)
     caches = {c.addr: cache_bytes(c, kv_ports) for c in cmds if c.op in commands.STORE_OPS}
-    loads = {c.addr for c in cmds if c.op == Op.LOAD}
+    loads = {c.addr for c in cmds if c.op in (Op.LOAD, Op.OUTPUT)}  # and the logits
     new: dict[str, tuple[int, tuple[int, ...], torch.dtype]] = {}
     at = 0
     for name, (addr, shape, dtype) in layout.tensors.items():
@@ -73,7 +73,7 @@ def mapped(layout: Layout, kv_ports: int, chan_w: int) -> Layout:
 
 def memory_bytes(layout: Layout, cmds: list[Command]) -> int:
     """The memory's bytes: up to the end of the last tensor LOAD reads."""
-    loads = {c.addr for c in cmds if c.op == Op.LOAD}
+    loads = {c.addr for c in cmds if c.op in (Op.LOAD, Op.OUTPUT)}  # and the logits
     return max(
         addr + commands.n_bytes(shape, dtype)
         for addr, shape, dtype in layout.tensors.values()
@@ -88,7 +88,7 @@ def image(
     writes it (D-062), the tensors LOAD reads as they are."""
     mem = np.zeros(-(-memory_bytes(layout, cmds) // 4), dtype=np.uint32)
     caches = {c.addr: c for c in cmds if c.op in commands.STORE_OPS}
-    loads = {c.addr for c in cmds if c.op == Op.LOAD}
+    loads = {c.addr for c in cmds if c.op in (Op.LOAD, Op.OUTPUT)}  # and the logits
     for addr, x in hbm.items():
         if addr in caches:
             rows = x.contiguous().view(torch.int16).numpy().view(np.uint16)
@@ -122,7 +122,7 @@ def unit_steps(
         if cmd.op in commands.ENGINE_OPS
         else Step(cmd, t=t, stride=stride, token=token, wait=stop)
         for i, (cmd, stop) in enumerate(zip(cmds, commands.stops(cmds), strict=True))
-        if cmd.op not in (Op.OUTPUT, Op.END)
+        if cmd.op != Op.END
     ]
 
 

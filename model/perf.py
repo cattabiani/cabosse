@@ -73,7 +73,8 @@ UNITS = {"Hz": (1e6, "MHz"), "B/s": (1e9, "GB/s"), "B": (2**30, "GiB")}
 # Ops on the matrix-vector engine that are attention, not weights.
 ATTENTION_KINDS = ("scores", "values")
 REDUCTION_KINDS = tuple(op.name.lower() for op in commands.REDUCE)
-STORE_KINDS = tuple(op.name.lower() for op in commands.STORE_OPS)
+# The vector unit's writes to HBM, timed alike (vector_cycles): the KV stores and OUTPUT.
+STORE_KINDS = (*(op.name.lower() for op in commands.STORE_OPS), "output")
 # Design values that are counts: whole numbers (Design checks).
 ENGINE_COUNTS = ("lanes", "macs_per_lane", "accumulators")
 # Design values that are on (1) or off (0); see ops().
@@ -94,6 +95,7 @@ class Step:
     weight_bytes: int = 0
     kv_read_bytes: int = 0
     kv_write_bytes: int = 0
+    output_bytes: int = 0  # OUTPUT's logits, written to HBM (D-071)
     vector_elems: int = 0  # elements on the vector unit (one pass)
     # (rows, cols) of each block on the engine: a row per lane, cols
     # multiply-adds per row, rows in passes of the lanes within a block;
@@ -329,8 +331,11 @@ def step(cmd: commands.Command, t: int, lanes: int, tiles_shared: bool) -> Step:
             return store(cmd, lanes)
         case commands.Op.SCORES | commands.Op.VALUES:
             return attention(cmd, t, lanes, tiles_shared)
-        case commands.Op.OUTPUT | commands.Op.END:  # OUTPUT goes over PCIe, not HBM
-            return Step(cmd.op.name.lower(), ())
+        case commands.Op.OUTPUT:  # the logits to HBM as FP32, a beat a store's (D-071)
+            n_bytes = commands.n_bytes(cmd.n, commands.F32)
+            return Step("output", (cmd.n,), output_bytes=n_bytes, walk=(1, cmd.n))
+        case commands.Op.END:
+            return Step("end", ())
         case _:  # the vector unit
             length = cmd.row_length(t)
             return Step(
@@ -410,10 +415,11 @@ class Work:
     engine_shapes: tuple[tuple[int, int], ...]  # (rows, cols) per engine op
     engine_waits: int  # engine ops that wait for an earlier result
     vector_steps: tuple[Step, ...] = ()  # the vector unit's, in order (vector_cycles)
+    output_bytes: int = 0  # OUTPUT's logits to HBM (D-071)
 
     @property
     def memory_bytes(self) -> int:
-        return self.weight_bytes + self.kv_read_bytes + self.kv_write_bytes
+        return self.weight_bytes + self.kv_read_bytes + self.kv_write_bytes + self.output_bytes
 
     @property
     def macs(self) -> int:
@@ -428,6 +434,7 @@ class Work:
             weight_bytes=total("weight_bytes"),
             kv_read_bytes=total("kv_read_bytes"),
             kv_write_bytes=total("kv_write_bytes"),
+            output_bytes=total("output_bytes"),
             matvec_macs=total("macs", lambda o: o.kind not in ATTENTION_KINDS),
             attention_macs=total("macs", lambda o: o.kind in ATTENTION_KINDS),
             vector_elems=total("vector_elems"),
@@ -465,11 +472,15 @@ def engine_cycles(
 
 def vector_issue(s: Step, lanes: float) -> tuple[int, int]:
     """A vector-unit step's groups in a row (`lanes` elements each), and the
-    cycles it issues for, latencies apart: its groups, a LOAD its beats."""
+    cycles it issues for, latencies apart: its groups, a LOAD its beats,
+    OUTPUT its beats (groups of a beat of FP32)."""
     rows, length = s.walk
     row_groups = math.ceil(length / lanes)
     if s.kind == "load":
         return row_groups, math.ceil(s.weight_bytes / commands.BEAT_BYTES)
+    if s.kind == "output":
+        beats = math.ceil(s.output_bytes / commands.BEAT_BYTES)
+        return beats, beats
     return row_groups, rows * row_groups
 
 
@@ -507,7 +518,7 @@ def vector_cycles(steps: tuple[Step, ...], design: dict[str, float]) -> list[flo
         elif s.kind in STORE_KINDS:
             issued = start + issue
             written = max(start + latency, written) + max(
-                s.kv_write_bytes / commands.BEAT_BYTES, issue
+                (s.kv_write_bytes + s.output_bytes) / commands.BEAT_BYTES, issue
             )
             latency = written - issued + design["kv_store_latency_cycles"]
         else:

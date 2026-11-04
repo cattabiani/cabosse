@@ -95,3 +95,7 @@ vivado_pid*.zip
 
 # Temporary local notes
 removeme*
+
+# Host tools, built on the F2 instance
+platforms/f2/host/bringup
+platforms/f2/host/core_driver

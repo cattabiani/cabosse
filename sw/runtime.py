@@ -95,7 +95,7 @@ class Runtime:
             raise DeviceError(f"STATUS 0x{status:X}, ERROR 0x{p.reg_read(REG['ERROR']):X}")
         self.cycles = p.reg_read(REG["CYCLES_LO"]) | p.reg_read(REG["CYCLES_HI"]) << 32
         self.position += 1
-        return p.read_logits(vocab)
+        return p.mem_read(self.layout.addr("logits"), 4 * vocab).view(torch.float32)
 
     def generate(self, prompt: list[int], n_new: int) -> tuple[list[int], torch.Tensor]:
         """Greedy decoding, as decoder.generate (the lowest index on a tie):

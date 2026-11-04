@@ -17,8 +17,8 @@
 // ports (commands.hazards).
 //
 // host_r_*: a read of a buffer's Lanes elements from host_r_addr_i, the data
-// the cycle after, in place of the engine's read: for the simulation to read
-// LOGITS after END (M7; how F2's host gets the logits is Q-33, M9). It must
+// the cycle after, in place of the engine's read: the simulation's view of
+// any buffer (M7; the logits come back through HBM, OUTPUT: D-071). It must
 // not be used while a token runs.
 
 module core #(

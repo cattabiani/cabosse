@@ -154,7 +154,7 @@ OPS = {
         "dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t (rows of a at STRIDE)",
         ("dst", "a", "n", "m", "kv_heads", "cap", "addr"),
     ),
-    Op.OUTPUT: ("a (n FP32) to host memory at LOGITS_HI:LOGITS_LO", ("a", "n")),
+    Op.OUTPUT: ("a's n FP32 values to HBM at addr, as they are (D-071)", ("a", "n", "addr")),
     Op.ADD: ("dst = add(a, b)", ("dst", "a", "b", *ROWS, "scalar")),
     Op.MUL: ("dst = mul(a, b)", ("dst", "a", "b", *ROWS, "scalar")),
     Op.FMA: ("dst = fma(a, b, c)", ("dst", "a", "b", "c", *ROWS)),
@@ -305,8 +305,8 @@ REGISTERS = [
         "R",
         "31:28 why (1 opcode, 2 memory, 3 no END), 15:0 the command (memory: where the run was)",
     ),
-    (0x20, "LOGITS_LO", "RW", "host address for OUTPUT, low 32 bits"),
-    (0x24, "LOGITS_HI", "RW", "host address for OUTPUT, high 32 bits"),
+    (0x20, "LOGITS_LO", "RW", "unused since D-071 (OUTPUT's own addr), low 32 bits"),
+    (0x24, "LOGITS_HI", "RW", "unused since D-071, high 32 bits"),
     (0x28, "CYCLES_LO", "R", "cycles of the last token, low 32 bits"),
     (0x2C, "CYCLES_HI", "R", "cycles of the last token, high 32 bits"),
     (0x30, "STRIDE", "RW", "row stride of S and P, in elements (SCORES, VALUES, LEN_T)"),
@@ -332,16 +332,20 @@ def f32_value(bits: int) -> torch.Tensor:
 class Kind(enum.Enum):
     """How a tensor sits in HBM (D-040): LOAD reads it from channel 0 as it
     is, or the engine reads it spread over every channel at one offset, a
-    matrix or a KV cache in the lanes' order (lane_order, kv_lane_order)."""
+    matrix or a KV cache in the lanes' order (lane_order, kv_lane_order);
+    OUTPUT writes the logits to channel 0 as they are (D-071)."""
 
     LOADED = enum.auto()
     MATRIX = enum.auto()
     K_CACHE = enum.auto()
     V_CACHE = enum.auto()
+    OUTPUT = enum.auto()
 
 
 CACHES = frozenset({Kind.K_CACHE, Kind.V_CACHE})
-WEIGHTS = frozenset(Kind) - CACHES
+WEIGHTS = frozenset(Kind) - CACHES - {Kind.OUTPUT}
+RAW = frozenset({Kind.LOADED, Kind.OUTPUT})  # in channel 0 as they are
+WRITTEN = CACHES | {Kind.OUTPUT}  # what a token writes in HBM
 
 
 @dataclass(frozen=True)
@@ -350,7 +354,7 @@ class Layout:
     its Kind, on an engine of `ports` ports and channels of `channel_bytes`
     (D-040). What the engine reads sits at the same offset in every channel,
     in [0, engine_bytes), reserving its largest share there; the tensors LOAD
-    reads sit in channel 0 above them, up to end_bytes, so a channel-0
+    reads and OUTPUT writes sit in channel 0 above them, up to end_bytes, so a channel-0
     offset is also the HBM address. The KV cache has `cap` rows per KV head
     and layer. Also the STRIDE register's value: S and P hold head h's row
     of t at h·stride, on chip (by default `cap` rounded up to STRIDE_ALIGN;
@@ -408,12 +412,13 @@ class Layout:
         # engine lm_head in the lanes' order (lane_order).
         shapes["final_norm"] = ((hidden,), BF16, ld)
         shapes["lm_head"] = ((c.vocab_size, hidden), BF16, mat)
+        shapes["logits"] = ((c.vocab_size,), F32, Kind.OUTPUT)  # OUTPUT's, for the host
         lanes = ports * LANES_PER_PORT
         tensors, kinds, addr = {}, {}, 0
         for loaded in (False, True):  # the engine's, then LOAD's above them
             engine_bytes = addr
             for name, (shape, dtype, kind) in shapes.items():
-                if (kind == ld) == loaded:
+                if (kind in RAW) == loaded:
                     tensors[name], kinds[name] = (addr, shape, dtype), kind
                     addr += -(-reserved_bytes(shape, dtype, kind, lanes) // ALIGN) * ALIGN
         if addr > channel_bytes:
@@ -522,7 +527,7 @@ def region_beats(shape: tuple[int, ...], kind: Kind, lanes: int) -> int:
 def reserved_bytes(shape: tuple[int, ...], dtype: torch.dtype, kind: Kind, lanes: int) -> int:
     """The bytes a tensor reserves: in channel 0 if LOAD reads it, else in
     every channel."""
-    if kind == Kind.LOADED:
+    if kind in RAW:
         return n_bytes(shape, dtype)
     return region_beats(shape, kind, lanes) * BEAT_BYTES
 
@@ -569,7 +574,7 @@ def channel_writes(
         if kind not in kinds:
             continue
         x = hbm[addr]
-        if kind == Kind.LOADED:
+        if kind in RAW:
             yield addr, x.contiguous().view(-1).view(torch.uint8)
             continue
         for p, beats in enumerate(per_port(x, kind, layout.lanes)):
@@ -597,7 +602,7 @@ def channel_reads(
         kind = layout.kinds[name]
         if kind not in kinds:
             continue
-        if kind == Kind.LOADED:
+        if kind in RAW:
             hbm[addr] = read(addr, n_bytes(shape, dtype)).view(dtype).reshape(shape).clone()
             continue
         out, shares = torch.zeros(math.prod(shape), dtype=dtype), []
@@ -733,7 +738,7 @@ def epilogue(layout: Layout) -> list[Command]:
     return [
         *norm(layout, "final_norm"),
         matvec(layout, Buf.LOGITS, "lm_head", Buf.X),
-        Command(Op.OUTPUT, a=Buf.LOGITS, n=vocab),
+        Command(Op.OUTPUT, a=Buf.LOGITS, n=vocab, addr=layout.addr("logits")),
         Command(Op.END),
     ]
 
@@ -1089,6 +1094,13 @@ def kv_store_command(
     mem[:, position] = arith.bf16(buffer_span(buf[cmd.a], cmd.n, cmd.m))
 
 
+def output_command(cmd: Command, buf: dict[Buf, torch.Tensor], mem: torch.Tensor) -> None:
+    """OUTPUT: the first n elements of `mem` (FP32, channel 0) = a's first
+    n, as they are (D-071)."""
+    assert mem.dtype == F32 and buf[cmd.a].dtype == F32 and cmd.n <= len(mem), (mem.shape, cmd)
+    mem[: cmd.n] = buf[cmd.a][: cmd.n]
+
+
 def validate(layout: Layout, cmds: list[Command], buffer_elements: int | None = None) -> None:
     """Raise ValueError on the first command the hardware cannot run
     correctly, or on a layout it cannot hold (with buffers of
@@ -1123,7 +1135,12 @@ def validate(layout: Layout, cmds: list[Command], buffer_elements: int | None = 
         need(flags_ok(cmd), i, f"flags {cmd.flags!r} not accepted")
         need(overlap_ok(cmd), i, "dst overlaps a source it reads again")
         need(max(cmd.n, cmd.m, cmd.cap) < 2**ROW_BITS, i, f"n, m or cap of {ROW_BITS} bits or more")
-        if cmd.op in (Op.END, Op.OUTPUT):
+        if cmd.op == Op.END:
+            continue
+        if cmd.op == Op.OUTPUT:  # whole beats of FP32 (rtl/vec_unit.sv)
+            beat = VECTOR_LANES // 2
+            need(cmd.n >= 1 and cmd.n % beat == 0, i, f"n {cmd.n} not whole beats ({beat})")
+            need(cmd.addr % BEAT_BYTES == 0, i, "address not beat-aligned")
             continue
         need(cmd.m >= 1 or bool(cmd.flags & Flag.LEN_T), i, "no columns (m = 0)")  # LEN_T: t
         if cmd.op == Op.LOAD:  # rows of whole AXI beats (rtl/vec_unit.sv)
@@ -1163,7 +1180,7 @@ def run(
 ) -> torch.Tensor | None:
     """Execute a command list for one token, as the controller does: buffers
     start with stale data (empty_buffers, or `start`, updated in place),
-    HBM (the KV cache) is updated in place. Returns what OUTPUT wrote to the
+    HBM (the KV cache, the logits) is updated in place. Returns what OUTPUT wrote to the
     host, or None for a list without OUTPUT (a prompt token whose logits the
     host does not need). `record` gets every engine command's EngineCall."""
     assert len(commands) * COMMAND_BYTES <= COMMAND_BUFFER_BYTES, len(commands)
@@ -1202,8 +1219,8 @@ def run(
                 o = decoder.attention_values(p, mem[:, None, :t])
                 store(span(cmd.dst, cmd.n, cmd.m), o.reshape(cmd.n, cmd.m))
             case Op.OUTPUT:
-                assert a.dtype == F32, a.dtype
-                output = span(cmd.a, 1, cmd.n)[0].clone()
+                output_command(cmd, buf, mem)
+                output = mem[: cmd.n].clone()
             case op if op in VECTOR_OPS:
                 vector_command(cmd, buf, t, stride)
             case Op.END:  # must be the last command (the COMMANDS register's count)

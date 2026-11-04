@@ -310,7 +310,7 @@ mid-token.
 | 3 | `KV_STORE` | K cache[h][position] = a[h], n heads of m; cache at addr, cap rows per head |  |
 | 4 | `SCORES` | dst[h][i] = dot(a[h], K[h // group][i]) · scalar, n heads of m, i < t (rows at STRIDE) |  |
 | 5 | `VALUES` | dst[h] = Σᵢ a[h][i] · V[h // group][i], n heads of m, i < t (rows of a at STRIDE) |  |
-| 6 | `OUTPUT` | a (n FP32) to host memory at LOGITS_HI:LOGITS_LO |  |
+| 6 | `OUTPUT` | a's n FP32 values to HBM at addr, as they are (D-071) |  |
 | 7 | `ADD` | dst = add(a, b) | NEG_A NEG_B B_PER_ROW B_ROW LEN_T |
 | 8 | `MUL` | dst = mul(a, b) | NEG_A NEG_B B_PER_ROW B_ROW LEN_T |
 | 9 | `FMA` | dst = fma(a, b, c) | NEG_A NEG_B B_PER_ROW B_ROW LEN_T |
@@ -374,7 +374,7 @@ and every MATVEC input is already BF16.
 | 8 | 4 | `n` | rows or heads | MATVEC, KV_STORE, SCORES, VALUES, OUTPUT, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF, V_STORE |
 | 12 | 4 | `m` | columns, row length or elements | LOAD, MATVEC, KV_STORE, SCORES, VALUES, ADD, MUL, FMA, EXP, RECIP, RSQRT, SUM, SUMSQ, MAX, ROTATE_HALF, V_STORE |
 | 16 | 4 | `cap` | KV cache rows per head | KV_STORE, SCORES, VALUES, V_STORE |
-| 20 | 8 | `addr` | HBM byte address | LOAD, MATVEC, KV_STORE, SCORES, VALUES, V_STORE |
+| 20 | 8 | `addr` | HBM byte address | LOAD, MATVEC, KV_STORE, SCORES, VALUES, OUTPUT, V_STORE |
 | 28 | 4 | `scalar` | FP32 bits: a constant (scale, 1/n, eps, 1) | SCORES, ADD, MUL |
 
 32 bytes per command, little-endian; unused fields are zero.
@@ -426,8 +426,8 @@ command that repeats a layer's block at shifted addresses would fix that.
 <!-- begin: ladder -->
 | model | layers | context | commands | command bytes | HBM reserved (MiB) |
 |---|---|---|---|---|---|
-| SmolLM2-135M-Instruct | 30 | 8192 | 1333 | 42,656 | 611.0 |
-| Qwen2.5-0.5B-Instruct | 24 | 32768 | 1069 | 34,208 | 1,804.6 |
+| SmolLM2-135M-Instruct | 30 | 8192 | 1333 | 42,656 | 611.2 |
+| Qwen2.5-0.5B-Instruct | 24 | 32768 | 1069 | 34,208 | 1,805.2 |
 
 Command buffer: 64 KiB, 2,048 commands.
 <!-- end: ladder -->
@@ -449,8 +449,8 @@ done (or the interrupt) and finds the logits at the host address it set.
 | `0x14` | `POSITION` | RW | position of the next step |
 | `0x18` | `COMMANDS` | RW | number of commands in the list |
 | `0x1C` | `ERROR` | R | 31:28 why (1 opcode, 2 memory, 3 no END), 15:0 the command (memory: where the run was) |
-| `0x20` | `LOGITS_LO` | RW | host address for OUTPUT, low 32 bits |
-| `0x24` | `LOGITS_HI` | RW | host address for OUTPUT, high 32 bits |
+| `0x20` | `LOGITS_LO` | RW | unused since D-071 (OUTPUT's own addr), low 32 bits |
+| `0x24` | `LOGITS_HI` | RW | unused since D-071, high 32 bits |
 | `0x28` | `CYCLES_LO` | R | cycles of the last token, low 32 bits |
 | `0x2C` | `CYCLES_HI` | R | cycles of the last token, high 32 bits |
 | `0x30` | `STRIDE` | RW | row stride of S and P, in elements (SCORES, VALUES, LEN_T) |
@@ -522,8 +522,8 @@ SmolLM2-135M-Instruct, cache of 8192 positions:
 | 1328 | MUL | T | H | R |  | 1 | 576 | B_PER_ROW |  |  |
 | 1329 | MUL | X | T | W |  | 1 | 576 |  |  |  |
 | 1330 | MATVEC | LOGITS | X |  |  | 49152 | 576 |  |  | 0xF96000 |
-| 1331 | OUTPUT |  | LOGITS |  |  | 49152 |  |  |  |  |
+| 1331 | OUTPUT |  | LOGITS |  |  | 49152 |  |  |  | 0x4B83000 |
 | 1332 | END |  |  |  |  |  |  |  |  |  |
 
-1333 commands (44 per layer), 42,656 bytes. HBM reserved: 611.0 MiB.
+1333 commands (44 per layer), 42,656 bytes. HBM reserved: 611.2 MiB.
 <!-- end: token -->

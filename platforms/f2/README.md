@@ -46,11 +46,12 @@ copied here (Amazon Software License).
   built only in Vivado; verif/tests/test_bringup_core.py elaborates it with
   slang when `CABOSSE_AWS_FPGA` names an aws-fpga checkout (`pytest -m
   on_request`).
-- `synth_cabosse_bringup.tcl`: its synthesis in AWS's shell flow.
+- `../synth_cl.tcl` (both designs): its synthesis in AWS's shell flow;
+  `../cl_shell.svh`: the shell body both CL tops include.
 
 ### Build
 
-`scripts/f2/build_bringup.sh` is the user data of one build instance
+`scripts/f2/build_cl.sh` (DESIGN=bringup) is the user data of one build instance
 (c6i.8xlarge, FPGA Developer AMI, the build instance profile): it makes a
 CL directory from AWS's template, puts our design in it, runs
 `aws_build_dcp_from_cl.py` (Small Shell, recipe H0) and our reports, and
@@ -153,3 +154,56 @@ when the port is done; `start` clears them.
 Host-side measurements need no registers: PCIS throughput (host writes and
 reads of card memory through BAR4), OCL latency (reads of SCRATCH), and
 the core clock (CYCLES against the host's clock).
+
+## The core on F2 (M9)
+
+The CL top holds `rtl/core.sv` in place of the bring-up's test engines and
+keeps the bring-up's shell side: OCL and PCIS crossed into `clk_hbm_axi`,
+the clock generator, the register slices, the ILA. The core's 32 engine
+ports drive HBM ports 0-31, each on its own channel. The vector unit's AXI
+port (`LOAD`, the KV stores, `OUTPUT`) shares HBM port 0 with engine port
+0, and the HBM switch carries it to the other channels
+(docs/architecture.md). PCIS reaches HBM port 0 through `HOST_PORT`, as in
+the bring-up: the host owns port 0 between tokens, the core during one.
+
+### Files
+
+- `core/f2_port0.sv`, `core/f2_core.sv` (listed in `core/sources.f`, with
+  the bring-up's `bringup_pipe.sv` and `bringup_host.sv`): the
+  vendor-free wrapper. `f2_core` puts channel p into engine port p's
+  addresses (the engine gives every port the same offset), and merges
+  engine port 0 and the vector unit onto HBM port 0 (`f2_port0`: reads in
+  turns, one ID, answers routed back in order).
+- `core/cabosse_core.sv`: the CL top, on `cl_shell.svh` as the bring-up's.
+- Build: `scripts/f2/build_cl.sh` with `DESIGN=core` (a 6 h deadline;
+  the engine's own placed builds peaked at 14 GB).
+
+### Registers (OCL, BAR0)
+
+The core's registers (model/commands.py, `REGISTERS`) sit at their own
+offsets, below 0x2_0000. The wrapper's sit above:
+
+| Offset | Name | Access | Meaning |
+|---|---|---|---|
+| 0x2_0000 | WRAP_ID | RO | `0xCAB0C0E0` |
+| 0x2_0004 | BUILD | RO | the build's commit (first 8 hex digits) |
+| 0x2_0008 | HOST_PORT | RW | bit 0: HBM port 0 serves PCIS (1, reset) or the core (0) |
+| 0x2_000C | WRAP_STATUS | RO | bit 1 HBM ready (both stacks), bit 3 the host owns HBM port 0 now |
+| 0x2_0018 | PORTS | RO | the core's `Ports` |
+| 0x2_001C | CHAN_W | RO | its `ChanW` |
+| 0x2_0020 | LEN | RO | its `Len` |
+
+HBM port 0 changes hands only between bursts: the host waits for its
+PCIS writes to be done (a read after them) before clearing `HOST_PORT`,
+and sets it only when the core is not running.
+
+### Host side
+
+`host/core_driver.cpp` (with `host/card_f2.cpp`; `make core_driver` on
+the instance) serves the runtime's calls for `sw/f2_platform.py` in the
+simulation driver's protocol (`sw/driver_protocol.h`). It hands HBM port 0
+to the host before a memory request and to the core before a start.
+PCIS writes are two 32-byte AVX2 stores a line; partial lines are byte
+stores, carried as strobes. `sw/tests/test_f2_platform.py` runs it on a
+fake card (`sw/tests/card_fake.cpp`), which fails a start while the host
+holds port 0 and a memory access while the core holds it.

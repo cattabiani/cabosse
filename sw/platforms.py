@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""What the runtime needs from a platform (PLAN.md, M7's answers): six
+"""What the runtime needs from a platform (PLAN.md, M7's answers): five
 calls, the same for the simulation (a Verilator driver in a child process)
-and for F2 (M9). Registers are 32-bit, at the offsets of
+and for F2 (M9); the logits are read from memory, where OUTPUT writes them
+(D-071). Registers are 32-bit, at the offsets of
 commands.REGISTERS; memory addresses are HBM byte addresses, channel c at
 c · channel_bytes (commands.Layout)."""
 
@@ -30,9 +31,4 @@ class Platform(Protocol):
 
     def run_until_done(self) -> None:
         """Run until STATUS is done or error, after CONTROL's start."""
-        ...
-
-    def read_logits(self, n: int) -> torch.Tensor:
-        """The LOGITS buffer's first n elements (FP32), after END. In M7
-        the simulation reads them; how F2 gets them is Q-33 (M9)."""
         ...
