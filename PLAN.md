@@ -1960,6 +1960,17 @@ long fixture; the core's CL top and full build flow; the F2 host driver,
 tokens, baselines, the chat recording); the build and the F2 runs (AWS);
 the report.
 
+**On-chip memory (D-069's check, 2026-11-04):** the core at SmolLM2's
+sizing (32 ports, `Len` = 49,152, set by LOGITS) holds 3.79 MiB in
+memories (Yosys, `scripts/measure_m9.py memory`, reports/data/M9.json):
+the vector unit's banks 3.56 MiB, P's copy 0.09 MiB of it (D-069's 0.9 MB
+was for P's rows at 8,192 positions), the engine's port FIFOs 0.13 MiB,
+the command memory 0.06 MiB; the engine has no tile buffer since D-062.
+Mapped alone, the large ones need about 984 of the 2,016 RAMB36 or 368 of
+the 960 UltraRAMs (estimates; the device's UltraRAM count is the
+datasheet's, to verify). It fits; the build's utilization report has the
+real mapping.
+
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.

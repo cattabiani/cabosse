@@ -11,6 +11,7 @@ has (pyproject.toml, `pythonpath`): the runner passes it on. Without the tools
 the RTL tests skip, unless CABOSSE_REQUIRE_RTL=1 makes that a failure.
 """
 
+import json
 import os
 import re
 import shutil
@@ -143,6 +144,37 @@ def cells(top: str, params: Sequence[tuple[str, int]] = ()) -> dict[str, int]:
     found: dict[str, int] = {}
     for count, name in re.findall(r"^\s+(\d+)\s+([A-Z]\w*)\s*$", stats, re.M):
         found[name] = found.get(name, 0) + int(count)
+    return found
+
+
+def memories(top: str, params: Sequence[tuple[str, int]] = ()) -> dict[tuple[str, int, int], int]:
+    """The memories Yosys infers in `top` (flattened, before mapping to
+    RAM primitives): (name, width in bits, depth in words) -> how many, with
+    generate indices folded to [*] so an array of instances is one row.
+    What Vivado maps each to (block RAM, UltraRAM, LUT RAM, registers) is
+    its own choice."""
+    overrides = " ".join(f"-G {name}={value}" for name, value in params)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "mem.json"
+        script = (
+            f"read_slang -F {SOURCES} --top {top} {overrides}; hierarchy -top {top}; proc; "
+            f"opt_clean; memory_collect; flatten; opt_clean; select t:$mem_v2; "
+            f"write_json -selected {out}"
+        )
+        result = subprocess.run(
+            ["yosys", "-q", "-m", "slang", "-p", script], capture_output=True, text=True
+        )
+        assert result.returncode == 0, result.stdout[-2000:] + result.stderr
+        cells_ = json.loads(out.read_text())["modules"][top]["cells"].values()
+    found: dict[tuple[str, int, int], int] = {}
+    for cell in cells_:
+        p = cell["parameters"]
+        key = (
+            re.sub(r"\[\d+\]", "[*]", p["MEMID"]).lstrip("\\"),
+            int(p["WIDTH"], 2),
+            int(p["SIZE"], 2),
+        )
+        found[key] = found.get(key, 0) + 1
     return found
 
 
