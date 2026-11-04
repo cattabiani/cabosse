@@ -128,4 +128,4 @@ def test_baseline_text_shows_each_device_and_a_busy_machine() -> None:
     }
     cpu, cuda = m7.baseline_text(data).splitlines()[1:]
     assert cpu.split()[:2] == ["cpu", "2.0"] and "busy" not in cpu
-    assert "a GPU, host a CPU" in cuda and "busy" in cuda
+    assert "a GPU (host a CPU" in cuda and "busy" in cuda
