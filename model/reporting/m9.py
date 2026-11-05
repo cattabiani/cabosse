@@ -418,7 +418,9 @@ def local_table() -> str:
     return (
         blocks.table(
             ["core positions", "core, tokens/s", "llama.cpp positions"]
-            + [h for d in LOCAL_DEVICES.values() for h in (f"llama.cpp, {d}", f"core vs {d}")],
+            + [
+                h for d in LOCAL_DEVICES.values() for h in (f"llama.cpp, {d}", f"core vs {d} alone")
+            ],
             rows,
         )
         + f"\n\nllama.cpp {info['llama.cpp']}: CPU {cpu['cpu_info']}, {cpu['n_threads']}"
@@ -441,7 +443,13 @@ def cpu_table() -> str:
     )
     return (
         blocks.table(
-            ["core positions", "core, tokens/s", "llama.cpp positions", "llama.cpp", "core vs CPU"],
+            [
+                "core positions",
+                "core, tokens/s",
+                "llama.cpp positions",
+                "llama.cpp",
+                "core vs llama.cpp alone",
+            ],
             cpu_rows(),
         )
         + f"\n\nllama.cpp {bench['build_commit']}, BF16 GGUF, {bench['n_threads']} threads,"
