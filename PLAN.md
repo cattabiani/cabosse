@@ -807,6 +807,18 @@ clock than the engine: a crossing per port, new RTL and timing risk before
 the first token. PCIS reads need no new design or host machinery; PCIM
 (Q-34) is decided once the first run measures the wall clock.
 
+**D-072 (2026-11-05) — M9 works at whatever clock the build reaches; a new
+M10 reaches 250 MHz** (owner, 2026-11-05; changes M9's exit criteria and
+renumbers the milestones after it). M9 is done when the core is bit-exact on
+F2 and measured at the clock its build allows (core build 1: 100 MHz, about
+105 MHz possible), with the comparisons reported but the bandwidth floor
+(≥ 50% of the bound) no longer a pass/fail criterion. The new M10 closes
+timing at 250 MHz (D-065) and takes the floor. Larger models become M11, the
+ECP5 flow M12 (D-034's M11), the ASIC slice M13 (D-036's M12). *Why:*
+core build 1 missed 250 MHz by 5.5 ns but runs correctly at 100 MHz, so
+the path to a measured token (D-058) is complete; closing timing is RTL
+work on the vector unit's buffer reads, a step of its own.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -1906,9 +1918,10 @@ before anything runs on it; M8's notes on the engine's build and timing
 apply. **From M8:** PCIS host writes ran at 106 MB/s and 2.0 GB/s in
 two samples: measure with repeats before relying on the rate; host reads
 are 15-16 MB/s (results only, no bulk data).
-**Done when:** bit-exact against the golden model. Tokens/s is measured over
-≥ 1000 tokens and compared with the perf model and the bandwidth bound
-(provisional floor: ≥ 50% of it). Clock and resource use are reported.
+**Done when:** bit-exact against the golden model, at the clock the build
+reaches (D-072). Tokens/s is measured over ≥ 1000 tokens and compared with
+the perf model and the bandwidth bound (the floor moved to M10, D-072).
+Clock and resource use are reported.
 Compared with the Gemmini baseline (a different model) using normalized
 figures: weight bytes/s and MACs/s, and with llama.cpp on the F2 host's
 CPU at the same positions (D-056). The engine keeps a margin of 10-25% over
@@ -2014,15 +2027,23 @@ new dependency), the baseline's numbers, a history table with one row per
 build, and the tools with their licences (closed: Vivado, AMD IP, the F2
 shell).
 
-### M10 — Larger models, optional weight-only quantization
+### M10 — The core at 250 MHz (D-072)
+Close timing at 250 MHz (D-065) on F2; core build 1 missed it by 5.466 ns
+(worst path: a vector-unit buffer UltraRAM read into the chain's input
+stage, 9 logic levels, 78% route; reports/data/f2/2026-11-04-core1.txt).
+**Done when:** a build meets timing at 250 MHz, is bit-exact on F2 as in
+M9, and tokens/s over ≥ 1000 tokens reaches ≥ 50% of the bandwidth bound
+(the provisional floor M9 carried). A row in results/README.md.
+
+### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
 
-### M11 — Fully open FPGA flow (ECP5): out of scope (D-034)
+### M12 — Fully open FPGA flow (ECP5): out of scope (D-034, its M11)
 Future work for others: the same core, built with open tools only, running
 a tiny config on a cheap board.
 
-### M12 — ASIC slice on an open PDK: out of scope (D-036)
+### M13 — ASIC slice on an open PDK: out of scope (D-036, its M12)
 A possible later development: a few lanes with a simple test interface. DRC/LVS clean, timing met,
 gate-level simulation bit-exact; then, perhaps, a shuttle run.
 
