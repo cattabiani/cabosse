@@ -2048,7 +2048,7 @@ keeps it current). Every exit criterion is met. Over the long fixture's
 at 52% of the bandwidth bound at 100 MHz; the model in order is at 54%,
 since the vector unit's work comes after the memory's. The logits' PCIS
 read is about 59% of the wall clock (Q-34). The F2 sessions' cost is not
-billed yet. Checkpoint: waits for the owner.
+billed yet. Checkpoint: the owner accepted M9 (2026-11-05).
 
 **Desktop baseline (2026-11-05, owner's request, beyond the criteria):**
 llama.cpp b11672 on the development PC (Ryzen 7 7800X3D, built from
@@ -2056,6 +2056,8 @@ source; RTX 4070 Ti, the release's prebuilt CUDA binary), same depths, by
 `scripts/llama_baseline.sh` into reports/data/local/; nothing installed
 outside `.tools/`. The core at 100 MHz is 23-24% slower than the CPU and
 75-77% slower than the GPU (reports/M9.md).
+
+- [x] Checkpoint: the owner accepted M9 (2026-11-05). Next: M10.
 
 ### M10 — The core at 250 MHz (D-072)
 Close timing at 250 MHz (D-065) on F2; core build 1 missed it by 5.466 ns
