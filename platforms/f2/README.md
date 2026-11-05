@@ -226,4 +226,8 @@ positions, the three 64-token fixtures and the long fixture, each token
 checked bit for bit with its wall time and CYCLES. One JSON line a step,
 copied to S3 as it comes. Then, with `CHAT=1` (the default), `scripts/f2/chat.py`
 records a scripted chat (asciicast v2, transcript, JSON lines) to
-`$S3/chat/`; `chat.py --golden` runs the same chat on the CPU.
+`$S3/chat/`; `chat.py --golden` runs the same chat on the CPU. Then, with `BASELINE=1`
+(the default), `scripts/f2/cpu_baseline.sh` times the host's CPU on the same
+model: llama.cpp (a pinned release, GGUF BF16 converted by its own script,
+`llama-bench` at positions 0, 46 and 1023) and `transformers`
+(`scripts/measure_m7.py cpu`), to `$S3/baseline/`.
