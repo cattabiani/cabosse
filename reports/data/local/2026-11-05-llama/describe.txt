@@ -1,0 +1,5 @@
+commit 611627b453161d9947dd0d2e7dfec9d670c7d4f5
+llama.cpp 2f729cf (b11672)
+load 0.85 1.26 0.85
+NVIDIA GeForce RTX 4070 Ti, 615.71.09, 12282 MiB
+load after cpu 2.02 1.50 0.94
