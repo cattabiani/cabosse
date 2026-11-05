@@ -1,0 +1,14 @@
+# Core run 1 (M9), 2026-11-05, f2.6xlarge i-0a8c84c3987f62cd8, eu-central-1b, plan 07:59-08:00 UTC.
+# AFI afi-03332f58182807b45 / agfi-0c1bcde511e1d3276 (core build 1, built 9b7034e3); host tools and plan from main 3d4d3a1.
+# Raw results: 2026-11-05-core-run1.jsonl (also s3://cabosse-builds-628837661672/dcp/2026-11-05-core-run1/).
+# This summary: from the JSON lines by a script. tokens/s (cycles) uses the core's CYCLES at the set clock;
+# tokens/s (wall) is the host's time per decode step, logits read through PCIS included.
+
+clock: set 100 MHz, hbm 100 MHz; ports 32, len 49152
+pcis_write 64 MiB x5: MB/s median 378.8, min 89.4, max 387.2
+pcis_read 4 MiB x5: MB/s median 22.4, min 14.3, max 22.5
+fixture smollm2_greedy.json run 0, 64 tokens: tokens_ok True, logits_ok True, cycles/step median 514027, 194.5 tokens/s (cycles), 68.0 tokens/s (wall)
+fixture smollm2_greedy.json run 1, 64 tokens: tokens_ok True, logits_ok True, cycles/step median 514014, 194.5 tokens/s (cycles), 68.1 tokens/s (wall)
+fixture smollm2_greedy.json run 2, 64 tokens: tokens_ok True, logits_ok True, cycles/step median 513870, 194.6 tokens/s (cycles), 68.0 tokens/s (wall)
+long smollm2_long_greedy.json run 0, 1000 tokens: tokens_ok True, logits_ok True, cycles/step median 575374, 173.8 tokens/s (cycles), 65.4 tokens/s (wall)
+errors: 0
