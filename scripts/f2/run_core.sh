@@ -8,7 +8,8 @@
 # Python venv (uv: Python and requirements.txt as this project pins them),
 # download SmolLM2 at the fixtures' revision, and run M9's measurements
 # (scripts/f2/core_plan.py), copying the results (JSON lines with
-# provenance) and the log to S3 as they come. The instance powers off when
+# provenance) and the log to S3 as they come; then the chat recording
+# (scripts/f2/chat.py) to $S3/chat/. The instance powers off when
 # done or at the deadline. Root and installs are allowed on the project's
 # own instances (AGENTS.md, rule 2).
 
@@ -18,6 +19,7 @@ AGFI=                          # the core AFI's global id (agfi-...)
 AFI=                           # its id (afi-...), for the provenance
 MHZ=100                        # core clock: core1 closes timing at ~105 MHz, not 250
 QUICK=                         # --quick: no long fixture
+CHAT=1                         # the chat recording after the plan (empty: none)
 DEADLINE_MIN=90                # safety net: power off even if something hangs
 S3=                            # s3://bucket/dcp/<run>: everything goes there (the role writes dcp/ only)
 UV_VERSION=0.12.7              # the installer of Python and the venv
@@ -91,5 +93,14 @@ echo "plan exit $status"
 errors=$(grep -c '"error"' /root/core.jsonl)
 echo "steps with an error: $errors"
 echo "CABOSSE-END plan"
-[ $status = 0 ] && [ "$errors" = 0 ] && echo "CABOSSE-RESULT pass" || echo "CABOSSE-RESULT fail"
+chat_status=0
+if [ -n "$CHAT" ]; then
+  echo "CABOSSE-BEGIN chat"
+  S3=$S3/chat /root/venv/bin/python /root/cabosse/scripts/f2/chat.py /root/chat --mhz $MHZ
+  chat_status=$?
+  aws s3 cp --only-show-errors --recursive /root/chat "$S3/chat"
+  echo "chat exit $chat_status"
+  echo "CABOSSE-END chat"
+fi
+[ $status = 0 ] && [ "$errors" = 0 ] && [ $chat_status = 0 ] && echo "CABOSSE-RESULT pass" || echo "CABOSSE-RESULT fail"
 finish

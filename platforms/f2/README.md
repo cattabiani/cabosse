@@ -224,4 +224,6 @@ loads the AFI and runs `scripts/f2/core_plan.py`: the clock, PCIS write and
 read rates through the driver (5 repeats), the model's load at 2048
 positions, the three 64-token fixtures and the long fixture, each token
 checked bit for bit with its wall time and CYCLES. One JSON line a step,
-copied to S3 as it comes.
+copied to S3 as it comes. Then, with `CHAT=1` (the default), `scripts/f2/chat.py`
+records a scripted chat (asciicast v2, transcript, JSON lines) to
+`$S3/chat/`; `chat.py --golden` runs the same chat on the CPU.
