@@ -2006,6 +2006,14 @@ a step (194.5 tokens/s from CYCLES at 100 MHz), 575k on the long fixture
 (173.8); 68.0 and 65.4 tokens/s wall clock, logits read through PCIS
 included (reports/data/f2/2026-11-05-core-run1.txt).
 
+**Core run 2 and the public page (2026-11-05):** run 2 repeats run 1's bits
+and cycles and records the chat (France, then Italy: 0.9 s for both turns,
+13.9 ms a token, 14 tokens fed for the second turn). `results/README.md` is
+the public page: the chat as an animated SVG (scripts/cast_to_svg.py, no
+new dependency), the baseline's numbers, a history table with one row per
+build, and the tools with their licences (closed: Vivado, AMD IP, the F2
+shell).
+
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
