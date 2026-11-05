@@ -30,6 +30,8 @@ RUNS = {
 }
 BASELINE_RUN = 3  # the CPU baselines ran in run 3's session
 BASELINE = F2 / "2026-11-05-core-run3" / "baseline"
+LOCAL = paths.REPORTS / "data" / "local" / "2026-11-05-llama"  # scripts/llama_baseline.sh
+LOCAL_DEVICES = {"cpu": "CPU", "cuda": "GPU"}
 CHAT = F2 / "2026-11-05-core-run2" / "chat"
 BUILD = F2 / "2026-11-04-core1.txt"
 MODEL = "SmolLM2-135M-Instruct"
@@ -377,6 +379,56 @@ def cpu_rows() -> list[list]:
     return rows
 
 
+def local_bench(device: str) -> dict[int, dict]:
+    return {b["n_depth"]: b for b in json.loads((LOCAL / f"llama_bench_{device}.json").read_text())}
+
+
+def describe() -> dict[str, str]:
+    """describe.txt's lines, by their first word (the first line of each)."""
+    out: dict[str, str] = {}
+    for line in (LOCAL / "describe.txt").read_text().splitlines():
+        key, _, value = line.partition(" ")
+        out.setdefault(key, value)
+    return out
+
+
+def local_table() -> str:
+    """llama.cpp on this PC's CPU and GPU at the F2 host's depths, against
+    the core's windows."""
+    cycles = long_result(BASELINE_RUN)["cycles"]
+    clock = design()["clock_hz"]
+    benches = {d: local_bench(d) for d in LOCAL_DEVICES}
+    rows = []
+    for depth, (first, last) in zip(BENCH_DEPTHS, WINDOWS[:3], strict=True):
+        span = range(first, last + 1)
+        core = len(span) * clock / sum(cycles[p] for p in span)
+        row = [
+            f"{first}–{last}",
+            f"{core:.1f}",
+            f"{depth}–{depth + benches['cpu'][depth]['n_gen'] - 1}",
+        ]
+        for d in LOCAL_DEVICES:
+            b = benches[d][depth]
+            row += [f"{b['avg_ts']:.1f} ± {b['stddev_ts']:.1f}", f"{core / b['avg_ts'] - 1:+.0%}"]
+        rows.append(row)
+    cpu, gpu = (next(iter(benches[d].values())) for d in LOCAL_DEVICES)
+    info = describe()
+    load = float(info["load"].split()[0])
+    flag = " (busy: timing suspect)" if load > QUIET_LOAD else ""
+    return (
+        blocks.table(
+            ["core positions", "core, tokens/s", "llama.cpp positions"]
+            + [h for d in LOCAL_DEVICES.values() for h in (f"llama.cpp, {d}", f"core vs {d}")],
+            rows,
+        )
+        + f"\n\nllama.cpp {info['llama.cpp']}: CPU {cpu['cpu_info']}, {cpu['n_threads']}"
+        f" threads, built from source (native); GPU {gpu['gpu_info']}, all layers on it,"
+        f" the release's prebuilt CUDA binary. BF16 GGUF, `llama-bench` mean ± standard"
+        f" deviation of {cpu['n_gen']} generated tokens, {cpu['n_prompt']} prompt tokens."
+        f" 1-minute load average at the start {load:.2f}{flag}."
+    )
+
+
 def cpu_table() -> str:
     t = json.loads((BASELINE / "transformers.json").read_text())
     bench = json.loads((BASELINE / "llama_bench.json").read_text())[0]
@@ -470,6 +522,7 @@ def exit_rows() -> list[list]:
         ["Clock and resource use reported", "below (core build 1)", "yes"],
         ["Against Gemmini, normalized (weight bytes/s, MACs/s)", "below", "yes"],
         ["Against llama.cpp on the F2 host's CPU, same positions (D-056)", "below", "yes"],
+        ["(beyond the criteria) Against llama.cpp on a desktop CPU and GPU", "below", "yes"],
         [
             "A recorded 1-2 turn chat, command and log saved",
             f"run 2: {chat_text()}",
@@ -491,6 +544,7 @@ def generated() -> dict[str, str]:
         "pcis": pcis_table(),
         "normalized": normalized_table(),
         "cpu": cpu_table(),
+        "local": local_table(),
         "build": build_table(),
         "cost": cost_text(),
     }
