@@ -1999,6 +1999,13 @@ is loaded as is and run at 100 MHz (`run_core.sh MHZ=100`,
 `core_plan.py --mhz`), to measure before fixing timing (D-058's measure
 first). The core build's deadline goes from 6 h to 9 h.
 
+**Core run 1 (2026-11-05):** SmolLM2-135M-Instruct on F2 at 100 MHz,
+bit-exact: the three 64-token fixtures and the 1000-token long fixture
+match the golden model's tokens and every logit's bits. Median 514k cycles
+a step (194.5 tokens/s from CYCLES at 100 MHz), 575k on the long fixture
+(173.8); 68.0 and 65.4 tokens/s wall clock, logits read through PCIS
+included (reports/data/f2/2026-11-05-core-run1.txt).
+
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
