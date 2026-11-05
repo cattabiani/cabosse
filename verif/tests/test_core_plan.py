@@ -82,3 +82,15 @@ def test_a_wrong_token_or_row_is_named(tmp_path, tiny_model, runs) -> None:
     assert first["result"]["first_bad_token"] == 7 and "error" in first["result"]
     assert long["step"] == "long" and long["result"]["first_bad_position"] == 9
     assert long["result"]["tokens_ok"] and "error" in long["result"]
+
+
+def test_the_clock_is_set_to_the_given_mhz(tmp_path, monkeypatch) -> None:
+    fake = tmp_path / "core_clock"
+    fake.write_text('#!/bin/sh\necho "{\\"set_mhz\\": $1}"\n')
+    fake.chmod(0o755)
+    monkeypatch.setattr(core_plan, "CLOCK", fake)
+    monkeypatch.delenv("S3", raising=False)
+    out = tmp_path / "plan.jsonl"
+    result = core_plan.set_clock(Log(str(out)), 100)
+    assert result["set_mhz"] == 100
+    assert json.loads(out.read_text())["params"] == {"mhz": 100}

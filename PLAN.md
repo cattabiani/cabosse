@@ -1990,6 +1990,15 @@ docs/perf.md and the M2, M6 and M7 reports render the current model.
 near position 16, 1.47 s at 1000; measured). Its slow test, one
 teacher-forced pass, takes about 10 minutes.
 
+**Core build 1 (2026-11-04):** routed in 6.6 h on c6i.8xlarge;
+timing missed at 250 MHz: WNS -5.466 ns, so about 105 MHz
+(reports/data/f2/2026-11-04-core1.txt). Worst path: a vector-unit buffer
+UltraRAM read into the chain's input stage, 9 logic levels, 78% route.
+LUTs 62%, URAM 27%, BRAM 10%, DSPs 3%. The AFI (agfi-0c1bcde511e1d3276)
+is loaded as is and run at 100 MHz (`run_core.sh MHZ=100`,
+`core_plan.py --mhz`), to measure before fixing timing (D-058's measure
+first). The core build's deadline goes from 6 h to 9 h.
+
 ### M10 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.

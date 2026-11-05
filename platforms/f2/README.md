@@ -175,8 +175,11 @@ the bring-up: the host owns port 0 between tokens, the core during one.
   engine port 0 and the vector unit onto HBM port 0 (`f2_port0`: reads in
   turns, one ID, answers routed back in order).
 - `core/cabosse_core.sv`: the CL top, on `cl_shell.svh` as the bring-up's.
-- Build: `scripts/f2/build_cl.sh` with `DESIGN=core` (a 6 h deadline;
-  the engine's own placed builds peaked at 14 GB).
+- Build: `scripts/f2/build_cl.sh` with `DESIGN=core` (a 9 h deadline:
+  core build 1 took 6.6 h to route; the engine's own placed builds peaked
+  at 14 GB). Core build 1 missed 250 MHz (WNS -5.466 ns,
+  reports/data/f2/2026-11-04-core1.txt), so `scripts/f2/run_core.sh` runs
+  it at `MHZ=100`.
 
 ### Registers (OCL, BAR0)
 
