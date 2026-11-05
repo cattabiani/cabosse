@@ -345,5 +345,17 @@
     "source": "VU47P datasheet, to verify in M9's build report"
    }
   }
+ },
+ "cost": {
+  "source": "AWS Cost Explorer, UnblendedCost by instance type and day (UTC), queried 2026-11-05; a day's cost appears up to a day late",
+  "usd_by_day": {
+   "2026-11-04": {
+    "NoInstanceType": 0.16,
+    "c6i.8xlarge": 10.64
+   },
+   "2026-11-05": {
+    "NoInstanceType": 0.0
+   }
+  }
  }
 }

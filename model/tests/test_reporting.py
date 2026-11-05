@@ -7,7 +7,7 @@ import re
 
 import paths
 import pytest
-from reporting import blocks, m1, m2, m3, m4, m5, m6, m7, measure
+from reporting import blocks, m1, m2, m3, m4, m5, m6, m7, m9, measure
 
 TEXT = """# Title
 
@@ -92,6 +92,12 @@ def test_m7_report_is_up_to_date() -> None:
     """reports/M7.md matches its data. After measuring, run:
     python scripts/report_m7.py render"""
     assert m7.render() == m7.PATH.read_text()
+
+
+def test_m9_report_is_up_to_date() -> None:
+    """reports/M9.md matches the F2 runs' logs and the perf model. After
+    changing either, run: python scripts/report_m9.py"""
+    assert m9.render() == m9.PATH.read_text()
 
 
 @pytest.mark.parametrize(
