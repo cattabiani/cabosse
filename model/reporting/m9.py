@@ -184,7 +184,7 @@ def runs_table() -> str:
     for n in RUNS:
         fixtures = run(n)["fixture"]
         long = long_result(n)
-        ok = all(f["result"]["tokens_ok"] and f["result"]["logits_ok"] for f in fixtures)
+        ok = fixtures_ok(n)
         rows.append(
             [
                 n,
@@ -219,18 +219,18 @@ def long_ok(n: int) -> bool:
     return r["tokens_ok"] and r["logits_ok"] and r["first_bad_position"] is None
 
 
+def fixtures_ok(n: int) -> bool:
+    return all(f["result"]["tokens_ok"] and f["result"]["logits_ok"] for f in run(n)["fixture"])
+
+
 def all_bit_exact() -> bool:
-    return all(
-        long_ok(n)
-        and all(f["result"]["tokens_ok"] and f["result"]["logits_ok"] for f in run(n)["fixture"])
-        for n in RUNS
-    )
+    return all(long_ok(n) and fixtures_ok(n) for n in RUNS)
 
 
 def repeat_text() -> str:
     """How far the long run's cycles moved between runs."""
     cycles = [long_result(n)["cycles"] for n in RUNS]
-    diff = max(abs(a - b) for other in cycles[1:] for a, b in zip(cycles[0], other, strict=True))
+    diff = max(max(per_position) - min(per_position) for per_position in zip(*cycles, strict=True))
     return (
         f"Runs 2 and 3 repeat run 1's tokens and bits; a step's cycles differ"
         f" between runs by at most {diff} at any position."
@@ -422,7 +422,8 @@ def build_table() -> str:
         ]
     ]
     h0, m0, s0, h1, m1, s1 = (int(x) for x in STAMPS.search(BUILD.read_text()).groups())
-    hours = ((h1 - h0) * 3600 + (m1 - m0) * 60 + (s1 - s0)) / 3600  # same day
+    seconds = (h1 - h0) * 3600 + (m1 - m0) * 60 + (s1 - s0)
+    hours = (seconds % 86400) / 3600  # a build shorter than a day, past midnight or not
     rows.append(["build time", f"{hours:.1f} h (log stamps, synthesis to route)"])
     rows += [
         [name, f"{used:,} of {available:,} ({pct:.1f}%)"]
