@@ -44,8 +44,8 @@ copied here (Amazon Software License).
   included, tested in Verilator (verif/tests/test_bringup_core.py).
 - `cabosse_bringup.sv`: the CL top (shell ports, crossings, HBM IP, ILA),
   built only in Vivado; verif/tests/test_bringup_core.py elaborates it with
-  slang when `CABOSSE_AWS_FPGA` names an aws-fpga checkout (`pytest -m
-  on_request`).
+  slang when `CABOSSE_AWS_FPGA` names an aws-fpga checkout
+  (`scripts/test.sh -m on_request`).
 - `../synth_cl.tcl` (both designs): its synthesis in AWS's shell flow;
   `../cl_shell.svh`: the shell body both CL tops include.
 

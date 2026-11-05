@@ -12,7 +12,6 @@ from cocotb.triggers import FallingEdge, ReadOnly, RisingEdge
 
 import rtl
 
-SETTLE_CYCLES = 2 + 4  # controller.sv's SettleCycles at its default UnitsResetDelay = 2
 REG_CONTROL, REG_STATUS, REG_TOKEN = 0x08, 0x0C, 0x10
 CONTROL_RESET = 2
 # The inputs at rest: nothing offered, the units always ready and never done.
@@ -36,8 +35,8 @@ def test_controller_reset() -> None:
     rtl.simulate("controller", test_module="test_controller_reset")
 
 
-async def start(dut) -> None:
-    """Clock, the inputs at rest and 3 cycles of rst_ni."""
+async def start(dut) -> int:
+    """Clock, the inputs at rest and 3 cycles of rst_ni; the DUT's SettleCycles."""
     cocotb.start_soon(Clock(dut.clk_i, 10, unit="ns").start())
     for name in IDLE_LOW:
         getattr(dut, name).value = 0
@@ -48,6 +47,7 @@ async def start(dut) -> None:
         await RisingEdge(dut.clk_i)
     await FallingEdge(dut.clk_i)
     dut.rst_ni.value = 1
+    return int(dut.SettleCycles.value)
 
 
 def offer_write(dut, addr: int, value: int) -> None:
@@ -74,10 +74,10 @@ async def wait_write(dut) -> int:
 
 @cocotb.test()
 async def writes_wait_out_the_reset(dut) -> None:
-    await start(dut)
+    settle = await start(dut)
     offer_write(dut, REG_TOKEN, 5)
     waited = await wait_write(dut)
-    assert waited == SETTLE_CYCLES, ("after rst_ni", waited)
+    assert waited == settle, ("after rst_ni", waited)
     await FallingEdge(dut.clk_i)  # the response
     offer_write(dut, REG_TOKEN, 6)
     waited = await wait_write(dut)
@@ -96,19 +96,41 @@ async def writes_wait_out_the_reset(dut) -> None:
     await FallingEdge(dut.clk_i)
     dut.s_ar_valid_i.value = 0
     waited = await wait_write(dut)
-    assert waited + 1 == SETTLE_CYCLES, ("after a CONTROL reset", waited + 1)
+    assert waited + 1 == settle, ("after a CONTROL reset", waited + 1)
 
 
 @cocotb.test()
 async def units_reset_pulses_once(dut) -> None:
-    await start(dut)
-    for _ in range(SETTLE_CYCLES):
+    settle = await start(dut)
+    for _ in range(settle):
         await FallingEdge(dut.clk_i)
     offer_write(dut, REG_CONTROL, CONTROL_RESET)
     await wait_write(dut)
     pulses = 0
-    for _ in range(SETTLE_CYCLES + 2):
+    for _ in range(settle + 2):
         await ReadOnly()
         pulses += int(dut.units_reset_o.value)
         await FallingEdge(dut.clk_i)
     assert pulses == 1, ("units_reset_o's cycles", pulses)
+
+
+@cocotb.test()
+async def a_done_in_the_window_does_not_count(dut) -> None:
+    """A unit's done in the window (one from before its reset) is not
+    counted; one after it is."""
+    settle = await start(dut)
+    for _ in range(settle + 1):  # the window's cycles, then the first after it
+        dut.eng_done_i.value = dut.vec_done_i.value = 1
+        await FallingEdge(dut.clk_i)
+    assert (int(dut.eng_done_q.value), int(dut.vec_done_q.value)) == (1, 1), (
+        "only the done after the window"
+    )
+    dut.eng_done_i.value = dut.vec_done_i.value = 0
+    offer_write(dut, REG_CONTROL, CONTROL_RESET)
+    await wait_write(dut)
+    for _ in range(settle):
+        dut.eng_done_i.value = dut.vec_done_i.value = 1
+        await FallingEdge(dut.clk_i)
+    dut.eng_done_i.value = dut.vec_done_i.value = 0
+    await FallingEdge(dut.clk_i)
+    assert (int(dut.eng_done_q.value), int(dut.vec_done_q.value)) == (0, 0), "after a CONTROL reset"

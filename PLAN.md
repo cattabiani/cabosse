@@ -2107,6 +2107,13 @@ but for the HBM's 2):
 - Kept, though the window alone would do: each unit's `cmd_ready_o` low in
   its reset, for the units' own benches. For 1b: register the slots'
   decoded op controls, not only the raw fields (simplify review).
+- Open (code review): a CONTROL reset while bursts are in flight is not
+  drained, so answers can reach a DMA after its reset. That was so before
+  1a; the HBM slices widen it by a beat or two. CONTROL's reset is for
+  between tokens (the register map says so). Recovering from a memory
+  error mid-token needs a drain first, if it is ever wanted. No test drives
+  a command into a unit in its reset (the `cmd_ready_o` gate) or a CONTROL
+  reset while busy.
 - F2 wrapper: a `bringup_pipe` stage on every HBM channel the core uses
   (AR and R per port, AW, W and B on port 0); core build 1 had the HBM's
   `r_valid` and `w_ready` straight into the DMAs' counters (-5.1 ns). A
