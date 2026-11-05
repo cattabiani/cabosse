@@ -64,7 +64,27 @@ own script, `llama-bench`, 128 tokens generated per test, 5 repetitions,
 12 threads. `transformers` 5.18.0: BF16, sdpa
 attention, 128 tokens, median of 5.
 
-| core positions | Cabosse core, 100 MHz | llama.cpp positions | llama.cpp on the CPU | core vs CPU |
+**How to read this:** the columns are two separate ways of running the
+same model, not one on top of the other.
+
+- llama.cpp runs SmolLM2 on the host's CPU alone, without the FPGA.
+- The core runs it on the FPGA; the CPU only hands it a token and reads
+  back the result each step.
+
+A negative share means the core is that much slower than the CPU running
+the model by itself. Using the core does not slow the CPU down.
+
+This first build does not yet beat a 12-core server CPU on a model this
+small. The reasons (see "What limits it now" above):
+
+- **Clock:** it runs at 100 MHz, not the 250 MHz it was designed for (M10).
+- **Vector unit:** its work comes after the memory reads instead of beside
+  them, which keeps the core at about half of what the memory bandwidth
+  allows.
+- **Logits' read:** in wall-clock time, reading the logits back over PCIe
+  takes longer than the core's own work (Q-34).
+
+| core positions | Cabosse core, 100 MHz | llama.cpp positions | llama.cpp on the CPU | core vs llama.cpp alone |
 |---|---|---|---|---|
 | 0–127 | 194.8 | 0–127 | 244.1 ± 5.3 | -20% |
 | 46–173 | 192.7 | 46–173 | 221.9 ± 3.5 | -13% |
