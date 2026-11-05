@@ -2027,6 +2027,13 @@ new dependency), the baseline's numbers, a history table with one row per
 build, and the tools with their licences (closed: Vivado, AMD IP, the F2
 shell).
 
+**CPU baselines (2026-11-05, run 3, same session as the core):** on the
+f2.6xlarge's EPYC 7R13 (12 cores), llama.cpp b11672 BF16 runs 244.1, 221.9
+and 169.5 tokens/s at positions 0, 46 and 1023 (128 tokens each);
+`transformers` 75.8. The core at 100 MHz over the same windows: 194.8,
+192.7, 159.0 (its last window 917–1044), 6–20% behind
+(results/README.md; reports/data/f2/2026-11-05-core-run3/).
+
 ### M10 — The core at 250 MHz (D-072)
 Close timing at 250 MHz (D-065) on F2; core build 1 missed it by 5.466 ns
 (worst path: a vector-unit buffer UltraRAM read into the chain's input

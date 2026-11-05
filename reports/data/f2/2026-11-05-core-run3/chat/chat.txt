@@ -1,0 +1,7 @@
+user: What is the capital of France?
+
+assistant: The capital of France is Paris.
+
+user: And of Italy?
+
+assistant: The capital of Italy is Rome.
