@@ -2088,6 +2088,41 @@ reports/data/f2/2026-11-05-core1-analysis.txt; about 30 min of r6i.2xlarge):
   (16 chain slots of about 10.4k, slot 0 23.8k more, 21 buffers 2-6k each, the
   tree 13k). No block is an obvious cut; M10 starts with pipelining only.
 
+**Step 1a, fan-out and margins** (2026-11-05; same bits, same token cycles
+but for the HBM's 2):
+- The units' reset (`rst_ni && !units_reset`, the 16,349-load LUT) is a
+  register per unit in core.sv, then a copy per lane, per DMA port and per
+  vector slot, plus one for each unit's own logic: 2 cycles to every flop
+  (`UnitsResetDelay`). The controller keeps its sequencer reset and takes
+  no AXI-Lite write for `UnitsResetDelay + 4` cycles after rst_ni or a
+  CONTROL reset, so no done from before the reset counts and no token
+  starts into units still in reset; each unit's `cmd_ready_o` is low
+  until its reset is through (verif/tests/test_controller_reset.py).
+- The vector unit: each chain slot reads the group's fields from its own
+  copy of `grp_q` (`gen_slot.grp_s_q`), not one register for all 16.
+- The engine's issue: each head's DMA address is a register, not two adds
+  on `iss_unit_q` into 32 ports. Head 0's is computed a unit ahead, as the
+  ports are; head 1's comes from the unit's registers, since it issues 2
+  cycles after the unit changed at the soonest.
+- Kept, though the window alone would do: each unit's `cmd_ready_o` low in
+  its reset, for the units' own benches. For 1b: register the slots'
+  decoded op controls, not only the raw fields (simplify review).
+- Open (code review): a CONTROL reset while bursts are in flight is not
+  drained, so answers can reach a DMA after its reset. That was so before
+  1a; the HBM slices widen it by a beat or two. CONTROL's reset is for
+  between tokens (the register map says so). Recovering from a memory
+  error mid-token needs a drain first, if it is ever wanted. No test drives
+  a command into a unit in its reset (the `cmd_ready_o` gate) or a CONTROL
+  reset while busy.
+- F2 wrapper: a `bringup_pipe` stage on every HBM channel the core uses
+  (AR and R per port, AW, W and B on port 0); core build 1 had the HBM's
+  `r_valid` and `w_ready` straight into the DMAs' counters (-5.1 ns). A
+  read takes 2 cycles more.
+- The engine's other margin families of M6 (the scale's multiply, the
+  lanes' buffer write enables) were fixed in M6's round 5; core build 1's
+  worst 100 paths and highest-fanout nets list neither. The -5.4 ns paths
+  (the vector unit's addresses and buffer reads) are step 1b's.
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.

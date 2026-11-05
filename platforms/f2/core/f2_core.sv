@@ -198,6 +198,88 @@ module f2_core #(
     end
   end
 
+  // --- The HBM's side: a register slice on every channel -------------------------
+
+  // The HBM's AXI ports sit at the die's edge, far from the core's logic
+  // (core build 1: their r_valid and w_ready into the DMAs' counters, -5.1
+  // ns). A bringup_pipe stage on each channel registers both ways (valid
+  // and data forward, ready back) at full rate; a read takes 2 cycles more.
+  logic [Ports-1:0]                hb_ar_valid, hb_ar_ready, hb_r_valid, hb_r_ready, hb_r_last;
+  logic [Ports-1:0][AddrWidth-1:0] hb_ar_addr;
+  logic [Ports-1:0][7:0]           hb_ar_len;
+  logic [Ports-1:0][1:0]           hb_ar_burst, hb_r_resp;
+  logic [Ports-1:0][DataWidth-1:0] hb_r_data;
+  // Port 0's writes (the vector unit's and the host's)
+  logic                            hb_aw_valid, hb_aw_ready, hb_w_valid, hb_w_ready, hb_w_last;
+  logic                            hb_b_valid, hb_b_ready;
+  logic [AddrWidth-1:0]            hb_aw_addr;
+  logic [7:0]                      hb_aw_len;
+  logic [1:0]                      hb_aw_burst, hb_b_resp;
+  logic [DataWidth-1:0]            hb_w_data;
+  logic [BeatBytes-1:0]            hb_w_strb;
+
+  // verilator lint_off PINCONNECTEMPTY
+
+  for (genvar p = 0; p < Ports; p++) begin : gen_hbm
+    bringup_pipe #(.Width(AxW)) u_ar (
+      .clk_i,
+      .rst_ni,
+      .in_valid_i (hb_ar_valid[p]),
+      .in_ready_o (hb_ar_ready[p]),
+      .in_data_i  ({hb_ar_addr[p], hb_ar_len[p], hb_ar_burst[p]}),
+      .busy_o     (),
+      .out_valid_o(ar_valid_o[p]),
+      .out_ready_i(ar_ready_i[p]),
+      .out_data_o ({ar_addr_o[p], ar_len_o[p], ar_burst_o[p]})
+    );
+    bringup_pipe #(.Width(RW)) u_r (
+      .clk_i,
+      .rst_ni,
+      .in_valid_i (r_valid_i[p]),
+      .in_ready_o (r_ready_o[p]),
+      .in_data_i  ({r_data_i[p], r_resp_i[p], r_last_i[p]}),
+      .busy_o     (),
+      .out_valid_o(hb_r_valid[p]),
+      .out_ready_i(hb_r_ready[p]),
+      .out_data_o ({hb_r_data[p], hb_r_resp[p], hb_r_last[p]})
+    );
+  end
+
+  bringup_pipe #(.Width(AxW)) u_aw (
+    .clk_i,
+    .rst_ni,
+    .in_valid_i (hb_aw_valid),
+    .in_ready_o (hb_aw_ready),
+    .in_data_i  ({hb_aw_addr, hb_aw_len, hb_aw_burst}),
+    .busy_o     (),
+    .out_valid_o(aw_valid_o[0]),
+    .out_ready_i(aw_ready_i[0]),
+    .out_data_o ({aw_addr_o[0], aw_len_o[0], aw_burst_o[0]})
+  );
+  bringup_pipe #(.Width(WW)) u_w (
+    .clk_i,
+    .rst_ni,
+    .in_valid_i (hb_w_valid),
+    .in_ready_o (hb_w_ready),
+    .in_data_i  ({hb_w_data, hb_w_strb, hb_w_last}),
+    .busy_o     (),
+    .out_valid_o(w_valid_o[0]),
+    .out_ready_i(w_ready_i[0]),
+    .out_data_o ({w_data_o[0], w_strb_o[0], w_last_o[0]})
+  );
+  bringup_pipe #(.Width(2)) u_b (
+    .clk_i,
+    .rst_ni,
+    .in_valid_i (b_valid_i[0]),
+    .in_ready_o (b_ready_o[0]),
+    .in_data_i  (b_resp_i[0]),
+    .busy_o     (),
+    .out_valid_o(hb_b_valid),
+    .out_ready_i(hb_b_ready),
+    .out_data_o (hb_b_resp)
+  );
+  // verilator lint_on PINCONNECTEMPTY
+
   // --- The core ------------------------------------------------------------------
 
   logic [Ports-1:0]                e_ar_valid, e_ar_ready, e_r_valid, e_r_ready;
@@ -254,8 +336,8 @@ module f2_core #(
     .e_ar_burst_o  (e_ar_burst),
     .e_r_valid_i   (e_r_valid),
     .e_r_ready_o   (e_r_ready),
-    .e_r_data_i    ({r_data_i[Ports-1:1], port0_r_data}),
-    .e_r_resp_i    ({r_resp_i[Ports-1:1], port0_r_resp}),
+    .e_r_data_i    ({hb_r_data[Ports-1:1], port0_r_data}),
+    .e_r_resp_i    ({hb_r_resp[Ports-1:1], port0_r_resp}),
     .v_ar_valid_o  (v_ar_valid),
     .v_ar_ready_i  (v_ar_ready),
     .v_ar_addr_o   (v_ar_addr),
@@ -289,14 +371,14 @@ module f2_core #(
   // --- Ports 1 .. Ports - 1: the engine's reads, on their channels ---------------
 
   for (genvar p = 1; p < Ports; p++) begin : gen_port
-    assign ar_valid_o[p]   = e_ar_valid[p];
-    assign e_ar_ready[p]   = ar_ready_i[p];
-    assign ar_addr_o[p]    = AddrWidth'(p) << ChanW | AddrWidth'(e_ar_addr[p][ChanW-1:0]);
-    assign ar_len_o[p]     = e_ar_len[p];
+    assign hb_ar_valid[p]  = e_ar_valid[p];
+    assign e_ar_ready[p]   = hb_ar_ready[p];
+    assign hb_ar_addr[p]   = AddrWidth'(p) << ChanW | AddrWidth'(e_ar_addr[p][ChanW-1:0]);
+    assign hb_ar_len[p]    = e_ar_len[p];
     assign ar_size_o[p]    = FullBeat;
-    assign ar_burst_o[p]   = e_ar_burst[p];
-    assign e_r_valid[p]    = r_valid_i[p];
-    assign r_ready_o[p]    = e_r_ready[p];
+    assign hb_ar_burst[p]  = e_ar_burst[p];
+    assign e_r_valid[p]    = hb_r_valid[p];
+    assign hb_r_ready[p]   = e_r_ready[p];
     assign aw_valid_o[p]   = 1'b0;
     assign aw_addr_o[p]    = '0;
     assign aw_len_o[p]     = '0;
@@ -308,7 +390,7 @@ module f2_core #(
     assign w_last_o[p]     = 1'b0;
     assign b_ready_o[p]    = 1'b1;
   end
-  assign r_last = r_last_i;
+  assign r_last = hb_r_last;
 
   // --- Port 0: engine port 0 and the vector unit, shared with the host ------------
 
@@ -349,7 +431,7 @@ module f2_core #(
     .m_ar_o      (p0_ar),
     .m_r_valid_i (p0_r_valid),
     .m_r_ready_o (p0_r_ready),
-    .m_r_last_i  (r_last_i[0]),
+    .m_r_last_i  (hb_r_last[0]),
     .m_aw_valid_o(p0_aw_valid),
     .m_aw_ready_i(p0_aw_ready),
     .m_aw_o      (p0_aw),
@@ -359,9 +441,9 @@ module f2_core #(
     .m_b_valid_i (p0_b_valid),
     .m_b_ready_o (p0_b_ready)
   );
-  assign port0_r_data = r_data_i[0];
-  assign port0_r_resp = r_resp_i[0];
-  assign port0_b_resp = b_resp_i[0];
+  assign port0_r_data = hb_r_data[0];
+  assign port0_r_resp = hb_r_resp[0];
+  assign port0_b_resp = hb_b_resp;
 
   bringup_host #(
     .AddrWidth(AddrWidth),
@@ -399,25 +481,25 @@ module f2_core #(
     .e_w_i       (p0_w),
     .e_b_valid_o (p0_b_valid),
     .e_b_ready_i (p0_b_ready),
-    .m_ar_valid_o(ar_valid_o[0]),
-    .m_ar_ready_i(ar_ready_i[0]),
+    .m_ar_valid_o(hb_ar_valid[0]),
+    .m_ar_ready_i(hb_ar_ready[0]),
     .m_ar_o      (m_ar),
-    .m_r_valid_i (r_valid_i[0]),
-    .m_r_ready_o (r_ready_o[0]),
-    .m_r_i       ({r_data_i[0], r_resp_i[0], r_last_i[0]}),
-    .m_aw_valid_o(aw_valid_o[0]),
-    .m_aw_ready_i(aw_ready_i[0]),
+    .m_r_valid_i (hb_r_valid[0]),
+    .m_r_ready_o (hb_r_ready[0]),
+    .m_r_i       ({hb_r_data[0], hb_r_resp[0], hb_r_last[0]}),
+    .m_aw_valid_o(hb_aw_valid),
+    .m_aw_ready_i(hb_aw_ready),
     .m_aw_o      (m_aw),
-    .m_w_valid_o (w_valid_o[0]),
-    .m_w_ready_i (w_ready_i[0]),
+    .m_w_valid_o (hb_w_valid),
+    .m_w_ready_i (hb_w_ready),
     .m_w_o       (m_w),
-    .m_b_valid_i (b_valid_i[0]),
-    .m_b_ready_o (b_ready_o[0]),
-    .m_b_resp_i  (b_resp_i[0])
+    .m_b_valid_i (hb_b_valid),
+    .m_b_ready_o (hb_b_ready),
+    .m_b_resp_i  (hb_b_resp)
   );
-  assign {ar_addr_o[0], ar_len_o[0], ar_burst_o[0]} = m_ar;
-  assign {aw_addr_o[0], aw_len_o[0], aw_burst_o[0]} = m_aw;
-  assign {w_data_o[0], w_strb_o[0], w_last_o[0]}    = m_w;
+  assign {hb_ar_addr[0], hb_ar_len[0], hb_ar_burst[0]} = m_ar;
+  assign {hb_aw_addr, hb_aw_len, hb_aw_burst} = m_aw;
+  assign {hb_w_data, hb_w_strb, hb_w_last}    = m_w;
   assign ar_size_o[0] = FullBeat;
   assign aw_size_o[0] = FullBeat;
   assign {h_r_data_o, h_r_resp_o, h_r_last_o} = h_r;

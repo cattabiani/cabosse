@@ -443,7 +443,7 @@ done (or the interrupt) and finds the logits at the host address it set.
 |---|---|---|---|
 | `0x0` | `ID` | R | 0x43424F53 ('CBOS') |
 | `0x4` | `VERSION` | R | architecture version |
-| `0x8` | `CONTROL` | W | bit 0: start a token; bit 1: reset the controller and the units (wins over bit 0) |
+| `0x8` | `CONTROL` | W | bit 0: start a token; bit 1: reset the controller and the units (wins over bit 0; between tokens only, as bursts in flight are not drained; writes wait 6 cycles after it) |
 | `0xC` | `STATUS` | R | bit 0: busy; bit 1: done; bit 2: error |
 | `0x10` | `TOKEN` | RW | token id of the next step |
 | `0x14` | `POSITION` | RW | position of the next step |

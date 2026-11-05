@@ -44,8 +44,8 @@ copied here (Amazon Software License).
   included, tested in Verilator (verif/tests/test_bringup_core.py).
 - `cabosse_bringup.sv`: the CL top (shell ports, crossings, HBM IP, ILA),
   built only in Vivado; verif/tests/test_bringup_core.py elaborates it with
-  slang when `CABOSSE_AWS_FPGA` names an aws-fpga checkout (`pytest -m
-  on_request`).
+  slang when `CABOSSE_AWS_FPGA` names an aws-fpga checkout
+  (`scripts/test.sh -m on_request`).
 - `../synth_cl.tcl` (both designs): its synthesis in AWS's shell flow;
   `../cl_shell.svh`: the shell body both CL tops include.
 
@@ -173,7 +173,10 @@ the bring-up: the host owns port 0 between tokens, the core during one.
   vendor-free wrapper. `f2_core` puts channel p into engine port p's
   addresses (the engine gives every port the same offset), and merges
   engine port 0 and the vector unit onto HBM port 0 (`f2_port0`: reads in
-  turns, one ID, answers routed back in order).
+  turns, one ID, answers routed back in order). A register slice
+  (`bringup_pipe`, one stage) sits on each HBM channel the core uses, so
+  no HBM port drives the core's logic directly (M10; a read takes 2
+  cycles more).
 - `core/cabosse_core.sv`: the CL top, on `cl_shell.svh` as the bring-up's.
 - Build: `scripts/f2/build_cl.sh` with `DESIGN=core` (a 9 h deadline:
   core build 1 took 6.6 h to route; the engine's own placed builds peaked

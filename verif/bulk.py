@@ -32,6 +32,10 @@ import rtl
 DRIVERS = Path(__file__).parent / "bulk"
 CHUNK = 1 << 21  # records per run of the driver: one run per test chunk
 WORKERS = 8  # drivers run at once by in_parallel
+# Compiler jobs per Verilator build: a core's generated C++ takes up to about
+# 1.3 GB per g++ (measured 2026-11-05), so all 16 cores at once ran the
+# owner's machine out of memory. CABOSSE_BUILD_JOBS overrides it (read per build).
+BUILD_JOBS = "4"
 _BUILD_LOCK = threading.Lock()  # tests may run chunks from several threads
 _BUILT: dict[tuple[str, tuple[tuple[str, int], ...]], Path] = {}  # this session's builds
 
@@ -59,8 +63,10 @@ def _build(top: str, params: tuple[tuple[str, int], ...]) -> Path:
     directory = build_dir(top, params)
     directory.mkdir(parents=True, exist_ok=True)  # Verilator makes only the last level
     cxx = os.environ.get("CXX")
+    jobs = os.environ.get("CABOSSE_BUILD_JOBS", BUILD_JOBS)
+    assert jobs.isdigit() and int(jobs) > 0, f"CABOSSE_BUILD_JOBS={jobs!r}: 1 or more jobs"
     argv = [
-        "verilator", "--cc", "--exe", "--build", "-j", "0", "-O3",
+        "verilator", "--cc", "--exe", "--build", "-j", jobs, "-O3",
         "--x-assign", "fast", "--x-initial", "fast", "--public-params",
         "-CFLAGS", f"-std=c++23 -O3 -I{DRIVERS}",
         "--top-module", top, "-Mdir", str(directory), "-o", "bulk",

@@ -48,7 +48,11 @@
 // attention command waits a cycle more than its group. token_o, t_o
 // (position + 1) and stride_o are TOKEN, POSITION and STRIDE as they were at
 // the token's start. units_reset_o pulses with CONTROL's reset, for the
-// units' own reset (their memory errors are sticky).
+// units' own reset (their memory errors are sticky). It reaches the units
+// UnitsResetDelay cycles later (core.sv's registers); for SettleCycles
+// after a reset (CONTROL's or rst_ni) the controller keeps its sequencer
+// reset, so no done from before it counts, and takes no write, so no token
+// starts before the units are out of their reset.
 
 module controller #(
   parameter  int unsigned Bufs      = 22,
@@ -59,6 +63,7 @@ module controller #(
   parameter  int unsigned Commands  = 2048,      // the command buffer: 64 KiB
   parameter  int unsigned GoDepth   = 8,         // gos queued, at most
   parameter  int unsigned AxilAddrW = 17,
+  parameter  int unsigned UnitsResetDelay = 2,  // registers from units_reset_o to the units' flops
   localparam int unsigned BufW      = $clog2(Bufs),
   localparam int unsigned PcW       = $clog2(Commands + 1),
   localparam int unsigned SeqW      = PcW                     // a unit's commands of a token
@@ -167,7 +172,18 @@ module controller #(
   logic [15:0] waddr, raddr;
   logic        cb_we;
 
-  assign wr          = s_aw_valid_i && s_w_valid_i && !bvalid_q;
+  // The reset's way: units_reset_o's register, UnitsResetDelay registers
+  // to the units' flops, their registered done and err outputs (1), and 2
+  // cycles spare.
+  localparam int unsigned SettleMargin = 1 + 1 + 2;
+  localparam int unsigned SettleCycles = UnitsResetDelay + SettleMargin;
+  localparam int unsigned SettleW      = $clog2(SettleCycles + 1);
+
+  logic [SettleW-1:0] settle_q;
+  logic               settling;
+  assign settling = settle_q != '0;
+
+  assign wr          = s_aw_valid_i && s_w_valid_i && !bvalid_q && !settling;
   assign s_aw_ready_o = wr;
   assign s_w_ready_o  = wr;
   assign s_b_valid_o  = bvalid_q;
@@ -244,6 +260,8 @@ module controller #(
 
   always_ff @(posedge clk_i) begin
     units_reset_o <= rst_ni && ctl_reset;
+    if (!rst_ni || ctl_reset) settle_q <= SettleW'(SettleCycles);
+    else if (settling) settle_q <= settle_q - 1'b1;
     if (start) begin
       run_token_q  <= AddrW'(token_q);
       run_t_q      <= AddrW'(position_q + 32'd1);
@@ -375,7 +393,7 @@ module controller #(
   // Gos, in the order of their commands: each waits for its writer's done.
   stream_fifo #(.Width(1 + SeqW), .Depth(GoDepth)) u_gos (
     .clk_i,
-    .rst_ni      (rst_ni && !start && !ctl_reset),  // a token starts with none
+    .rst_ni      (rst_ni && !start && !ctl_reset && !settling),  // a token starts with none
     .in_valid_i  (eng_valid_o && eng_ready_i && need_wait),
     .in_ready_o  (go_in_ready),
     .in_data_i   ({wunit_q[BufW'(f_a)], wseq_q[BufW'(f_a)]}),
@@ -397,7 +415,7 @@ module controller #(
   end
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni || ctl_reset) begin
+    if (!rst_ni || ctl_reset || settling) begin
       pc_q           <= '0;
       busy_q         <= 1'b0;
       done_q         <= 1'b0;

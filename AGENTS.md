@@ -82,6 +82,14 @@ one is wrong, say so and explain why, and let the owner decide.
 9. **Report results honestly.** If a test fails, show the output. If a
    number is an estimate, call it an estimate. Never tune a test or a tolerance
    just to make it pass without saying so.
+10. **Never run heavy work uncapped on the owner's machine.** Out-of-memory
+    runs have killed VS Code more than once. Run pytest only through
+    `scripts/test.sh`, which caps memory with systemd (12G default, `MEM=` to
+    change it). Run any other Python or build that may use more than a few
+    GB under `systemd-run --user --scope -p MemoryMax=...`. Do not raise
+    Verilator's compile jobs (`CABOSSE_BUILD_JOBS`, default 4; each `g++`
+    takes up to about 1.3 GB). If a run hits the cap, say so and find what
+    grew. Do not just raise the cap.
 
 ## Working style
 
