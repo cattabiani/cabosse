@@ -38,9 +38,10 @@ one is wrong, say so and explain why, and let the owner decide.
 - **Model ladder:** tiny random-weight Llama configs (fast RTL tests) →
   SmolLM2-135M-Instruct (first real model) → Qwen2.5-0.5B. Reference: Hugging Face
   `transformers`.
-- **Baseline:** Gemmini + Rocket on F2, 29.8 MHz, 9.0 tokens/s on
-  stories260K. Data movement and orchestration dominated, not the matmul.
-  Gemmini is not reused.
+- **Comparisons:** the memory-bandwidth bound and llama.cpp on the same
+  F2 host's CPU (D-056). The project started from a Gemmini + Rocket
+  hackathon run (D-008: data movement and orchestration dominated, not the
+  matmul); Gemmini is not reused and not compared against (D-073).
 
 ## Hard rules
 

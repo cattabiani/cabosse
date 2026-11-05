@@ -42,20 +42,6 @@ LOGITS_BYTES = 49152 * 4  # OUTPUT's FP32 logits, read by the host each token
 # tokens (prompt 46 tokens: position 45 makes the first new token).
 WINDOWS = ((0, 127), (46, 173), (917, 1044), (45, 1044))
 BENCH_DEPTHS = (0, 46, 1023)
-# D-008's baseline: llama2.c's stories260K (its model card: dim 64, 5 layers,
-# 8 heads, 4 KV heads, vocabulary 512; hidden 172 by llama2.c's rounding),
-# 9.0 tokens/s at 29.8 MHz. Gemmini's weight format was not recorded (int8
-# likely, to verify), so its bytes are given per weight.
-GEMMINI = {"tokens_per_s": 9.0, "clock_hz": 29.8e6, "position": 0}
-STORIES260K = LlamaConfig(
-    hidden_size=64,
-    intermediate_size=172,
-    num_hidden_layers=5,
-    num_attention_heads=8,
-    num_key_value_heads=4,
-    vocab_size=512,
-    tie_word_embeddings=True,
-)
 UTILIZATION = re.compile(r"^\| (CLB LUTs|CLB Registers|Block RAM Tile|URAM|DSPs)\s*\|(.*)\|$", re.M)
 STAMPS = re.compile(r"build (\d\d):(\d\d):(\d\d)Z, build end (\d\d):(\d\d):(\d\d)Z")
 TIMING = re.compile(r"Timing failed at (\d+) MHz \(\d+ ns\): WNS (-?[\d.]+) ns")
@@ -283,81 +269,6 @@ def wall_table() -> str:
     return blocks.table(["part of a step", "ms", "share"], rows)
 
 
-def per_s(x: float) -> str:
-    """A rate with its prefix: 2.34 M, 23.4 G."""
-    return f"{x / 1e9:.1f} G" if x >= 1e9 else f"{x / 1e6:.2f} M"
-
-
-def weight_macs(c: LlamaConfig, position: int) -> tuple[int, int]:
-    """(weight bytes, weight multiply-adds) of one token, BF16, from the perf
-    model's op list."""
-    w = perf.Work.of(perf.design_ops(c, position, design()))
-    return w.weight_bytes, w.matvec_macs
-
-
-def normalized_table() -> str:
-    """D-008's baseline against the core, per second and per cycle."""
-    clock = design()["clock_hz"]
-    r = long_result(BASELINE_RUN)
-    ours_tps = r["tokens_per_s_cycles"]
-    ours_bytes, ours_macs = weight_macs(config(), 0)
-    g_bytes, g_macs = weight_macs(STORIES260K, GEMMINI["position"])
-    g_tps, g_clock = GEMMINI["tokens_per_s"], GEMMINI["clock_hz"]
-    g_weights = g_bytes // 2  # BF16 bytes in the op list: one weight is 2
-
-    def row(name, tps, n_weights, n_bytes, macs, hz, model):
-        return [
-            name,
-            model,
-            f"{hz / 1e6:.1f}",
-            f"{tps:.1f}",
-            per_s(n_weights * tps),
-            n_bytes,
-            per_s(macs * tps),
-            f"{macs * tps / hz:.3g}",
-        ]
-
-    rows = [
-        row(
-            "Gemmini + Rocket (D-008)",
-            g_tps,
-            g_weights,
-            "not recorded (int8 likely, to verify)",
-            g_macs,
-            g_clock,
-            f"stories260K, {g_weights / 1e3:.0f}k weights",
-        ),
-        row(
-            "Cabosse core, build 1",
-            ours_tps,
-            ours_bytes // 2,
-            f"{ours_bytes * ours_tps / 1e9:.1f} GB/s (BF16)",
-            ours_macs,
-            clock,
-            f"{MODEL}, {ours_bytes // 2 / 1e6:.0f}M weights",
-        ),
-    ]
-    text = blocks.table(
-        [
-            "",
-            "model",
-            "MHz",
-            "tokens/s",
-            "weights read/s",
-            "weight bytes/s",
-            "weight MACs/s",
-            "MACs a cycle",
-        ],
-        rows,
-    )
-    ratio = (ours_macs * ours_tps / clock) / (g_macs * g_tps / g_clock)
-    return (
-        text + "\n\nThe core's row is the long run's median step. Weights read once a"
-        " token; MACs of the weight matrices only, attention left out. Per cycle the"
-        f" core does {ratio:,.0f} times Gemmini's weight multiply-adds."
-    )
-
-
 def cpu_rows() -> list[list]:
     bench = {b["n_depth"]: b for b in json.loads((BASELINE / "llama_bench.json").read_text())}
     cycles = long_result(BASELINE_RUN)["cycles"]
@@ -528,7 +439,6 @@ def exit_rows() -> list[list]:
             blocks.met(long_tokens >= MIN_LONG_TOKENS),
         ],
         ["Clock and resource use reported", "below (core build 1)", "yes"],
-        ["Against Gemmini, normalized (weight bytes/s, MACs/s)", "below", "yes"],
         ["Against llama.cpp on the F2 host's CPU, same positions (D-056)", "below", "yes"],
         ["(beyond the criteria) Against llama.cpp on a desktop CPU and GPU", "below", "yes"],
         [
@@ -550,7 +460,6 @@ def generated() -> dict[str, str]:
         "terms": terms_table(),
         "wall": wall_table(),
         "pcis": pcis_table(),
-        "normalized": normalized_table(),
         "cpu": cpu_table(),
         "local": local_table(),
         "build": build_table(),

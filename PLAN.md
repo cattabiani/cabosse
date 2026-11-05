@@ -16,7 +16,7 @@ possible; Vivado, F2's only build flow, is the exception (D-032). The path:
 1. **Simulation:** a full decode step of a real model runs in RTL simulation
    and matches a bit-exact Python golden model.
 2. **FPGA:** the same RTL runs on AWS F2 as a PCIe device, measured against
-   our memory-bandwidth bound and the Gemmini hackathon baseline.
+   our memory-bandwidth bound and llama.cpp on the same host's CPU (D-073).
 3. **ASIC:** out of scope (D-036); a possible later development.
 
 ## Non-goals (for now)
@@ -818,6 +818,14 @@ ECP5 flow M12 (D-034's M11), the ASIC slice M13 (D-036's M12). *Why:*
 core build 1 missed 250 MHz by 5.5 ns but runs correctly at 100 MHz, so
 the path to a measured token (D-058) is complete; closing timing is RTL
 work on the vector unit's buffer reads, a step of its own.
+
+**D-073 (2026-11-05) — No comparison with Gemmini** (owner, 2026-11-05;
+changes D-008's role and M9's exit criteria). The project's comparisons are
+the memory-bandwidth bound and llama.cpp on the same F2 host's CPU (D-056),
+with a desktop CPU and GPU as context. D-008 stays as the project's origin
+and its lesson (data movement dominates), not as a baseline. *Why:* the
+Gemmini run was a small thing, a model 500 times smaller on a 29.8 MHz
+soft core; normalized figures against it say little.
 
 ## Milestones
 
@@ -1922,9 +1930,8 @@ are 15-16 MB/s (results only, no bulk data).
 reaches (D-072). Tokens/s is measured over ≥ 1000 tokens and compared with
 the perf model and the bandwidth bound (the floor moved to M10, D-072).
 Clock and resource use are reported.
-Compared with the Gemmini baseline (a different model) using normalized
-figures: weight bytes/s and MACs/s, and with llama.cpp on the F2 host's
-CPU at the same positions (D-056). The engine keeps a margin of 10-25% over
+Compared with llama.cpp on the F2 host's CPU at the same positions
+(D-056); the Gemmini comparison is dropped (D-073). The engine keeps a margin of 10-25% over
 the memory (D-055; deferred by D-071, no longer a criterion). A recording of a 1-2 turn chat with SmolLM2 on F2,
 with the command and its log saved (owner, 2026-11-03).
 **From M5:** with HBM at 450 MHz a port delivers about 1.8 beats per core
@@ -2040,9 +2047,8 @@ keeps it current). Every exit criterion is met. Over the long fixture's
 1000 new tokens the core is 3.8% slower than the perf model in order and
 at 52% of the bandwidth bound at 100 MHz; the model in order is at 54%,
 since the vector unit's work comes after the memory's. The logits' PCIS
-read is about 59% of the wall clock (Q-34). Gemmini's weight format and
-stories260K's shape are to verify; the F2 sessions' cost is not billed
-yet. Checkpoint: waits for the owner.
+read is about 59% of the wall clock (Q-34). The F2 sessions' cost is not
+billed yet. Checkpoint: waits for the owner.
 
 **Desktop baseline (2026-11-05, owner's request, beyond the criteria):**
 llama.cpp b11672 on the development PC (Ryzen 7 7800X3D, built from

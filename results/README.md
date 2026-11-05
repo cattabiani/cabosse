@@ -51,9 +51,7 @@ Logs: [build](../reports/data/f2/2026-11-04-core1.txt),
 
 **What limits it now:** the clock (the slowest path is a read from the
 vector unit's on-chip buffers into its arithmetic chain), and the logits'
-trip back to the host. The project's earlier starting point, Gemmini +
-Rocket on the same F2, ran a 260K-parameter model at 9.0 tokens/s at
-29.8 MHz; this model is about 500 times larger.
+trip back to the host.
 
 ### Against the same F2 host's CPU
 
