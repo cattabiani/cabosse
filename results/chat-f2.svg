@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="864" height="150" viewBox="0 0 864 150" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14">
+<title>Cabosse: SmolLM2-135M-Instruct on AWS F2</title>
+<rect width="100%" height="100%" rx="6" fill="#0d1117"/>
+<rect width="0" height="0"><animate id="clock" attributeName="x" from="0" to="0" dur="4.900s" begin="0s;clock.end"/></rect>
+<text x="12.0" y="26.4" fill="#7ee787" xml:space="preserve" visibility="hidden">&gt; What is the capital of France?<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.006s"/></text>
+<text x="12.0" y="62.4" fill="#e6edf3" xml:space="preserve" visibility="hidden">The<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.521s"/></text>
+<text x="37.2" y="62.4" fill="#e6edf3" xml:space="preserve" visibility="hidden"> capital<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.535s"/></text>
+<text x="104.4" y="62.4" fill="#e6edf3" xml:space="preserve" visibility="hidden"> of<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.549s"/></text>
+<text x="129.6" y="62.4" fill="#e6edf3" xml:space="preserve" visibility="hidden"> France<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.563s"/></text>
+<text x="188.4" y="62.4" fill="#e6edf3" xml:space="preserve" visibility="hidden"> is<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.577s"/></text>
+<text x="213.6" y="62.4" fill="#e6edf3" xml:space="preserve" visibility="hidden"> Paris<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.591s"/></text>
+<text x="264.0" y="62.4" fill="#e6edf3" xml:space="preserve" visibility="hidden">.<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.605s"/></text>
+<text x="12.0" y="98.4" fill="#7ee787" xml:space="preserve" visibility="hidden">&gt; And of Italy?<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.620s"/></text>
+<text x="12.0" y="134.4" fill="#e6edf3" xml:space="preserve" visibility="hidden">The<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.815s"/></text>
+<text x="37.2" y="134.4" fill="#e6edf3" xml:space="preserve" visibility="hidden"> capital<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.829s"/></text>
+<text x="104.4" y="134.4" fill="#e6edf3" xml:space="preserve" visibility="hidden"> of<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.843s"/></text>
+<text x="129.6" y="134.4" fill="#e6edf3" xml:space="preserve" visibility="hidden"> Italy<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.857s"/></text>
+<text x="180.0" y="134.4" fill="#e6edf3" xml:space="preserve" visibility="hidden"> is<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.872s"/></text>
+<text x="205.2" y="134.4" fill="#e6edf3" xml:space="preserve" visibility="hidden"> Rome<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.886s"/></text>
+<text x="247.2" y="134.4" fill="#e6edf3" xml:space="preserve" visibility="hidden">.<set attributeName="visibility" to="hidden" begin="clock.begin"/><set attributeName="visibility" to="visible" begin="clock.begin+0.900s"/></text>
+</svg>
