@@ -1,0 +1,114 @@
+# Core build 1's routed checkpoint (M9), analyzed 2026-11-05: platforms/f2/timing/analyze.tcl
+# via scripts/f2/report_dcps.sh (branch m10/analyze-core1 a9ce6c0), r6i.2xlarge i-083496df9dc76cc7b,
+# eu-central-1, 14:11-14:39 UTC. Full reports: s3://cabosse-builds-628837661672/dcp/2026-11-04-core1/analyze/core1/.
+# Part 1: utilization by block (utilization_core.rpt, blocks over 2000 LUTs, engine lanes summed).
+# Part 2: each block's primitives per SLR (cells_per_slr.rpt). Part 3: the 100 worst paths
+# (design_timing.rpt) by family, SLR crossings and logic levels. Part 4: QoR suggestions (summary).
+# Part 5: the highest-fanout nets (fanout.rpt).
+
+## Part 1: utilization (instance, total LUTs, logic LUTs, LUTRAMs, FFs, RAMB36, URAM, DSP)
+ u_core                                       794391  756093   37770  546337     202     256     243
+   u_core                                     794391  756093   37770  546337     202     256     243
+     u_engine                                 534284  497212   37072  417060       0       0      16
+       (u_engine)                               2161    2161       0    6684       0       0       0
+     u_vec                                    259372  258154     690  128465     192     256     227
+       (u_vec)                                  2579    2499       0    6318       0       0       3
+       gen_buf[11].u_banks                      3268    3268       0      10       0      16       0
+         u_banks                                2206    2206       0      10       0      16       0
+       gen_buf[12].u_banks                      2191    2191       0      10       0      16       0
+       gen_buf[13].u_banks                      2131    2131       0      10       0      16       0
+       gen_buf[15].u_banks                      4701    4701       0      10       0      16       0
+         u_banks                                3618    3618       0      10       0      16       0
+       gen_buf[16].u_banks                      2108    2108       0      22       0      16       0
+       gen_buf[17].u_banks                      2335    2335       0      22       0      16       0
+       gen_buf[18].u_banks                      2336    2336       0      22       0      16       0
+       gen_buf[19].u_banks                      3981    3981       0      22       0      16       0
+         u_banks                                2680    2680       0      22       0      16       0
+       gen_buf[1].u_banks                       2153    2153       0      10       0      16       0
+       gen_buf[20].u_banks                      2861    2861       0      28       0      16       0
+       gen_buf[21].u_banks                      2632    2632       0      28       0      16       0
+       gen_buf[3].u_banks                       5641    5641       0      10       0      16       0
+         u_banks                                4548    4548       0      10       0      16       0
+       gen_buf[4].u_banks                       2133    2133       0      10       0      16       0
+       gen_buf[5].u_banks                       2123    2123       0      10       0      16       0
+       gen_buf[7].u_banks                       5851    5851       0      10       0      16       0
+         u_banks                                4757    4757       0      10       0      16       0
+       gen_buf[8].u_banks                       2120    2120       0      10       0      16       0
+       gen_slot[0].u_chain                     33663   33635       0    7337       0       0      14
+         (gen_slot[0].u_chain)                 23791   23763       0    4268       0       0       0
+       gen_slot[10].u_chain                    10140   10112       0    7329       0       0      14
+       gen_slot[11].u_chain                    10207   10179       0    7352       0       0      14
+       gen_slot[12].u_chain                    10140   10112       0    7297       0       0      14
+       gen_slot[13].u_chain                    10243   10215       0    7328       0       0      14
+       gen_slot[14].u_chain                    10170   10142       0    7335       0       0      14
+       gen_slot[15].u_chain                    10203   10175       0    7334       0       0      14
+       gen_slot[1].u_chain                     10706   10678       0    7335       0       0      14
+       gen_slot[2].u_chain                     10699   10671       0    7306       0       0      14
+       gen_slot[3].u_chain                     10740   10712       0    7287       0       0      14
+       gen_slot[4].u_chain                     10692   10664       0    7290       0       0      14
+       gen_slot[5].u_chain                     10674   10646       0    7322       0       0      14
+       gen_slot[6].u_chain                     10709   10681       0    7320       0       0      14
+       gen_slot[7].u_chain                     10743   10715       0    7305       0       0      14
+       gen_slot[8].u_chain                     10243   10215       0    7345       0       0      14
+       gen_slot[9].u_chain                     10188   10160       0    7333       0       0      14
+       u_tree                                  13345   13345       0    4436       0       0       0
+         (u_tree)                               7730    7730       0    4297       0       0       0
+         u_add                                  5616    5616       0     139       0       0       0
+       gen_lane[*].u_lane, sum of 128         490881  472961   17920  400352       0       0       0
+
+## Part 2: primitives per SLR (SLR, block, cells, by PRIMITIVE_GROUP; URAM counts as BLOCKRAM)
+SLR0 u_vec 14331 BLOCKRAM 80 CLB 14232 REGISTER 19
+SLR0 u_engine 634844 ARITHMETIC 80 CLB 389855 REGISTER 244909
+SLR1 u_vec 112853 ARITHMETIC 24 BLOCKRAM 368 CLB 96882 REGISTER 15579
+SLR1 u_engine 256067 ARITHMETIC 48 CLB 157099 REGISTER 98920
+SLR2 u_vec 292521 ARITHMETIC 1792 CLB 176675 REGISTER 114054
+SLR2 u_engine 190568 CLB 116853 REGISTER 73715
+
+## Part 3: the 100 worst paths (paths, worst slack ns, SLR crossings, logic levels, start -> end)
+  8  -5.466 slr=1 levels= 9 gen_bank[*].mem_q_reg_uram_0/CLK -> st_q_reg[*][v][*]/D
+  5  -5.456 slr=1 levels=22 cur_q_reg[len][*]/C -> gen_bank[*].mem_q_reg_uram_0/ADDR_A[*]
+  1  -5.450 slr=1 levels=10 gen_bank[*].mem_q_reg_uram_0/CLK -> st_q_reg[*][v][*]_replica/D
+ 32  -5.450 slr=1 levels=23 cur_q_reg[len][*]/C -> gen_bank[*].mem_q_reg_uram_0/ADDR_A[*]
+ 22  -5.447 slr=1 levels=24 cur_q_reg[len][*]/C -> gen_bank[*].mem_q_reg_uram_0/ADDR_A[*]
+  2  -5.434 slr=1 levels=11 gen_bank[*].mem_q_reg_uram_0/CLK -> gen_stage[*].d_q_reg[*][special][*]_srl32/D
+  1  -5.433 slr=0 levels=23 cur_q_reg[len][*]/C -> gen_bank[*].mem_q_reg_bram_0/ADDRBWRADDR[*]
+  1  -5.427 slr=1 levels=10 gen_bank[*].mem_q_reg_uram_0/CLK -> gen_stage[*].d_q_reg[*][special][*]_srl32_srlopt/D
+  5  -5.426 slr=1 levels= 8 gen_bank[*].mem_q_reg_uram_0/CLK -> st_q_reg[*][v][*]/D
+  7  -5.425 slr=1 levels= 7 gen_bank[*].mem_q_reg_uram_0/CLK -> st_q_reg[*][v][*]/D
+  1  -5.422 slr=1 levels=11 gen_bank[*].mem_q_reg_uram_0/CLK -> st_q_reg[*][k][*]/D
+  1  -5.416 slr=0 levels=25 cur_q_reg[len][*]/C -> gen_bank[*].mem_q_reg_bram_1/ADDRBWRADDR[*]
+  3  -5.415 slr=1 levels= 6 gen_bank[*].mem_q_reg_uram_0/CLK -> st_q_reg[*][v][*]/D
+  1  -5.403 slr=1 levels=10 gen_bank[*].mem_q_reg_uram_0/CLK -> gen_stage[*].d_q_reg[*][special][*]_srl32/D
+  2  -5.401 slr=0 levels=24 cur_q_reg[len][*]/C -> gen_bank[*].mem_q_reg_uram_0/ADDR_A[*]
+  1  -5.398 slr=0 levels=24 cur_q_reg[len][*]/C -> gen_bank[*].mem_q_reg_bram_0/ADDRBWRADDR[*]
+  1  -5.397 slr=0 levels=25 cur_q_reg[len][*]/C -> gen_bank[*].mem_q_reg_bram_0/ADDRBWRADDR[*]
+  1  -5.392 slr=1 levels=11 gen_bank[*].mem_q_reg_uram_0/CLK -> gen_stage[*].d_q_reg[*][special][*]_srl32_srlopt/D
+  1  -5.392 slr=1 levels= 9 gen_bank[*].mem_q_reg_uram_0/CLK -> gen_stage[*].d_q_reg[*][special][*]_srl32_srlopt/D
+  1  -5.391 slr=1 levels= 9 gen_bank[*].mem_q_reg_uram_0/CLK -> st_q_reg[*][k][*]_replica/D
+  1  -5.388 slr=1 levels=10 gen_bank[*].mem_q_reg_uram_0/CLK -> st_q_reg[*][v][*]/D
+  1  -5.387 slr=1 levels=10 gen_bank[*].mem_q_reg_uram_0/CLK -> st_q_reg[*][k][*]_replica/D
+  1  -5.382 slr=1 levels=11 gen_bank[*].mem_q_reg_uram_0/CLK -> st_q_reg[*][k][*]_replica/D
+
+## Part 4: QoR suggestions (worst row each: id, paths, logic levels, routes, slack ns, datapath ns, route %)
+RQS_TIMING-9_2-1: Critical paths ending at SRLs. For each SRL, extract the first SRL stage as a slice register to break critical path distances using property SRL_STYLE=REG_SRL_REG.
+RQS_TIMING-59-1: Replicate the nets driven by LUTs in setup critical paths can improve timing
+RQS_XDC-1-1: Paths above Max Net/LUT budgeting. Review paths and either reduce logic delays, add pipelining or increase path requirements.
+RQS_TIMING-9_2-1 1 11 11 -5.434 8.673 75.20
+RQS_TIMING-59-1 23 23 21 -5.439 8.949 74.40
+RQS_XDC-1-1 82 22 20 -5.456 8.706 71.30
+
+## Part 5: highest-fanout nets (net, fanout, driver, worst slack ns, worst delay ns)
+WRAPPER/CL/u_core/u_core/u_controller/iss_grp_done_q2 16349 LUT2 -5.090 6.668
+WRAPPER/RL_SHIM/PCIM_AXI_REG_SLC/AXI_REGISTER_SLICE/inst/w.w_pipe/s_ready_i_reg_0 1157 FDRE 0.748 2.736
+WRAPPER/IO_SHIM/RL_CLKS/MMCM_CLK_MAIN_A/inst/SOFT_RESET_I/reset2ip_reset 1090 LUT2 inf 2.049
+WRAPPER/CL/AWS_CLK_GEN/CLK_GRP_A_EN_I.CLK_MMCM_A_I/inst/SOFT_RESET_I/reset2ip_reset 1088 LUT2 6.668 2.364
+WRAPPER/CL/AWS_CLK_GEN/CLK_GRP_B_EN_I.CLK_MMCM_B_I/inst/SOFT_RESET_I/reset2ip_reset 1087 LUT2 6.166 2.721
+WRAPPER/CL/AWS_CLK_GEN/CLK_GRP_C_EN_I.CLK_MMCM_C_I/inst/SOFT_RESET_I/reset2ip_reset 1087 LUT2 6.001 3.122
+WRAPPER/CL/AWS_CLK_GEN/CLK_HBM_EN_I.CLK_MMCM_HBM_I/inst/SOFT_RESET_I/reset2ip_reset 1087 LUT2 5.702 3.228
+WRAPPER/RL_SHIM/DMA_PCIS_AXI_REG_SLC/AXI_REGISTER_SLICE/inst/r.r_pipe/s_ready_i_reg_0 1081 FDRE 0.711 2.782
+WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/wr_wea 672 FDRE 2.579 1.059
+WRAPPER/CL/u_core/u_core/u_vec/grp_q_reg[first]__0 644 FDRE -3.100 3.183
+WRAPPER/CL/u_core/u_core/u_vec/grp_q_reg[b_per_row_n_0_] 632 FDRE -0.585 1.860
+WRAPPER/CL/u_core/u_core/u_vec/gen_slot[0].u_chain/grp_q_reg[op][0]_rep__3_0[1] 612 LUT5 -3.105 5.894
+WRAPPER/CL/u_core/u_core/u_vec/gen_slot[0].u_chain/grp_q_reg[op][0]_rep__3_0[2] 612 LUT5 -3.987 6.781
+WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/m_sc_areset_r 606 FDRE 1.576 2.137

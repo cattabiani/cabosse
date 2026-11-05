@@ -2067,6 +2067,27 @@ stage, 9 logic levels, 78% route; reports/data/f2/2026-11-04-core1.txt).
 M9, and tokens/s over ≥ 1000 tokens reaches ≥ 50% of the bandwidth bound
 (the provisional floor M9 carried). A row in results/README.md.
 
+**Approach (owner, 2026-11-05):** close timing block by block before a full
+build. Vector-unit commands may take a few cycles more (same bits). Q-30 and
+Q-32 stay out of M10. Steps: analyze core build 1's routed checkpoint;
+pipeline the vector unit and fix the high-fanout nets; a harness run of the
+vector unit alone at 250 MHz; then one full build, stopped early if its
+post-place timing is far off. Budget for M10's AWS use: $15.
+
+**Core build 1, analyzed** (2026-11-05, platforms/f2/timing/analyze.tcl,
+reports/data/f2/2026-11-05-core1-analysis.txt; about 30 min of r6i.2xlarge):
+- The vector unit's buffer addresses (`cur_q.len` → URAM/BRAM `ADDR`) take
+  22-25 logic levels in one cycle: the group's length and address
+  arithmetic, the buffer select, the per-lane bank address and the rotation.
+  The buffer reads (URAM → rotation → buffer select → chain input) take 6-11
+  levels and cross an SLR: the buffers sit in SLR1, the chains in SLR2.
+- One LUT, `u_controller/iss_grp_done_q2`, drives 16,349 loads (6.7 ns, slack
+  -5.09): the families M9 listed as the reset into the engine's lanes. The
+  vector unit's `grp_q` fields fan out to 600+ loads at -3 to -4 ns.
+- Area: the engine 534k LUTs (128 lanes of about 3.8k), the vector unit 259k
+  (16 chain slots of about 10.4k, slot 0 23.8k more, 21 buffers 2-6k each, the
+  tree 13k). No block is an obvious cut; M10 starts with pipelining only.
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
