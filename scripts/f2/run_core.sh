@@ -9,7 +9,8 @@
 # download SmolLM2 at the fixtures' revision, and run M9's measurements
 # (scripts/f2/core_plan.py), copying the results (JSON lines with
 # provenance) and the log to S3 as they come; then the chat recording
-# (scripts/f2/chat.py) to $S3/chat/. The instance powers off when
+# (scripts/f2/chat.py) to $S3/chat/, and the CPU baselines
+# (scripts/f2/cpu_baseline.sh) to $S3/baseline/. The instance powers off when
 # done or at the deadline. Root and installs are allowed on the project's
 # own instances (AGENTS.md, rule 2).
 
@@ -20,6 +21,7 @@ AFI=                           # its id (afi-...), for the provenance
 MHZ=100                        # core clock: core1 closes timing at ~105 MHz, not 250
 QUICK=                         # --quick: no long fixture
 CHAT=1                         # the chat recording after the plan (empty: none)
+BASELINE=1                     # the CPU baselines after the chat (empty: none)
 DEADLINE_MIN=90                # safety net: power off even if something hangs
 S3=                            # s3://bucket/dcp/<run>: everything goes there (the role writes dcp/ only)
 UV_VERSION=0.12.7              # the installer of Python and the venv
@@ -102,5 +104,14 @@ if [ -n "$CHAT" ]; then
   echo "chat exit $chat_status"
   echo "CABOSSE-END chat"
 fi
-[ $status = 0 ] && [ "$errors" = 0 ] && [ $chat_status = 0 ] && echo "CABOSSE-RESULT pass" || echo "CABOSSE-RESULT fail"
+baseline_status=0
+if [ -n "$BASELINE" ]; then
+  echo "CABOSSE-BEGIN baseline"
+  /root/cabosse/scripts/f2/cpu_baseline.sh /root/baseline
+  baseline_status=$?
+  aws s3 cp --only-show-errors --recursive /root/baseline "$S3/baseline"
+  echo "baseline exit $baseline_status"
+  echo "CABOSSE-END baseline"
+fi
+[ $status = 0 ] && [ "$errors" = 0 ] && [ $chat_status = 0 ] && [ $baseline_status = 0 ] && echo "CABOSSE-RESULT pass" || echo "CABOSSE-RESULT fail"
 finish
