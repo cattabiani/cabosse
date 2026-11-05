@@ -131,6 +131,11 @@ module engine
   output logic [Ports-1:0]                    err_o         // sticky, per port
 );
 
+  // The registered reset; a copy per DMA port and per lane below, each from
+  // rst_ni, so all take it in the same cycle.
+  logic rst_nq;
+  always_ff @(posedge clk_i) rst_nq <= rst_ni;
+
   localparam logic [1:0]  OpMatvec  = 2'd0;
   localparam logic [1:0]  OpScores  = 2'd1;
   localparam logic [1:0]  OpValues  = 2'd2;
@@ -227,6 +232,10 @@ module engine
   function automatic logic [AddrWidth-1:0] kv_offset(unit_t u, logic a);
     return a && u.r + 1'b1 == u.g ? u.kv_off + u.region : u.kv_off;
   endfunction
+  // Where head a of unit u reads, for a command at addr.
+  function automatic logic [AddrWidth-1:0] head_addr(logic [AddrWidth-1:0] addr, unit_t u, logic a);
+    return addr + kv_offset(u, a) + u.unit_off;
+  endfunction
   // A unit's results (drain): how many lanes, from lane 0, and lane 0's row.
   function automatic logic [LW-1:0] res_lanes(unit_t u);
     if (!u.values) return last_tile(u) ? LW'(rem(u)) : LW'(L);
@@ -321,7 +330,7 @@ module engine
 
   logic [2:0] q_in_ready, q_valid, q_pop;  // issue, step, drain
   cmd_t       q_head[3];
-  assign cmd_ready_o = &q_in_ready;
+  assign cmd_ready_o = &q_in_ready && rst_nq;  // none taken while the reset comes
 
   for (genvar i = 0; i < 3; i++) begin : gen_queue
     stream_fifo #(
@@ -329,7 +338,7 @@ module engine
       .Depth(CmdDepth)
     ) u_queue (
       .clk_i,
-      .rst_ni,
+      .rst_ni     (rst_nq),
       .in_valid_i (cmd_valid_i && cmd_ready_o),
       .in_ready_o (q_in_ready[i]),
       .in_data_i  (cmd),
@@ -352,6 +361,8 @@ module engine
   logic [Ports-1:0][CrW-1:0]       dma_out_count;  // beats in each port's FIFO
 
   for (genvar p = 0; p < Ports; p++) begin : gen_dma
+    logic rst_nq_p;  // the port's copy of the reset
+    always_ff @(posedge clk_i) rst_nq_p <= rst_ni;
     port_dma #(
       .AddrWidth (AddrWidth),
       .DataWidth (DataWidth),
@@ -360,7 +371,7 @@ module engine
       .Slices    (LanesPerPort)
     ) u_dma (
       .clk_i,
-      .rst_ni,
+      .rst_ni     (rst_nq_p),
       .cmd_valid_i(dma_cmd_valid[p]),
       .cmd_ready_o(dma_cmd_ready[p]),
       .cmd_addr_i (dma_addr),
@@ -396,13 +407,19 @@ module engine
   unit_t                iss_unit_q;
   unit_t                iss_next_q;  // unit_next(iss_unit_q), a cycle late
   logic [Ports-1:0]     iss_next_ports_q[Heads];  // head_ports(iss_next_q, a), a cycle late
+  // Each head's DMA address, registered. Head 0's is there in its unit's
+  // first cycle (the next unit's computed a cycle late, as the ports);
+  // head 1's comes from the unit's registers a cycle after it changed,
+  // before head 1 issues (after head 0's done, 2 cycles at the soonest).
+  logic [AddrWidth-1:0] iss_addr0_q, iss_addr1_q;
+  logic [AddrWidth-1:0] iss_next_addr0_q;  // head_addr(iss_addr_q, iss_next_q, 0), a cycle late
   logic [NG-1:0]        iss_grp_done_q;  // per group of GP ports: each took it
   logic [Ports-1:0]     iss_active;
   logic                 iss_last_head;
 
   assign iss_active    = iss_ports_q[iss_head_q];
   assign dma_cmd_valid = {Ports{iss_busy_q}} & iss_active & ~iss_taken_q;
-  assign dma_addr      = iss_addr_q + kv_offset(iss_unit_q, iss_head_q) + iss_unit_q.unit_off;
+  assign dma_addr      = iss_head_q ? iss_addr1_q : iss_addr0_q;
   assign dma_beats     = iss_unit_q.beats;
   assign iss_last_head = 2'(iss_head_q) + 2'd1 == unit_heads(iss_unit_q);
   assign q_pop[0]      = !iss_busy_q && q_valid[0];
@@ -416,7 +433,9 @@ module engine
   always_ff @(posedge clk_i) begin
     iss_next_q <= unit_next(iss_unit_q);
     for (int unsigned a = 0; a < Heads; a++) iss_next_ports_q[a] <= head_ports(iss_next_q, 1'(a));
-    if (!rst_ni || q_pop[0] || iss_done_q) begin
+    iss_next_addr0_q <= head_addr(iss_addr_q, iss_next_q, 1'b0);
+    iss_addr1_q      <= head_addr(iss_addr_q, iss_unit_q, 1'b1);
+    if (!rst_nq || q_pop[0] || iss_done_q) begin
       iss_grp_done_q <= '0;
     end else if (iss_busy_q) begin
       for (int unsigned g = 0; g < NG; g++) begin
@@ -427,7 +446,7 @@ module engine
   end
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
+    if (!rst_nq) begin
       iss_busy_q  <= 1'b0;
       iss_done_q  <= 1'b0;
       iss_taken_q <= '0;
@@ -439,6 +458,7 @@ module engine
       // mux of the two units before unit_ports would lengthen the path.
       iss_unit_q   <= unit_init(q_head[0]);
       for (int unsigned a = 0; a < Heads; a++) iss_ports_q[a] <= head_ports(unit_init(q_head[0]), 1'(a));
+      iss_addr0_q  <= q_head[0].addr;  // a first unit's head 0: no offsets
     end else if (iss_done_q) begin
       iss_done_q  <= 1'b0;
       iss_taken_q <= '0;
@@ -448,6 +468,7 @@ module engine
         iss_head_q   <= 1'b0;
         iss_unit_q   <= iss_next_q;
         iss_ports_q  <= iss_next_ports_q;
+        iss_addr0_q  <= iss_next_addr0_q;
         if (last_unit(iss_unit_q)) iss_busy_q <= 1'b0;
       end
     end else if (iss_busy_q) begin
@@ -458,7 +479,10 @@ module engine
 
 `ifndef SYNTHESIS
   always_ff @(posedge clk_i) begin
-    if (rst_ni && iss_done_q && iss_last_head && !last_unit(iss_unit_q)) begin
+    if (rst_nq && |dma_cmd_valid && dma_addr != head_addr(iss_addr_q, iss_unit_q, iss_head_q)) begin
+      $error("engine: a DMA command's address not ready");
+    end
+    if (rst_nq && iss_done_q && iss_last_head && !last_unit(iss_unit_q)) begin
       if (iss_next_q != unit_next(iss_unit_q)) $error("engine: issue's next unit not ready");
       for (int unsigned a = 0; a < Heads; a++) begin
         if (iss_next_ports_q[a] != head_ports(unit_next(iss_unit_q), 1'(a))) begin
@@ -554,7 +578,7 @@ module engine
   end
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
+    if (!rst_nq) begin
       step_busy_q <= 1'b0;
       credits_q   <= '0;
     end else begin
@@ -587,13 +611,13 @@ module engine
   always_ff @(posedge clk_i) begin
     step_next_q       <= unit_next_c;
     step_next_ports_q <= unit_ports(step_next_q);
-    if (!rst_ni || step_load || unit_end) step_age_q <= '0;
+    if (!rst_nq || step_load || unit_end) step_age_q <= '0;
     else if (step_age_q != 2'd2) step_age_q <= step_age_q + 1'b1;
   end
 
 `ifndef SYNTHESIS
   always_ff @(posedge clk_i) begin
-    if (rst_ni && unit_end && !step_last_unit_q && step_next_ports_q != unit_ports(unit_next_c)) begin
+    if (rst_nq && unit_end && !step_last_unit_q && step_next_ports_q != unit_ports(unit_next_c)) begin
       $error("engine: step's next unit's ports not ready at the end of its unit");
     end
   end
@@ -670,7 +694,7 @@ module engine
     chk_q      <= step_active_q;
     cover_q[0] <= chk_q;
     for (int unsigned i = 1; i < SeenRegs + 2; i++) cover_q[i] <= cover_q[i-1];
-    if (!rst_ni) begin
+    if (!rst_nq) begin
       pop_win_q  <= '0;
       last_win_q <= '0;
       est_q      <= '0;
@@ -718,7 +742,7 @@ module engine
     x_addr_o <= x_addr_q;
     x_buf_o  <= x_buf_q;
     x_data_q <= x_data_i;
-    if (!rst_ni) beat_q.valid <= 1'b0;
+    if (!rst_nq) beat_q.valid <= 1'b0;
   end
 
   beat_t [NG-1:0]              beat_at;  // each group's beat at PopLat
@@ -736,7 +760,7 @@ module engine
       for (int unsigned s = 1; s < PopLat - 1; s++) pipe_q[s] <= pipe_q[s-1];
       x_q[0] <= x_data_q;
       for (int unsigned s = 1; s < PopLat - XLat - 1; s++) x_q[s] <= x_q[s-1];
-      if (!rst_ni) begin
+      if (!rst_nq) begin
         for (int unsigned s = 0; s < PopLat - 1; s++) pipe_q[s].valid <= 1'b0;
       end
     end
@@ -766,6 +790,8 @@ module engine
     assign bt = beat_at[l/GL];
     assign w  = dma_out_data[P][I*E*16 +: E*16];
     assign lane_in_valid[l] = bt.valid && l < 32'(bt.lanes);
+    logic rst_nq_l;  // the lane's copy of the reset
+    always_ff @(posedge clk_i) rst_nq_l <= rst_ni;
     dot_lane #(
       .E      (E),
       .A      (A),
@@ -773,7 +799,7 @@ module engine
       .Banks  (LaneBanks)
     ) u_lane (
       .clk_i,
-      .rst_ni,
+      .rst_ni     (rst_nq_l),
       .in_valid_i (lane_in_valid[l]),
       .in_ready_o (lane_in_ready[l]),
       .w_i        (w),
@@ -790,7 +816,7 @@ module engine
 `ifndef SYNTHESIS
   // The estimates' promises: no pop from an empty FIFO, no beat refused.
   always_ff @(posedge clk_i) begin
-    if (rst_ni) begin
+    if (rst_nq) begin
       if (|(dma_out_ready & ~dma_out_valid)) $error("engine: a pop from an empty DMA FIFO");
       if (|(lane_in_valid & ~lane_in_ready)) $error("engine: a lane refused a beat");
     end
@@ -879,9 +905,9 @@ module engine
     ini_q.unit  <= unit_init(q_head[2]);
     ini_q.lanes <= res_lanes(ini_q.unit);
     ini_q.last  <= last_unit(ini_q.unit);
-    if (!rst_ni || unit_load) aft_age_q <= '0;
+    if (!rst_nq || unit_load) aft_age_q <= '0;
     else if (!aft_ready) aft_age_q <= aft_age_q + 1'b1;
-    if (!rst_ni || q_pop[2] || !q_valid[2]) ini_age_q <= '0;
+    if (!rst_nq || q_pop[2] || !q_valid[2]) ini_age_q <= '0;
     else if (!ini_ready) ini_age_q <= ini_age_q + 1'b1;
   end
 
@@ -892,7 +918,7 @@ module engine
     gone_grp_q[0] <= drain_grp_q;
     gone_grp_q[1] <= gone_grp_q[0];
     from_ini_q    <= drain_load;
-    if (!rst_ni) begin
+    if (!rst_nq) begin
       lane_out_ready <= '0;
       gone_q         <= '0;
       unit_new_q     <= 1'b0;
@@ -903,7 +929,7 @@ module engine
   end
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
+    if (!rst_nq) begin
       drain_busy_q <= 1'b0;
       drain_grp_q  <= '0;
     end else if (drain_load) begin
@@ -942,7 +968,7 @@ module engine
   logic [Writes-1:0][15:0] rounded;
 
   always_ff @(posedge clk_i) begin
-    mul_valid_q <= rst_ni && go;
+    mul_valid_q <= rst_nq && go;
     mul_scale_q <= drain_scale_q;
     for (int unsigned s = 0; s < Writes; s++) slot_q[s] <= lane_out[drain_grp_q*Writes+s];
   end
@@ -952,7 +978,7 @@ module engine
       .MulRegs(MulRegs)
     ) u_mul (
       .clk_i,
-      .rst_ni,
+      .rst_ni (rst_nq),
       .valid_i(mul_valid_q),
       .op_i   (Fp32Mul),
       .a_i    (slot_q[s]),
@@ -970,7 +996,7 @@ module engine
   end
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
+    if (!rst_nq) begin
       for (int unsigned i = 0; i < WrLat; i++) wr_q[i] <= '0;
       w_valid_o <= 1'b0;
       done_o    <= 1'b0;

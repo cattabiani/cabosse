@@ -173,7 +173,10 @@ the bring-up: the host owns port 0 between tokens, the core during one.
   vendor-free wrapper. `f2_core` puts channel p into engine port p's
   addresses (the engine gives every port the same offset), and merges
   engine port 0 and the vector unit onto HBM port 0 (`f2_port0`: reads in
-  turns, one ID, answers routed back in order).
+  turns, one ID, answers routed back in order). A register slice
+  (`bringup_pipe`, one stage) sits on each HBM channel the core uses, so
+  no HBM port drives the core's logic directly (M10; a read takes 2
+  cycles more).
 - `core/cabosse_core.sv`: the CL top, on `cl_shell.svh` as the bring-up's.
 - Build: `scripts/f2/build_cl.sh` with `DESIGN=core` (a 9 h deadline:
   core build 1 took 6.6 h to route; the engine's own placed builds peaked

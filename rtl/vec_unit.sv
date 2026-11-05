@@ -175,6 +175,11 @@ module vec_unit
   output logic [Lanes-1:0][31:0]       ext_r2_data_o  // the cycle after
 );
 
+
+  // The registered reset; a copy per slot below.
+  logic rst_nq;
+  always_ff @(posedge clk_i) rst_nq <= rst_ni;
+
   // model/commands.py's opcodes and flags (docs/architecture.md, "Commands").
   localparam logic [4:0] OpLoad = 5'd1, OpKvStore = 5'd3, OpOutput = 5'd6, OpVStore = 5'd17;
   localparam logic [4:0] OpAdd = 5'd7, OpMul = 5'd8, OpFma = 5'd9, OpExp = 5'd10;
@@ -340,10 +345,10 @@ module vec_unit
   assign stall = reduction(grp.is.op) && row_end && (pend_q || tree_busy)
               || is_load && !ld_ready || is_store && (prep_q || !kv_room);
   assign grp_fire    = active_q && !stall;
-  assign cmd_ready_o = !red_q && (!active_q || grp.is.last && grp_fire) && tags_ready;
+  assign cmd_ready_o = rst_nq && !red_q && (!active_q || grp.is.last && grp_fire) && tags_ready;
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
+    if (!rst_nq) begin
       active_q <= 1'b0;
     end else if (cmd_valid_i && cmd_ready_o) begin
       active_q <= 1'b1;
@@ -383,7 +388,7 @@ module vec_unit
   assign region_beats = is_v ? cur_q.cap >> EW : (cur_q.cap >> (PpW + KvW)) * k_cols;
 
   always_ff @(posedge clk_i) begin
-    prep_q <= rst_ni && cmd_valid_i && cmd_ready_o && (cmd_op_i == OpLoad || store(cmd_op_i));
+    prep_q <= rst_nq && cmd_valid_i && cmd_ready_o && (cmd_op_i == OpLoad || store(cmd_op_i));
     if (prep_q) begin
       mbase_q  <= (is_k ? MemAddrW'(cur_q.mrow[PpW+:KvW]) << ChanW : '0) + cur_q.addr
                 + (is_v ? MemAddrW'(cur_q.mrow >> EW) << BeatW
@@ -403,7 +408,7 @@ module vec_unit
     .Depth     (MemDepth)
   ) u_rd (
     .clk_i,
-    .rst_ni,
+    .rst_ni     (rst_nq),
     .cmd_valid_i(ld_issue_q && !prep_q),
     .cmd_ready_o(dma_ready),
     .cmd_addr_i (mbase_q),
@@ -438,7 +443,7 @@ module vec_unit
                   && (gb_have_q < need || grp_fire && !grp.is.last);
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
+    if (!rst_nq) begin
       ld_issue_q <= 1'b0;
       gb_have_q  <= '0;
     end else begin
@@ -512,7 +517,7 @@ module vec_unit
 
   stream_fifo #(.Width(DataWidth), .Depth(MemDepth)) u_kv_queue (
     .clk_i,
-    .rst_ni,
+    .rst_ni     (rst_nq),
     .in_valid_i (kv_beat_valid),
     .in_ready_o (unused_ready),  // the credits keep a place, in each of the three
     .in_data_i  (kv_beat),
@@ -526,7 +531,7 @@ module vec_unit
 
   stream_fifo #(.Width($bits(kv_burst_t)), .Depth(MemDepth)) u_kv_bursts (
     .clk_i,
-    .rst_ni,
+    .rst_ni     (rst_nq),
     .in_valid_i (kv_push),
     .in_ready_o (unused_kb_ready),
     .in_data_i  (kb_in),
@@ -540,7 +545,7 @@ module vec_unit
 
   stream_fifo #(.Width($bits(kv_fmt_t)), .Depth(MemDepth)) u_kv_fmts (
     .clk_i,
-    .rst_ni,
+    .rst_ni     (rst_nq),
     .in_valid_i (kv_push),
     .in_ready_o (unused_kf_ready),
     .in_data_i  (kf_in),
@@ -564,7 +569,7 @@ module vec_unit
   assign kb_go   = kb_valid && wr_ready;
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) kb_q <= '0;
+    if (!rst_nq) kb_q <= '0;
     else if (kb_go) kb_q <= kb_last ? '0 : kb_q + 1'b1;
   end
 
@@ -589,7 +594,7 @@ module vec_unit
   end
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) wb_q <= '0;
+    if (!rst_nq) wb_q <= '0;
     else if (beat_go) wb_q <= wb_last ? '0 : wb_q + 1'b1;
   end
 
@@ -600,7 +605,7 @@ module vec_unit
     .Outstanding(WrOutstanding)
   ) u_wr (
     .clk_i,
-    .rst_ni,
+    .rst_ni     (rst_nq),
     .cmd_valid_i(kb_valid),
     .cmd_ready_o(wr_ready),
     .cmd_addr_i (kb.addr + (kb.v ? MemAddrW'(kb_q[EW-1:0]) + (kb_q[EW] ? MemAddrW'(kb.step) : '0)
@@ -632,7 +637,7 @@ module vec_unit
   assign err_o = rd_err || wr_err;
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) kv_credit_q <= MW'(MemDepth);
+    if (!rst_nq) kv_credit_q <= MW'(MemDepth);
     else kv_credit_q <= kv_credit_q - MW'(kv_push) + MW'(q_take);
   end
 
@@ -742,12 +747,16 @@ module vec_unit
 
   // --- Operands, the slots, the write -----------------------------------------
 
-  // The group whose reads come back this cycle.
+  // The group whose reads come back this cycle. The slots read the
+  // operands' selects from their own copies (gen_slot); a, b, c and the
+  // other select fields are unused here.
+  // verilator lint_off UNUSEDSIGNAL
   issued_t grp_q;
+  // verilator lint_on UNUSEDSIGNAL
   logic    grp_valid_q;
   always_ff @(posedge clk_i) begin
     grp_q       <= grp.is;
-    grp_valid_q <= rst_ni && grp_fire;
+    grp_valid_q <= rst_nq && grp_fire;
   end
 
   function automatic chain_op_e chain_op(logic [4:0] op);
@@ -802,18 +811,29 @@ module vec_unit
   assign start = red_start(ad.rmax);
 
   for (genvar l = 0; l < Lanes; l++) begin : gen_slot
+    // The slot's own copies of the group and of the reset, from the same
+    // sources as grp_q and rst_nq: grp_q's fields drove 600+ loads (core
+    // build 1), a copy drives one slot. A slot reads the operands' fields.
+    // verilator lint_off UNUSEDSIGNAL
+    issued_t     grp_s_q;
+    // verilator lint_on UNUSEDSIGNAL
+    logic        rst_nq_s;
     logic [31:0] a, b, c, p;
+    always_ff @(posedge clk_i) begin
+      grp_s_q  <= grp.is;
+      rst_nq_s <= rst_ni;
+    end
     always_comb begin
-      a = rd_data[grp_q.a][l];
-      b = grp_q.b_per_row ? rd_data[grp_q.b][0] : rd_data[grp_q.b][l];
-      if (grp_q.b == '0) b = grp_q.scalar;
-      c = rd_data[grp_q.c][l];
-      a[31] = a[31] ^ grp_q.neg_a;  // exact sign flips
-      b[31] = b[31] ^ grp_q.neg_b;
-      if (grp_q.op == OpLoad) a = ld_q[l];
-      p = grp_q.first ? '0 : part_q[l][grp_q.part];  // a sum's
-      if (reduction(grp_q.op)) begin  // SUM: add(x, p); SUMSQ: fma(x, x, p); MAX: add(x, -0)
-        b = grp_q.op == OpMax ? NegZero : grp_q.op == OpSumsq ? a : p;
+      a = rd_data[grp_s_q.a][l];
+      b = grp_s_q.b_per_row ? rd_data[grp_s_q.b][0] : rd_data[grp_s_q.b][l];
+      if (grp_s_q.b == '0) b = grp_q.scalar;  // a register's 32 bits, one load per slot
+      c = rd_data[grp_s_q.c][l];
+      a[31] = a[31] ^ grp_s_q.neg_a;  // exact sign flips
+      b[31] = b[31] ^ grp_s_q.neg_b;
+      if (grp_s_q.op == OpLoad) a = ld_q[l];
+      p = grp_s_q.first ? '0 : part_q[l][grp_s_q.part];  // a sum's
+      if (reduction(grp_s_q.op)) begin  // SUM: add(x, p); SUMSQ: fma(x, x, p); MAX: add(x, -0)
+        b = grp_s_q.op == OpMax ? NegZero : grp_s_q.op == OpSumsq ? a : p;
         c = p;
       end
     end
@@ -821,9 +841,9 @@ module vec_unit
       .MulRegs(MulRegs)
     ) u_chain (
       .clk_i,
-      .rst_ni,
+      .rst_ni (rst_nq_s),
       .valid_i(grp_valid_q),
-      .op_i   (chain_op(grp_q.op)),
+      .op_i   (chain_op(grp_s_q.op)),
       .a_i    (a),
       .b_i    (b),
       .c_i    (c),
@@ -849,7 +869,7 @@ module vec_unit
   end
 
   always_ff @(posedge clk_i) begin
-    acc_q[0] <= '{valid: rst_ni && grp_valid_q && reduction(grp_q.op), rmax: grp_q.op == OpMax,
+    acc_q[0] <= '{valid: rst_nq && grp_valid_q && reduction(grp_q.op), rmax: grp_q.op == OpMax,
                   row_first: grp_q.row_first, row_last: grp_q.row_last, last: grp_q.last,
                   part: grp_q.part, mask: grp_q.mask, dst: grp_q.dst, row: grp_q.row};
     for (int unsigned j = 1; j < AccLat; j++) acc_q[j] <= acc_q[j-1];
@@ -884,7 +904,7 @@ module vec_unit
   end
 
   always_ff @(posedge clk_i) begin
-    cap_valid_q <= rst_ni && ad.valid && ad.row_last;
+    cap_valid_q <= rst_nq && ad.valid && ad.row_last;
     cap_q       <= '{dst: ad.dst, row: ad.row, last: ad.last};
     cap_rmax_q  <= ad.rmax;
     if (cap_valid_q) tree_q <= cap_q;
@@ -894,7 +914,7 @@ module vec_unit
     .Width(Partials)
   ) u_tree (
     .clk_i,
-    .rst_ni,
+    .rst_ni (rst_nq),
     .start_i(cap_valid_q),
     .max_i  (cap_rmax_q),
     .parts_i(parts),
@@ -915,7 +935,7 @@ module vec_unit
   assign t_w_data  = Bf16Mask[tree_q.dst] ? {16'h0, tree_r} : tree_y;
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
+    if (!rst_nq) begin
       {red_q, pend_q, t_pend_q} <= '0;
       slot_groups_q <= '0;
     end else begin
@@ -972,7 +992,7 @@ module vec_unit
 
   stream_fifo #(.Width(1), .Depth(Dones)) u_tags (
     .clk_i,
-    .rst_ni,
+    .rst_ni     (rst_nq),
     .in_valid_i (cmd_valid_i && cmd_ready_o),
     .in_ready_o (tags_ready),
     .in_data_i  (store(cmd_op_i)),
@@ -988,7 +1008,7 @@ module vec_unit
   assign done_o = tag_go;
 
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
+    if (!rst_nq) begin
       answered_q <= '0;
       ended_q    <= '0;
     end else begin

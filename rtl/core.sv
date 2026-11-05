@@ -112,7 +112,7 @@ module core #(
   localparam int unsigned HeadWidth = 8;
   localparam int unsigned EBufW     = 8;  // the engine's buffer ids
 
-  logic                 units_rst_n, units_reset;
+  logic                 eng_rst_nq, vec_rst_nq, units_reset;
   logic [4:0]           cmd_op;
   logic [BufW-1:0]      cmd_dst, cmd_a, cmd_b, cmd_c;
   logic [7:0]           cmd_flags;
@@ -135,7 +135,25 @@ module core #(
   logic [1:0]           eng_op;
   logic [Ports-1:0]     eng_err;
 
-  assign units_rst_n = rst_ni && !units_reset;
+  // The units' reset (the core's, or CONTROL's), a register per unit here
+  // and again inside each unit, per lane, port and slot: UnitsResetDelay
+  // cycles after the controller's, which holds the AXI-Lite writes and its
+  // own state until it is through (controller.sv).
+  localparam int unsigned UnitsResetDelay = 2;
+  always_ff @(posedge clk_i) begin
+    eng_rst_nq <= rst_ni && !units_reset;
+    vec_rst_nq <= rst_ni && !units_reset;
+  end
+
+`ifndef SYNTHESIS
+  // UnitsResetDelay matches the registers: past the controller's window,
+  // every unit is out of its reset.
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && !u_controller.settling && !(u_engine.rst_nq && u_vec.rst_nq)) begin
+      $error("core: a unit still in reset after the controller's window");
+    end
+  end
+`endif
 
   controller #(
     .Bufs     (Bufs),
@@ -144,7 +162,8 @@ module core #(
     .MemAddrW (MemAddrW),
     .HeadWidth(HeadWidth),
     .Commands (Commands),
-    .AxilAddrW(AxilW)
+    .AxilAddrW(AxilW),
+    .UnitsResetDelay(UnitsResetDelay)
   ) u_controller (
     .clk_i,
     .rst_ni,
@@ -228,7 +247,7 @@ module core #(
     .E        (E)
   ) u_engine (
     .clk_i,
-    .rst_ni       (units_rst_n),
+    .rst_ni       (eng_rst_nq),
     .cmd_valid_i  (eng_valid),
     .cmd_ready_o  (eng_ready),
     .cmd_op_i     (eng_op),
@@ -281,7 +300,7 @@ module core #(
     .ChanW    (ChanW)
   ) u_vec (
     .clk_i,
-    .rst_ni        (units_rst_n),
+    .rst_ni        (vec_rst_nq),
     .cmd_valid_i   (vec_valid),
     .cmd_ready_o   (vec_ready),
     .cmd_op_i      (cmd_op),
