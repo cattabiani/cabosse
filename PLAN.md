@@ -2048,8 +2048,8 @@ yet. Checkpoint: waits for the owner.
 llama.cpp b11672 on the development PC (Ryzen 7 7800X3D, built from
 source; RTX 4070 Ti, the release's prebuilt CUDA binary), same depths, by
 `scripts/llama_baseline.sh` into reports/data/local/; nothing installed
-outside `.tools/`. The CPU is 23-24% and the GPU 75-77% ahead of the core
-at 100 MHz (reports/M9.md).
+outside `.tools/`. The core at 100 MHz is 23-24% slower than the CPU and
+75-77% slower than the GPU (reports/M9.md).
 
 ### M10 — The core at 250 MHz (D-072)
 Close timing at 250 MHz (D-065) on F2; core build 1 missed it by 5.466 ns
