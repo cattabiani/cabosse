@@ -1,0 +1,168 @@
+# Core build 1 (M9), 2026-11-04, c6i.8xlarge, eu-central-1. REF at 9b7034e (cabosse.log).
+# scripts/f2/build_cl.sh DESIGN=core; outputs in s3://cabosse-builds-628837661672/dcp/2026-11-04-core1/.
+# Log stamps (UTC): setup 13:57:08Z, build 13:58:23Z, build end 20:32:54Z.
+# Timing failed at 250 MHz (4 ns): WNS -5.466 ns on clk_out1_clk_mmcm_hbm; hold met.
+# AFI: agfi-0c1bcde511e1d3276 / afi-03332f58182807b45 (available 2026-11-05).
+# Part 1: reports/utilization.rpt, totals. Part 2: reports/families.rpt, the 20 worst
+# (worst slack ns, count, source -> destination). Part 3: cabosse.log's result section.
+
+## Part 1: utilization (used, fixed, prohibited, available, %)
+| CLB LUTs                   | 809620 |  2932 |       2128 |   1301552 | 62.20 |
+| CLB Registers              | 572940 | 10281 |       4256 |   2603104 | 22.01 |
+| Block RAM Tile    |  211 |     0 |          0 |      2016 | 10.47 |
+| URAM              |  256 |     0 |          0 |       960 | 26.67 |
+| DSPs           |  243 |     0 |          0 |      9024 |  2.69 |
+
+## Part 2: worst endpoint families
+-5.466 512 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][v][*]/D
+-5.456 3072 WRAPPER/CL/u_core/u_core/u_vec/cur_q_reg[len][*]/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/ADDR_A[*]
+-5.450 22 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][v][*]_replica/D
+-5.434 10 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/gen_stage[*].d_q_reg[*][special][*]_srl32/D
+-5.433 960 WRAPPER/CL/u_core/u_core/u_vec/cur_q_reg[len][*]/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_bram_0/ADDRBWRADDR[*]
+-5.427 22 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/gen_stage[*].d_q_reg[*][special][*]_srl32_srlopt/D
+-5.422 32 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][k][*]/D
+-5.416 960 WRAPPER/CL/u_core/u_core/u_vec/cur_q_reg[len][*]/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_bram_1/ADDRBWRADDR[*]
+-5.391 14 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][k][*]_replica/D
+-5.316 512 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][u][*]/D
+-5.162 1034 WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][special][*]__0/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/DIN_B[*]
+-5.158 508 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][w][*]/D
+-5.104 32 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_core/u_engine/gen_dma[*].u_dma/gen_slice[*].u_data/count_q_reg[*]/D
+-5.090 1884 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/gen_unit[*].written_q_reg[*]/R
+-5.083 2815 WRAPPER/CL/u_core/u_core/u_vec/tree_q_reg[dst][*]/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/DIN_B[*]
+-5.080 1489 WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/DIN_B[*]
+-5.066 238 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/roots_q_reg[*]/R
+-5.044 921 WRAPPER/CL/u_core/u_core/u_engine/iss_unit_q_reg[g][*]/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_dma[*].u_dma/addr_q_reg[*]/D
+-5.036 289 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].skid_q_reg[*]/CE
+-5.002 6 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_core/u_vec/u_kv_queue/rd_q_reg_rep[*]/CE
+
+## Part 3: result section
+CABOSSE-BEGIN result
+total 2007000
+-rw-r--r-- 1 root root 457492480 Nov  4 20:32 2026_11_04-135823.Developer_CL.tar
+-rw-r--r-- 1 root root     30129 Nov  4 20:32 2026_11_04-135823.debug_probes.ltx
+-rw-r--r-- 1 root root 210173849 Nov  4 14:28 cabosse_core.2026_11_04-135823.post_link.dcp
+-rw-r--r-- 1 root root 139144615 Nov  4 14:38 cabosse_core.2026_11_04-135823.post_opt.dcp
+-rw-r--r-- 1 root root 326706116 Nov  4 17:45 cabosse_core.2026_11_04-135823.post_phys_opt.dcp
+-rw-r--r-- 1 root root 328191536 Nov  4 16:18 cabosse_core.2026_11_04-135823.post_place.dcp
+-rw-r--r-- 1 root root 457456141 Nov  4 20:32 cabosse_core.2026_11_04-135823.post_route.VIOLATED.dcp
+-rw-r--r-- 1 root root 135955445 Nov  4 14:22 cabosse_core.2026_11_04-135823.post_synth.dcp
+tarball s3://cabosse-builds-628837661672/dcp/2026-11-04-core1/2026_11_04-135823.Developer_CL.tar
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+     -5.466  -276467.688                 137465              1361586        0.007        0.000                      0              1361274        0.000        0.000                       0                630180  
+
+Clock                                                                          WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----                                                                          -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk_fpga                                                                                                                                                                                                                     1.200        0.000                       0                     4  
+  clk_125                                                                                                                                                                                                                    3.725        0.000                       0                     6  
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Wed Nov  4 20:39:20 2026
+| Host              : ip-172-31-1-130 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : top
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (VIOLATED) :        -5.466ns  (required time - arrival time)
+  Source:                 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks/u_banks/gen_bank[10].mem_q_reg_uram_0/CLK
+                            (rising edge-triggered cell URAM288 clocked by clk_out1_clk_mmcm_hbm  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            WRAPPER/CL/u_core/u_core/u_vec/gen_slot[4].u_chain/st_q_reg[0][v][1]/D
+                            (rising edge-triggered cell FDRE clocked by clk_out1_clk_mmcm_hbm  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk_out1_clk_mmcm_hbm
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk_out1_clk_mmcm_hbm rise@4.000ns - clk_out1_clk_mmcm_hbm rise@0.000ns)
+  Data Path Delay:        8.970ns  (logic 2.013ns (22.441%)  route 6.957ns (77.559%))
+  Logic Levels:           9  (LUT3=1 LUT5=1 LUT6=5 MUXF7=1 MUXF8=1)
+  Clock Path Skew:        -0.058ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    9.906ns = ( 13.906 - 4.000 ) 
+    Source Clock Delay      (SCD):    9.246ns
+    Clock Pessimism Removal (CPR):    -0.719ns
+  Clock Uncertainty:      0.059ns  ((TSJ^2 + DJ^2)^1/2) / 2 + PE
+    Total System Jitter     (TSJ):    0.071ns
+    Discrete Jitter          (DJ):    0.095ns
+    Phase Error              (PE):    0.000ns
+  Inter-SLR Compensation: 0.305ns  ((DCD - CCD) * PF)
+    Destination Clock Delay (DCD):    9.906ns
+    Common Clock Delay      (CCD):    7.875ns
+    Prorating Factor         (PF):    0.150
+
+    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------------------------------------------
+                         (clock clk_out1_clk_mmcm_hbm rise edge)
+                                                      0.000     0.000 r                                      
+                         clock source latency         5.870     5.870                                        
+                         propagated clock network latency
+                                                      3.376     9.246                                        
+    URAM288_X2Y48        URAM288                      0.000     9.246 r  reconfigurable pblock_CL            WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks/u_banks/gen_bank[10].mem_q_reg_uram_0/CLK
+    URAM288_X2Y48        URAM288 (Prop_URAM_288K_INST_URAM288_CLK_DOUT_A[1])
+                                                      1.279    10.525 r  reconfigurable pblock_CL            WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks/u_banks/gen_bank[10].mem_q_reg_uram_0/DOUT_A[1]
+                         net (fo=4, routed)           2.153    12.678    reconfigurable                      WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks/u_banks/u_rd_rot/i_/st_q[0][w][31]_i_50__5_7[1]
+    SLR Crossing[0->1]   
+    SLICE_X91Y274                                                     r  reconfigurable pblock_CL            WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks/u_banks/u_rd_rot/i_/x_data_q[0][0][1]_i_48/I1
+    SLICE_X91Y274        LUT6 (Prop_H6LUT_SLICEM_I1_O)
+                                                      0.101    12.779 r  reconfigurable pblock_CL            WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks/u_banks/u_rd_rot/i_/x_data_q[0][0][1]_i_48/O
+                         net (fo=4, routed)           0.447    13.226    reconfigurable                      WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks/u_banks/u_rd_rot/gen_stage[2].in[8]_6580[1]
+    SLICE_X88Y301                                                     r  reconfigurable pblock_CL            WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks/u_banks/u_rd_rot/i_/st_q[0][u][1]_i_28__5/I2
+    SLICE_X88Y301        LUT6 (Prop_H6LUT_SLICEM_I2_O)
+                                                      0.090    13.316 r  reconfigurable pblock_CL            WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks/u_banks/u_rd_rot/i_/st_q[0][u][1]_i_28__5/O
+                         net (fo=3, routed)           1.037    14.353    reconfigurable                      WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks/u_banks/gen_buf[15].rd[4]_6568[1]
+    SLICE_X86Y400                                                     r  reconfigurable pblock_CL            WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks/u_banks/st_q[0][v][1]_i_14__0/I0
+    SLICE_X86Y400        LUT6 (Prop_A6LUT_SLICEL_I0_O)
+| CLB LUTs                   | 809620 |  2932 |       2128 |   1301552 | 62.20 |
+|   LUT as Logic             | 770405 |  2932 |       2128 |   1301552 | 59.19 |
+|   LUT as Memory            |  39215 |     0 |        800 |    600160 |  6.53 |
+| CLB Registers              | 572940 | 10281 |       4256 |   2603104 | 22.01 |
+|   LUT as Distributed RAM                   |  38490 |     0 |            |           |       |
+|   LUT as Shift Register                    |    725 |     0 |            |           |       |
+| CLB Registers                              | 572940 |     0 |       4256 |   2603104 | 22.01 |
+| Block RAM Tile    |  211 |     0 |          0 |      2016 | 10.47 |
+| DSPs           |  243 |     0 |          0 |      9024 |  2.69 |
+| CLB LUTs                   | 327769 | 229470 | 252381 |  74.55 |  53.12 |  58.42 |
+|   LUT as Logic             | 306155 | 215715 | 248535 |  69.63 |  49.93 |  57.53 |
+|   LUT as Memory            |  21614 |  13755 |   3846 |  10.52 |   6.96 |   1.94 |
+| CLB Registers              | 245906 | 139039 | 187995 |  27.96 |  16.09 |  21.76 |
+| Block RAM Tile             |      4 |    207 |      0 |   0.60 |  30.80 |   0.00 |
+| DSPs                       |     10 |      9 |    224 |   0.35 |   0.29 |   7.29 |
+-5.466 512 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][v][*]/D
+-5.456 3072 WRAPPER/CL/u_core/u_core/u_vec/cur_q_reg[len][*]/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/ADDR_A[*]
+-5.450 22 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][v][*]_replica/D
+-5.434 10 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/gen_stage[*].d_q_reg[*][special][*]_srl32/D
+-5.433 960 WRAPPER/CL/u_core/u_core/u_vec/cur_q_reg[len][*]/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_bram_0/ADDRBWRADDR[*]
+-5.427 22 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/gen_stage[*].d_q_reg[*][special][*]_srl32_srl
+-5.422 32 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][k][*]/D
+-5.416 960 WRAPPER/CL/u_core/u_core/u_vec/cur_q_reg[len][*]/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_bram_1/ADDRBWRADDR[*]
+-5.391 14 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][k][*]_replica/D
+-5.316 512 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][u][*]/D
+-5.162 1034 WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][special][*]__0/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/DIN_B
+-5.158 508 WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/CLK -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/st_q_reg[*][w][*]/D
+-5.104 32 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_core/u_engine/gen_dma[*].u_dma/
+-5.090 1884 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/gen_unit[*].written_q_reg[*]/R
+-5.083 2815 WRAPPER/CL/u_core/u_core/u_vec/tree_q_reg[dst][*]/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/DIN_B[*]
+-5.080 1489 WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_buf[*].u_banks/u_banks/gen_bank[*].mem_q_reg_uram_0/DIN_B[*]
+-5.066 238 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/roots_q_reg[*]/R
+-5.044 921 WRAPPER/CL/u_core/u_core/u_engine/iss_unit_q_reg[g][*]/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_dma[*].u_dma/addr_q_reg[*]/D
+-5.036 289 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].skid_q_r
+-5.002 6 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_core/u_vec/u_kv_queue/rd_q_reg_r
+-5.000 118 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/load_ptr_q_reg[*]/R
+-4.996 1063 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_dma[*].u_dma/addr_q_reg[*]/R
+-4.995 6 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_core/u_vec/u_kv_queue/rd_q_reg[*
+-4.994 220 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/slot_q_reg[*]/R
+-4.992 1054 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/gen_queue[*].count_q_reg[*]/R
+-4.992 232 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/full_q_reg[*]/R
+-4.991 289 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_host/u_w/gen_stage[*].out_q_re
+-4.990 1042 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/gen_queue[*].flying_q_reg[*]/R
+-4.990 113 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/u_tree/s1_q_reg[valid]/R
+-4.986 117 WRAPPER/CL/core_rst_nq_reg/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/pair_q_reg[*]_rep/R
+CABOSSE-RESULT fail timing (negative slack after routing)
+CABOSSE-END result

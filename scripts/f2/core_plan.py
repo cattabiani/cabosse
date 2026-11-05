@@ -4,8 +4,8 @@
 one JSON line a step (plan_log.py), run by scripts/f2/run_core.sh with the
 AFI loaded:
 
-- clock: platforms/f2/host/core_clock sets clk_hbm_axi (D-065) and reports
-  the wrapper's ID, BUILD and parameters;
+- clock: platforms/f2/host/core_clock sets clk_hbm_axi to --mhz (D-065) and
+  reports the wrapper's ID, BUILD and parameters;
 - pcis_write, pcis_read: the runtime's memory calls through the driver
   (sw/f2_platform.py), REPEATS times each, every read checked;
 - open: SmolLM2 laid out for CAP positions and written to the card;
@@ -14,7 +14,7 @@ AFI loaded:
 - long: the long fixture (smollm2_long_greedy.json), 46 + 1000 positions,
   each position's logit bits against its own hash.
 
-Usage: python core_plan.py OUT.jsonl [--quick]   (--quick: no long fixture)
+Usage: python core_plan.py OUT.jsonl [--mhz MHZ] [--quick]   (--quick: no long fixture)
 Environment: S3 and PROVENANCE (plan_log.py); CABOSSE_WEIGHTS (model/paths.py).
 """
 
@@ -42,7 +42,7 @@ from runtime import Runtime  # noqa: E402
 from platforms import Platform  # noqa: E402
 
 CLOCK = REPO / "platforms" / "f2" / "host" / "core_clock"
-CLOCK_MHZ = 250  # D-065: the build is timed for 250, never above
+MAX_MHZ = 250  # D-065: builds are timed for 250 at most; a build that missed timing runs lower
 CAP = 2048  # positions: the long fixture's 1046 and room; a multiple of 128 lanes, Len allows 5376
 REPEATS = 5
 PCIS_WRITE_BYTES = 64 << 20
@@ -165,17 +165,17 @@ def stored(name: str) -> dict:
     return json.loads((paths.FIXTURES / name).read_text())
 
 
-def set_clock(log: Log) -> dict:
-    """core_clock CLOCK_MHZ, recorded: its JSON, or {"error": ...}."""
+def set_clock(log: Log, mhz: int) -> dict:
+    """core_clock `mhz`, recorded: its JSON, or {"error": ...}."""
     try:
-        r = subprocess.run([str(CLOCK), str(CLOCK_MHZ)], capture_output=True, text=True)
+        r = subprocess.run([str(CLOCK), str(mhz)], capture_output=True, text=True)
     except OSError as e:
-        return log.record("clock", {"mhz": CLOCK_MHZ}, {"error": repr(e)})
+        return log.record("clock", {"mhz": mhz}, {"error": repr(e)})
     try:
         result = json.loads(r.stdout.strip().splitlines()[-1])
     except IndexError, json.JSONDecodeError:
         result = {"error": f"no JSON (exit {r.returncode})", "stderr": r.stderr[-2000:]}
-    return log.record("clock", {"mhz": CLOCK_MHZ}, result)
+    return log.record("clock", {"mhz": mhz}, result)
 
 
 def run_plan(
@@ -209,12 +209,15 @@ def run_plan(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("out", help="the JSON-lines file")
+    parser.add_argument("--mhz", type=int, default=MAX_MHZ, help=f"core clock, at most {MAX_MHZ}")
     parser.add_argument("--quick", action="store_true", help="no long fixture")
     args = parser.parse_args()
+    if not 0 < args.mhz <= MAX_MHZ:
+        parser.error(f"--mhz must be in (0, {MAX_MHZ}]")
     from f2_platform import F2Platform
 
     log = Log(args.out)
-    clock = set_clock(log)
+    clock = set_clock(log, args.mhz)
     if "error" in clock:
         log.upload(now=True)
         sys.exit(1)

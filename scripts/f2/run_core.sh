@@ -16,6 +16,7 @@ REF=main                       # branch of github.com/cattabiani/cabosse; set an
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga
 AGFI=                          # the core AFI's global id (agfi-...)
 AFI=                           # its id (afi-...), for the provenance
+MHZ=100                        # core clock: core1 closes timing at ~105 MHz, not 250
 QUICK=                         # --quick: no long fixture
 DEADLINE_MIN=90                # safety net: power off even if something hangs
 S3=                            # s3://bucket/dcp/<run>: everything goes there (the role writes dcp/ only)
@@ -84,7 +85,7 @@ PROVENANCE=$(python3 -c 'import json,sys; print(json.dumps(dict(zip(sys.argv[1::
   instance "$(meta instance-id)" instance_type "$(meta instance-type)" az "$(meta placement/availability-zone)" \
   cpu "$(grep -m1 '^model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')")
 export PROVENANCE
-/root/venv/bin/python /root/cabosse/scripts/f2/core_plan.py /root/core.jsonl $QUICK
+/root/venv/bin/python /root/cabosse/scripts/f2/core_plan.py /root/core.jsonl --mhz $MHZ $QUICK
 status=$?
 echo "plan exit $status"
 errors=$(grep -c '"error"' /root/core.jsonl)
