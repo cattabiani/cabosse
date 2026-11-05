@@ -11,7 +11,8 @@
 
 REF=main                       # branch of github.com/cattabiani/cabosse
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga, for Vivado's setup
-DCPS=                          # name=URL ...: each checkpoint's presigned URL
+DCPS=                          # name=URL ...: each checkpoint's (or AFI tarball's) presigned URL
+TCL=platforms/f2/timing/report.tcl  # the reports to run, from the repository root
 S3=                            # s3://bucket/dcp/<build>: reports go to $S3/<name>/
 DEADLINE_MIN=90                # safety net: power off even if something hangs
 
@@ -45,8 +46,11 @@ for entry in $DCPS; do
   (
     cd /root/$name || exit
     curl -sSf -o routed.dcp "${entry#*=}" || { echo "$name: download failed"; exit 1; }
+    if tar tf routed.dcp >/dev/null 2>&1; then  # an AFI tarball: its routed checkpoint
+      tar xf routed.dcp --wildcards --strip-components 2 '*_routed.dcp' && mv -f ./*_routed.dcp routed.dcp
+    fi
     vivado -mode batch -nojournal -log vivado.log \
-      -source /root/cabosse/platforms/f2/timing/report.tcl -tclargs routed.dcp > vivado.out 2>&1
+      -source /root/cabosse/$TCL -tclargs routed.dcp > vivado.out 2>&1
     echo "$name exit $? $(date -u +%T)"
     aws s3 cp --only-show-errors --recursive . "$S3/$name/" --exclude "*" \
       --include "*.rpt" --include "vivado.*" && echo "$name saved to $S3/$name/"
@@ -59,6 +63,7 @@ for entry in $DCPS; do
   name=${entry%%=*}
   echo "CABOSSE-BEGIN $name"
   grep -E "^(ERROR|CRITICAL WARNING)" /root/$name/vivado.log | head -10
+  grep "^CABOSSE-ANALYZE" /root/$name/vivado.log
   sed -n '/WNS(ns)/,+3p' /root/$name/timing_summary.rpt 2>/dev/null | head -4
   cat /root/$name/slack_histogram.rpt 2>/dev/null
   sort -n /root/$name/families.rpt 2>/dev/null | head -25 | cut -c1-200
