@@ -51,6 +51,7 @@ namespace {
 using Params = Vvec_unit___024root;  // the build's parameters (verif/bulk.py: --public-params)
 constexpr size_t kLanes = Params::vec_unit__DOT__Lanes;
 constexpr size_t kAddrBits = Params::vec_unit__DOT__MemAddrW;
+constexpr size_t kRdLat = Params::vec_unit__DOT__RdLat;  ///< an ext read's data, cycles after its address
 constexpr size_t kBeatWords = kLanes / 2;  ///< DataWidth = Lanes * 16 bits
 constexpr size_t kBeatBytes = 4 * kBeatWords;
 constexpr size_t kCmdWords = 16;  ///< op ... scalar, cap, addr low, addr high, token, t, stride, wait
@@ -142,7 +143,7 @@ struct Bench {
   size_t next_step = 0;    ///< the first engine step not yet finished
   size_t step_op = 0;      ///< its next read or write
   size_t step_ops = 0;     ///< every engine step's reads and writes so far
-  bool read_sent = false;  ///< an engine read went last cycle: its data is out this cycle
+  uint32_t read_sent = 0;  ///< bit k: an engine read went k + 1 cycles ago (its data out at k + 1 = kRdLat)
   std::vector<uint32_t> engine_reads;  ///< every engine read's kLanes words, in order
   uint64_t cycles = 0;     ///< since the first offer
   std::vector<uint64_t> answers;  ///< the cycle of each write response
@@ -152,7 +153,7 @@ struct Bench {
   bool step_due() const { return next_step < engine.size() && engine[next_step].before == next_cmd; }
 
   /// @brief Whether the commands and engine steps are all finished.
-  bool finished() const { return oldest == commands.size() && next_step == engine.size() && !read_sent; }
+  bool finished() const { return oldest == commands.size() && next_step == engine.size() && read_sent == 0; }
 
   /// @brief Whether the next command may be offered this cycle.
   bool may_offer() {
@@ -223,7 +224,7 @@ struct Bench {
     dut.ext_r_addr_i = r.addr;
   }
 
-  /// @brief The ext port's read data: the kLanes words read the cycle before.
+  /// @brief The ext port's read data: the kLanes words addressed kRdLat cycles before.
   std::vector<uint32_t> read_data() const {
     std::vector<uint32_t> out(kLanes);
     for (size_t l = 0; l < kLanes; ++l) out[l] = static_cast<uint32_t>(get_bits(dut.ext_r_data_o, 32 * l, 32));
@@ -263,8 +264,8 @@ struct Bench {
     drive_memory();
     dut.clk_i = 0;
     dut.eval();
-    if (read_sent) std::ranges::copy(read_data(), std::back_inserter(engine_reads));
-    read_sent = read;
+    if (read_sent >> (kRdLat - 1) & 1) std::ranges::copy(read_data(), std::back_inserter(engine_reads));
+    read_sent = (read_sent << 1 | static_cast<uint32_t>(read)) & ((uint32_t{1} << kRdLat) - 1);
     if (offering && dut.cmd_ready_o) {
       commands[next_cmd++].taken = cycles;
       offering = false;
@@ -287,10 +288,10 @@ struct Bench {
     cycle();
   }
 
-  /// @brief One ext read: kLanes words, from the cycle after.
+  /// @brief One ext read: kLanes words, kRdLat cycles after.
   std::vector<uint32_t> ext_read(const Read& r) {
     put_read(r);
-    cycle();
+    for (size_t i = 0; i < kRdLat; ++i) cycle();
     dut.clk_i = 0;
     dut.eval();
     return read_data();

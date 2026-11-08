@@ -2123,6 +2123,32 @@ but for the HBM's 2):
   worst 100 paths and highest-fanout nets list neither. The -5.4 ns paths
   (the vector unit's addresses and buffer reads) are step 1b's.
 
+**Step 1b, the vector unit pipelined** (2026-11-08; same bits, more cycles
+per command):
+- The walk reads registers only: the op's kind and a row's first segment
+  are decoded at the take; the group's first element (`ea_q`), the
+  elements left in its segment (`rem_q`) and the last row are kept, not
+  recomputed from `cur_q.len` each cycle. `cmd_ready_o` comes from
+  registers: a command is taken the cycle after the last group of the one
+  before (1 cycle per command).
+- The group goes to a register (`rq_q`) before the buffers' read addresses.
+- `tile_buffer`: every input registered; bank B's entry is `e / N + (B < e
+  mod N)`, so no rotation carries the addresses; the write's rotated data,
+  enables and entries in a register per bank; the read in the RAM's output
+  register (URAM OREG) and the rotated data in a register. A read's data
+  come 4 cycles after its address (was 1); a write is seen by the reads
+  given 2 or more cycles after it (was 1). `tile_buffer_pipe` is gone.
+- Each slot selects its operands (a, b, c, LOAD's beat) into registers of
+  its own, from its own copy of the group's selects, and decodes its
+  controls into a register (1a's note). The slots' result and the tree's
+  value go through a register to the buffers' write.
+- A group's read to its chain input: 6 cycles (was 1); its result to the
+  write: 1 more. done_o still comes a cycle after the last write is given.
+- The ext port's read (the engine's x, the simulation's host reads) also
+  takes 4 cycles: the engine's `XRdLat` parameter (4) sets its x path, and
+  `PopLat` grows from 6 to 9 (`Window` 9 to 12): 3 cycles more per waiting
+  engine command, and the DMA FIFO room estimate counts 3 more beats.
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.

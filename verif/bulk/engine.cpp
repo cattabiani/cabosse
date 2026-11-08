@@ -52,6 +52,7 @@ constexpr size_t kAddrBits = Params::engine__DOT__AddrWidth;
 constexpr size_t kXValues = Params::engine__DOT__E;     ///< BF16 values per read
 constexpr size_t kXReads = Params::engine__DOT__Heads;  ///< x read ports
 constexpr size_t kXAddrBits = Params::engine__DOT__RowWidth;
+constexpr size_t kXRdLat = Params::engine__DOT__XRdLat;  ///< x_addr_o to x_data_i, cycles
 constexpr size_t kWrites = Params::engine__DOT__Writes;  ///< the write port's slots
 constexpr size_t kBufs = size_t{1} << Params::engine__DOT__BufWidth;
 constexpr size_t kCmdWords = 15;  ///< op, rows, cols, addr lo, addr hi, a, dst, bf16, wait, heads, group, t, cap, stride, scale
@@ -106,7 +107,8 @@ struct Bench {
   std::optional<GoDraw> go_draw;
   size_t oldest = 0;              ///< the first command not yet done
   bool offering = false;          ///< a command is on the port, waiting to be taken
-  std::array<std::array<uint16_t, kXValues>, kXReads> x_q{};  ///< the RAM's output registers
+  using XData = std::array<std::array<uint16_t, kXValues>, kXReads>;
+  std::array<XData, kXRdLat> x_q{};  ///< the buffers' read registers: x_q[k] was addressed k + 1 cycles ago
   uint64_t cycles = 0, writes = 0;
 
   /// @brief The x RAM's read: E values of a group, zeros past the buffer.
@@ -181,7 +183,7 @@ struct Bench {
       }
     }
     for (size_t r = 0; r < kXReads; ++r) {
-      for (size_t e = 0; e < kXValues; ++e) set_bits(dut.x_data_i, 16 * (kXValues * r + e), 16, x_q[r][e]);
+      for (size_t e = 0; e < kXValues; ++e) set_bits(dut.x_data_i, 16 * (kXValues * r + e), 16, x_q.back()[r][e]);
     }
     if (run && !offering && next_cmd < commands.size()) offering = rng() % 1000 < offer_permille;
     dut.go_i = run && go();
@@ -220,11 +222,12 @@ struct Bench {
                       get_bits(dut.r_ready_o, p, 1));
       }
     }
-    std::array<std::array<uint16_t, kXValues>, kXReads> x_next;
+    XData x_next;
     for (size_t r = 0; r < kXReads; ++r) x_next[r] = read_x(dut.x_buf_o, get_bits(dut.x_addr_o, kXAddrBits * r, kXAddrBits));
     dut.clk_i = 1;
     dut.eval();
-    x_q = x_next;
+    std::shift_right(x_q.begin(), x_q.end(), 1);
+    x_q.front() = x_next;
     if (run) ++cycles;
   }
 };

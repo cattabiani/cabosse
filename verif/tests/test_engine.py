@@ -45,8 +45,15 @@ ALL_PORTS = (*PORTS, pytest.param(WIDE, marks=pytest.mark.wide))
 # memory's latency: 73 at 128 lanes before M6 round 4, which adds a
 # register to the lane's product and one to the scale's multiply (7 cycles
 # now on the write path); 62 before D-051's pipelined step and drain. With
-# margin.
-STARTUP_CYCLES = 80
+# margin. M10 step 1b: PopLat 6 -> 9 (x read 4 cycles), 3 more.
+STARTUP_CYCLES = 83
+# M10 step 1b's cost, measured (PLAN.md, M10): with PopLat 9 a lane's row
+# buffer stays reserved 3 cycles longer, so short rows wait for one. Extra
+# cycles over the perf model: the back-to-back run's (whole run), a SCORES
+# command's at d = 16 (16-cycle rows). Option 1 of 2026-11-08: accepted for
+# now; x prefetch or LaneBanks = 3 would remove it.
+SHORT_ROW_EXTRA_RUN = 7
+SHORT_ROW_EXTRA_SCORES = 18
 # Around a beat and the lane's shortest full-rate row.
 COLS = (1, 3, 4, 5, FULL_RATE_LEN - 1, FULL_RATE_LEN, FULL_RATE_LEN + 1, 64, 130)
 
@@ -155,8 +162,8 @@ BACK_TO_BACK = ((1, 64), (3, 128), (2, FULL_RATE_LEN)) * 4 + ((3, 128),)
 @pytest.mark.parametrize("ports", ALL_PORTS)
 def test_back_to_back(ports: int) -> None:
     """With the memory at full rate, the commands after the first take
-    exactly their perf-model cycles over the whole run: no gap between
-    commands, the next matrix's reads hidden behind the current one."""
+    their perf-model cycles over the whole run, but for SHORT_ROW_EXTRA_RUN
+    (M10 step 1b): the next matrix's reads hidden behind the current one."""
     gen = torch.Generator().manual_seed(SEED)
     lanes = ports * LANES_PER_PORT
     mats = [Matvec(random_bf16(gen, p * lanes, c)) for p, c in BACK_TO_BACK]
@@ -167,7 +174,7 @@ def test_back_to_back(ports: int) -> None:
     model = [eng.model_cycles(m, ports) for m in mats]
     assert result.done[0] <= model[0] + 40 + STARTUP_CYCLES, (label, result.done[0], model[0])
     extra = int(result.done[-1] - result.done[0]) - sum(model[1:])
-    assert extra == 0, (label, extra, np.diff(result.done).tolist(), model)
+    assert 0 <= extra <= SHORT_ROW_EXTRA_RUN, (label, extra, np.diff(result.done).tolist(), model)
 
 
 # (wait, passes, cols): runs of waiting and independent commands, long and
@@ -448,7 +455,8 @@ def test_attention_back_to_back(ports: int) -> None:
     """Three SCORES, then three VALUES, t a whole number of tiles, the memory
     at full rate: after the first of each kind, each takes its perf-model
     cycles plus at most 1 (the command boundary): units leave no gap, the
-    next tile's beats read while the current one steps."""
+    next tile's beats read while the current one steps. SCORES's short rows
+    may take SHORT_ROW_EXTRA_SCORES more (M10 step 1b)."""
     gen = torch.Generator().manual_seed(SEED)
     lanes = ports * LANES_PER_PORT
     d_scores, d_values = BALANCED[ports]
@@ -463,7 +471,8 @@ def test_attention_back_to_back(ports: int) -> None:
     model = [eng.model_cycles(c, ports) for c in cmds]
     steady = [(i, took[i - 1], model[i]) for i in (1, 2, 4, 5)]
     print(f"cycles (command, measured, perf model): {steady}")
-    assert all(m <= c <= m + 1 for _, c, m in steady), (SEED, steady)
+    extra = {1: SHORT_ROW_EXTRA_SCORES, 2: SHORT_ROW_EXTRA_SCORES, 4: 0, 5: 0}
+    assert all(m <= c <= m + 1 + extra[i] for i, c, m in steady), (SEED, steady)
 
 
 # (name, the command's change, the harness's message): 4 ports, L = 16.

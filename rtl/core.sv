@@ -17,7 +17,7 @@
 // ports (commands.hazards).
 //
 // host_r_*: a read of a buffer's Lanes elements from host_r_addr_i, the data
-// the cycle after, in place of the engine's read: the simulation's view of
+// 4 cycles after (vec_unit's RdLat), in place of the engine's read: the simulation's view of
 // any buffer (M7; the logits come back through HBM, OUTPUT: D-071). It must
 // not be used while a token runs.
 
