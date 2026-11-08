@@ -2148,6 +2148,18 @@ per command):
   takes 4 cycles: the engine's `XRdLat` parameter (4) sets its x path, and
   `PopLat` grows from 6 to 9 (`Window` 9 to 12): 3 cycles more per waiting
   engine command, and the DMA FIFO room estimate counts 3 more beats.
+- Cost (owner, 2026-11-08, option 1: accepted for now): with `PopLat` 9 a
+  lane's row buffer stays reserved 3 cycles longer, so short rows wait for
+  one: the engine bench's back-to-back run takes 7 cycles more, a SCORES
+  command of 16-cycle rows 18 more (306 against 288). An estimate for
+  SmolLM2: about 0.5% of a token at position 1023, 2.5% at 8191 (attention
+  only). x prefetch in the engine (x addresses are sequential in a unit)
+  or `LaneBanks` = 3 would remove it.
+- Perf model (scripts/measure_m6.py latency): `vector_startup_cycles` 53 ->
+  59, `reduction_row_cycles` 159 -> 164, `load_latency_cycles` 74 -> 75;
+  the model's step at position 1023 is 249,063 vector-unit cycles (was
+  240,972). `engine_startup_cycles` (76) is not re-measured: about 3 more
+  (estimate).
 
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
