@@ -24,6 +24,13 @@
 // write to dst; done_o pulses at a command's last write, in order. The next
 // command is taken while earlier ones drain: the unit does not check that it
 // reads what one of them writes (the controller waits, D-045).
+// Registered for 250 MHz (M10): a group's reads go to the buffers the cycle
+// after the walk sends it, their data come RdLat = 4 cycles later
+// (tile_buffer), each slot selects its operands into registers of its own
+// and takes them the cycle after. A result goes through a register to its
+// write, which the banks hold 3 cycles later: done_o comes a cycle after the
+// write is given, and a later command's first read 2 or more after that. A
+// command is taken the cycle after the last group of the one before.
 //
 // A reduction (docs/numerics.md, sections 3 and 4): element k of a row goes
 // to partial k mod Partials, so lane l of a row's group g to partial
@@ -86,7 +93,7 @@
 // unit's access wins and nothing flags it (commands.hazards keeps the
 // command list clear of that). A buffer whose bit Read2Mask has also has a
 // second copy of its banks, written with the first and read at
-// ext_r2_addr_i (the same buffer as ext_r_buf_i, data the cycle after): P,
+// ext_r2_addr_i (the same buffer as ext_r_buf_i, data with the first's): P,
 // for a VALUES pass's second head, which reads P's next row in the same
 // cycle as the first (D-069). Any other buffer gives the first
 // read's data on ext_r2_data_o, as the engine expects (rtl/engine.sv).
@@ -108,6 +115,7 @@ module vec_unit
   parameter  int unsigned     MemDepth = 64,   // beats: port_dma's FIFO; groups: the stores' queue
   parameter  int unsigned     WrOutstanding = 128,  // write bursts sent, not yet answered (to verify on F2)
   parameter  int unsigned     Dones    = 64,   // commands taken and not yet done, at most
+  parameter  int unsigned     RdLat    = 4,    // tile_buffer's read: data cycles after the address
   localparam int unsigned     DataWidth = Lanes * 16,  // an AXI beat
   localparam int unsigned     BufW     = $clog2(Bufs),
   localparam int unsigned     LW       = $clog2(Lanes),
@@ -170,9 +178,9 @@ module vec_unit
   input  logic                         ext_r_valid_i,
   input  logic [BufW-1:0]              ext_r_buf_i,
   input  logic [AddrW-1:0]             ext_r_addr_i,
-  output logic [Lanes-1:0][31:0]       ext_r_data_o,  // the cycle after
+  output logic [Lanes-1:0][31:0]       ext_r_data_o,  // RdLat = 4 cycles after the address
   input  logic [AddrW-1:0]             ext_r2_addr_i,
-  output logic [Lanes-1:0][31:0]       ext_r2_data_o  // the cycle after
+  output logic [Lanes-1:0][31:0]       ext_r2_data_o  // with ext_r_data_o
 );
 
 
@@ -231,6 +239,10 @@ module vec_unit
     // position or 0) or the position a store writes, the cache's rows.
     logic [MemAddrW-1:0] addr;
     logic [AddrW-1:0]    mrow, cap;
+    // Decoded at the take, so the walk reads registers (M10): the op's kind,
+    // a row's first segment (ROTATE_HALF: its first half), its half.
+    logic                red, load, st, k, v, out, rotate;
+    logic [AddrW-1:0]    seg0, half;
   } walk_t;
 
   // What a group's operands, the slots and the write need of it, from its
@@ -290,16 +302,31 @@ module vec_unit
     w.row_stride = flags[LenT] ? stride : m;
     w.mrow       = op == OpOutput ? '0
                  : store(op) || flags[ByPosition] ? t - 1'b1 : flags[ByToken] ? token : '0;
+    w.red        = reduction(op);
+    w.load       = op == OpLoad;
+    w.st         = store(op);
+    w.k          = op == OpKvStore;
+    w.v          = op == OpVStore;
+    w.out        = op == OpOutput;
+    w.rotate     = op == OpRotateHalf;
+    w.half       = w.len >> 1;
+    w.seg0       = w.rotate ? w.half : w.len;
     return w;
   endfunction
 
   walk_t            cur_q;
   logic             active_q;
   logic [AddrW-1:0] row_q, base_q, g_q;  // row, its first element, the group's offset in it
+  // The walk's state besides (M10: no subtraction or comparison of its
+  // fields in the cycle a group goes): the group's first element (base_q +
+  // g_q), the elements left in the row's segment (ROTATE_HALF: in its
+  // half), whether it is ROTATE_HALF's first half, whether the row is the
+  // last.
+  logic [AddrW-1:0] ea_q, rem_q;
+  logic             fh_q, last_row_q;
   group_t           grp;
-  logic             grp_fire, row_end;
-  logic [AddrW-1:0] half, seg_end, grp_most, count, g_next, addr, gi;
-  logic             rotate, first_half;
+  logic             grp_fire, row_end, seg_last, le_half;
+  logic [AddrW-1:0] count, gi;
   logic             red_q;   // a reduction runs: no command is taken until its last row is written
   logic             pend_q;  // a row's last group went, its partials not yet in the tree
   logic             tree_busy, stall;
@@ -311,61 +338,76 @@ module vec_unit
   // (a head's), the head's offset from the first's.
   logic [MemAddrW-1:0] mbase_q, region_q, kv_off_q;
 
-  assign is_load = cur_q.op == OpLoad;
-  assign is_store = store(cur_q.op);
-  assign is_k     = cur_q.op == OpKvStore;
-  assign is_v     = cur_q.op == OpVStore;
-  assign is_out   = cur_q.op == OpOutput;
+  assign is_load  = cur_q.load;
+  assign is_store = cur_q.st;
+  assign is_k     = cur_q.k;
+  assign is_v     = cur_q.v;
+  assign is_out   = cur_q.out;
 
   always_comb begin
-    half       = cur_q.len >> 1;
-    rotate     = cur_q.op == OpRotateHalf;
-    first_half = g_q < half;
-    seg_end    = rotate && first_half ? half : cur_q.len;
-    // OUTPUT's groups: Lanes / 2 FP32 values, one beat each.
-    grp_most   = AddrW'(is_out ? Lanes / 2 : Lanes);
-    count      = seg_end - g_q > grp_most ? grp_most : seg_end - g_q;
-    g_next     = g_q + count;
-    row_end    = g_next == cur_q.len;
-    addr       = base_q + g_q;
-    gi         = g_q >> LW;  // a reduction's groups start at multiples of Lanes
+    // A group: Lanes elements, OUTPUT's Lanes / 2 FP32 values (one beat),
+    // or the segment's rest.
+    le_half  = rem_q <= AddrW'(Lanes / 2);
+    seg_last = is_out ? le_half : rem_q <= AddrW'(Lanes);
+    count    = seg_last ? rem_q : AddrW'(is_out ? Lanes / 2 : Lanes);
+    row_end  = seg_last && !fh_q;  // fh_q: ROTATE_HALF's only
+    gi       = g_q >> LW;  // a reduction's groups start at multiples of Lanes
 
     grp.is = '{op: cur_q.op, dst: cur_q.dst, a: cur_q.a, b: cur_q.b, c: cur_q.c,
-               neg_a: rotate ? first_half : cur_q.flags[NegA], neg_b: cur_q.flags[NegB],
-               b_per_row: cur_q.flags[BPerRow], scalar: cur_q.scalar, addr: addr,
-               mask: Lanes'((1 << count) - 1), last: row_end && row_q + 1'b1 == cur_q.rows,
+               neg_a: cur_q.rotate ? fh_q : cur_q.flags[NegA], neg_b: cur_q.flags[NegB],
+               b_per_row: cur_q.flags[BPerRow], scalar: cur_q.scalar, addr: ea_q,
+               mask: Lanes'((1 << count[LW:0]) - 1), last: row_end && last_row_q,
                row_first: gi == '0, first: gi < AddrW'(Parts), row_last: row_end,
                part: gi[PW-1:0], row: row_q};
-    grp.a_addr = !rotate ? addr : first_half ? addr + half : addr - half;
-    grp.b_addr = cur_q.flags[BPerRow] ? row_q : cur_q.flags[BRow] ? g_q : addr;
+    grp.a_addr = !cur_q.rotate ? ea_q : ea_q + (fh_q ? cur_q.half : -cur_q.half);
+    grp.b_addr = cur_q.flags[BPerRow] ? row_q : cur_q.flags[BRow] ? g_q : ea_q;
   end
 
   // A reduction row's last group waits for the tree, a LOAD group for its
   // beats, a store's group for a place in the queue.
-  assign stall = reduction(grp.is.op) && row_end && (pend_q || tree_busy)
+  assign stall = cur_q.red && row_end && (pend_q || tree_busy)
               || is_load && !ld_ready || is_store && (prep_q || !kv_room);
-  assign grp_fire    = active_q && !stall;
-  assign cmd_ready_o = rst_nq && !red_q && (!active_q || grp.is.last && grp_fire) && tags_ready;
+  assign grp_fire = active_q && !stall;
+  // From registers only (M10): a command is taken the cycle after the last
+  // group of the one before goes.
+  assign cmd_ready_o = rst_nq && !red_q && !active_q && tags_ready;
+
+  walk_t taken;
+  assign taken = take(cmd_op_i, cmd_dst_i, cmd_a_i, cmd_b_i, cmd_c_i, cmd_flags_i, cmd_n_i,
+                      cmd_m_i, cmd_scalar_i, cmd_cap_i, cmd_addr_i, token_i, t_i, stride_i);
 
   always_ff @(posedge clk_i) begin
     if (!rst_nq) begin
       active_q <= 1'b0;
     end else if (cmd_valid_i && cmd_ready_o) begin
       active_q <= 1'b1;
-      cur_q    <= take(cmd_op_i, cmd_dst_i, cmd_a_i, cmd_b_i, cmd_c_i, cmd_flags_i, cmd_n_i,
-                       cmd_m_i, cmd_scalar_i, cmd_cap_i, cmd_addr_i, token_i, t_i, stride_i);
-      {row_q, base_q, g_q} <= '0;
-      kv_off_q <= '0;
+      cur_q      <= taken;
+      {row_q, base_q, g_q, ea_q} <= '0;
+      rem_q      <= taken.seg0;
+      fh_q       <= taken.rotate;
+      last_row_q <= taken.rows == AddrW'(1);
+      kv_off_q   <= '0;
     end else if (grp_fire) begin
       if (grp.is.last) begin
         active_q <= 1'b0;
       end else if (row_end) begin
-        row_q    <= row_q + 1'b1;
-        base_q   <= base_q + cur_q.row_stride;
-        g_q      <= '0;
-        kv_off_q <= kv_off_q + region_q;
+        row_q      <= row_q + 1'b1;
+        base_q     <= base_q + cur_q.row_stride;
+        ea_q       <= base_q + cur_q.row_stride;
+        g_q        <= '0;
+        rem_q      <= cur_q.seg0;
+        fh_q       <= cur_q.rotate;
+        last_row_q <= row_q + AddrW'(2) == cur_q.rows;
+        kv_off_q   <= kv_off_q + region_q;
+      end else if (seg_last) begin  // ROTATE_HALF's first half: on to the second
+        g_q   <= g_q + rem_q;
+        ea_q  <= ea_q + rem_q;
+        rem_q <= cur_q.half;  // ROTATE_HALF's rows are even (commands.validate)
+        fh_q  <= 1'b0;
       end else begin
-        g_q <= g_next;
+        g_q   <= g_q + count;
+        ea_q  <= ea_q + count;
+        rem_q <= rem_q - count;
       end
     end
   end
@@ -437,7 +479,7 @@ module vec_unit
   // group goes when it is not the command's last (the next group's first).
   logic [1:0][DataWidth-1:0] gb_q;
   logic [1:0]                gb_have_q, need;
-  assign need      = ld_bf16 || count <= AddrW'(Lanes / 2) ? 2'd1 : 2'd2;
+  assign need      = ld_bf16 || seg_last && le_half ? 2'd1 : 2'd2;  // count <= Lanes / 2
   assign ld_ready  = !ld_issue_q && gb_have_q == need;
   assign beat_take = active_q && is_load && !ld_issue_q
                   && (gb_have_q < need || grp_fire && !grp.is.last);
@@ -643,12 +685,18 @@ module vec_unit
 
   // --- Buffers ----------------------------------------------------------------
 
-  // The bank entry of element e + l: e's entry, or the next one where e's
-  // place in its entry plus l passes the lanes ((e + l) >> LW without an
-  // adder per lane).
-  function automatic logic [DW-1:0] bank_addr(logic [AddrW-1:0] e, int unsigned l);
-    return DW'(e >> LW) + DW'(32'(e[LW-1:0]) + l >= Lanes);
-  endfunction
+  // tile_buffer: a read's data RdLat cycles after its address; a write
+  // given in cycle c is seen by the reads given from c + 2 on.
+  localparam int unsigned EAW   = DW + LW;  // an element's address in a buffer
+
+  // The group whose reads go to the buffers this cycle: the walk's of the
+  // cycle before (rq_q), the reads' addresses from registers (M10).
+  group_t rq_q;
+  logic   rq_valid_q;
+  always_ff @(posedge clk_i) begin
+    rq_q       <= grp;
+    rq_valid_q <= rst_nq && grp_fire;
+  end
 
   logic [Bufs-1:0][AddrW-1:0]        rd_addr, wr_addr;
   logic [Bufs-1:0][Lanes-1:0]        wr_mask;
@@ -673,9 +721,9 @@ module vec_unit
   always_comb begin
     for (int unsigned i = 0; i < Bufs; i++) begin
       rd_addr[i] = ext_r_addr_i;
-      if (grp_fire && grp.is.c == BufW'(i)) rd_addr[i] = grp.is.addr;
-      if (grp_fire && grp.is.b == BufW'(i)) rd_addr[i] = grp.b_addr;
-      if (grp_fire && grp.is.a == BufW'(i)) rd_addr[i] = grp.a_addr;
+      if (rq_valid_q && rq_q.is.c == BufW'(i)) rd_addr[i] = rq_q.is.addr;
+      if (rq_valid_q && rq_q.is.b == BufW'(i)) rd_addr[i] = rq_q.b_addr;
+      if (rq_valid_q && rq_q.is.a == BufW'(i)) rd_addr[i] = rq_q.a_addr;
       wr_addr[i] = ext_w_addr_i;
       wr_mask[i] = ext_w_valid_i && ext_w_buf_i == BufW'(i) ? ext_w_mask_i : '0;
       wr_data[i] = ext_w_data_i;
@@ -690,48 +738,41 @@ module vec_unit
 
   for (genvar i = 1; i < Bufs; i++) begin : gen_buf
     localparam int unsigned W = Bf16Mask[i] ? 16 : 32;
-    logic [Lanes-1:0][DW-1:0] wa, ra;
-    logic [Lanes-1:0][W-1:0]  wd, rd;
+    logic [Lanes-1:0][W-1:0] wd, rd;
     for (genvar l = 0; l < Lanes; l++) begin : gen_lane
-      assign wa[l] = bank_addr(wr_addr[i], l);
-      assign ra[l] = bank_addr(rd_addr[i], l);
       assign wd[l] = W'(wr_data[i][l]);
       assign rd_data[i][l] = 32'(rd[l]);
     end
     tile_buffer #(
+      .RdLat(RdLat),
       .N    (Lanes),
       .Depth(Depth),
       .W    (W)
     ) u_banks (
       .clk_i,
-      .wr_valid_i(wr_mask[i]),
-      .wr_addr_i (wa),
-      .wr_data_i (wd),
-      .wr_rot_i  (LW'(wr_addr[i])),
-      .rd_addr_i (ra),
-      .rd_rot_i  (LW'(rd_addr[i])),
-      .rd_data_o (rd)
+      .wr_mask_i(wr_mask[i]),
+      .wr_addr_i(EAW'(wr_addr[i])),
+      .wr_data_i(wd),
+      .rd_addr_i(EAW'(rd_addr[i])),
+      .rd_data_o(rd)
     );
     if (Read2Mask[i]) begin : gen_read2
-      logic [Lanes-1:0][DW-1:0] ra2;
-      logic [Lanes-1:0][W-1:0]  rd2;
+      logic [Lanes-1:0][W-1:0] rd2;
       for (genvar l = 0; l < Lanes; l++) begin : gen_lane
-        assign ra2[l] = bank_addr(ext_r2_addr_i, l);
         assign rd2_data[i][l] = 32'(rd2[l]);
       end
       tile_buffer #(
+        .RdLat(RdLat),
         .N    (Lanes),
         .Depth(Depth),
         .W    (W)
       ) u_banks2 (
         .clk_i,
-        .wr_valid_i(wr_mask[i]),
-        .wr_addr_i (wa),
-        .wr_data_i (wd),
-        .wr_rot_i  (LW'(wr_addr[i])),
-        .rd_addr_i (ra2),
-        .rd_rot_i  (LW'(ext_r2_addr_i)),
-        .rd_data_o (rd2)
+        .wr_mask_i(wr_mask[i]),
+        .wr_addr_i(EAW'(wr_addr[i])),
+        .wr_data_i(wd),
+        .rd_addr_i(EAW'(ext_r2_addr_i)),
+        .rd_data_o(rd2)
       );
     end else begin : gen_no_read2
       assign rd2_data[i] = rd_data[i];  // the first read's data
@@ -740,24 +781,41 @@ module vec_unit
   assign rd_data[0]  = '0;  // NONE
   assign rd2_data[0] = '0;
 
-  logic [BufW-1:0] ext_r_buf_q;
-  always_ff @(posedge clk_i) ext_r_buf_q <= ext_r_buf_i;
-  assign ext_r_data_o  = rd_data[ext_r_buf_q];
-  assign ext_r2_data_o = rd2_data[ext_r_buf_q];
+  // ext's data, RdLat cycles after its address.
+  logic [BufW-1:0] ext_r_buf_q[RdLat];
+  always_ff @(posedge clk_i) begin
+    ext_r_buf_q[0] <= ext_r_buf_i;
+    for (int unsigned j = 1; j < RdLat; j++) ext_r_buf_q[j] <= ext_r_buf_q[j-1];
+  end
+  assign ext_r_data_o  = rd_data[ext_r_buf_q[RdLat-1]];
+  assign ext_r2_data_o = rd2_data[ext_r_buf_q[RdLat-1]];
 
   // --- Operands, the slots, the write -----------------------------------------
 
-  // The group whose reads come back this cycle. The slots read the
-  // operands' selects from their own copies (gen_slot); a, b, c and the
-  // other select fields are unused here.
+  // The group from its reads (rq_q) to the slots: iss_q[j] is rq_q's of
+  // j + 1 cycles before. Its data come with iss_q[RdLat - 1]: each slot
+  // selects its operands into registers of its own (gen_slot), from its own
+  // copy of the group's selects. The slots take the group with grp_q =
+  // iss_q[RdLat]. LOAD's group (ld_q, with rq_q) waits alongside (ld_d).
   // verilator lint_off UNUSEDSIGNAL
-  issued_t grp_q;
+  issued_t                iss_q[RdLat+1];
+  issued_t                grp_q;
   // verilator lint_on UNUSEDSIGNAL
-  logic    grp_valid_q;
+  logic [RdLat:0]         iss_valid_q;
+  logic                   grp_valid_q;
+  logic [Lanes-1:0][31:0] ld_d[RdLat];
   always_ff @(posedge clk_i) begin
-    grp_q       <= grp.is;
-    grp_valid_q <= rst_nq && grp_fire;
+    iss_q[0]       <= rq_q.is;
+    iss_valid_q[0] <= rst_nq && rq_valid_q;
+    ld_d[0]        <= ld_q;
+    for (int unsigned j = 1; j <= RdLat; j++) begin
+      iss_q[j]       <= iss_q[j-1];
+      iss_valid_q[j] <= rst_nq && iss_valid_q[j-1];
+    end
+    for (int unsigned j = 1; j < RdLat; j++) ld_d[j] <= ld_d[j-1];
   end
+  assign grp_q       = iss_q[RdLat];
+  assign grp_valid_q = iss_valid_q[RdLat];
 
   function automatic chain_op_e chain_op(logic [4:0] op);
     case (op)
@@ -810,30 +868,45 @@ module vec_unit
   assign ad    = acc_q[AccLat-1];
   assign start = red_start(ad.rmax);
 
+  // A slot's controls for the group it takes, decoded from its copy of the
+  // group a cycle before.
+  typedef struct packed {
+    chain_op_e     op;
+    logic          red, rmax, sumsq, neg_a, neg_b, first;
+    logic [PW-1:0] part;
+  } slot_ctl_t;
+
   for (genvar l = 0; l < Lanes; l++) begin : gen_slot
-    // The slot's own copies of the group and of the reset, from the same
-    // sources as grp_q and rst_nq: grp_q's fields drove 600+ loads (core
-    // build 1), a copy drives one slot. A slot reads the operands' fields.
+    // The slot's own copies of the group's fields (sel_q, then its decoded
+    // controls ctl_q) and of the reset, from the same sources as iss_q and
+    // rst_nq: one register drives one slot, not 16 (core build 1: grp_q's
+    // fields drove 600+ loads). a_q, b_q, c_q: the operands it selected.
     // verilator lint_off UNUSEDSIGNAL
-    issued_t     grp_s_q;
+    issued_t     sel_q;
     // verilator lint_on UNUSEDSIGNAL
+    slot_ctl_t   ctl_q;
     logic        rst_nq_s;
-    logic [31:0] a, b, c, p;
+    logic [31:0] a_q, b_q, c_q, a, b, c, p;
     always_ff @(posedge clk_i) begin
-      grp_s_q  <= grp.is;
+      sel_q    <= iss_q[RdLat-2];
       rst_nq_s <= rst_ni;
+      ctl_q    <= '{op: chain_op(sel_q.op), red: reduction(sel_q.op), rmax: sel_q.op == OpMax,
+                    sumsq: sel_q.op == OpSumsq, neg_a: sel_q.neg_a && sel_q.op != OpLoad,
+                    neg_b: sel_q.neg_b, first: sel_q.first, part: sel_q.part};
+      a_q      <= sel_q.op == OpLoad ? ld_d[RdLat-1][l] : rd_data[sel_q.a][l];
+      b_q      <= sel_q.b == '0 ? iss_q[RdLat-1].scalar  // a register's 32 bits, one load per slot
+                : sel_q.b_per_row ? rd_data[sel_q.b][0] : rd_data[sel_q.b][l];
+      c_q      <= rd_data[sel_q.c][l];
     end
     always_comb begin
-      a = rd_data[grp_s_q.a][l];
-      b = grp_s_q.b_per_row ? rd_data[grp_s_q.b][0] : rd_data[grp_s_q.b][l];
-      if (grp_s_q.b == '0) b = grp_q.scalar;  // a register's 32 bits, one load per slot
-      c = rd_data[grp_s_q.c][l];
-      a[31] = a[31] ^ grp_s_q.neg_a;  // exact sign flips
-      b[31] = b[31] ^ grp_s_q.neg_b;
-      if (grp_s_q.op == OpLoad) a = ld_q[l];
-      p = grp_s_q.first ? '0 : part_q[l][grp_s_q.part];  // a sum's
-      if (reduction(grp_s_q.op)) begin  // SUM: add(x, p); SUMSQ: fma(x, x, p); MAX: add(x, -0)
-        b = grp_s_q.op == OpMax ? NegZero : grp_s_q.op == OpSumsq ? a : p;
+      a = a_q;
+      b = b_q;
+      c = c_q;
+      a[31] = a[31] ^ ctl_q.neg_a;  // exact sign flips; LOAD's a as it came
+      b[31] = b[31] ^ ctl_q.neg_b;
+      p = ctl_q.first ? '0 : part_q[l][ctl_q.part];  // a sum's
+      if (ctl_q.red) begin  // SUM: add(x, p); SUMSQ: fma(x, x, p); MAX: add(x, -0)
+        b = ctl_q.rmax ? NegZero : ctl_q.sumsq ? a : p;
         c = p;
       end
     end
@@ -843,7 +916,7 @@ module vec_unit
       .clk_i,
       .rst_ni (rst_nq_s),
       .valid_i(grp_valid_q),
-      .op_i   (chain_op(grp_s_q.op)),
+      .op_i   (ctl_q.op),
       .a_i    (a),
       .b_i    (b),
       .c_i    (c),
@@ -890,7 +963,7 @@ module vec_unit
   } tree_t;
 
   logic                      cap_valid_q, t_pend_q, tree_run, tree_done;
-  logic [$clog2(ChainLat+2)-1:0] slot_groups_q;  // groups in the slots, but a reduction's
+  logic [$clog2(ChainLat+RdLat+3)-1:0] slot_groups_q;  // groups from the walk to the slots' out, but a reduction's
   logic                      slot_out;  // one of them leaves the slots (below)
   logic                      cap_rmax_q;
   tree_t                     cap_q, tree_q;
@@ -929,24 +1002,31 @@ module vec_unit
     .a_i(tree_y),
     .y_o(tree_r)
   );
-  assign t_w_valid = t_pend_q && slot_groups_q == '0;
-  assign t_w_buf   = tree_q.dst;
-  assign t_w_addr  = tree_q.row;
-  assign t_w_data  = Bf16Mask[tree_q.dst] ? {16'h0, tree_r} : tree_y;
+  // t_go: the row's value goes to its write register (t_w_*), the slots' to
+  // theirs (below) never in the same cycle.
+  logic t_go, t_w_last;
+  assign t_go = t_pend_q && slot_groups_q == '0;
+  always_ff @(posedge clk_i) begin
+    t_w_valid <= rst_nq && t_go;
+    t_w_buf   <= tree_q.dst;
+    t_w_addr  <= tree_q.row;
+    t_w_data  <= Bf16Mask[tree_q.dst] ? {16'h0, tree_r} : tree_y;
+    t_w_last  <= tree_q.last;
+  end
 
   always_ff @(posedge clk_i) begin
     if (!rst_nq) begin
       {red_q, pend_q, t_pend_q} <= '0;
       slot_groups_q <= '0;
     end else begin
-      slot_groups_q <= slot_groups_q + $bits(slot_groups_q)'(grp_fire && !reduction(grp.is.op))
+      slot_groups_q <= slot_groups_q + $bits(slot_groups_q)'(grp_fire && !cur_q.red)
                      - $bits(slot_groups_q)'(slot_out);
       if (cmd_valid_i && cmd_ready_o) red_q <= reduction(cmd_op_i);
-      else if (t_w_valid && tree_q.last) red_q <= 1'b0;
-      if (grp_fire && reduction(grp.is.op) && row_end) pend_q <= 1'b1;
+      else if (t_go && tree_q.last) red_q <= 1'b0;
+      if (grp_fire && cur_q.red && row_end) pend_q <= 1'b1;
       else if (cap_valid_q) pend_q <= 1'b0;
       if (tree_done) t_pend_q <= 1'b1;
-      else if (t_w_valid) t_pend_q <= 1'b0;
+      else if (t_go) t_pend_q <= 1'b0;
     end
   end
 
@@ -958,26 +1038,39 @@ module vec_unit
     for (int unsigned j = 1; j < ChainLat; j++) dest_q[j] <= dest_q[j-1];
   end
 
-  // The write: dest_q[ChainLat - 1] belongs to the slots' result this cycle.
-  // A reduction's groups write nothing here, a store's go to its queue.
-  dest_t d;
-  assign d             = dest_q[ChainLat-1];
-  assign slot_out      = slot_valid[0] && d.sink != SinkNone;
-  assign u_w_valid     = slot_valid[0] && d.sink == SinkBuf;
-  assign u_w_buf       = d.dst;
-  assign u_w_addr      = d.addr;
-  assign u_w_mask      = d.mask;
-  assign kv_beat_valid = slot_valid[0] && (d.sink == SinkKv || d.sink == SinkOut);
+  // The write: dest_q[ChainLat - 1] belongs to the slots' result this cycle
+  // (slot_out), which goes to the write's register (wd_q, w_data_q,
+  // w_beat_q; M10) and from it to dst. A reduction's groups write nothing
+  // here, a store's go to its queue.
+  dest_t                  d, wd_q;
+  logic                   w_valid_q;
+  logic [Lanes-1:0][31:0] w_data, w_data_q;
+  logic [DataWidth-1:0]   w_beat, w_beat_q;
+  assign d        = dest_q[ChainLat-1];
+  assign slot_out = slot_valid[0] && d.sink != SinkNone;
   for (genvar l = 0; l < Lanes; l++) begin : gen_round
     logic [15:0] r;
     fp32_to_bf16 u_round (
       .a_i(y[l]),
       .y_o(r)
     );
-    assign u_w_data[l] = Bf16Mask[d.dst] ? {16'h0, r} : y[l];
+    assign w_data[l] = Bf16Mask[d.dst] ? {16'h0, r} : y[l];
     // OUTPUT's beat: lanes 0 .. Lanes / 2 - 1 as FP32; the stores' rounded.
-    assign kv_beat[16*l+:16] = d.sink == SinkOut ? y[l/2][16*(l%2)+:16] : r;
+    assign w_beat[16*l+:16] = d.sink == SinkOut ? y[l/2][16*(l%2)+:16] : r;
   end
+  always_ff @(posedge clk_i) begin
+    w_valid_q <= rst_nq && slot_out;
+    wd_q      <= d;
+    w_data_q  <= w_data;
+    w_beat_q  <= w_beat;
+  end
+  assign u_w_valid     = w_valid_q && wd_q.sink == SinkBuf;
+  assign u_w_buf       = wd_q.dst;
+  assign u_w_addr      = wd_q.addr;
+  assign u_w_mask      = wd_q.mask;
+  assign u_w_data      = w_data_q;
+  assign kv_beat_valid = w_valid_q && (wd_q.sink == SinkKv || wd_q.sink == SinkOut);
+  assign kv_beat       = w_beat_q;
 
   // --- Dones, in order ----------------------------------------------------------
 
@@ -988,7 +1081,7 @@ module vec_unit
   // ended, not yet done; answered_q: stores answered, not yet done.
   logic             tag_valid, tag_go, tag_kv, end_valid;
   logic [DoneW-1:0] ended_q, answered_q;
-  assign end_valid = (u_w_valid || kv_beat_valid) && d.last || t_w_valid && tree_q.last;
+  assign end_valid = (u_w_valid || kv_beat_valid) && wd_q.last || t_w_valid && t_w_last;
 
   stream_fifo #(.Width(1), .Depth(Dones)) u_tags (
     .clk_i,

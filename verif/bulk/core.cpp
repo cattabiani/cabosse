@@ -49,6 +49,7 @@ constexpr size_t kPorts = Params::core__DOT__Ports;
 constexpr size_t kChanW = Params::core__DOT__ChanW;
 constexpr size_t kLen = Params::core__DOT__Len;
 constexpr size_t kBufs = Params::core__DOT__Bufs;
+constexpr size_t kRdLat = Params::core__DOT__RdLat;  ///< host_r's data, cycles after its address
 constexpr size_t kLanes = Params::core__DOT__Lanes;
 constexpr size_t kAddrBits = 34;
 constexpr size_t kBeatBytes = 32;
@@ -126,18 +127,22 @@ struct Bench {
     ++now;
   }
 
-  /// @brief n elements of a buffer from `first`, Lanes a cycle (host_r).
+  /// @brief n elements of a buffer from `first`, Lanes a cycle (host_r),
+  /// each read's data kRdLat cycles after its address.
   /// @param buf the buffer's id (commands.Buf).
   /// @param first its first element read.
   /// @param n elements.
   /// @return their raw bits, a word each.
   std::vector<uint32_t> read_buffer(uint32_t buf, uint32_t first, uint32_t n) {
     std::vector<uint32_t> out;
-    dut.host_r_valid_i = 1;
+    const size_t reads = (n + kLanes - 1) / kLanes;
     dut.host_r_buf_i = buf;
-    for (uint32_t at = first; at < first + n; at += kLanes) {
-      dut.host_r_addr_i = at;
+    for (size_t k = 0; k + 1 < reads + kRdLat; ++k) {
+      dut.host_r_valid_i = k < reads;
+      if (k < reads) dut.host_r_addr_i = first + static_cast<uint32_t>(k * kLanes);
       cycle();
+      if (k + 1 < kRdLat) continue;
+      const uint32_t at = first + static_cast<uint32_t>((k + 1 - kRdLat) * kLanes);
       dut.clk_i = 0;
       dut.eval();
       for (size_t l = 0; l < kLanes && at + l < first + n; ++l) {

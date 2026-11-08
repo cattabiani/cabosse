@@ -19,7 +19,6 @@ stream_fifo.sv
 port_dma.sv
 port_wdma.sv
 rotate_pipe.sv
-tile_buffer_pipe.sv
 tile_buffer.sv
 engine.sv
 vec_tree.sv

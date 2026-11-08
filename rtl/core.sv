@@ -17,7 +17,7 @@
 // ports (commands.hazards).
 //
 // host_r_*: a read of a buffer's Lanes elements from host_r_addr_i, the data
-// the cycle after, in place of the engine's read: the simulation's view of
+// RdLat = 4 cycles after, in place of the engine's read: the simulation's view of
 // any buffer (M7; the logits come back through HBM, OUTPUT: D-071). It must
 // not be used while a token runs.
 
@@ -37,6 +37,7 @@ module core #(
   localparam int unsigned E        = 4,       // the engine's pairs a lane a cycle (D-027)
   localparam int unsigned Writes   = 8,       // the engine's results a cycle
   localparam int unsigned XHeads   = 2,       // the engine's x reads (rtl/engine.sv's Heads)
+  localparam int unsigned RdLat    = 4,       // a buffer read's cycles (tile_buffer; engine's XRdLat)
   localparam int unsigned AxilW    = 17
 ) (
   input  logic                          clk_i,
@@ -238,6 +239,7 @@ module core #(
   assign host_r_data_o = ext_r_data;
 
   engine #(
+    .XRdLat   (RdLat),
     .Ports    (Ports),
     .AddrWidth(MemAddrW),
     .DataWidth(DataW),
@@ -289,6 +291,7 @@ module core #(
   );
 
   vec_unit #(
+    .RdLat    (RdLat),
     .Lanes    (Lanes),
     .Bufs     (Bufs),
     .Len      (Len),

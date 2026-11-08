@@ -53,8 +53,8 @@
 // after that command was taken (so at most CmdDepth + 1 are pending).
 //
 // Read ports: x_data_i[r] is the E values of group x_addr_o[r] (elements
-// E * x_addr_o[r] ... + E - 1) of buffer x_buf_o as presented in the
-// previous cycle (a synchronous RAM); a command must not read past the
+// E * x_addr_o[r] ... + E - 1) of buffer x_buf_o as presented XRdLat
+// cycles before (the vector unit's buffers: 4); a command must not read past the
 // buffer's end (the vector unit's banks wrap; commands.validate checks the
 // buffers' length). Port 1
 // serves a VALUES pass's second head; on other commands the lanes past d may
@@ -76,6 +76,7 @@ module engine
   parameter  int unsigned BufWidth     = 8,    // buffer ids (docs/architecture.md, "Encoding")
   parameter  int unsigned Writes       = 8,    // results per cycle on the write port
   parameter  int unsigned CmdDepth     = 4,    // commands queued per stage
+  parameter  int unsigned XRdLat       = 4,    // x_addr_o to x_data_i, cycles (vec_unit's RdLat)
   parameter  int unsigned E            = 4,    // pairs per lane per cycle
   parameter  int unsigned A            = 16,   // partial sums per row (D-027)
   parameter  int unsigned MaxD         = 128,  // largest head dimension
@@ -507,8 +508,8 @@ module engine
   // lanes take.
 
   localparam int unsigned GL       = L / NG;     // lanes per group
-  localparam int unsigned PopLat   = 6;
-  localparam int unsigned XLat     = 4;  // x_data at stage 3, its central register at 4
+  localparam int unsigned XLat     = 3 + XRdLat;  // x_data at stage 2 + XRdLat, its central register
+  localparam int unsigned PopLat   = XLat + 2;
   localparam int unsigned SeenRegs = 2;  // a group's register and the central one
   // Decisions not yet in what step sees: PopLat to the pop or the lane, one
   // into the FIFO count or the reservation, SeenRegs, and the estimate's own
@@ -517,10 +518,6 @@ module engine
   localparam int unsigned LaneBanks = 2;  // dot_lane's level-1 buffers
   localparam int unsigned LaneMulRegs = 2;  // registers in a lane's product (fp_product)
   localparam int unsigned RW       = $clog2(LaneBanks + Window + 1);
-
-  if (PopLat < XLat + 2) begin : gen_bad_lat
-    $error("engine: PopLat must leave the x path a group register and a port register");
-  end
 
   typedef struct packed {
     logic                 valid;    // a beat to the lanes
@@ -723,7 +720,8 @@ module engine
   end
 
   // x: the address from the decision, presented at stage 2, so x_data_i
-  // comes at 3; a central register (XLat) and the group's take it to PopLat.
+  // comes at 2 + XRdLat; a central register (XLat) and the group's take it
+  // to PopLat.
   logic [Heads-1:0][RowWidth-1:0] x_addr_d, x_addr_q;
   logic [BufWidth-1:0]            x_buf_q;
   logic [Heads-1:0][E-1:0][15:0]  x_data_q;

@@ -195,7 +195,9 @@ def test_random_sequences(seed: int) -> None:
 @rtl.needs_verilator
 def test_back_to_back_speed() -> None:
     """Independent commands of 16k elements back to back: a group a cycle,
-    so each takes its elements / 16 cycles after the first."""
+    so each takes its elements / 16 cycles after the first, and one to be
+    taken (M10: the unit takes a command the cycle after the last group of
+    the one before)."""
     length = 1 << 14
     rng = np.random.default_rng(SEED)
     ops = [(Op.ADD, Buf.H, Buf.Q), (Op.MUL, Buf.K, Buf.V), (Op.EXP, Buf.KR, Buf.NONE)]
@@ -205,7 +207,7 @@ def test_back_to_back_speed() -> None:
     ]
     result = vector.check(steps, vector.random_buffers(rng, length), length, "speed")
     took = np.diff(result.done).tolist()
-    assert took == [length // vector.LANES] * 2, took
+    assert took == [length // vector.LANES + 1] * 2, took
 
 
 @rtl.needs_verilator
