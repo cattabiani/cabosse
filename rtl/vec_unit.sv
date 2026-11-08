@@ -115,6 +115,7 @@ module vec_unit
   parameter  int unsigned     MemDepth = 64,   // beats: port_dma's FIFO; groups: the stores' queue
   parameter  int unsigned     WrOutstanding = 128,  // write bursts sent, not yet answered (to verify on F2)
   parameter  int unsigned     Dones    = 64,   // commands taken and not yet done, at most
+  parameter  int unsigned     RdLat    = 4,    // tile_buffer's read: data cycles after the address
   localparam int unsigned     DataWidth = Lanes * 16,  // an AXI beat
   localparam int unsigned     BufW     = $clog2(Bufs),
   localparam int unsigned     LW       = $clog2(Lanes),
@@ -349,7 +350,7 @@ module vec_unit
     le_half  = rem_q <= AddrW'(Lanes / 2);
     seg_last = is_out ? le_half : rem_q <= AddrW'(Lanes);
     count    = seg_last ? rem_q : AddrW'(is_out ? Lanes / 2 : Lanes);
-    row_end  = seg_last && !(cur_q.rotate && fh_q);
+    row_end  = seg_last && !fh_q;  // fh_q: ROTATE_HALF's only
     gi       = g_q >> LW;  // a reduction's groups start at multiples of Lanes
 
     grp.is = '{op: cur_q.op, dst: cur_q.dst, a: cur_q.a, b: cur_q.b, c: cur_q.c,
@@ -401,7 +402,7 @@ module vec_unit
       end else if (seg_last) begin  // ROTATE_HALF's first half: on to the second
         g_q   <= g_q + rem_q;
         ea_q  <= ea_q + rem_q;
-        rem_q <= cur_q.len - cur_q.half;
+        rem_q <= cur_q.half;  // ROTATE_HALF's rows are even (commands.validate)
         fh_q  <= 1'b0;
       end else begin
         g_q   <= g_q + count;
@@ -684,9 +685,8 @@ module vec_unit
 
   // --- Buffers ----------------------------------------------------------------
 
-  // tile_buffer's registers: a read's data RdLat cycles after its address;
-  // a write given in cycle c is seen by the reads given from c + 2 on.
-  localparam int unsigned RdLat = 4;
+  // tile_buffer: a read's data RdLat cycles after its address; a write
+  // given in cycle c is seen by the reads given from c + 2 on.
   localparam int unsigned EAW   = DW + LW;  // an element's address in a buffer
 
   // The group whose reads go to the buffers this cycle: the walk's of the
@@ -744,6 +744,7 @@ module vec_unit
       assign rd_data[i][l] = 32'(rd[l]);
     end
     tile_buffer #(
+      .RdLat(RdLat),
       .N    (Lanes),
       .Depth(Depth),
       .W    (W)
@@ -761,6 +762,7 @@ module vec_unit
         assign rd2_data[i][l] = 32'(rd2[l]);
       end
       tile_buffer #(
+        .RdLat(RdLat),
         .N    (Lanes),
         .Depth(Depth),
         .W    (W)
@@ -961,7 +963,7 @@ module vec_unit
   } tree_t;
 
   logic                      cap_valid_q, t_pend_q, tree_run, tree_done;
-  logic [$clog2(ChainLat+RdLat+4)-1:0] slot_groups_q;  // groups from the walk to the slots' out, but a reduction's
+  logic [$clog2(ChainLat+RdLat+3)-1:0] slot_groups_q;  // groups from the walk to the slots' out, but a reduction's
   logic                      slot_out;  // one of them leaves the slots (below)
   logic                      cap_rmax_q;
   tree_t                     cap_q, tree_q;

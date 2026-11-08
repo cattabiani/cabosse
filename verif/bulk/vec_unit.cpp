@@ -144,6 +144,7 @@ struct Bench {
   size_t step_op = 0;      ///< its next read or write
   size_t step_ops = 0;     ///< every engine step's reads and writes so far
   uint32_t read_sent = 0;  ///< bit k: an engine read went k + 1 cycles ago (its data out at k + 1 = kRdLat)
+  uint32_t since_write = 1;  ///< as of last cycle: cycles since its last ext write (capped at 1)
   std::vector<uint32_t> engine_reads;  ///< every engine read's kLanes words, in order
   uint64_t cycles = 0;     ///< since the first offer
   std::vector<uint64_t> answers;  ///< the cycle of each write response
@@ -238,6 +239,9 @@ struct Bench {
     if (!running || !step_due() || oldest < next_cmd) return false;
     const EngineStep& s = engine[next_step];
     const bool read = step_op < s.reads.size();
+    // The buffers see a write from 2 cycles on (tile_buffer); the engine's
+    // go and credits leave more between its write and a later read.
+    if (read && since_write == 0) return false;
     if (read) {
       put_read(s.reads[step_op]);
     } else {
@@ -261,6 +265,7 @@ struct Bench {
     dut.cmd_valid_i = offering;
     if (offering) put(commands[next_cmd]);
     const bool read = put_step_op();
+    since_write = dut.ext_w_valid_i ? 0 : 1;
     drive_memory();
     dut.clk_i = 0;
     dut.eval();

@@ -519,7 +519,6 @@ module engine
   localparam int unsigned LaneMulRegs = 2;  // registers in a lane's product (fp_product)
   localparam int unsigned RW       = $clog2(LaneBanks + Window + 1);
 
-
   typedef struct packed {
     logic                 valid;    // a beat to the lanes
     logic                 last;

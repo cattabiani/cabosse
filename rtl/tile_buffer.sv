@@ -15,8 +15,10 @@
 //   cycle c + 3 on (written at the end of c + 2).
 // - Read: rd_data_o[i] is element rd_addr_i + i, RdLat = 4 cycles after
 //   rd_addr_i. It sees the writes given 2 or more cycles before rd_addr_i,
-//   not the later ones.
+//   not the later ones. RdLat is fixed by the registers; the parameter lets
+//   the users name it (core.sv passes it to vec_unit and the engine).
 module tile_buffer #(
+  parameter  int unsigned RdLat = 4,
   parameter  int unsigned N     = 8,
   parameter  int unsigned Depth = 16,
   parameter  int unsigned W     = 64,
@@ -31,6 +33,10 @@ module tile_buffer #(
   input  logic [EW-1:0]       rd_addr_i,
   output logic [N-1:0][W-1:0] rd_data_o
 );
+
+  if (RdLat != 4) begin : gen_lat_check
+    $error("tile_buffer: RdLat is 4 (its registers)");
+  end
 
   // Bank b's entry for a vector from element e.
   function automatic logic [AW-1:0] entry(logic [EW-1:0] e, int unsigned b);
@@ -78,21 +84,22 @@ module tile_buffer #(
     for (int unsigned b = 0; b < N; b++) wr_entry_q[b] <= entry(wr_addr_q, b);
   end
 
-  // Read: the address's register, the RAM's, its output register, the
-  // rotation's. The rotation's shift follows the data.
-  logic [EW-1:0]       rd_addr_q;
-  logic [SW-1:0]       rd_rot_q[2];  // with rd_ram_q, rd_out_q
-  logic [N-1:0][W-1:0] rd_ram_q, rd_out_q, rd_rot;
+  // Read: each bank's entry in a register, the RAM's, its output register,
+  // the rotation's. The rotation's shift follows the data.
+  logic [N-1:0][AW-1:0] rd_entry_q;
+  logic [SW-1:0]        rd_rot_q[3];  // with rd_entry_q, rd_ram_q, rd_out_q
+  logic [N-1:0][W-1:0]  rd_ram_q, rd_out_q, rd_rot;
   always_ff @(posedge clk_i) begin
-    rd_addr_q   <= rd_addr_i;
-    rd_rot_q[0] <= rd_addr_q[SW-1:0];
+    for (int unsigned b = 0; b < N; b++) rd_entry_q[b] <= entry(rd_addr_i, b);
+    rd_rot_q[0] <= rd_addr_i[SW-1:0];
     rd_rot_q[1] <= rd_rot_q[0];
+    rd_rot_q[2] <= rd_rot_q[1];
   end
   for (genvar b = 0; b < N; b++) begin : gen_bank
     logic [W-1:0] mem_q[Depth];
     always_ff @(posedge clk_i) begin
       if (wr_valid_q[b]) mem_q[wr_entry_q[b]] <= wr_phys_q[b];
-      rd_ram_q[b] <= mem_q[entry(rd_addr_q, b)];
+      rd_ram_q[b] <= mem_q[rd_entry_q[b]];
       rd_out_q[b] <= rd_ram_q[b];  // the RAM's output register
     end
   end
@@ -103,7 +110,7 @@ module tile_buffer #(
   ) u_rd_rot (
     .clk_i,
     .in_i   (rd_out_q),
-    .shift_i(rd_rot_q[1]),
+    .shift_i(rd_rot_q[2]),
     .out_o  (rd_rot)
   );
   always_ff @(posedge clk_i) rd_data_o <= rd_rot;
