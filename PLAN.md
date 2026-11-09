@@ -2199,6 +2199,40 @@ about $7.5, estimate; M10 total about $8.7 of $15, estimate):
   operands in one SLR; replicate or pipeline the skid valid to CE). One
   more build (about $6 left) needs the owner's OK.
 
+**Step 4, the floorplan and the SLR crossings** (2026-11-09; same bits,
+more cycles per command):
+- Core build 2 was a placement problem more than a logic one: placement
+  ended at -2.81 ns, the router saw congestion level 6 in the engine, the
+  worst path is 0.38 ns of logic and 5.96 ns of wire (lane 86 split across
+  SLR0 and SLR1), and the vector unit's own paths, which met 250 MHz alone
+  (step 2), fail by 2.2 ns inside the core. Nothing placed the blocks: AWS's
+  flow spreads logic over the SLRs (`SSI_SpreadLogic_high`).
+- Floorplan (`platforms/f2/core/small_shell_cl_pnr_user.xdc`, written by
+  `scripts/f2/floorplan.py`; AWS's flow reads it before placement): soft
+  SLR assignments. SLR0: the HBM's stages, port 0's merge, the ILA, the
+  engine's groups 0-3 (ports 0-15, their DMAs and lanes). SLR1: groups
+  4-7, the engine's issue, step and drain, the controller. SLR2: the
+  vector unit. Estimate from build 2's areas: 60-70% of each SLR's LUTs.
+- A register on each side of every SLR crossing, none crossing two SLRs:
+  - HBM reads on ports 1-31: two plain registers, no ready (port_dma.sv's
+    credits keep r_ready high; a simulation check says so). AR: two
+    bringup_pipe stages. Port 0 keeps its stage (the host shares it).
+  - The vector unit's AXI to port 0: three stages each way, one per SLR;
+    its reads and write responses as plain registers (it takes every beat).
+  - core.sv: the engine's x reads, writes and done through registers on the
+    vector unit's side (`xv_*`); the engine's `XRdLat` is 6 (was 4), so
+    `PopLat` 11 and `Window` 14. The DMAs' errors registered.
+  - engine.sv: the drain's results through a register per group of 16
+    lanes, then the central one: a write comes 2 cycles later.
+- `scripts/f2/build_cl.sh` stops the build if a floorplan line gives a
+  critical warning or if placement ends below -0.4 ns (`PLACE_WNS_MIN`;
+  build 2: -2.81 placed, -2.45 routed), to save the routing's hours.
+- Cost: 2 more cycles per waiting engine command, and a lane's row buffer
+  reserved 2 cycles longer (step 1b's short-row cost grows); 2 more cycles
+  per engine command's end; a few more per vector LOAD and store.
+- Owner (2026-11-09): one more full build approved, launched when the
+  analysis gives confidence of 250 MHz; no cloud trial run before it.
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
