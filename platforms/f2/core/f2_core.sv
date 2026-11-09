@@ -202,8 +202,14 @@ module f2_core #(
 
   // The HBM's AXI ports sit at the die's edge, far from the core's logic
   // (core build 1: their r_valid and w_ready into the DMAs' counters, -5.1
-  // ns). A bringup_pipe stage on each channel registers both ways (valid
-  // and data forward, ready back) at full rate; a read takes 2 cycles more.
+  // ns), and the engine's ports 16 and up in the next SLR (the floorplan,
+  // small_shell_cl_pnr_user.xdc). AR: two bringup_pipe stages (all
+  // registered, valid and data forward, ready back), the second beside the
+  // HBM. R on ports 1 and up: two plain registers, the first beside the
+  // HBM, no ready: the engine's DMAs take every beat (port_dma.sv's credits:
+  // a burst is asked only with room for it), so r_ready stays high. Port 0
+  // (shared with the vector unit and the host) keeps a bringup_pipe stage.
+  // A read takes 2 cycles more than with one stage.
   logic [Ports-1:0]                hb_ar_valid, hb_ar_ready, hb_r_valid, hb_r_ready, hb_r_last;
   logic [Ports-1:0][AddrWidth-1:0] hb_ar_addr;
   logic [Ports-1:0][7:0]           hb_ar_len;
@@ -221,7 +227,7 @@ module f2_core #(
   // verilator lint_off PINCONNECTEMPTY
 
   for (genvar p = 0; p < Ports; p++) begin : gen_hbm
-    bringup_pipe #(.Width(AxW)) u_ar (
+    bringup_pipe #(.Width(AxW), .Stages(2)) u_ar (
       .clk_i,
       .rst_ni,
       .in_valid_i (hb_ar_valid[p]),
@@ -232,17 +238,36 @@ module f2_core #(
       .out_ready_i(ar_ready_i[p]),
       .out_data_o ({ar_addr_o[p], ar_len_o[p], ar_burst_o[p]})
     );
-    bringup_pipe #(.Width(RW)) u_r (
-      .clk_i,
-      .rst_ni,
-      .in_valid_i (r_valid_i[p]),
-      .in_ready_o (r_ready_o[p]),
-      .in_data_i  ({r_data_i[p], r_resp_i[p], r_last_i[p]}),
-      .busy_o     (),
-      .out_valid_o(hb_r_valid[p]),
-      .out_ready_i(hb_r_ready[p]),
-      .out_data_o ({hb_r_data[p], hb_r_resp[p], hb_r_last[p]})
-    );
+    if (p == 0) begin : gen_r_pipe
+      bringup_pipe #(.Width(RW)) u_r (
+        .clk_i,
+        .rst_ni,
+        .in_valid_i (r_valid_i[p]),
+        .in_ready_o (r_ready_o[p]),
+        .in_data_i  ({r_data_i[p], r_resp_i[p], r_last_i[p]}),
+        .busy_o     (),
+        .out_valid_o(hb_r_valid[p]),
+        .out_ready_i(hb_r_ready[p]),
+        .out_data_o ({hb_r_data[p], hb_r_resp[p], hb_r_last[p]})
+      );
+    end else begin : gen_r_regs
+      logic          valid0_q, valid1_q;  // 0 beside the HBM, 1 beside the DMA
+      logic [RW-1:0] data0_q, data1_q;
+      always_ff @(posedge clk_i) begin
+        valid0_q <= rst_ni && r_valid_i[p];
+        valid1_q <= rst_ni && valid0_q;
+        data0_q  <= {r_data_i[p], r_resp_i[p], r_last_i[p]};
+        data1_q  <= data0_q;
+      end
+      assign r_ready_o[p] = 1'b1;
+      assign hb_r_valid[p] = valid1_q;
+      assign {hb_r_data[p], hb_r_resp[p], hb_r_last[p]} = data1_q;
+`ifndef SYNTHESIS
+      always_ff @(posedge clk_i) begin
+        if (rst_ni && hb_r_valid[p] && !hb_r_ready[p]) $error("f2_core: port %0d refused a read beat", p);
+      end
+`endif
+    end
   end
 
   bringup_pipe #(.Width(AxW)) u_aw (
@@ -294,8 +319,8 @@ module f2_core #(
   logic [1:0]                      v_ar_burst, v_aw_burst;
   logic [DataWidth-1:0]            v_w_data;
   logic [BeatBytes-1:0]            v_w_strb;
-  logic [DataWidth-1:0]            port0_r_data;
-  logic [1:0]                      port0_r_resp, port0_b_resp;
+  logic [DataWidth-1:0]            port0_r_data, v_r_data;
+  logic [1:0]                      port0_r_resp, port0_b_resp, v_r_resp, v_b_resp;
   // verilator lint_off UNUSEDSIGNAL
   logic [Ports-1:0][2:0]           e_ar_size;  // always the full beat
   logic [2:0]                      v_ar_size, v_aw_size;
@@ -346,8 +371,8 @@ module f2_core #(
     .v_ar_burst_o  (v_ar_burst),
     .v_r_valid_i   (v_r_valid),
     .v_r_ready_o   (v_r_ready),
-    .v_r_data_i    (port0_r_data),
-    .v_r_resp_i    (port0_r_resp),
+    .v_r_data_i    (v_r_data),
+    .v_r_resp_i    (v_r_resp),
     .v_aw_valid_o  (v_aw_valid),
     .v_aw_ready_i  (v_aw_ready),
     .v_aw_addr_o   (v_aw_addr),
@@ -361,7 +386,7 @@ module f2_core #(
     .v_w_last_o    (v_w_last),
     .v_b_valid_i   (v_b_valid),
     .v_b_ready_o   (v_b_ready),
-    .v_b_resp_i    (port0_b_resp),
+    .v_b_resp_i    (v_b_resp),
     .host_r_valid_i(1'b0),
     .host_r_buf_i  ('0),
     .host_r_addr_i ('0),
@@ -402,6 +427,72 @@ module f2_core #(
   logic [WW-1:0]  m_w;
   logic [RW-1:0]  h_r;
 
+  // The vector unit (SLR2 in the floorplan) to port 0 (SLR0): three
+  // register stages each way, one per SLR (stage 0 the vector unit's). Its
+  // reads and write responses as plain registers: it takes every beat
+  // (port_dma.sv's credits, port_wdma.sv's b_ready).
+  logic           pv_ar_valid, pv_ar_ready, pv_aw_valid, pv_aw_ready, pv_w_valid, pv_w_ready;
+  logic           pv_r_valid, pv_b_valid;
+  logic [AxW-1:0] pv_ar, pv_aw;
+  logic [WW-1:0]  pv_w;
+
+  // verilator lint_off PINCONNECTEMPTY
+  bringup_pipe #(.Width(AxW), .Stages(3)) u_v_ar (
+    .clk_i,
+    .rst_ni,
+    .in_valid_i (v_ar_valid),
+    .in_ready_o (v_ar_ready),
+    .in_data_i  ({v_ar_addr, v_ar_len, v_ar_burst}),
+    .busy_o     (),
+    .out_valid_o(pv_ar_valid),
+    .out_ready_i(pv_ar_ready),
+    .out_data_o (pv_ar)
+  );
+  bringup_pipe #(.Width(AxW), .Stages(3)) u_v_aw (
+    .clk_i,
+    .rst_ni,
+    .in_valid_i (v_aw_valid),
+    .in_ready_o (v_aw_ready),
+    .in_data_i  ({v_aw_addr, v_aw_len, v_aw_burst}),
+    .busy_o     (),
+    .out_valid_o(pv_aw_valid),
+    .out_ready_i(pv_aw_ready),
+    .out_data_o (pv_aw)
+  );
+  bringup_pipe #(.Width(WW), .Stages(3)) u_v_w (
+    .clk_i,
+    .rst_ni,
+    .in_valid_i (v_w_valid),
+    .in_ready_o (v_w_ready),
+    .in_data_i  ({v_w_data, v_w_strb, v_w_last}),
+    .busy_o     (),
+    .out_valid_o(pv_w_valid),
+    .out_ready_i(pv_w_ready),
+    .out_data_o (pv_w)
+  );
+  // verilator lint_on PINCONNECTEMPTY
+
+  // Back: stage 0 beside port 0, stage 2 the vector unit's.
+  logic [2:0]                            v_r_valid_q, v_b_valid_q;
+  logic [2:0][DataWidth+1:0]             v_r_q;
+  logic [2:0][1:0]                       v_b_q;
+  always_ff @(posedge clk_i) begin
+    v_r_valid_q <= rst_ni ? {v_r_valid_q[1:0], pv_r_valid} : '0;
+    v_b_valid_q <= rst_ni ? {v_b_valid_q[1:0], pv_b_valid} : '0;
+    v_r_q       <= {v_r_q[1:0], {port0_r_data, port0_r_resp}};
+    v_b_q       <= {v_b_q[1:0], port0_b_resp};
+  end
+  assign v_r_valid              = v_r_valid_q[2];
+  assign {v_r_data, v_r_resp}   = v_r_q[2];
+  assign v_b_valid              = v_b_valid_q[2];
+  assign v_b_resp               = v_b_q[2];
+`ifndef SYNTHESIS
+  always_ff @(posedge clk_i) begin
+    if (rst_ni && v_r_valid && !v_r_ready) $error("f2_core: the vector unit refused a read beat");
+    if (rst_ni && v_b_valid && !v_b_ready) $error("f2_core: the vector unit refused a write response");
+  end
+`endif
+
   f2_port0 #(
     .AddrWidth(AddrWidth),
     .DataWidth(DataWidth)
@@ -413,19 +504,19 @@ module f2_core #(
     .e_ar_i      ({AddrWidth'(e_ar_addr[0][ChanW-1:0]), e_ar_len[0], e_ar_burst[0]}),
     .e_r_valid_o (e_r_valid[0]),
     .e_r_ready_i (e_r_ready[0]),
-    .v_ar_valid_i(v_ar_valid),
-    .v_ar_ready_o(v_ar_ready),
-    .v_ar_i      ({v_ar_addr, v_ar_len, v_ar_burst}),
-    .v_r_valid_o (v_r_valid),
-    .v_r_ready_i (v_r_ready),
-    .v_aw_valid_i(v_aw_valid),
-    .v_aw_ready_o(v_aw_ready),
-    .v_aw_i      ({v_aw_addr, v_aw_len, v_aw_burst}),
-    .v_w_valid_i (v_w_valid),
-    .v_w_ready_o (v_w_ready),
-    .v_w_i       ({v_w_data, v_w_strb, v_w_last}),
-    .v_b_valid_o (v_b_valid),
-    .v_b_ready_i (v_b_ready),
+    .v_ar_valid_i(pv_ar_valid),
+    .v_ar_ready_o(pv_ar_ready),
+    .v_ar_i      (pv_ar),
+    .v_r_valid_o (pv_r_valid),
+    .v_r_ready_i (1'b1),
+    .v_aw_valid_i(pv_aw_valid),
+    .v_aw_ready_o(pv_aw_ready),
+    .v_aw_i      (pv_aw),
+    .v_w_valid_i (pv_w_valid),
+    .v_w_ready_o (pv_w_ready),
+    .v_w_i       (pv_w),
+    .v_b_valid_o (pv_b_valid),
+    .v_b_ready_i (1'b1),
     .m_ar_valid_o(p0_ar_valid),
     .m_ar_ready_i(p0_ar_ready),
     .m_ar_o      (p0_ar),

@@ -173,10 +173,14 @@ the bring-up: the host owns port 0 between tokens, the core during one.
   vendor-free wrapper. `f2_core` puts channel p into engine port p's
   addresses (the engine gives every port the same offset), and merges
   engine port 0 and the vector unit onto HBM port 0 (`f2_port0`: reads in
-  turns, one ID, answers routed back in order). A register slice
-  (`bringup_pipe`, one stage) sits on each HBM channel the core uses, so
-  no HBM port drives the core's logic directly (M10; a read takes 2
-  cycles more).
+  turns, one ID, answers routed back in order). Register stages sit on
+  each HBM channel the core uses, so no HBM port drives the core's logic
+  directly, and on the vector unit's AXI port, one per SLR it crosses
+  (M10). A read takes 4 cycles more than with none on engine ports 1-31,
+  3 on engine port 0, 9 for the vector unit.
+- `core/small_shell_cl_pnr_user.xdc`: the floorplan (soft SLR
+  assignments), written by `scripts/f2/floorplan.py`, which says what goes
+  where and why; `build_cl.sh` copies it into AWS's flow.
 - `core/cabosse_core.sv`: the CL top, on `cl_shell.svh` as the bring-up's.
 - Build: `scripts/f2/build_cl.sh` with `DESIGN=core` (a 9 h deadline:
   core build 1 took 6.6 h to route; the engine's own placed builds peaked

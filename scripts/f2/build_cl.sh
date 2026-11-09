@@ -11,8 +11,8 @@
 # appear; the AFI itself is made from the tarball afterwards (aws ec2
 # create-fpga-image, by the operator). The run fails, with "CABOSSE-RESULT
 # fail", if the route has negative slack (the shell flow's VIOLATED
-# checkpoint; PLAN.md, M8: slack >= 0 at 250 MHz). The instance powers off
-# when done or at the deadline.
+# checkpoint; PLAN.md, M8: slack >= 0 at 250 MHz), or stops early (the
+# watch, below). The instance powers off when done or at the deadline.
 
 REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga
@@ -20,6 +20,7 @@ DESIGN=bringup                 # or core: platforms/f2/$DESIGN/, its top cabosse
 CL=cabosse_$DESIGN
 DEADLINE_MIN=$([ "$DESIGN" = core ] && echo 540 || echo 240)  # safety net: power off even if something hangs
 S3=                            # s3://bucket/dcp/<build>: everything goes there (the role writes dcp/ only)
+PLACE_WNS_MIN=-0.4             # ns: the build stops if placement ends below this (see "The watch")
 
 shutdown -h +$DEADLINE_MIN
 export HOME=/root  # cloud-init runs this without HOME; Vivado needs it
@@ -75,6 +76,9 @@ design=$CL_DIR/design
 rm -f $design/*.sv $design/${CL}_defines.vh  # keep cl_id_defines.vh (AWS's PCI IDs, as ours)
 cp /root/cabosse/platforms/f2/$DESIGN/$CL.sv /root/cabosse/platforms/f2/cl_shell.svh $design/
 cp /root/cabosse/platforms/f2/synth_cl.tcl $CL_DIR/build/scripts/synth_$CL.tcl
+# The design's floorplan, if it has one (read before placement, build_level_1_cl.tcl).
+fp=/root/cabosse/platforms/f2/$DESIGN/small_shell_cl_pnr_user.xdc
+[ -f $fp ] && cp $fp $CL_DIR/build/constraints/ && echo "floorplan $(wc -l < $fp) lines"
 ls $design
 done_ cl
 
@@ -83,9 +87,37 @@ date -u +%FT%TZ
 export CABOSSE_BUILD=${commit:0:8}
 export CABOSSE_REPO=/root/cabosse
 export CABOSSE_DESIGN=$DESIGN
-cd $CL_DIR/build/scripts && \
-  python3 aws_build_dcp_from_cl.py --cl $CL --mode small_shell --no-encrypt --aws_clk_gen \
-    --clock_recipe_a A1 --clock_recipe_b B0 --clock_recipe_c C0 --clock_recipe_hbm H0
+cd $CL_DIR/build/scripts || { echo "CABOSSE-RESULT fail no build scripts"; finish; }
+# Its own session (process group), so the watch can stop it with its Vivado.
+setsid python3 aws_build_dcp_from_cl.py --cl $CL --mode small_shell --no-encrypt --aws_clk_gen \
+  --clock_recipe_a A1 --clock_recipe_b B0 --clock_recipe_c C0 --clock_recipe_hbm H0 &
+build_pid=$!
+# The watch: stop the build early, saving its hours, if the floorplan does
+# not apply (a critical warning on its file) or if placement ends with a
+# worst slack below PLACE_WNS_MIN (core build 2: -2.81 placed, -2.45 routed).
+abort=
+while kill -0 $build_pid 2>/dev/null; do
+  sleep 60
+  vlog=$(ls $CL_DIR/build/scripts/*.vivado.log 2>/dev/null | head -1)
+  [ -n "$vlog" ] || continue
+  if grep -q "^CRITICAL WARNING.*cl_pnr_user.xdc" $vlog; then
+    abort="floorplan: $(grep -m1 '^CRITICAL WARNING.*cl_pnr_user.xdc' $vlog | cut -c1-300)"
+  fi
+  wns=$(grep -m1 -o "Post Placement Timing Summary WNS=[-0-9.]*" $vlog | cut -d= -f2)
+  if [ -n "$wns" ] && [ -z "$placed" ]; then
+    placed=1
+    echo "post-place WNS $wns ($(date -u +%FT%TZ))"
+    awk -v w=$wns -v m=$PLACE_WNS_MIN 'BEGIN {exit !(w < m)}' && abort="post-place WNS $wns < $PLACE_WNS_MIN"
+  fi
+  if [ -n "$abort" ]; then
+    echo "stopping the build: $abort"
+    kill -TERM -- -$build_pid
+    sleep 30
+    kill -KILL -- -$build_pid 2>/dev/null
+    break
+  fi
+done
+wait $build_pid
 echo "build exit $?"
 date -u +%FT%TZ
 grep -hE "^(ERROR|CRITICAL WARNING)" $CL_DIR/build/scripts/*.vivado.log | sort | uniq -c | head -40
@@ -114,7 +146,9 @@ if [ -n "$routed$violated" ]; then
   grep -E "^\| (CLB LUTs|CLB Registers|Block RAM|DSPs|  LUT as) " utilization.rpt
   sort -n families.rpt 2>/dev/null | head -30 | cut -c1-200
 fi
-if [ -n "$routed" ] && [ -n "$tarball" ]; then
+if [ -n "$abort" ]; then
+  echo "CABOSSE-RESULT fail stopped early: $abort"
+elif [ -n "$routed" ] && [ -n "$tarball" ]; then
   echo "CABOSSE-RESULT pass $tarball"
 elif [ -n "$violated" ]; then
   echo "CABOSSE-RESULT fail timing (negative slack after routing)"
