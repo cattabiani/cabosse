@@ -20,6 +20,15 @@
 // RdLat = 4 cycles after, in place of the engine's read: the simulation's view of
 // any buffer (M7; the logits come back through HBM, OUTPUT: D-071). It must
 // not be used while a token runs.
+//
+// The engine and the vector unit sit in different SLRs on F2 (platforms/f2,
+// the floorplan): every signal between them goes through a register here,
+// on the vector unit's side (the xv_ registers), and the engine's own on
+// its side. The engine's x reads take RdLat + 2 cycles (its XRdLat); its
+// writes, and its done to the controller, one more cycle (the same for
+// both, so a command after the done still sees every write). The
+// controller (the engine's SLR) gives the vector unit its commands through
+// two queues, one on each side, and takes its done and errors registered.
 
 module core #(
   parameter  int unsigned Ports    = 32,
@@ -135,6 +144,8 @@ module core #(
   logic vec_done  /* verilator public_flat_rd */;
   logic [1:0]           eng_op;
   logic [Ports-1:0]     eng_err;
+  logic                 eng_done_q, eng_err_q;  // to the controller, registered
+  logic                 vec_done_q, vec_err_q;
 
   // The units' reset (the core's, or CONTROL's), a register per unit here
   // and again inside each unit, per lane, port and slot: UnitsResetDelay
@@ -207,12 +218,12 @@ module core #(
     .eng_op_o     (eng_op),
     .eng_wait_o   (eng_wait),
     .eng_go_o     (eng_go),
-    .eng_done_i   (eng_done),
-    .eng_err_i    (|eng_err),
+    .eng_done_i   (eng_done_q),
+    .eng_err_i    (eng_err_q),
     .vec_valid_o  (vec_valid),
     .vec_ready_i  (vec_ready),
-    .vec_done_i   (vec_done),
-    .vec_err_i    (vec_err)
+    .vec_done_i   (vec_done_q),
+    .vec_err_i    (vec_err_q)
   );
 
   // The engine's x reads and result writes, on the vector unit's ext port.
@@ -227,19 +238,97 @@ module core #(
   logic [BufW-1:0]                      ext_r_buf;
   logic [AddrW-1:0]                     ext_r_addr;
 
-  always_comb begin
+  // The crossing's registers, on the vector unit's side (the floorplan puts
+  // the xv_ registers in its SLR): the engine's read addresses and writes
+  // in, the read data out.
+  logic [EBufW-1:0]               xv_r_buf_q, xv_w_buf_q;
+  logic [XHeads-1:0][AddrW-1:0]   xv_r_addr_q;
+  logic [XHeads-1:0][E-1:0][15:0] xv_x_data_q;
+  logic                           xv_w_valid_q;
+  logic [AddrW-1:0]               xv_w_row_q;
+  logic [Writes-1:0]              xv_w_mask_q;
+  logic [Writes-1:0][31:0]        xv_w_data_q;
+  always_ff @(posedge clk_i) begin
+    xv_r_buf_q   <= x_buf;
+    xv_r_addr_q  <= x_addr;
+    xv_w_valid_q <= eng_rst_nq && w_valid;
+    xv_w_buf_q   <= w_buf;
+    xv_w_row_q   <= w_row;
+    xv_w_mask_q  <= w_mask;
+    xv_w_data_q  <= w_data;
     for (int unsigned e = 0; e < E; e++) begin
-      x_data[0][e] = ext_r_data[e][15:0];   // x is BF16: the low half
-      x_data[1][e] = ext_r2_data[e][15:0];
+      xv_x_data_q[0][e] <= ext_r_data[e][15:0];   // x is BF16: the low half
+      xv_x_data_q[1][e] <= ext_r2_data[e][15:0];
     end
   end
-  assign ext_w_data    = (Lanes * 32)'(w_data);
-  assign ext_r_buf     = host_r_valid_i ? host_r_buf_i : BufW'(x_buf);
-  assign ext_r_addr    = host_r_valid_i ? host_r_addr_i : AddrW'(E * x_addr[0]);
+  assign x_data = xv_x_data_q;
+
+  // The engine's done with its last write (above); its DMAs' errors. The
+  // vector unit's, as the engine's.
+  always_ff @(posedge clk_i) begin
+    eng_done_q <= eng_rst_nq && eng_done;
+    eng_err_q  <= |eng_err;
+    vec_done_q <= vec_rst_nq && vec_done;
+    vec_err_q  <= vec_err;
+  end
+
+  // The vector unit's commands: a queue of 2 on the controller's side
+  // (u_vec_cmd0) and one on the vector unit's (u_vec_cmd1), so only
+  // registers face the crossing (stream_fifo's ready and valid are
+  // registers). A command reaches the vector unit 2 cycles after the
+  // controller gives it; token, t and stride go with it.
+  typedef struct packed {
+    logic [4:0]          op;
+    logic [BufW-1:0]     dst, a, b, c;
+    logic [7:0]          flags;
+    logic [AddrW-1:0]    n, m, cap;
+    logic [31:0]         scalar;
+    logic [MemAddrW-1:0] addr;
+    logic [AddrW-1:0]    token, t, stride;
+  } vec_cmd_t;
+  vec_cmd_t vc_in, vc_mid, vc;
+  logic     vc_mid_valid, vc_mid_ready, vc_valid, vc_ready;
+  assign vc_in = '{op: cmd_op, dst: cmd_dst, a: cmd_a, b: cmd_b, c: cmd_c, flags: cmd_flags,
+                   n: cmd_n, m: cmd_m, cap: cmd_cap, scalar: cmd_scalar, addr: cmd_addr,
+                   token: token, t: t, stride: stride};
+  // verilator lint_off PINCONNECTEMPTY
+  stream_fifo #(
+    .Width($bits(vec_cmd_t)),
+    .Depth(2)
+  ) u_vec_cmd0 (
+    .clk_i,
+    .rst_ni     (vec_rst_nq),
+    .in_valid_i (vec_valid),
+    .in_ready_o (vec_ready),
+    .in_data_i  (vc_in),
+    .out_valid_o(vc_mid_valid),
+    .out_ready_i(vc_mid_ready),
+    .out_data_o (vc_mid),
+    .count_o    ()
+  );
+  stream_fifo #(
+    .Width($bits(vec_cmd_t)),
+    .Depth(2)
+  ) u_vec_cmd1 (
+    .clk_i,
+    .rst_ni     (vec_rst_nq),
+    .in_valid_i (vc_mid_valid),
+    .in_ready_o (vc_mid_ready),
+    .in_data_i  (vc_mid),
+    .out_valid_o(vc_valid),
+    .out_ready_i(vc_ready),
+    .out_data_o (vc),
+    .count_o    ()
+  );
+  // verilator lint_on PINCONNECTEMPTY
+
+  assign ext_w_data    = (Lanes * 32)'(xv_w_data_q);
+  assign ext_r_buf     = host_r_valid_i ? host_r_buf_i : BufW'(xv_r_buf_q);
+  assign ext_r_addr    = host_r_valid_i ? host_r_addr_i : AddrW'(E * xv_r_addr_q[0]);
   assign host_r_data_o = ext_r_data;
 
   engine #(
-    .XRdLat   (RdLat),
+    .XRdLat   (RdLat + 2),  // the xv registers: the address's, the data's
     .Ports    (Ports),
     .AddrWidth(MemAddrW),
     .DataWidth(DataW),
@@ -304,22 +393,22 @@ module core #(
   ) u_vec (
     .clk_i,
     .rst_ni        (vec_rst_nq),
-    .cmd_valid_i   (vec_valid),
-    .cmd_ready_o   (vec_ready),
-    .cmd_op_i      (cmd_op),
-    .cmd_dst_i     (cmd_dst),
-    .cmd_a_i       (cmd_a),
-    .cmd_b_i       (cmd_b),
-    .cmd_c_i       (cmd_c),
-    .cmd_flags_i   (cmd_flags),
-    .cmd_n_i       (cmd_n),
-    .cmd_m_i       (cmd_m),
-    .cmd_scalar_i  (cmd_scalar),
-    .cmd_cap_i     (cmd_cap),
-    .cmd_addr_i    (cmd_addr),
-    .token_i       (token),
-    .t_i           (t),
-    .stride_i      (stride),
+    .cmd_valid_i   (vc_valid),
+    .cmd_ready_o   (vc_ready),
+    .cmd_op_i      (vc.op),
+    .cmd_dst_i     (vc.dst),
+    .cmd_a_i       (vc.a),
+    .cmd_b_i       (vc.b),
+    .cmd_c_i       (vc.c),
+    .cmd_flags_i   (vc.flags),
+    .cmd_n_i       (vc.n),
+    .cmd_m_i       (vc.m),
+    .cmd_scalar_i  (vc.scalar),
+    .cmd_cap_i     (vc.cap),
+    .cmd_addr_i    (vc.addr),
+    .token_i       (vc.token),
+    .t_i           (vc.t),
+    .stride_i      (vc.stride),
     .done_o        (vec_done),
     .err_o         (vec_err),
     .ar_valid_o    (v_ar_valid_o),
@@ -346,16 +435,16 @@ module core #(
     .b_valid_i     (v_b_valid_i),
     .b_ready_o     (v_b_ready_o),
     .b_resp_i      (v_b_resp_i),
-    .ext_w_valid_i (w_valid),
-    .ext_w_buf_i   (BufW'(w_buf)),
-    .ext_w_addr_i  (w_row),
-    .ext_w_mask_i  (Lanes'(w_mask)),
+    .ext_w_valid_i (xv_w_valid_q),
+    .ext_w_buf_i   (BufW'(xv_w_buf_q)),
+    .ext_w_addr_i  (xv_w_row_q),
+    .ext_w_mask_i  (Lanes'(xv_w_mask_q)),
     .ext_w_data_i  (ext_w_data),
     .ext_r_valid_i (1'b1),
     .ext_r_buf_i   (ext_r_buf),
     .ext_r_addr_i  (ext_r_addr),
     .ext_r_data_o  (ext_r_data),
-    .ext_r2_addr_i (AddrW'(E * x_addr[1])),
+    .ext_r2_addr_i (AddrW'(E * xv_r_addr_q[1])),
     .ext_r2_data_o (ext_r2_data)
   );
 
@@ -363,7 +452,7 @@ module core #(
   logic unused;
   // w_bf16: the buffer's format decides (a BF16 buffer keeps the low half);
   // x reads past the lanes E uses; the ids' high bits (Bufs <= 2^BufW).
-  assign unused = ^{w_bf16, ext_r_data[Lanes-1:E], ext_r2_data[Lanes-1:E], x_buf, w_buf};
+  assign unused = ^{w_bf16, ext_r_data[Lanes-1:E], ext_r2_data[Lanes-1:E], xv_r_buf_q, xv_w_buf_q};
   // verilator lint_on UNUSEDSIGNAL
 
 endmodule

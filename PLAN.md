@@ -2199,6 +2199,56 @@ about $7.5, estimate; M10 total about $8.7 of $15, estimate):
   operands in one SLR; replicate or pipeline the skid valid to CE). One
   more build (about $6 left) needs the owner's OK.
 
+**Step 4, the floorplan and the SLR crossings** (2026-11-09; same bits,
+more cycles per command):
+- Core build 2 was a placement problem more than a logic one: placement
+  ended at -2.81 ns, the router saw congestion level 6 in the engine, the
+  worst path is 0.38 ns of logic and 5.96 ns of wire (lane 86 split across
+  SLR0 and SLR1), and the vector unit's own paths, which met 250 MHz alone
+  (step 2), fail by 2.2 ns inside the core. Nothing placed the blocks: AWS's
+  flow spreads logic over the SLRs (`SSI_SpreadLogic_high`).
+- Floorplan (`platforms/f2/core/small_shell_cl_pnr_user.xdc`, written by
+  `scripts/f2/floorplan.py`; AWS's flow reads it before placement): soft
+  SLR assignments. SLR0: the HBM's stages, port 0's merge, the ILA, the
+  engine's groups 0-3 (ports 0-15, their DMAs and lanes). SLR1: groups
+  4-7, the engine's issue, step and drain, the controller. SLR2: the
+  vector unit. Estimate from build 2's areas: 60-70% of each SLR's LUTs.
+- Registers at the SLR crossings, none crossing two SLRs; a crossing has
+  a register on at least one side and at most a few LUTs on the other:
+  - HBM reads on ports 1-31: two plain registers, no ready (port_dma.sv's
+    credits keep r_ready high; a simulation check says so). AR: two
+    bringup_pipe stages. Port 0 keeps its stage (the host shares it).
+  - The vector unit's AXI to port 0: three stages each way, one per SLR;
+    its reads and write responses as plain registers (it takes every beat).
+  - core.sv: the engine's x reads, writes and done through registers on the
+    vector unit's side (`xv_*`); the engine's `XRdLat` is 6 (was 4), so
+    `PopLat` 11. The vector unit's commands through a queue of 2 on each
+    side; its done and errors, and the DMAs' errors, registered. The
+    controller's settle window grows by 1 (`UnitsResetDelay + 5`).
+  - engine.sv: the drain's results through a register per group of 16
+    lanes, then the central one: a write comes 2 cycles later. Step's
+    estimates: a register per half of the groups (an SLR each) between the
+    groups' and the central one (`SeenRegs` 3, `Window` 15).
+  - Left with logic after the crossing (review, 2026-11-09; risk, not
+    measured): the engine's DMA commands (`iss_addr0_q` and the
+    handshake), the lanes' pops (`lane_out_ready`) and their valids into
+    `ok_q`, the stages' enables. The next fixes if they fail.
+- `scripts/f2/build_cl.sh` stops the build on a critical warning about the
+  floorplan's file, or if the worst slack is below -1.0 ns after placement
+  or -0.25 ns after phys_opt_design (bring-up 4: -0.674, +0.001, routed
+  +0.069; core build 2: -2.81, -2.706, -2.45). It keeps that step's
+  checkpoint, reports on it, and reports every block's cells per SLR
+  (analyze.tcl), to check the floorplan took.
+- Cost (estimates): 2 more cycles per waiting engine command and a lane's
+  row buffer reserved 2-3 cycles longer (step 1b's short-row cost grows);
+  3 more cycles per engine command's end (the drain's 2, the done's 1);
+  2 more per vector command given, 1 more per vector done; a few more per
+  vector LOAD and store. Not measured on SmolLM2 yet.
+- Tests: the engine's own tests run its default `XRdLat` 4; the core's
+  and the F2 wrapper's run 6.
+- Owner (2026-11-09): one more full build approved, launched when the
+  analysis gives confidence of 250 MHz; no cloud trial run before it.
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.

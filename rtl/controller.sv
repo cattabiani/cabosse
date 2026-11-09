@@ -173,9 +173,9 @@ module controller #(
   logic        cb_we;
 
   // The reset's way: units_reset_o's register, UnitsResetDelay registers
-  // to the units' flops, their registered done and err outputs (1), and 2
-  // cycles spare.
-  localparam int unsigned SettleMargin = 1 + 1 + 2;
+  // to the units' flops, their registered done and err outputs (1),
+  // core.sv's registers on them (1), and 2 cycles spare.
+  localparam int unsigned SettleMargin = 1 + 1 + 1 + 2;
   localparam int unsigned SettleCycles = UnitsResetDelay + SettleMargin;
   localparam int unsigned SettleW      = $clog2(SettleCycles + 1);
 
