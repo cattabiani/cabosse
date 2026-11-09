@@ -26,7 +26,9 @@
 // on the vector unit's side (the xv_ registers), and the engine's own on
 // its side. The engine's x reads take RdLat + 2 cycles (its XRdLat); its
 // writes, and its done to the controller, one more cycle (the same for
-// both, so a command after the done still sees every write).
+// both, so a command after the done still sees every write). The
+// controller (the engine's SLR) gives the vector unit its commands through
+// two queues, one on each side, and takes its done and errors registered.
 
 module core #(
   parameter  int unsigned Ports    = 32,
@@ -143,6 +145,7 @@ module core #(
   logic [1:0]           eng_op;
   logic [Ports-1:0]     eng_err;
   logic                 eng_done_q, eng_err_q;  // to the controller, registered
+  logic                 vec_done_q, vec_err_q;
 
   // The units' reset (the core's, or CONTROL's), a register per unit here
   // and again inside each unit, per lane, port and slot: UnitsResetDelay
@@ -219,8 +222,8 @@ module core #(
     .eng_err_i    (eng_err_q),
     .vec_valid_o  (vec_valid),
     .vec_ready_i  (vec_ready),
-    .vec_done_i   (vec_done),
-    .vec_err_i    (vec_err)
+    .vec_done_i   (vec_done_q),
+    .vec_err_i    (vec_err_q)
   );
 
   // The engine's x reads and result writes, on the vector unit's ext port.
@@ -260,11 +263,64 @@ module core #(
   end
   assign x_data = xv_x_data_q;
 
-  // The engine's done with its last write (above); its DMAs' errors.
+  // The engine's done with its last write (above); its DMAs' errors. The
+  // vector unit's, as the engine's.
   always_ff @(posedge clk_i) begin
     eng_done_q <= eng_rst_nq && eng_done;
     eng_err_q  <= |eng_err;
+    vec_done_q <= vec_rst_nq && vec_done;
+    vec_err_q  <= vec_err;
   end
+
+  // The vector unit's commands: a queue of 2 on the controller's side
+  // (u_vec_cmd0) and one on the vector unit's (u_vec_cmd1), so only
+  // registers face the crossing (stream_fifo's ready and valid are
+  // registers). A command reaches the vector unit 2 cycles after the
+  // controller gives it; token, t and stride go with it.
+  typedef struct packed {
+    logic [4:0]          op;
+    logic [BufW-1:0]     dst, a, b, c;
+    logic [7:0]          flags;
+    logic [AddrW-1:0]    n, m, cap;
+    logic [31:0]         scalar;
+    logic [MemAddrW-1:0] addr;
+    logic [AddrW-1:0]    token, t, stride;
+  } vec_cmd_t;
+  vec_cmd_t vc_in, vc_mid, vc;
+  logic     vc_mid_valid, vc_mid_ready, vc_valid, vc_ready;
+  assign vc_in = '{op: cmd_op, dst: cmd_dst, a: cmd_a, b: cmd_b, c: cmd_c, flags: cmd_flags,
+                   n: cmd_n, m: cmd_m, cap: cmd_cap, scalar: cmd_scalar, addr: cmd_addr,
+                   token: token, t: t, stride: stride};
+  // verilator lint_off PINCONNECTEMPTY
+  stream_fifo #(
+    .Width($bits(vec_cmd_t)),
+    .Depth(2)
+  ) u_vec_cmd0 (
+    .clk_i,
+    .rst_ni     (vec_rst_nq),
+    .in_valid_i (vec_valid),
+    .in_ready_o (vec_ready),
+    .in_data_i  (vc_in),
+    .out_valid_o(vc_mid_valid),
+    .out_ready_i(vc_mid_ready),
+    .out_data_o (vc_mid),
+    .count_o    ()
+  );
+  stream_fifo #(
+    .Width($bits(vec_cmd_t)),
+    .Depth(2)
+  ) u_vec_cmd1 (
+    .clk_i,
+    .rst_ni     (vec_rst_nq),
+    .in_valid_i (vc_mid_valid),
+    .in_ready_o (vc_mid_ready),
+    .in_data_i  (vc_mid),
+    .out_valid_o(vc_valid),
+    .out_ready_i(vc_ready),
+    .out_data_o (vc),
+    .count_o    ()
+  );
+  // verilator lint_on PINCONNECTEMPTY
 
   assign ext_w_data    = (Lanes * 32)'(xv_w_data_q);
   assign ext_r_buf     = host_r_valid_i ? host_r_buf_i : BufW'(xv_r_buf_q);
@@ -337,22 +393,22 @@ module core #(
   ) u_vec (
     .clk_i,
     .rst_ni        (vec_rst_nq),
-    .cmd_valid_i   (vec_valid),
-    .cmd_ready_o   (vec_ready),
-    .cmd_op_i      (cmd_op),
-    .cmd_dst_i     (cmd_dst),
-    .cmd_a_i       (cmd_a),
-    .cmd_b_i       (cmd_b),
-    .cmd_c_i       (cmd_c),
-    .cmd_flags_i   (cmd_flags),
-    .cmd_n_i       (cmd_n),
-    .cmd_m_i       (cmd_m),
-    .cmd_scalar_i  (cmd_scalar),
-    .cmd_cap_i     (cmd_cap),
-    .cmd_addr_i    (cmd_addr),
-    .token_i       (token),
-    .t_i           (t),
-    .stride_i      (stride),
+    .cmd_valid_i   (vc_valid),
+    .cmd_ready_o   (vc_ready),
+    .cmd_op_i      (vc.op),
+    .cmd_dst_i     (vc.dst),
+    .cmd_a_i       (vc.a),
+    .cmd_b_i       (vc.b),
+    .cmd_c_i       (vc.c),
+    .cmd_flags_i   (vc.flags),
+    .cmd_n_i       (vc.n),
+    .cmd_m_i       (vc.m),
+    .cmd_scalar_i  (vc.scalar),
+    .cmd_cap_i     (vc.cap),
+    .cmd_addr_i    (vc.addr),
+    .token_i       (vc.token),
+    .t_i           (vc.t),
+    .stride_i      (vc.stride),
     .done_o        (vec_done),
     .err_o         (vec_err),
     .ar_valid_o    (v_ar_valid_o),

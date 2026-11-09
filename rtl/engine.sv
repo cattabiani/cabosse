@@ -514,7 +514,7 @@ module engine
   localparam int unsigned GL       = L / NG;     // lanes per group
   localparam int unsigned XLat     = 3 + XRdLat;  // x_data at stage 2 + XRdLat, its central register
   localparam int unsigned PopLat   = XLat + 2;
-  localparam int unsigned SeenRegs = 2;  // a group's register and the central one
+  localparam int unsigned SeenRegs = 3;  // a group's register, a half's, the central one
   // Decisions not yet in what step sees: PopLat to the pop or the lane, one
   // into the FIFO count or the reservation, SeenRegs, and the estimate's own
   // register.
@@ -678,19 +678,45 @@ module engine
     end
   end
 
-  logic [Ports-1:0][CrW-1:0] grp_mins;
+  // Then a register per half of the groups (on F2 a half is an SLR, the
+  // floorplan's gen_half), then the central one.
+  localparam int unsigned NH = NG % 2 == 0 ? 2 : 1;  // halves
+  localparam int unsigned HG = NG / NH;              // groups per half
+  logic [NH-1:0][CrW-1:0]       half_min;
+  logic [NH-1:0][LaneBanks-1:0] half_res;
+  for (genvar h = 0; h < NH; h++) begin : gen_half
+    logic [Ports-1:0][CrW-1:0] mins;
+    logic [LaneBanks-1:0]      res, h_res_q;
+    logic [CrW-1:0]            h_min_q;
+    always_comb begin
+      mins = '1;
+      res  = '0;
+      for (int unsigned g = 0; g < HG; g++) begin
+        mins[g] = grp_min_q[h*HG+g];
+        res     = res | grp_res_q[h*HG+g];
+      end
+    end
+    always_ff @(posedge clk_i) begin
+      h_min_q <= min_tree(mins, HG);
+      h_res_q <= res;
+    end
+    assign half_min[h] = h_min_q;
+    assign half_res[h] = h_res_q;
+  end
+
+  logic [Ports-1:0][CrW-1:0] half_mins;
   logic [LaneBanks-1:0]     all_res;
   always_comb begin
-    grp_mins = '1;
-    all_res  = '0;
-    for (int unsigned g = 0; g < NG; g++) begin
-      grp_mins[g] = grp_min_q[g];
-      all_res     = all_res | grp_res_q[g];
+    half_mins = '1;
+    all_res   = '0;
+    for (int unsigned h = 0; h < NH; h++) begin
+      half_mins[h] = half_min[h];
+      all_res      = all_res | half_res[h];
     end
   end
 
   always_ff @(posedge clk_i) begin
-    min_q      <= min_tree(grp_mins, NG);
+    min_q      <= min_tree(half_mins, NH);
     res_q      <= all_res;
     chk_q      <= step_active_q;
     cover_q[0] <= chk_q;
@@ -998,7 +1024,7 @@ module engine
     grp_q[1]    <= grp_q[0];
     mul_valid_q <= rst_nq && go_q[1];
     mul_scale_q <= scale_q[1];
-    slot_q      <= grp_out[grp_q[1]/GW'(WG)];
+    slot_q      <= grp_out[32'(grp_q[1])/WG];
     if (!rst_nq) go_q <= '0;
   end
 

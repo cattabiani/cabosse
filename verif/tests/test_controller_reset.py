@@ -3,7 +3,7 @@
 """rtl/controller.sv's reset window (M10): the units' reset reaches them
 UnitsResetDelay cycles after units_reset_o (core.sv's registers), so after
 rst_ni and after a CONTROL reset the controller takes no AXI-Lite write for
-SettleCycles = UnitsResetDelay + 4 cycles; reads go on. units_reset_o pulses
+SettleCycles = UnitsResetDelay + 5 cycles; reads go on. units_reset_o pulses
 for one cycle on a CONTROL reset."""
 
 import cocotb
