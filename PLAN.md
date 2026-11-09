@@ -2248,6 +2248,13 @@ more cycles per command):
   and the F2 wrapper's run 6.
 - Owner (2026-11-09): one more full build approved, launched when the
   analysis gives confidence of 250 MHz; no cloud trial run before it.
+- Core build 3 (2026-11-09, from #138): stopped by the watch at
+  opt_design, 35 min in (instance about 38 min, about $1, estimate). Its
+  floorplan matched no cells: Vivado read the escaped brackets (`\[0\]`)
+  as two characters each. Fixes: brackets as `?` (one character of any
+  kind); on a floorplan stop the build keeps the linked checkpoint, so the
+  patterns can be checked on it without a new build. (The per-SLR register
+  chains stay registers: synth_cl.tcl's `-shreg_min_size 16`.)
 
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
