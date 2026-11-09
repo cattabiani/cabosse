@@ -54,7 +54,8 @@
 //
 // Read ports: x_data_i[r] is the E values of group x_addr_o[r] (elements
 // E * x_addr_o[r] ... + E - 1) of buffer x_buf_o as presented XRdLat
-// cycles before (the vector unit's buffers: 4); a command must not read past the
+// cycles before (rtl/core.sv: the vector unit's 4 and 2 registers between the
+// units); a command must not read past the
 // buffer's end (the vector unit's banks wrap; commands.validate checks the
 // buffers' length). Port 1
 // serves a VALUES pass's second head; on other commands the lanes past d may
@@ -154,6 +155,9 @@ module engine
   end
   if ((Writes & (Writes - 1)) != 0 || L % Writes != 0) begin : gen_bad_writes
     $error("engine: Writes must be a power of two dividing L");
+  end
+  if ((4 * LanesPerPort) % Writes != 0) begin : gen_bad_drain
+    $error("engine: a write group must fit in a group of 4 ports' lanes (the drain's registers)");
   end
   if (Ports % 4 != 0) begin : gen_bad_ports
     $error("engine: Ports must be a multiple of 4");
@@ -839,7 +843,14 @@ module engine
   // group waits two cycles between its goes). A unit starts at group 0, so
   // the successors' "results are there" is group 0's only.
 
-  localparam int unsigned WrLat = DrainLat + 1;  // the results' register, then fp32_fma
+  // A go's results: a register in each group of GL lanes (one of its WG
+  // write groups, selected by a copy of drain_grp_q), then the central
+  // register (slot_q), then fp32_fma. A group may sit in another SLR than
+  // the drain (platforms/f2, the floorplan): its register is the crossing's.
+  // The lanes pop the cycle after the go, so their results are still there
+  // for the group's register.
+  localparam int unsigned WG    = GL / Writes;   // write groups per group
+  localparam int unsigned WrLat = DrainLat + 3;  // group's register, slot_q, fp32_fma
 
   typedef struct packed {
     unit_t         unit;
@@ -965,10 +976,30 @@ module engine
   logic [Writes-1:0][31:0] slot_q, scaled;
   logic [Writes-1:0][15:0] rounded;
 
+  logic [NG-1:0][Writes-1:0][31:0] grp_out;  // each group's register
+  logic [1:0]                      go_q;
+  logic [31:0]                     scale_q[2];
+  logic [GW-1:0]                   grp_q[2];
+  for (genvar g = 0; g < NG; g++) begin : gen_drain
+    logic [GW-1:0]           sel_q;  // drain_grp_q, a cycle late
+    logic [Writes-1:0][31:0] out_q;
+    always_ff @(posedge clk_i) begin
+      sel_q <= drain_grp_q;
+      for (int unsigned s = 0; s < Writes; s++) out_q[s] <= lane_out[g*GL+(32'(sel_q)%WG)*Writes+s];
+    end
+    assign grp_out[g] = out_q;
+  end
+
   always_ff @(posedge clk_i) begin
-    mul_valid_q <= rst_nq && go;
-    mul_scale_q <= drain_scale_q;
-    for (int unsigned s = 0; s < Writes; s++) slot_q[s] <= lane_out[drain_grp_q*Writes+s];
+    go_q        <= {go_q[0], rst_nq && go};
+    scale_q[0]  <= drain_scale_q;
+    scale_q[1]  <= scale_q[0];
+    grp_q[0]    <= drain_grp_q;
+    grp_q[1]    <= grp_q[0];
+    mul_valid_q <= rst_nq && go_q[1];
+    mul_scale_q <= scale_q[1];
+    slot_q      <= grp_out[grp_q[1]/GW'(WG)];
+    if (!rst_nq) go_q <= '0;
   end
 
   for (genvar s = 0; s < Writes; s++) begin : gen_scale

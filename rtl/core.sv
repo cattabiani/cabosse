@@ -20,6 +20,13 @@
 // RdLat = 4 cycles after, in place of the engine's read: the simulation's view of
 // any buffer (M7; the logits come back through HBM, OUTPUT: D-071). It must
 // not be used while a token runs.
+//
+// The engine and the vector unit sit in different SLRs on F2 (platforms/f2,
+// the floorplan): every signal between them goes through a register here,
+// on the vector unit's side (the xv_ registers), and the engine's own on
+// its side. The engine's x reads take RdLat + 2 cycles (its XRdLat); its
+// writes, and its done to the controller, one more cycle (the same for
+// both, so a command after the done still sees every write).
 
 module core #(
   parameter  int unsigned Ports    = 32,
@@ -135,6 +142,7 @@ module core #(
   logic vec_done  /* verilator public_flat_rd */;
   logic [1:0]           eng_op;
   logic [Ports-1:0]     eng_err;
+  logic                 eng_done_q, eng_err_q;  // to the controller, registered
 
   // The units' reset (the core's, or CONTROL's), a register per unit here
   // and again inside each unit, per lane, port and slot: UnitsResetDelay
@@ -207,8 +215,8 @@ module core #(
     .eng_op_o     (eng_op),
     .eng_wait_o   (eng_wait),
     .eng_go_o     (eng_go),
-    .eng_done_i   (eng_done),
-    .eng_err_i    (|eng_err),
+    .eng_done_i   (eng_done_q),
+    .eng_err_i    (eng_err_q),
     .vec_valid_o  (vec_valid),
     .vec_ready_i  (vec_ready),
     .vec_done_i   (vec_done),
@@ -227,19 +235,44 @@ module core #(
   logic [BufW-1:0]                      ext_r_buf;
   logic [AddrW-1:0]                     ext_r_addr;
 
-  always_comb begin
+  // The crossing's registers, on the vector unit's side (the floorplan puts
+  // the xv_ registers in its SLR): the engine's read addresses and writes
+  // in, the read data out.
+  logic [EBufW-1:0]               xv_r_buf_q, xv_w_buf_q;
+  logic [XHeads-1:0][AddrW-1:0]   xv_r_addr_q;
+  logic [XHeads-1:0][E-1:0][15:0] xv_x_data_q;
+  logic                           xv_w_valid_q;
+  logic [AddrW-1:0]               xv_w_row_q;
+  logic [Writes-1:0]              xv_w_mask_q;
+  logic [Writes-1:0][31:0]        xv_w_data_q;
+  always_ff @(posedge clk_i) begin
+    xv_r_buf_q   <= x_buf;
+    xv_r_addr_q  <= x_addr;
+    xv_w_valid_q <= eng_rst_nq && w_valid;
+    xv_w_buf_q   <= w_buf;
+    xv_w_row_q   <= w_row;
+    xv_w_mask_q  <= w_mask;
+    xv_w_data_q  <= w_data;
     for (int unsigned e = 0; e < E; e++) begin
-      x_data[0][e] = ext_r_data[e][15:0];   // x is BF16: the low half
-      x_data[1][e] = ext_r2_data[e][15:0];
+      xv_x_data_q[0][e] <= ext_r_data[e][15:0];   // x is BF16: the low half
+      xv_x_data_q[1][e] <= ext_r2_data[e][15:0];
     end
   end
-  assign ext_w_data    = (Lanes * 32)'(w_data);
-  assign ext_r_buf     = host_r_valid_i ? host_r_buf_i : BufW'(x_buf);
-  assign ext_r_addr    = host_r_valid_i ? host_r_addr_i : AddrW'(E * x_addr[0]);
+  assign x_data = xv_x_data_q;
+
+  // The engine's done with its last write (above); its DMAs' errors.
+  always_ff @(posedge clk_i) begin
+    eng_done_q <= eng_rst_nq && eng_done;
+    eng_err_q  <= |eng_err;
+  end
+
+  assign ext_w_data    = (Lanes * 32)'(xv_w_data_q);
+  assign ext_r_buf     = host_r_valid_i ? host_r_buf_i : BufW'(xv_r_buf_q);
+  assign ext_r_addr    = host_r_valid_i ? host_r_addr_i : AddrW'(E * xv_r_addr_q[0]);
   assign host_r_data_o = ext_r_data;
 
   engine #(
-    .XRdLat   (RdLat),
+    .XRdLat   (RdLat + 2),  // the xv registers: the address's, the data's
     .Ports    (Ports),
     .AddrWidth(MemAddrW),
     .DataWidth(DataW),
@@ -346,16 +379,16 @@ module core #(
     .b_valid_i     (v_b_valid_i),
     .b_ready_o     (v_b_ready_o),
     .b_resp_i      (v_b_resp_i),
-    .ext_w_valid_i (w_valid),
-    .ext_w_buf_i   (BufW'(w_buf)),
-    .ext_w_addr_i  (w_row),
-    .ext_w_mask_i  (Lanes'(w_mask)),
+    .ext_w_valid_i (xv_w_valid_q),
+    .ext_w_buf_i   (BufW'(xv_w_buf_q)),
+    .ext_w_addr_i  (xv_w_row_q),
+    .ext_w_mask_i  (Lanes'(xv_w_mask_q)),
     .ext_w_data_i  (ext_w_data),
     .ext_r_valid_i (1'b1),
     .ext_r_buf_i   (ext_r_buf),
     .ext_r_addr_i  (ext_r_addr),
     .ext_r_data_o  (ext_r_data),
-    .ext_r2_addr_i (AddrW'(E * x_addr[1])),
+    .ext_r2_addr_i (AddrW'(E * xv_r_addr_q[1])),
     .ext_r2_data_o (ext_r2_data)
   );
 
@@ -363,7 +396,7 @@ module core #(
   logic unused;
   // w_bf16: the buffer's format decides (a BF16 buffer keeps the low half);
   // x reads past the lanes E uses; the ids' high bits (Bufs <= 2^BufW).
-  assign unused = ^{w_bf16, ext_r_data[Lanes-1:E], ext_r2_data[Lanes-1:E], x_buf, w_buf};
+  assign unused = ^{w_bf16, ext_r_data[Lanes-1:E], ext_r2_data[Lanes-1:E], xv_r_buf_q, xv_w_buf_q};
   // verilator lint_on UNUSEDSIGNAL
 
 endmodule
