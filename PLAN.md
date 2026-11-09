@@ -2180,6 +2180,25 @@ r6i.2xlarge 07:39-09:14 UTC, about $0.80, estimate):
   multiply (`MulRegs` 3) and a register on `w_data_q`'s way to far
   buffers.
 
+**Step 3, core build 2** (2026-11-09, main at 0f2a23d,
+reports/data/f2/2026-11-09-core2.txt; c6i.8xlarge about 09:15-14:42 UTC,
+about $7.5, estimate; M10 total about $8.7 of $15, estimate):
+- Fails 250 MHz after routing: worst slack -2.450 ns (build 1: about
+  -5.4), TNS -64,445 ns, 88,849 of 1,446,232 endpoints failing. Hold
+  met (+0.004 ns). 796k LUTs (61%), about even over the three SLRs.
+- Worst families, all -2.2 to -2.45 ns: the engine lanes' bank select
+  (`read_ptr_q`/`pair_q` to `op_a_q`/`op_b_q`, a 2.75 ns SLR0 to SLR1
+  wire on the worst path; the largest group); the HBM AXI skid stages
+  (HBM ACLK to `u_r`/`u_w`/`u_ar`, and `out_valid_q` to the `out_q` CE,
+  3,115 endpoints); the vector unit's `u_add` to `part_q` (2,081) and
+  `rq_q.a_addr` to the buffers' `rd_entry_q`; the engine's `w_data_o` to
+  the buffers' `wr_data_q`; `iss_addr0_q` to the DMA `addr_q`.
+- The vector unit is no longer the worst; the engine lanes' SLR crossing
+  and the HBM interface are. Next: analysis and fixes (candidates: a
+  register at the lanes' SLR crossing or keep each lane's banks and
+  operands in one SLR; replicate or pipeline the skid valid to CE). One
+  more build (about $6 left) needs the owner's OK.
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
