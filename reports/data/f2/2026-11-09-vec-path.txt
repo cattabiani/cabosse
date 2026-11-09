@@ -1,0 +1,875 @@
+CABOSSE-BEGIN host
+2026-11-09T07:39:48Z
+$ cat /etc/os-release
+PRETTY_NAME="Ubuntu 24.04.1 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.1 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+$ nproc
+8
+$ free -b
+               total        used        free      shared  buff/cache   available
+Mem:     66333798400   947875840 65705598976     2859008   309145600 65385922560
+Swap:    10737414144           0 10737414144
+CABOSSE-END host
+CABOSSE-BEGIN setup
+cabosse 74e709170555ce571783517e087aada147299539 2026-11-09T08:38:40+01:00
+aws-fpga c34f88e97eaf8a9b6ea7a3516ab65ee64690ab82 2026-10-16T20:30:15-05:00
+$ which vivado
+/opt/Xilinx/2025.2/Vivado/bin/vivado
+$ vivado -version
+vivado v2025.2 (64-bit)
+Tool Version Limit: 2025.11
+SW Build 6299465 on Fri Nov 14 12:34:56 MST 2025
+IP Build 6300035 on Fri Nov 14 10:48:45 MST 2025
+SharedData Build 6298862 on Thu Nov 13 04:50:51 MST 2025
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+part xcvu47p-fsvh2892-2-e
+CABOSSE-END setup
+CABOSSE-BEGIN vivado
+2026-11-09T07:40:57Z
+run2 (vec_path:Lanes:16:1:0:explore) exit 1 08:32:52
+## set paths [get_timing_paths -setup -max_paths 300000 -nworst 1 -slack_lesser_than $NEAR_NS]
+## set families [dict create]
+## set bins [dict create]
+## if {[llength $paths]} {  # get_property fails on none
+##   foreach s [get_property STARTPOINT_PIN $paths] e [get_property ENDPOINT_PIN $paths] \
+##           slack [get_property SLACK $paths] {
+##     dict lappend families "[regsub -all {\[[0-9]+\]} $s {[*]}] -> [regsub -all {\[[0-9]+\]} $e {[*]}]" $slack
+##     dict incr bins [format %.2f [expr {floor($slack / 0.05) * 0.05}]]
+##   }
+## }
+## set f [open families.rpt w]
+## dict for {key slacks} $families {
+##   puts $f "[tcl::mathfunc::min {*}$slacks] [llength $slacks] $key"
+## }
+## close $f
+## set f [open slack_histogram.rpt w]
+## puts $f "# paths (one per endpoint) per slack bin, ns from the bin's lower edge, under $NEAR_NS ns"
+## foreach lo [lsort -real [dict keys $bins]] {
+##   puts $f "$lo [dict get $bins $lo]"
+## }
+## close $f
+# set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow place=$place wns_ns=$wns"
+CABOSSE-RESULT top=vec_path loop_cycles=1 retime=0 flow=explore place=- wns_ns=0.006
+# if {$wns < $MARGIN_NS} {
+#   puts "CABOSSE-TIMING-FAILED top=$top wns_ns=$wns"
+#   exit 1
+# }
+CABOSSE-TIMING-FAILED top=vec_path wns_ns=0.006
+INFO: [Common 17-206] Exiting Vivado at Mon Nov  9 08:32:51 2026...
+run2 saved to s3://cabosse-builds-628837661672/dcp/2026-11-09-vec-path/run2/
+run1 (vec_path:Lanes:16:1:0:shell) exit 1 08:39:58
+## set paths [get_timing_paths -setup -max_paths 300000 -nworst 1 -slack_lesser_than $NEAR_NS]
+## set families [dict create]
+## set bins [dict create]
+## if {[llength $paths]} {  # get_property fails on none
+##   foreach s [get_property STARTPOINT_PIN $paths] e [get_property ENDPOINT_PIN $paths] \
+##           slack [get_property SLACK $paths] {
+##     dict lappend families "[regsub -all {\[[0-9]+\]} $s {[*]}] -> [regsub -all {\[[0-9]+\]} $e {[*]}]" $slack
+##     dict incr bins [format %.2f [expr {floor($slack / 0.05) * 0.05}]]
+##   }
+## }
+## set f [open families.rpt w]
+## dict for {key slacks} $families {
+##   puts $f "[tcl::mathfunc::min {*}$slacks] [llength $slacks] $key"
+## }
+## close $f
+## set f [open slack_histogram.rpt w]
+## puts $f "# paths (one per endpoint) per slack bin, ns from the bin's lower edge, under $NEAR_NS ns"
+## foreach lo [lsort -real [dict keys $bins]] {
+##   puts $f "$lo [dict get $bins $lo]"
+## }
+## close $f
+# set wns [get_property SLACK [get_timing_paths -max_paths 1 -nworst 1 -setup]]
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow place=$place wns_ns=$wns"
+CABOSSE-RESULT top=vec_path loop_cycles=1 retime=0 flow=shell place=SSI_SpreadLogic_high wns_ns=0.008
+# if {$wns < $MARGIN_NS} {
+#   puts "CABOSSE-TIMING-FAILED top=$top wns_ns=$wns"
+#   exit 1
+# }
+CABOSSE-TIMING-FAILED top=vec_path wns_ns=0.008
+INFO: [Common 17-206] Exiting Vivado at Mon Nov  9 08:39:57 2026...
+run1 saved to s3://cabosse-builds-628837661672/dcp/2026-11-09-vec-path/run1/
+2026-11-09T08:39:59Z
+CABOSSE-END vivado
+CABOSSE-BEGIN run1 vec_path:Lanes:16:1:0:shell
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow place=$place wns_ns=$wns"
+CABOSSE-RESULT top=vec_path loop_cycles=1 retime=0 flow=shell place=SSI_SpreadLogic_high wns_ns=0.008
+CRITICAL WARNING: [Common 17-741] No write access right to the local Tcl store at '/root/.Xilinx/Vivado/2025.2/XilinxTclStore'. XilinxTclStore is reverted to the installation area. If you want to use local Tcl Store, please change the access right and relaunch Vivado.
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.008        0.000                      0               322702        0.010        0.000                      0               322702        1.468        0.000                       0                204732  
+
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.008        0.000                      0               322702        0.010        0.000                      0               322702        1.468        0.000                       0                204732  
+
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Mon Nov  9 08:37:56 2026
+| Host              : ip-172-31-37-134 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : vec_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (MET) :             0.008ns  (required time - arrival time)
+  Source:                 u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK
+                            (rising edge-triggered cell DSP_OUTPUT clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/gen_norm_q.norm_q_reg[exp][10]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.878ns  (logic 1.515ns (39.065%)  route 2.363ns (60.935%))
+  Logic Levels:           11  (CARRY8=2 LUT2=1 LUT4=1 LUT5=1 LUT6=6)
+  Clock Path Skew:        -0.039ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.021ns = ( 4.021 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.060ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.100ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.065ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    ----------------------------------------
+                         (clock clk rise edge)        0.000     0.000 r                       
+                         propagated clock network latency
+                                                      0.060     0.060                         
+    DSP48E2_X11Y103      DSP_OUTPUT                   0.000     0.060 r  pblock_CL            u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK
+    DSP48E2_X11Y103      DSP_OUTPUT (Prop_DSP_OUTPUT_DSP48E2_CLK_P[13])
+                                                      0.194     0.254 r  pblock_CL            u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/P[13]
+                         net (fo=5, routed)           0.354     0.608                         u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]__0[30]
+    SLICE_X87Y272                                                     r  pblock_CL            u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/p_1_out__0_carry_i_39__37/I2
+    SLICE_X87Y272        LUT4 (Prop_C6LUT_SLICEM_I2_O)
+                                                      0.088     0.696 r  pblock_CL            u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/p_1_out__0_carry_i_39__37/O
+                         net (fo=2, routed)           0.165     0.861                         u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/p_1_out__0_carry_i_39__37_n_0
+    SLICE_X87Y273                                                     r  pblock_CL            u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/p_1_out__0_carry_i_23__37/I4
+    SLICE_X87Y273        LUT5 (Prop_G6LUT_SLICEM_I4_O)
+                                                      0.150     1.011 r  pblock_CL            u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/p_1_out__0_carry_i_23__37/O
+                         net (fo=16, routed)          0.424     1.436                         u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/p_1_out__0_carry_i_23__37_n_0
+    SLICE_X88Y270                                                     r  pblock_CL            u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][50]_i_10__66/I4
+    SLICE_X88Y270        LUT6 (Prop_B6LUT_SLICEM_I4_O)
+                                                      0.125     1.561 f  pblock_CL            u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][50]_i_10__66/O
+                         net (fo=6, routed)           0.175     1.736                         u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][50]_i_10__66_n_0
+    SLICE_X88Y273                                                     f  pblock_CL            u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/p_1_out__0_carry_i_47__37/I3
+    SLICE_X88Y273        LUT6 (Prop_G6LUT_SLICEM_I3_O)
+                                                      0.150     1.886 r  pblock_CL            u_vec/gen_slot[9].u_chain/gen_stage[5].u_fma/u_fma/u_mul/p_1_out__0_carry_i_47__37/O
+near-critical families (worst slack, paths, start -> end):
+0.008 72 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q_reg[exp][*]/D
+0.027 109 u_vec/w_data_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/wr_data_q_reg[*][*]/D
+0.041 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_10__94_psdsp/D
+0.042 7 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__94_psdsp/D
+0.047 8 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_4__94_psdsp/D
+0.053 576 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][i][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.056 54 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+0.062 3 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][u][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__85_psdsp/D
+0.071 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_38__22_psdsp/D
+0.074 10 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_add/y_o_reg[*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][i][*]/D
+0.074 44 ext_w_data_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/wr_data_q_reg[*][*]/D
+0.074 6 u_vec/gen_buf[*].u_banks/rd_rot_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/rd_data_o_reg[*][*]/D
+0.075 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_29__21_psdsp/D
+0.094 35 u_vec/t_w_buf_reg[*]/C -> u_vec/gen_buf[*].u_banks/wr_data_q_reg[*][*]/D
+0.095 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_22__22_psdsp_2/D
+0.095 96 u_vec/gen_slot[*].u_chain/st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.098 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_22__21_psdsp_1/D
+0.099 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][u][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_27__85_psdsp/D
+0.100 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_27__21_psdsp/D
+0.101 96 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][k][*]__0/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.105 240 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.106 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][u][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_9__85_psdsp/D
+0.106 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_16__23_psdsp/D
+0.111 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_21__27_psdsp_2/D
+0.112 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_16__94_psdsp/D
+0.115 3 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__23_psdsp/D
+0.115 96 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.119 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_40__22_psdsp_1/D
+0.121 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][u][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_4__85_psdsp/D
+0.123 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_40__22_psdsp_2/D
+0.123 1 u_vec/gen_slot[*].u_chain/st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_13__8_psdsp/D
+0.125 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_23__94_psdsp/D
+0.125 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_7__94_psdsp/D
+0.126 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_26__94_psdsp/D
+0.127 1 u_vec/gen_slot[*].sel_q_reg[a][*]/C -> u_vec/gen_slot[*].a_q_reg[*]/D
+0.127 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_9__94_psdsp/D
+0.127 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_26__21_psdsp/D
+0.128 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_38__21_psdsp_1/D
+0.128 3 u_vec/gen_slot[*].u_chain/st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_4__8_psdsp/D
+0.128 3 u_vec/wd_q_reg[mask][*]__0/C -> u_vec/gen_buf[*].u_banks/wr_mask_q_reg[*]/D
+0.130 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_13__94_psdsp/D
+0.130 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_25__94_psdsp/D
+0.130 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_8__94_psdsp/D
+0.132 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_24__94_psdsp/D
+0.132 4 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod][*]/D
+0.133 1 u_vec/wd_q_reg[addr][*]__0/C -> u_vec/gen_buf[*].u_banks/wr_addr_q_reg[*]/D
+0.136 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_27__94_psdsp/D
+0.136 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_24__21_psdsp/D
+0.138 5 u_vec/gen_slot[*].u_chain/st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__8_psdsp/D
+0.139 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_23__22_psdsp_3/D
+0.139 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_37__21_psdsp_1/D
+0.140 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_21__94_psdsp/D
+0.141 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_20__94_psdsp/D
+0.141 144 u_vec/gen_slot[*].u_chain/st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.141 5 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/gen_delay[*].c_q_reg[*][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_add/s1_q_reg[lo][*]/D
+0.143 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_26__21_psdsp_1/D
+0.145 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_23__21_psdsp_1/D
+0.146 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_21__21_psdsp_2/D
+0.146 7 u_vec/u_tree/next_q_reg[*]__0_replica_4/C -> u_vec/u_tree/u_add/s1_q_reg[lo][*]/D
+0.147 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_27__23_psdsp/D
+# paths (one per endpoint) per slack bin, ns from the bin's lower edge, under 0.2 ns
+0.00 9
+0.05 196
+0.10 822
+0.15 923
+0.20 5
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Mon Nov  9 08:38:51 2026
+| Host         : ip-172-31-37-134 running 64-bit Ubuntu 24.04.1 LTS
+| Command      : report_design_analysis -logic_level_distribution -max_paths 10000 -file logic_levels.rpt
+| Design       : vec_path
+| Device       : xcvu47p
+| Design State : Routed
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Report Design Analysis
+
+Table of Contents
+-----------------
+1. Setup Path Characteristics 1-10000
+2. Logic Level Distribution
+
+1. Setup Path Characteristics 1-10000
+-------------------------------------
+
++-------------+-------------+------------+-------------+------------+------------+-------+-------------------+---------------------------+-------------------+--------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------+-----------------+-----------+---------------+--------------+---------------+---------+-------------+-----------+------------+------------+---------------------------+-------------------------+----------------------------------------------+----------------------------------------------+
+|    Paths    | Requirement | Path Delay | Logic Delay |  Net Delay | Clock Skew | Slack | Clock Uncertainty | Clock Pair Classification | Clock Delay Group | Logic Levels | Routes |                                                                                  Logical Path                                                                                  | Start Point Clock | End Point Clock | DSP Block | RAM Registers | IO Crossings | SLR Crossings | PBlocks | High Fanout | ASYNC REG | Dont Touch | Mark Debug | Start Point Pin Primitive | End Point Pin Primitive |                Start Point Pin               |                 End Point Pin                |
++-------------+-------------+------------+-------------+------------+------------+-------+-------------------+---------------------------+-------------------+--------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------+-----------------+-----------+---------------+--------------+---------------+---------+-------------+-----------+------------+------------+---------------------------+-------------------------+----------------------------------------------+----------------------------------------------+
+| Path #1     | 4.000       | 3.878      | 1.515(40%)  | 2.363(60%) | -0.039     | 0.008 | 0.100             | Timed                     | Same Clock        | 11           | 9      | DSP_OUTPUT/CLK-(5)-LUT4-(2)-LUT5-(16)-LUT6-(6)-LUT6-(4)-LUT6-(14)-LUT6-(5)-LUT6-(2)-LUT6-(50)-LUT2-(1)-CARRY8-CARRY8-FDRE/D                                                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 1       | 50          | 0         | 0          | 0          | DSP_OUTPUT/CLK            | FDRE/D                  | DSP_OUTPUT_INST/CLK                          | gen_norm_q.norm_q_reg[exp][10]/D             |
+| Path #2     | 4.000       | 3.878      | 1.515(40%)  | 2.363(60%) | -0.039     | 0.008 | 0.100             | Timed                     | Same Clock        | 11           | 9      | DSP_OUTPUT/CLK-(5)-LUT4-(2)-LUT5-(16)-LUT6-(6)-LUT6-(4)-LUT6-(14)-LUT6-(5)-LUT6-(2)-LUT6-(50)-LUT2-(1)-CARRY8-CARRY8-FDRE/D                                                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 1       | 50          | 0         | 0          | 0          | DSP_OUTPUT/CLK            | FDRE/D                  | DSP_OUTPUT_INST/CLK                          | gen_norm_q.norm_q_reg[exp][9]/D              |
+| Path #3     | 4.000       | 3.888      | 0.166(5%)   | 3.722(95%) | -0.010     | 0.027 | 0.100             | Timed                     | Same Clock        | 1            | 1      | FDRE/C-(21)-LUT4-(1)-FDRE/D                                                                                                                                                    | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 21          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | w_data_q_reg[9][6]/C                         | wr_data_q_reg[9][6]/D                        |
+| Path #4     | 4.000       | 3.888      | 0.178(5%)   | 3.710(95%) | -0.008     | 0.029 | 0.100             | Timed                     | Same Clock        | 1            | 1      | FDRE/C-(21)-LUT4-(1)-FDRE/D                                                                                                                                                    | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 21          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | w_data_q_reg[12][4]/C                        | wr_data_q_reg[12][4]/D                       |
+| Path #5     | 4.000       | 3.851      | 1.488(39%)  | 2.363(61%) | -0.039     | 0.035 | 0.100             | Timed                     | Same Clock        | 11           | 9      | DSP_OUTPUT/CLK-(5)-LUT4-(2)-LUT5-(16)-LUT6-(6)-LUT6-(4)-LUT6-(14)-LUT6-(5)-LUT6-(2)-LUT6-(50)-LUT2-(1)-CARRY8-CARRY8-FDRE/D                                                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 1       | 50          | 0         | 0          | 0          | DSP_OUTPUT/CLK            | FDRE/D                  | DSP_OUTPUT_INST/CLK                          | gen_norm_q.norm_q_reg[exp][8]/D              |
+| Path #6     | 4.000       | 3.875      | 2.603(68%)  | 1.272(32%) | -0.009     | 0.041 | 0.100             | Timed                     | Same Clock        | 13           | 8      | FDRE/C-(80)-LUT6-(1)-LUT5-(3)-LUT6-(1)-LUT6-(2)-LUT6-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT-FDRE/D               | clk               | clk             | Comb      | None-None     | 0            | 0             | 1       | 80          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_stage[4].st_q_reg[5][op][1]/C            | gen_norm_q.norm_q[sig][50]_i_10__94_psdsp/D  |
+| Path #7     | 4.000       | 3.874      | 2.603(68%)  | 1.271(32%) | -0.009     | 0.042 | 0.100             | Timed                     | Same Clock        | 13           | 8      | FDRE/C-(80)-LUT6-(1)-LUT5-(3)-LUT6-(1)-LUT6-(2)-LUT6-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT-FDRE/D               | clk               | clk             | Comb      | None-None     | 0            | 0             | 1       | 80          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_stage[4].st_q_reg[5][op][1]/C            | gen_norm_q.norm_q[sig][31]_i_3__94_psdsp/D   |
+| Path #8     | 4.000       | 3.869      | 2.603(68%)  | 1.266(32%) | -0.009     | 0.047 | 0.100             | Timed                     | Same Clock        | 13           | 8      | FDRE/C-(80)-LUT6-(1)-LUT5-(3)-LUT6-(1)-LUT6-(2)-LUT6-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT-FDRE/D               | clk               | clk             | Comb      | None-None     | 0            | 0             | 1       | 80          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_stage[4].st_q_reg[5][op][1]/C            | gen_norm_q.norm_q[sig][34]_i_4__94_psdsp/D   |
+| Path #9     | 4.000       | 3.867      | 0.128(4%)   | 3.739(96%) | -0.010     | 0.048 | 0.100             | Timed                     | Same Clock        | 1            | 1      | FDRE/C-(21)-LUT4-(1)-FDRE/D                                                                                                                                                    | clk               | clk             | None      | None-None     | 0            | 0             | 1       | 21          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | w_data_q_reg[12][1]/C                        | wr_data_q_reg[12][1]/D                       |
+| Path #10    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[0]              | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[0]   | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[0]                   |
+| Path #11    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[10]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[10]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[10]                  |
+| Path #12    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[11]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[11]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[11]                  |
+| Path #13    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[12]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[12]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[12]                  |
+| Path #14    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[13]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[13]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[13]                  |
+| Path #15    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[14]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[14]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[14]                  |
+| Path #16    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[15]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[15]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[15]                  |
+| Path #17    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[16]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[16]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[16]                  |
+| Path #18    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[17]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[17]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[17]                  |
+| Path #19    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[18]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[18]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[18]                  |
+| Path #20    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[19]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[19]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[19]                  |
+| Path #21    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[1]              | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[1]   | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[1]                   |
+| Path #22    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[20]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[20]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[20]                  |
+| Path #23    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[21]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[21]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[21]                  |
+| Path #24    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[22]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[22]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[22]                  |
+| Path #25    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[23]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[23]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[23]                  |
+| Path #26    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[24]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[24]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[24]                  |
+| Path #27    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[25]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[25]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[25]                  |
+| Path #28    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[26]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[26]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[26]                  |
+| Path #29    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[27]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[27]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[27]                  |
+| Path #30    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[28]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[28]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[28]                  |
+| Path #31    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[29]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[29]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[29]                  |
+| Path #32    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[2]              | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[2]   | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[2]                   |
+| Path #33    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[30]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[30]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[30]                  |
+| Path #34    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[31]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[31]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[31]                  |
+| Path #35    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[32]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[32]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[32]                  |
+| Path #36    | 4.000       | 3.876      | 2.629(68%)  | 1.247(32%) | 0.014      | 0.053 | 0.100             | Timed                     | Same Clock        | 12           | 6      | FDRE/C-(25)-LUT6-(1)-LUT6-(1)-MUXF7-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[33]             | clk               | clk             | Seq       | None-None     | 1            | 0             | 1       | 25          | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[33]  | gen_stage[0].st_q_reg[1][i][3]/C             | DSP_OUTPUT_INST/ALU_OUT[33]                  |
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Mon Nov  9 08:39:03 2026
+| Host         : ip-172-31-37-134 running 64-bit Ubuntu 24.04.1 LTS
+| Command      : report_high_fanout_nets -timing -max_nets 50 -file fanout.rpt
+| Design       : vec_path
+| Device       : xcvu47p
+| Design State : Routed
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+High Fan-out Nets Information
+
+1. Summary
+----------
+
++----------------------------------------------------+--------+-------------+-----------------+-----------------+
+| Net Name                                           | Fanout | Driver Type | Worst Slack(ns) | Worst Delay(ns) |
++----------------------------------------------------+--------+-------------+-----------------+-----------------+
+| u_vec/gen_slot[14].sel_q_reg[b_n_0_][1]            |    974 | FDRE        |           0.263 |           2.301 |
+| u_vec/ext_r_buf_q_reg_n_0_[3][3]                   |    768 | FDRE        |           0.844 |           2.355 |
+| u_vec/ext_r_data_o[15][31]_i_4_n_0                 |    672 | LUT2        |           0.343 |           2.026 |
+| u_vec/ext_r_data_o[15][31]_i_5_n_0                 |    672 | LUT3        |           0.440 |           1.931 |
+| u_vec/gen_buf[11].u_banks/wr_addr_q[9]_i_2__0_n_0  |    545 | LUT3        |           1.056 |           1.426 |
+| u_vec/gen_buf[11].u_banks/wr_addr_q[9]_i_3__1_n_0  |    545 | LUT6        |           1.184 |           1.585 |
+| u_vec/gen_buf[12].u_banks/wr_addr_q[9]_i_2__17_n_0 |    545 | LUT5        |           0.853 |           2.139 |
+| u_vec/gen_buf[12].u_banks/wr_addr_q[9]_i_3__17_n_0 |    545 | LUT6        |           1.340 |           1.389 |
+| u_vec/gen_buf[13].u_banks/wr_addr_q[9]_i_2__3_n_0  |    545 | LUT5        |           0.613 |           2.546 |
+| u_vec/gen_buf[13].u_banks/wr_addr_q[9]_i_3__4_n_0  |    545 | LUT6        |           0.549 |           2.137 |
+| u_vec/gen_buf[15].u_banks/wr_addr_q[9]_i_2__2_n_0  |    545 | LUT5        |           0.448 |           2.626 |
+| u_vec/gen_buf[15].u_banks/wr_addr_q[9]_i_3__3_n_0  |    545 | LUT6        |           0.908 |           1.906 |
+| u_vec/gen_buf[16].u_banks/wr_addr_q[9]_i_2__19_n_0 |    545 | LUT3        |           0.742 |           1.742 |
+| u_vec/gen_buf[16].u_banks/wr_addr_q[9]_i_3__19_n_0 |    545 | LUT6        |           0.447 |           2.272 |
+| u_vec/gen_buf[17].u_banks/wr_addr_q[9]_i_2__14_n_0 |    545 | LUT3        |           0.800 |           1.654 |
+| u_vec/gen_buf[17].u_banks/wr_addr_q[9]_i_3__14_n_0 |    545 | LUT6        |           0.811 |           1.783 |
+| u_vec/gen_buf[18].u_banks/wr_addr_q[9]_i_2__12_n_0 |    545 | LUT3        |           0.583 |           1.961 |
+| u_vec/gen_buf[18].u_banks/wr_addr_q[9]_i_3__12_n_0 |    545 | LUT6        |           0.395 |           2.157 |
+| u_vec/gen_buf[19].u_banks/wr_addr_q[9]_i_2__13_n_0 |    545 | LUT3        |           0.658 |           1.791 |
+| u_vec/gen_buf[19].u_banks/wr_addr_q[9]_i_3__13_n_0 |    545 | LUT6        |           0.408 |           2.159 |
+| u_vec/gen_buf[20].u_banks/wr_addr_q[9]_i_2__10_n_0 |    545 | LUT4        |           0.907 |           2.156 |
+| u_vec/gen_buf[20].u_banks/wr_addr_q[9]_i_3__10_n_0 |    545 | LUT6        |           0.334 |           2.248 |
+| u_vec/gen_buf[21].u_banks/wr_addr_q[9]_i_2__11_n_0 |    545 | LUT4        |           0.488 |           2.590 |
+| u_vec/gen_buf[21].u_banks/wr_addr_q[9]_i_3__11_n_0 |    545 | LUT6        |           0.243 |           2.273 |
+| u_vec/gen_buf[3].u_banks/wr_addr_q[9]_i_2__6_n_0   |    545 | LUT3        |           1.085 |           1.716 |
+| u_vec/gen_buf[3].u_banks/wr_addr_q[9]_i_3__6_n_0   |    545 | LUT6        |           0.824 |           1.862 |
+| u_vec/gen_buf[4].u_banks/wr_addr_q[9]_i_2__18_n_0  |    545 | LUT4        |           0.953 |           1.904 |
+| u_vec/gen_buf[4].u_banks/wr_addr_q[9]_i_3__18_n_0  |    545 | LUT6        |           0.274 |           1.899 |
+| u_vec/gen_buf[5].u_banks/wr_addr_q[9]_i_2__9_n_0   |    545 | LUT4        |           0.767 |           2.250 |
+| u_vec/gen_buf[5].u_banks/wr_addr_q[9]_i_3__9_n_0   |    545 | LUT6        |           0.136 |           2.462 |
+| u_vec/gen_buf[7].u_banks/wr_addr_q[9]_i_2__8_n_0   |    545 | LUT4        |           0.606 |           2.425 |
+| u_vec/gen_buf[7].u_banks/wr_addr_q[9]_i_3__8_n_0   |    545 | LUT6        |           0.173 |           2.184 |
+| u_vec/gen_buf[8].u_banks/wr_addr_q[9]_i_2__16_n_0  |    545 | LUT3        |           0.458 |           2.241 |
+| u_vec/gen_buf[8].u_banks/wr_addr_q[9]_i_3__16_n_0  |    545 | LUT6        |           0.094 |           2.474 |
+| u_vec/gen_buf[1].u_banks/wr_addr_q[9]_i_2__5_n_0   |    544 | LUT3        |           0.925 |           1.808 |
+| u_vec/gen_buf[1].u_banks/wr_addr_q[9]_i_3_n_0      |    544 | LUT6        |           0.339 |           1.834 |
+| u_vec/gen_slot[9].sel_q_reg[b_n_0_][1]             |    531 | FDRE        |           0.352 |           1.836 |
+| u_vec/u_kv_fmts/mem_q_reg_0_63_0_6/DOE             |    525 | RAMD64E     |           0.281 |           2.328 |
+| u_vec/u_tree/p_0_out[3]                            |    514 | FDRE        |           0.182 |           0.765 |
+| u_vec/gen_buf[11].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           0.531 |           3.136 |
+| u_vec/gen_buf[11].u_banks/rd_rot_q_reg_n_0_[2][3]  |    512 | FDRE        |           0.910 |           2.768 |
+| u_vec/gen_buf[12].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           0.630 |           3.019 |
+| u_vec/gen_buf[12].u_banks/rd_rot_q_reg_n_0_[2][3]  |    512 | FDRE        |           0.879 |           2.810 |
+| u_vec/gen_buf[13].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           1.268 |           2.401 |
+| u_vec/gen_buf[13].u_banks/rd_rot_q_reg_n_0_[2][3]  |    512 | FDRE        |           1.156 |           2.491 |
+| u_vec/gen_buf[15].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           1.552 |           2.091 |
+| u_vec/gen_buf[15].u_banks/rd_rot_q_reg_n_0_[2][3]  |    512 | FDRE        |           1.442 |           2.193 |
+| u_vec/gen_buf[16].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           0.758 |           2.883 |
+| u_vec/gen_buf[16].u_banks/rd_rot_q_reg_n_0_[2][3]  |    512 | FDRE        |           0.839 |           2.850 |
+| u_vec/gen_buf[17].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           1.020 |           2.644 |
++----------------------------------------------------+--------+-------------+-----------------+-----------------+
+| CLB LUTs                   | 254364 |     0 |          0 |   1303680 | 19.51 |
+|   LUT as Logic             | 240998 |     0 |          0 |   1303680 | 18.49 |
+|   LUT as Memory            |  13366 |     0 |          0 |    600960 |  2.22 |
+| CLB Registers              | 191237 |     0 |          0 |   2607360 |  7.33 |
+| CARRY8                     |   3047 |     0 |          0 |    162960 |  1.87 |
+|   LUT as Distributed RAM                   |  12850 |     0 |            |           |       |
+|   LUT as Shift Register                    |    516 |     0 |            |           |       |
+| CLB Registers                              | 191237 |     0 |          0 |   2607360 |  7.33 |
+| DSPs           |  227 |     0 |          0 |      9024 |  2.52 |
+| CARRY8   |   3047 |                 CLB |
+| CLB LUTs                   | 171703 | 82661 |    0 |  39.05 |  19.13 |   0.00 |
+|   LUT as Logic             | 158623 | 82375 |    0 |  36.08 |  19.07 |   0.00 |
+|   LUT as Memory            |  13080 |   286 |    0 |   6.37 |   0.14 |   0.00 |
+| CLB Registers              | 124021 | 67216 |    0 |  14.10 |   7.78 |   0.00 |
+| CARRY8                     |   1546 |  1501 |    0 |   2.81 |   2.78 |   0.00 |
+| DSPs                       |    103 |   124 |    0 |   3.58 |   4.04 |   0.00 |
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++---------------------------------------+---------------------------------+------------+------------+---------+------+--------+--------+----
+|                Instance               |              Module             | Total LUTs | Logic LUTs | LUTRAMs | SRLs |   FFs  | RAMB36 | RAM
++---------------------------------------+---------------------------------+------------+------------+---------+------+--------+--------+----
+| vec_path                              |                           (top) |     254364 |     240998 |   12850 |  516 | 191237 |      0 |    
+|   (vec_path)                          |                           (top) |          0 |          0 |       0 |    0 |   2447 |      0 |    
+|   u_vec                               |                        vec_unit |     254364 |     240998 |   12850 |  516 | 188790 |      0 |    
+|     (u_vec)                           |                        vec_unit |       2922 |       2854 |       0 |   68 |  11646 |      0 |    
+|       u_rd_rot                        | rotate_pipe__parameterized1_497 |        512 |        512 |       0 |    0 |      0 |      0 |    
+|       u_wr_rot                        | rotate_pipe__parameterized1_499 |        256 |        256 |       0 |    0 |      0 |      0 |    
+|       u_rd_rot                        |     rotate_pipe__parameterized1 |        512 |        512 |       0 |    0 |      0 |      0 |    
+|       u_wr_rot                        | rotate_pipe__parameterized1_496 |        256 |        256 |       0 |    0 |      0 |      0 |    
+|     gen_slot[0].u_chain               |                      fp32_chain |       9961 |       9933 |       0 |   28 |   7407 |      0 |    
+|       (gen_slot[0].u_chain)           |                      fp32_chain |        295 |        267 |       0 |   28 |   4326 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_468 |       1708 |       1708 |       0 |    0 |    474 |      0 |    
+|         u_fma                         |                  fp_mul_add_493 |       1708 |       1708 |       0 |    0 |    474 |      0 |    
+|         u_fma                         |                  fp_mul_add_490 |       1338 |       1338 |       0 |    0 |    426 |      0 |    
+|         u_fma                         |                  fp_mul_add_487 |       1378 |       1378 |       0 |    0 |    474 |      0 |    
+|         u_fma                         |                  fp_mul_add_484 |       1318 |       1318 |       0 |    0 |    447 |      0 |    
+|         u_fma                         |                  fp_mul_add_481 |       1339 |       1339 |       0 |    0 |    474 |      0 |    
+|         u_fma                         |                  fp_mul_add_478 |       1350 |       1350 |       0 |    0 |    405 |      0 |    
+|         u_fma                         |                  fp_mul_add_475 |       1234 |       1234 |       0 |    0 |    381 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_440 |       1696 |       1696 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_465 |       1696 |       1696 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_462 |       1346 |       1346 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_459 |       1344 |       1344 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_456 |       1335 |       1335 |       0 |    0 |    441 |      0 |    
+|         u_fma                         |                  fp_mul_add_453 |       1371 |       1371 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_450 |       1337 |       1337 |       0 |    0 |    399 |      0 |    
+|         u_fma                         |                  fp_mul_add_447 |       1257 |       1257 |       0 |    0 |    375 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_412 |       1719 |       1719 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_437 |       1719 |       1719 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_434 |       1343 |       1343 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_431 |       1350 |       1350 |       0 |    0 |    499 |      0 |    
+|         u_fma                         |                  fp_mul_add_428 |       1317 |       1317 |       0 |    0 |    441 |      0 |    
+|         u_fma                         |                  fp_mul_add_425 |       1356 |       1356 |       0 |    0 |    499 |      0 |    
+|         u_fma                         |                  fp_mul_add_422 |       1333 |       1333 |       0 |    0 |    399 |      0 |    
+|         u_fma                         |                  fp_mul_add_419 |       1231 |       1231 |       0 |    0 |    375 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_384 |       1717 |       1717 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_409 |       1717 |       1717 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_406 |       1377 |       1377 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_403 |       1343 |       1343 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_400 |       1352 |       1352 |       0 |    0 |    472 |      0 |    
+|         u_fma                         |                  fp_mul_add_397 |       1338 |       1338 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_394 |       1333 |       1333 |       0 |    0 |    399 |      0 |    
+|         u_fma                         |                  fp_mul_add_391 |       1240 |       1240 |       0 |    0 |    375 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_356 |       1747 |       1747 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_381 |       1747 |       1747 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_378 |       1367 |       1367 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_375 |       1374 |       1374 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_372 |       1342 |       1342 |       0 |    0 |    441 |      0 |    
+|         u_fma                         |                  fp_mul_add_369 |       1389 |       1389 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_366 |       1360 |       1360 |       0 |    0 |    430 |      0 |    
+|         u_fma                         |                  fp_mul_add_363 |       1254 |       1254 |       0 |    0 |    375 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_328 |       1701 |       1701 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_353 |       1701 |       1701 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_350 |       1374 |       1374 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_347 |       1342 |       1342 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_344 |       1319 |       1319 |       0 |    0 |    441 |      0 |    
+|         u_fma                         |                  fp_mul_add_341 |       1343 |       1343 |       0 |    0 |    499 |      0 |    
+|         u_fma                         |                  fp_mul_add_338 |       1340 |       1340 |       0 |    0 |    399 |      0 |    
+|         u_fma                         |                  fp_mul_add_335 |       1234 |       1234 |       0 |    0 |    375 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_300 |       1725 |       1725 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_325 |       1725 |       1725 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_322 |       1341 |       1341 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_319 |       1378 |       1378 |       0 |    0 |    468 |      0 |    
+1. Placer Final Level Congestion Reporting
+2. Router Initial Congestion
+
+1. Placer Final Level Congestion Reporting
+------------------------------------------
+
++-----------+-------+-------+-----------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+---------------------------------------------------------------------------------------------+
+| Direction |  Type | Level |            Window           | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL |                                          Cell Names                                         |
++-----------+-------+-------+-----------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+---------------------------------------------------------------------------------------------+
+| East      | Short |     5 | (CLEL_R_X21Y22,DSP_X36Y50)  |            1% |          4.561 | 78% | 9%     |  21% |  10% | 0%   | 0%   | 4%  |    0% |  0% | u_vec/gen_buf[19].u_banks(35%),u_vec(17%),u_vec/gen_buf[11].u_banks(15%)                    |
+| West      | Short |     5 | (CLEM_X27Y22,CLEL_R_X41Y53) |            1% |          4.622 | 79% | 7%     |  17% |  16% | 0%   | NA   | 4%  |    0% |  0% | u_vec/gen_buf[19].u_banks(27%),u_vec/gen_buf[3].u_banks(20%),u_vec/gen_buf[11].u_banks(11%) |
++-----------+-------+-------+-----------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+---------------------------------------------------------------------------------------------+
+
+
+2. Router Initial Congestion
+----------------------------
+
++-----------+------+-------+---------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+--------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Direction | Type | Level |           Window          | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL |                                Cell Names                                |                                                                                                                             Sub Windows                                                                                                                             |
++-----------+------+-------+---------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+--------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| East      | Long |     5 | (CLEM_X14Y13,CLEM_X45Y44) |            2% |          5.284 | 80% |    12% |  22% |  10% |   0% |   0% |  4% |    1% |  0% | u_vec(27%),u_vec/gen_buf[19].u_banks(25%),u_vec/gen_buf[11].u_banks(10%) | (CLEM_X14Y21,CLEL_R_X21Y28), (CLEM_X22Y37,CLEL_R_X29Y44), (CLEM_X22Y29,CLEL_R_X29Y36), (CLEM_X22Y21,CLEL_R_X29Y28), (CLEM_X30Y37,CLEL_R_X37Y44), (CLEM_X30Y29,CLEL_R_X37Y36), (CLEM_X30Y21,CLEL_R_X37Y28), (CLEM_X30Y13,CLEL_R_X37Y20), (CLEL_R_X38Y21,CLEM_X45Y28) |
+| East      | Long |     5 | (CLEM_X22Y13,CLEM_X37Y44) |            1% |          5.247 | 82% |    11% |  23% |   8% |   0% |   0% |  4% |    1% |  0% | u_vec/gen_buf[19].u_banks(31%),u_vec(28%),u_vec/gen_slot[1].u_chain(10%) | (CLEM_X22Y29,CLEL_R_X37Y44), (CLEM_X22Y13,CLEL_R_X37Y28)                                                                                                                                                                                                            |
++-----------+------+-------+---------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+--------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+* No effective congestion windows are found above level 5
+
+
+CABOSSE-END run1 vec_path:Lanes:16:1:0:shell
+CABOSSE-BEGIN run2 vec_path:Lanes:16:1:0:explore
+# puts "CABOSSE-RESULT top=$top loop_cycles=$loop retime=$retime flow=$flow place=$place wns_ns=$wns"
+CABOSSE-RESULT top=vec_path loop_cycles=1 retime=0 flow=explore place=- wns_ns=0.006
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+      0.006        0.000                      0               322495        0.011        0.000                      0               322495        1.468        0.000                       0                205039  
+
+Clock             WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints  
+-----             -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------  
+clk                 0.006        0.000                      0               322495        0.011        0.000                      0               322495        1.468        0.000                       0                205039  
+
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Mon Nov  9 08:30:42 2026
+| Host              : ip-172-31-37-134 running 64-bit Ubuntu 24.04.1 LTS
+| Command           : report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+| Design            : vec_path
+| Device            : xcvu47p-fsvh2892
+| Speed File        : -2  PRODUCTION 1.30 05-01-2022
+| Design State      : Routed
+| Temperature Grade : E
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Report
+
+Slack (MET) :             0.006ns  (required time - arrival time)
+  Source:                 u_vec/u_tree/v_q_reg[87][28]/C
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Destination:            u_vec/u_tree/u_add/s1_q_reg[lo][0]/D
+                            (rising edge-triggered cell FDRE clocked by clk  {rise@0.000ns fall@2.000ns period=4.000ns})
+  Path Group:             clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            4.000ns  (clk rise@4.000ns - clk rise@0.000ns)
+  Data Path Delay:        3.910ns  (logic 1.303ns (33.329%)  route 2.607ns (66.671%))
+  Logic Levels:           13  (CARRY8=1 LUT2=1 LUT3=1 LUT4=2 LUT5=2 LUT6=4 MUXF7=1 MUXF8=1)
+  Clock Path Skew:        -0.009ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    0.020ns = ( 4.020 - 4.000 ) 
+    Source Clock Delay      (SCD):    0.029ns
+    Clock Pessimism Removal (CPR):    0.000ns
+  Clock Uncertainty:      0.100ns  ((TSJ^2 + TIJ^2)^1/2 + DJ) / 2 + PE + UU
+    Total System Jitter     (TSJ):    0.071ns
+    Total Input Jitter      (TIJ):    0.000ns
+    Discrete Jitter          (DJ):    0.000ns
+    Phase Error              (PE):    0.000ns
+    User Uncertainty         (UU):    0.065ns
+
+    Location             Delay type                Incr(ns)  Path(ns)    Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------
+                         (clock clk rise edge)        0.000     0.000 r  
+                         propagated clock network latency
+                                                      0.029     0.029    
+    SLICE_X144Y573       FDRE                         0.000     0.029 r  u_vec/u_tree/v_q_reg[87][28]/C
+    SLICE_X144Y573       FDRE (Prop_FFF_SLICEL_C_Q)
+                                                      0.079     0.108 f  u_vec/u_tree/v_q_reg[87][28]/Q
+                         net (fo=1, routed)           0.474     0.582    u_vec/u_tree/u_add/s1_q_reg[sub]_i_23_0[28]
+    SLICE_X134Y562                                                    f  u_vec/u_tree/u_add/s1_q[exp][5]_i_50/I0
+    SLICE_X134Y562       LUT6 (Prop_B6LUT_SLICEL_I0_O)
+                                                      0.148     0.730 f  u_vec/u_tree/u_add/s1_q[exp][5]_i_50/O
+                         net (fo=1, routed)           0.009     0.739    u_vec/u_tree/u_add/s1_q[exp][5]_i_50_n_0
+    SLICE_X134Y562                                                    f  u_vec/u_tree/u_add/s1_q_reg[exp][5]_i_23/I0
+    SLICE_X134Y562       MUXF7 (Prop_F7MUX_AB_SLICEL_I0_O)
+                                                      0.056     0.795 f  u_vec/u_tree/u_add/s1_q_reg[exp][5]_i_23/O
+                         net (fo=1, routed)           0.000     0.795    u_vec/u_tree/u_add/s1_q_reg[exp][5]_i_23_n_0
+    SLICE_X134Y562                                                    f  u_vec/u_tree/u_add/s1_q_reg[exp][5]_i_9/I1
+    SLICE_X134Y562       MUXF8 (Prop_F8MUX_BOT_SLICEL_I1_O)
+                                                      0.026     0.821 f  u_vec/u_tree/u_add/s1_q_reg[exp][5]_i_9/O
+                         net (fo=1, routed)           0.269     1.090    u_vec/u_tree/u_add/s1_q_reg[exp][5]_i_9_n_0
+    SLICE_X134Y562                                                    f  u_vec/u_tree/u_add/s1_q[exp][5]_i_3/I1
+    SLICE_X134Y562       LUT6 (Prop_G6LUT_SLICEL_I1_O)
+                                                      0.089     1.179 f  u_vec/u_tree/u_add/s1_q[exp][5]_i_3/O
+near-critical families (worst slack, paths, start -> end):
+0.006 6 u_vec/u_tree/v_q_reg[*][*]/C -> u_vec/u_tree/u_add/s1_q_reg[lo][*]/D
+0.010 7 u_vec/gen_slot[*].u_chain/st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__83_psdsp/D
+0.014 7 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__29_psdsp/D
+0.022 195 u_vec/w_data_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/wr_data_q_reg[*][*]/D
+0.024 27 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_add/s2_q_reg[exp][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_add/y_o_reg[*]/D
+0.025 7 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_4__30_psdsp/D
+0.027 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][i][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_10__56_psdsp/D
+0.031 144 u_vec/gen_slot[*].u_chain/st_q_reg[*][k][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.032 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_38__22_psdsp/D
+0.032 8 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_4__29_psdsp/D
+0.033 6 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__17_psdsp/D
+0.033 624 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][i][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.034 18 u_vec/gen_buf[*].u_banks/rd_rot_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/rd_data_o_reg[*][*]/D
+0.038 8 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_4__45_psdsp/D
+0.040 2 u_vec/gen_slot[*].u_chain/st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_24__83_psdsp/D
+0.041 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_16__30_psdsp/D
+0.041 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][u][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_24__1_psdsp/D
+0.042 192 u_vec/gen_slot[*].u_chain/st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.043 20 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_add/s2_q_reg[lz][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_add/y_o_reg[*]/D
+0.043 7 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__45_psdsp/D
+0.044 6 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][u][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__1_psdsp/D
+0.046 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_37__22_psdsp_2/D
+0.047 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_9__85_psdsp/D
+0.047 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_26__29_psdsp/D
+0.047 27 ext_w_data_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/wr_data_q_reg[*][*]/D
+0.049 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_7__45_psdsp/D
+0.050 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_10__45_psdsp/D
+0.051 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_27__45_psdsp/D
+0.051 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_16__45_psdsp/D
+0.052 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_26__45_psdsp/D
+0.056 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][i][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_26__56_psdsp/D
+0.060 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][u][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_10__1_psdsp/D
+0.061 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__93_psdsp/D
+0.063 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][u][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_40__30_psdsp_3/D
+0.063 192 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/ALU_OUT[*]
+0.065 3 ext_w_addr_q_reg[*]/C -> u_vec/gen_buf[*].u_banks/wr_addr_q_reg[*]/D
+0.066 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_10__29_psdsp/D
+0.066 5 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_add/y_o_reg[*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][i][*]/D
+0.067 24 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_add/y_o_reg[*]/C -> u_vec/gen_slot[*].part_q_reg[*][*][*]/D
+0.067 6 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__30_psdsp/D
+0.068 19 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_q.mul_q_reg[prod]/DSP_OUTPUT_INST/CLK -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q_reg[exp][*]/D
+0.071 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_24__45_psdsp/D
+0.072 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][u][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_21__30_psdsp_3/D
+0.075 8 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_4__85_psdsp/D
+0.076 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][u][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_8__1_psdsp/D
+0.077 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[exp][*]_i_21__20_psdsp_3/D
+0.077 8 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_4__17_psdsp/D
+0.078 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_21__17_psdsp/D
+0.078 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_13__29_psdsp/D
+0.079 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_26__85_psdsp/D
+0.079 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_21__29_psdsp/D
+0.079 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_10__85_psdsp/D
+0.079 6 u_vec/gen_slot[*].u_chain/st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__34_psdsp/D
+0.080 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_9__29_psdsp/D
+0.080 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_16__17_psdsp/D
+0.080 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_24__17_psdsp/D
+0.080 6 u_vec/gen_buf[*].u_banks/rd_data_o_reg[*][*]/C -> u_vec/gen_slot[*].a_q_reg[*]/D
+0.081 7 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_3__85_psdsp/D
+0.083 1 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][v][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_13__45_psdsp/D
+0.083 2 u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][op][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q[sig][*]_i_16__93_psdsp/D
+# paths (one per endpoint) per slack bin, ns from the bin's lower edge, under 0.2 ns
+0.00 171
+0.05 362
+0.10 679
+0.15 935
+0.20 3
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Mon Nov  9 08:31:42 2026
+| Host         : ip-172-31-37-134 running 64-bit Ubuntu 24.04.1 LTS
+| Command      : report_design_analysis -logic_level_distribution -max_paths 10000 -file logic_levels.rpt
+| Design       : vec_path
+| Device       : xcvu47p
+| Design State : Routed
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+Report Design Analysis
+
+Table of Contents
+-----------------
+1. Setup Path Characteristics 1-10000
+2. Logic Level Distribution
+
+1. Setup Path Characteristics 1-10000
+-------------------------------------
+
++-------------+-------------+------------+-------------+------------+------------+-------+-------------------+---------------------------+-------------------+--------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------+-----------------+-----------+---------------+--------------+---------------+---------+-------------+-----------+------------+------------+---------------------------+-------------------------+----------------------------------------------+----------------------------------------------+
+|    Paths    | Requirement | Path Delay | Logic Delay |  Net Delay | Clock Skew | Slack | Clock Uncertainty | Clock Pair Classification | Clock Delay Group | Logic Levels | Routes |                                                                                  Logical Path                                                                                  | Start Point Clock | End Point Clock | DSP Block | RAM Registers | IO Crossings | SLR Crossings | PBlocks | High Fanout | ASYNC REG | Dont Touch | Mark Debug | Start Point Pin Primitive | End Point Pin Primitive |                Start Point Pin               |                 End Point Pin                |
++-------------+-------------+------------+-------------+------------+------------+-------+-------------------+---------------------------+-------------------+--------------+--------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+-------------------+-----------------+-----------+---------------+--------------+---------------+---------+-------------+-----------+------------+------------+---------------------------+-------------------------+----------------------------------------------+----------------------------------------------+
+| Path #1     | 4.000       | 3.910      | 1.303(34%)  | 2.607(66%) | -0.009     | 0.006 | 0.100             | Timed                     | Same Clock        | 13           | 10     | FDRE/C-(1)-LUT6-(1)-MUXF7-MUXF8-LUT6-(11)-LUT4-(2)-LUT5-(4)-LUT2-(1)-CARRY8-LUT3-(37)-LUT5-(4)-LUT6-(2)-LUT4-(1)-LUT6-(1)-FDRE/D                                               | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 37          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | v_q_reg[87][28]/C                            | s1_q_reg[lo][0]/D                            |
+| Path #2     | 4.000       | 3.907      | 2.403(62%)  | 1.504(38%) | -0.008     | 0.010 | 0.100             | Timed                     | Same Clock        | 9            | 4      | FDRE/C-(128)-LUT3-(1)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT-FDRE/D                                                  | clk               | clk             | Comb      | None-None     | 0            | 0             | 0       | 128         | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | st_q_reg[0][op][1]/C                         | gen_norm_q.norm_q[sig][29]_i_3__83_psdsp/D   |
+| Path #3     | 4.000       | 3.902      | 2.518(65%)  | 1.384(35%) | -0.009     | 0.014 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(4)-LUT6-(2)-LUT4-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT-FDRE/D                                  | clk               | clk             | Comb      | None-None     | 0            | 0             | 0       | 4           | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_stage[2].st_q_reg[3][v][28]/C            | gen_norm_q.norm_q[sig][29]_i_3__29_psdsp/D   |
+| Path #4     | 4.000       | 3.892      | 0.166(5%)   | 3.726(95%) | -0.010     | 0.022 | 0.100             | Timed                     | Same Clock        | 1            | 1      | FDRE/C-(21)-LUT4-(1)-FDRE/D                                                                                                                                                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 21          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | w_data_q_reg[7][10]/C                        | wr_data_q_reg[7][10]/D                       |
+| Path #5     | 4.000       | 3.894      | 1.476(38%)  | 2.418(62%) | -0.007     | 0.024 | 0.100             | Timed                     | Same Clock        | 14           | 10     | FDRE/C-(34)-LUT4-(1)-CARRY8-LUT4-(76)-LUT4-(1)-LUT6-(2)-LUT3-(2)-LUT5-(1)-LUT6-(1)-LUT6-(1)-CARRY8-CARRY8-CARRY8-LUT6-(3)-LUT5-(1)-FDSE/D                                      | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 76          | 0         | 0          | 0          | FDRE/C                    | FDSE/D                  | s2_q_reg[exp][1]/C                           | y_o_reg[30]/D                                |
+| Path #6     | 4.000       | 3.891      | 2.674(69%)  | 1.217(31%) | -0.009     | 0.025 | 0.100             | Timed                     | Same Clock        | 12           | 7      | FDRE/C-(89)-LUT6-(3)-LUT6-(1)-LUT5-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT-FDRE/D                        | clk               | clk             | Comb      | None-None     | 0            | 0             | 0       | 89          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_stage[5].st_q_reg[6][op][0]/C            | gen_norm_q.norm_q[sig][34]_i_4__30_psdsp/D   |
+| Path #7     | 4.000       | 3.888      | 2.675(69%)  | 1.213(31%) | -0.009     | 0.027 | 0.100             | Timed                     | Same Clock        | 12           | 7      | FDRE/C-(28)-LUT6-(1)-LUT6-(2)-LUT5-(3)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT-FDRE/D                        | clk               | clk             | Comb      | None-None     | 0            | 0             | 0       | 28          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | gen_stage[0].st_q_reg[1][i][0]/C             | gen_norm_q.norm_q[sig][49]_i_10__56_psdsp/D  |
+| Path #8     | 4.000       | 3.884      | 0.113(3%)   | 3.771(97%) | -0.010     | 0.030 | 0.100             | Timed                     | Same Clock        | 1            | 1      | FDRE/C-(21)-LUT4-(1)-FDRE/D                                                                                                                                                    | clk               | clk             | None      | None-None     | 0            | 0             | 0       | 21          | 0         | 0          | 0          | FDRE/C                    | FDRE/D                  | w_data_q_reg[14][9]/C                        | wr_data_q_reg[14][9]/D                       |
+| Path #9     | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[0]                     | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[0]   | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[0]                   |
+| Path #10    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[10]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[10]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[10]                  |
+| Path #11    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[11]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[11]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[11]                  |
+| Path #12    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[12]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[12]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[12]                  |
+| Path #13    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[13]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[13]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[13]                  |
+| Path #14    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[14]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[14]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[14]                  |
+| Path #15    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[15]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[15]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[15]                  |
+| Path #16    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[16]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[16]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[16]                  |
+| Path #17    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[17]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[17]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[17]                  |
+| Path #18    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[18]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[18]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[18]                  |
+| Path #19    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[19]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[19]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[19]                  |
+| Path #20    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[1]                     | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[1]   | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[1]                   |
+| Path #21    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[20]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[20]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[20]                  |
+| Path #22    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[21]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[21]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[21]                  |
+| Path #23    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[22]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[22]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[22]                  |
+| Path #24    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[23]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[23]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[23]                  |
+| Path #25    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[24]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[24]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[24]                  |
+| Path #26    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[25]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[25]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[25]                  |
+| Path #27    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[26]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[26]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[26]                  |
+| Path #28    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[27]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[27]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[27]                  |
+| Path #29    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[28]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[28]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[28]                  |
+| Path #30    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[29]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[29]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[29]                  |
+| Path #31    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[2]                     | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[2]   | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[2]                   |
+| Path #32    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[30]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[30]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[30]                  |
+| Path #33    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[31]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[31]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[31]                  |
+| Path #34    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[32]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[32]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[32]                  |
+| Path #35    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[33]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[33]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[33]                  |
+| Path #36    | 4.000       | 3.897      | 2.488(64%)  | 1.409(36%) | 0.013      | 0.031 | 0.100             | Timed                     | Same Clock        | 11           | 6      | FDRE/C-(7)-LUT6-(4)-LUT5-(1)-LUT6-(2)-LUT5-(4)-DSP_A_B_DATA-(1)-DSP_PREADD_DATA-DSP_MULTIPLIER-DSP_M_DATA-DSP_ALU-DSP_OUTPUT-DSP_ALU-DSP_OUTPUT/ALU_OUT[34]                    | clk               | clk             | Seq       | None-None     | 0            | 0             | 0       | 7           | 0         | 0          | 0          | FDRE/C                    | DSP_OUTPUT/ALU_OUT[34]  | st_q_reg[0][k][0]/C                          | DSP_OUTPUT_INST/ALU_OUT[34]                  |
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date         : Mon Nov  9 08:31:54 2026
+| Host         : ip-172-31-37-134 running 64-bit Ubuntu 24.04.1 LTS
+| Command      : report_high_fanout_nets -timing -max_nets 50 -file fanout.rpt
+| Design       : vec_path
+| Device       : xcvu47p
+| Design State : Routed
+---------------------------------------------------------------------------------------------------------------------------------------------
+
+High Fan-out Nets Information
+
+1. Summary
+----------
+
++----------------------------------------------------+--------+-------------+-----------------+-----------------+
+| Net Name                                           | Fanout | Driver Type | Worst Slack(ns) | Worst Delay(ns) |
++----------------------------------------------------+--------+-------------+-----------------+-----------------+
+| u_vec/ext_r_buf_q_reg_n_0_[3][3]                   |    768 | FDRE        |           0.557 |           2.640 |
+| u_vec/ext_r_data_o[15][31]_i_4_n_0                 |    672 | LUT2        |           0.711 |           2.256 |
+| u_vec/ext_r_data_o[15][31]_i_5_n_0                 |    672 | LUT3        |           0.837 |           2.068 |
+| u_vec/gen_buf[11].u_banks/wr_addr_q[9]_i_2__0_n_0  |    545 | LUT3        |           1.036 |           1.417 |
+| u_vec/gen_buf[11].u_banks/wr_addr_q[9]_i_3__1_n_0  |    545 | LUT6        |           1.063 |           1.328 |
+| u_vec/gen_buf[15].u_banks/wr_addr_q[9]_i_2__2_n_0  |    545 | LUT5        |           0.984 |           1.731 |
+| u_vec/gen_buf[15].u_banks/wr_addr_q[9]_i_3__3_n_0  |    545 | LUT6        |           0.388 |           1.687 |
+| u_vec/gen_buf[16].u_banks/wr_addr_q[9]_i_2__19_n_0 |    545 | LUT3        |           0.832 |           1.698 |
+| u_vec/gen_buf[16].u_banks/wr_addr_q[9]_i_3__19_n_0 |    545 | LUT6        |           0.322 |           1.496 |
+| u_vec/gen_buf[17].u_banks/wr_addr_q[9]_i_2__14_n_0 |    545 | LUT3        |           1.028 |           1.566 |
+| u_vec/gen_buf[17].u_banks/wr_addr_q[9]_i_3__14_n_0 |    545 | LUT6        |           0.456 |           1.498 |
+| u_vec/gen_buf[18].u_banks/wr_addr_q[9]_i_2__12_n_0 |    545 | LUT3        |           0.781 |           1.818 |
+| u_vec/gen_buf[18].u_banks/wr_addr_q[9]_i_3__12_n_0 |    545 | LUT6        |           0.391 |           1.684 |
+| u_vec/gen_buf[19].u_banks/wr_addr_q[9]_i_2__13_n_0 |    545 | LUT3        |           1.232 |           1.383 |
+| u_vec/gen_buf[19].u_banks/wr_addr_q[9]_i_3__13_n_0 |    545 | LUT6        |           1.248 |           1.342 |
+| u_vec/gen_buf[20].u_banks/wr_addr_q[9]_i_2__10_n_0 |    545 | LUT4        |           0.955 |           1.681 |
+| u_vec/gen_buf[20].u_banks/wr_addr_q[9]_i_3__10_n_0 |    545 | LUT6        |           0.889 |           1.102 |
+| u_vec/gen_buf[21].u_banks/wr_addr_q[9]_i_2__11_n_0 |    545 | LUT4        |           0.779 |           1.881 |
+| u_vec/gen_buf[21].u_banks/wr_addr_q[9]_i_3__11_n_0 |    545 | LUT6        |           0.947 |           1.251 |
+| u_vec/gen_buf[3].u_banks/wr_addr_q[9]_i_2__6_n_0   |    545 | LUT3        |           0.969 |           1.445 |
+| u_vec/gen_buf[3].u_banks/wr_addr_q[9]_i_3__6_n_0   |    545 | LUT6        |           0.672 |           1.473 |
+| u_vec/gen_buf[4].u_banks/wr_addr_q[9]_i_2__18_n_0  |    545 | LUT4        |           0.840 |           1.590 |
+| u_vec/gen_buf[4].u_banks/wr_addr_q[9]_i_3__18_n_0  |    545 | LUT6        |           0.647 |           1.445 |
+| u_vec/gen_buf[5].u_banks/wr_addr_q[9]_i_2__9_n_0   |    545 | LUT4        |           0.631 |           1.576 |
+| u_vec/gen_buf[5].u_banks/wr_addr_q[9]_i_3__9_n_0   |    545 | LUT6        |           0.503 |           1.564 |
+| u_vec/gen_buf[7].u_banks/wr_addr_q[9]_i_2__8_n_0   |    545 | LUT4        |           0.413 |           2.176 |
+| u_vec/gen_buf[7].u_banks/wr_addr_q[9]_i_3__8_n_0   |    545 | LUT6        |           0.651 |           1.739 |
+| u_vec/gen_buf[8].u_banks/wr_addr_q[9]_i_2__16_n_0  |    545 | LUT3        |           0.753 |           1.505 |
+| u_vec/gen_buf[8].u_banks/wr_addr_q[9]_i_3__16_n_0  |    545 | LUT6        |           0.740 |           1.116 |
+| u_vec/gen_buf[12].u_banks/wr_addr_q[9]_i_2__17_n_0 |    544 | LUT5        |           0.810 |           1.780 |
+| u_vec/gen_buf[12].u_banks/wr_addr_q[9]_i_3__17_n_0 |    544 | LUT6        |           0.995 |           1.260 |
+| u_vec/gen_buf[13].u_banks/wr_addr_q[9]_i_2__3_n_0  |    542 | LUT5        |           0.939 |           1.641 |
+| u_vec/gen_buf[13].u_banks/wr_addr_q[9]_i_3__4_n_0  |    542 | LUT6        |           0.910 |           1.383 |
+| u_vec/gen_buf[1].u_banks/wr_addr_q[9]_i_2__5_n_0   |    542 | LUT3        |           0.942 |           1.578 |
+| u_vec/gen_buf[1].u_banks/wr_addr_q[9]_i_3_n_0      |    542 | LUT6        |           0.970 |           1.241 |
+| u_vec/gen_slot[6].sel_q_reg[b_n_0_][1]             |    525 | FDRE        |           0.451 |           1.805 |
+| u_vec/u_kv_fmts/mem_q_reg_0_63_0_6/DOE             |    525 | RAMD64E     |           1.007 |           1.562 |
+| u_vec/gen_slot[10].sel_q_reg[b_n_0_][1]            |    520 | FDRE        |           0.319 |           2.153 |
+| u_vec/u_tree/p_0_out[3]                            |    517 | FDRE        |           0.086 |           0.577 |
+| u_vec/gen_buf[11].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           0.249 |           3.424 |
+| u_vec/gen_buf[11].u_banks/rd_rot_q_reg_n_0_[2][3]  |    512 | FDRE        |           0.709 |           2.958 |
+| u_vec/gen_buf[12].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           0.578 |           3.059 |
+| u_vec/gen_buf[12].u_banks/rd_rot_q_reg_n_0_[2][3]  |    512 | FDRE        |           0.127 |           3.536 |
+| u_vec/gen_buf[13].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           0.597 |           3.053 |
+| u_vec/gen_buf[13].u_banks/rd_rot_q_reg_n_0_[2][3]  |    512 | FDRE        |           0.376 |           3.264 |
+| u_vec/gen_buf[15].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           0.483 |           3.209 |
+| u_vec/gen_buf[15].u_banks/rd_rot_q_reg_n_0_[2][3]  |    512 | FDRE        |           0.440 |           3.200 |
+| u_vec/gen_buf[16].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           0.501 |           3.134 |
+| u_vec/gen_buf[16].u_banks/rd_rot_q_reg_n_0_[2][3]  |    512 | FDRE        |           0.817 |           2.823 |
+| u_vec/gen_buf[17].u_banks/rd_rot_q_reg_n_0_[2][2]  |    512 | FDRE        |           0.637 |           3.003 |
++----------------------------------------------------+--------+-------------+-----------------+-----------------+
+| CLB LUTs                   | 255463 |     0 |          0 |   1303680 | 19.60 |
+|   LUT as Logic             | 242097 |     0 |          0 |   1303680 | 18.57 |
+|   LUT as Memory            |  13366 |     0 |          0 |    600960 |  2.22 |
+| CLB Registers              | 191555 |     0 |          0 |   2607360 |  7.35 |
+| CARRY8                     |   3047 |     0 |          0 |    162960 |  1.87 |
+|   LUT as Distributed RAM                   |  12850 |     0 |            |           |       |
+|   LUT as Shift Register                    |    516 |     0 |            |           |       |
+| CLB Registers                              | 191555 |     0 |          0 |   2607360 |  7.35 |
+| DSPs           |  227 |     0 |          0 |      9024 |  2.52 |
+| CARRY8   |   3047 |                 CLB |
+| CLB LUTs                   |    0 | 66013 | 189450 |   0.00 |  15.28 |  43.85 |
+|   LUT as Logic             |    0 | 65793 | 176304 |   0.00 |  15.23 |  40.81 |
+|   LUT as Memory            |    0 |   220 |  13146 |   0.00 |   0.11 |   6.65 |
+| CLB Registers              |    0 | 53920 | 137635 |   0.00 |   6.24 |  15.93 |
+| CARRY8                     |    0 |  1186 |   1861 |   0.00 |   2.20 |   3.45 |
+| DSPs                       |    0 |    98 |    129 |   0.00 |   3.19 |   4.20 |
+1. Utilization by Hierarchy
+
+1. Utilization by Hierarchy
+---------------------------
+
++---------------------------------------+---------------------------------+------------+------------+---------+------+--------+--------+----
+|                Instance               |              Module             | Total LUTs | Logic LUTs | LUTRAMs | SRLs |   FFs  | RAMB36 | RAM
++---------------------------------------+---------------------------------+------------+------------+---------+------+--------+--------+----
+| vec_path                              |                           (top) |     255463 |     242097 |   12850 |  516 | 191555 |      0 |    
+|   (vec_path)                          |                           (top) |          0 |          0 |       0 |    0 |   2447 |      0 |    
+|   u_vec                               |                        vec_unit |     255463 |     242097 |   12850 |  516 | 189108 |      0 |    
+|     (u_vec)                           |                        vec_unit |       2926 |       2858 |       0 |   68 |  11652 |      0 |    
+|       u_rd_rot                        | rotate_pipe__parameterized1_497 |        512 |        512 |       0 |    0 |      0 |      0 |    
+|       u_wr_rot                        | rotate_pipe__parameterized1_499 |        256 |        256 |       0 |    0 |      0 |      0 |    
+|       u_rd_rot                        |     rotate_pipe__parameterized1 |        512 |        512 |       0 |    0 |      0 |      0 |    
+|       u_wr_rot                        | rotate_pipe__parameterized1_496 |        256 |        256 |       0 |    0 |      0 |      0 |    
+|     gen_slot[0].u_chain               |                      fp32_chain |      10075 |      10047 |       0 |   28 |   7444 |      0 |    
+|       (gen_slot[0].u_chain)           |                      fp32_chain |        296 |        268 |       0 |   28 |   4332 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_468 |       1720 |       1720 |       0 |    0 |    474 |      0 |    
+|         u_fma                         |                  fp_mul_add_493 |       1720 |       1720 |       0 |    0 |    474 |      0 |    
+|         u_fma                         |                  fp_mul_add_490 |       1357 |       1357 |       0 |    0 |    426 |      0 |    
+|         u_fma                         |                  fp_mul_add_487 |       1351 |       1351 |       0 |    0 |    474 |      0 |    
+|         u_fma                         |                  fp_mul_add_484 |       1368 |       1368 |       0 |    0 |    478 |      0 |    
+|         u_fma                         |                  fp_mul_add_481 |       1389 |       1389 |       0 |    0 |    474 |      0 |    
+|         u_fma                         |                  fp_mul_add_478 |       1336 |       1336 |       0 |    0 |    405 |      0 |    
+|         u_fma                         |                  fp_mul_add_475 |       1257 |       1257 |       0 |    0 |    381 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_440 |       1722 |       1722 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_465 |       1722 |       1722 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_462 |       1347 |       1347 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_459 |       1353 |       1353 |       0 |    0 |    499 |      0 |    
+|         u_fma                         |                  fp_mul_add_456 |       1335 |       1335 |       0 |    0 |    441 |      0 |    
+|         u_fma                         |                  fp_mul_add_453 |       1356 |       1356 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_450 |       1367 |       1367 |       0 |    0 |    399 |      0 |    
+|         u_fma                         |                  fp_mul_add_447 |       1249 |       1249 |       0 |    0 |    375 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_412 |       1744 |       1744 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_437 |       1744 |       1744 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_434 |       1357 |       1357 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_431 |       1362 |       1362 |       0 |    0 |    499 |      0 |    
+|         u_fma                         |                  fp_mul_add_428 |       1330 |       1330 |       0 |    0 |    472 |      0 |    
+|         u_fma                         |                  fp_mul_add_425 |       1342 |       1342 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_422 |       1394 |       1394 |       0 |    0 |    430 |      0 |    
+|         u_fma                         |                  fp_mul_add_419 |       1257 |       1257 |       0 |    0 |    375 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_384 |       1734 |       1734 |       0 |    0 |    499 |      0 |    
+|         u_fma                         |                  fp_mul_add_409 |       1734 |       1734 |       0 |    0 |    499 |      0 |    
+|         u_fma                         |                  fp_mul_add_406 |       1352 |       1352 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_403 |       1369 |       1369 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_400 |       1348 |       1348 |       0 |    0 |    472 |      0 |    
+|         u_fma                         |                  fp_mul_add_397 |       1405 |       1405 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_394 |       1354 |       1354 |       0 |    0 |    399 |      0 |    
+|         u_fma                         |                  fp_mul_add_391 |       1289 |       1289 |       0 |    0 |    375 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_356 |       1724 |       1724 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_381 |       1724 |       1724 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_378 |       1375 |       1375 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_375 |       1364 |       1364 |       0 |    0 |    499 |      0 |    
+|         u_fma                         |                  fp_mul_add_372 |       1340 |       1340 |       0 |    0 |    472 |      0 |    
+|         u_fma                         |                  fp_mul_add_369 |       1351 |       1351 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_366 |       1356 |       1356 |       0 |    0 |    399 |      0 |    
+|         u_fma                         |                  fp_mul_add_363 |       1245 |       1245 |       0 |    0 |    406 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_328 |       1706 |       1706 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_353 |       1706 |       1706 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_350 |       1355 |       1355 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_347 |       1377 |       1377 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_344 |       1384 |       1384 |       0 |    0 |    472 |      0 |    
+|         u_fma                         |                  fp_mul_add_341 |       1384 |       1384 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_338 |       1361 |       1361 |       0 |    0 |    399 |      0 |    
+|         u_fma                         |                  fp_mul_add_335 |       1255 |       1255 |       0 |    0 |    375 |      0 |    
+|       gen_stage[0].u_fma              |                    fp32_fma_300 |       1698 |       1698 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_325 |       1698 |       1698 |       0 |    0 |    468 |      0 |    
+|         u_fma                         |                  fp_mul_add_322 |       1343 |       1343 |       0 |    0 |    420 |      0 |    
+|         u_fma                         |                  fp_mul_add_319 |       1356 |       1356 |       0 |    0 |    499 |      0 |    
+1. Placer Final Level Congestion Reporting
+2. Router Initial Congestion
+
+1. Placer Final Level Congestion Reporting
+------------------------------------------
+
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+
+| Direction | Type | Level | Window | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL | Cell Names |
++-----------+------+-------+--------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+------------+
+* No congestion windows are found above level 5
+
+
+2. Router Initial Congestion
+----------------------------
+
++-----------+------+-------+----------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+--------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Direction | Type | Level |           Window           | Combined LUTs | Avg LUT Inputs | LUT | LUTRAM | Flop | MUXF | RAMB | URAM | DSP | CARRY | SRL |                                Cell Names                                |                                                                                                                   Sub Windows                                                                                                                  |
++-----------+------+-------+----------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+--------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| North     | Long |     5 | (CLEM_X2Y619,CLEM_X17Y666) |            1% |          4.967 | 61% |    19% |  22% |   4% |   0% |   NA |  0% |    0% |  0% | u_vec(41%),u_vec/gen_buf[12].u_banks(21%),u_vec/gen_buf[11].u_banks(19%) | (CLEM_X2Y651,CLEM_X17Y666), (CLEM_X2Y635,CLEM_X17Y650), (CLEM_X2Y619,CLEM_X17Y634)                                                                                                                                                             |
+| North     | Long |     5 | (CLEM_X2Y627,CLEM_X17Y666) |            1% |          4.914 | 62% |    19% |  24% |   1% |   0% |   NA |  0% |    0% |  0% | u_vec(45%),u_vec/gen_buf[11].u_banks(24%),u_vec/gen_buf[12].u_banks(21%) | (CLEM_X2Y651,CLEL_R_X9Y658), (CLEM_X2Y643,CLEL_R_X9Y650), (CLEM_X2Y635,CLEL_R_X9Y642), (CLEM_X2Y627,CLEL_R_X9Y634), (CLEL_R_X10Y659,CLEM_X17Y666), (CLEL_R_X10Y651,CLEM_X17Y658), (CLEL_R_X10Y643,CLEM_X17Y650), (CLEL_R_X10Y635,CLEM_X17Y642) |
++-----------+------+-------+----------------------------+---------------+----------------+-----+--------+------+------+------+------+-----+-------+-----+--------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+* No effective congestion windows are found above level 5
+
+
+CABOSSE-END run2 vec_path:Lanes:16:1:0:explore
