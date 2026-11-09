@@ -39,11 +39,13 @@ IDS = [top + ("-ftz" if params else "") for top, _, params in TOPS]
 # Writes = 8) still build a drain of several write groups. The vector unit
 # at 16 lanes (112 FMAs) needs more than 8 GB too (M6); 8 lanes, the
 # fewest its stores take (2 * E), still bank every buffer. engine_path, the
-# engine's timing harness, as the engine.
+# engine's timing harness, as the engine; vec_path, the vector unit's, as
+# the vector unit.
 SYNTH_PARAMS = {
     "engine": (("Ports", 4),),
     "engine_path": (("Ports", 4),),
     "vec_unit": (("Lanes", 8), ("Len", 64)),
+    "vec_path": (("Lanes", 8), ("Len", 64)),
     "bringup_core": (("Ports", 2),),
     "controller": (("Commands", 16),),  # Yosys keeps a 64 KiB buffer as flip-flops
 }

@@ -2161,6 +2161,25 @@ per command):
   240,972). `engine_startup_cycles` (76) is not re-measured: about 3 more
   (estimate).
 
+**Step 2, the vector unit alone at 250 MHz** (2026-11-09,
+platforms/f2/timing/vec_path.sv, reports/data/f2/2026-11-09-vec-path.txt;
+r6i.2xlarge 07:39-09:14 UTC, about $0.80, estimate):
+- The whole unit at the core's shape, every input and output registered.
+  Both runs meet 250 MHz with 0 failing endpoints (of 322,702 and 322,495),
+  but not the 0.1 ns margin (timing.tcl): worst slack +0.008 ns (shell flow) and
+  +0.006 ns (explore flow, whole part). 254k LUTs, 227 DSPs.
+- Step 1b's paths are gone: no buffer address and no URAM read in the
+  near-critical families. What is left is near 0 slack, 0 to 11 levels:
+  the fma's multiply, DSP output to the normalization (`norm_q`, 11
+  levels, 72 paths); the slots' result `w_data_q` to the buffers' write
+  registers (+0.027 ns, 109 paths); the stage operands `st_q` to the DSP
+  and the normalization (+0.04 to +0.10 ns).
+- Next (owner's go, 2026-11-09): core build 2 from main (step 3) without
+  more fixes, to measure the unit inside the core first. If the vector
+  unit's families fail there, candidates: one more register in the fma's
+  multiply (`MulRegs` 3) and a register on `w_data_q`'s way to far
+  buffers.
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
