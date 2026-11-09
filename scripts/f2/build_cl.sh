@@ -20,7 +20,8 @@ DESIGN=bringup                 # or core: platforms/f2/$DESIGN/, its top cabosse
 CL=cabosse_$DESIGN
 DEADLINE_MIN=$([ "$DESIGN" = core ] && echo 540 || echo 240)  # safety net: power off even if something hangs
 S3=                            # s3://bucket/dcp/<build>: everything goes there (the role writes dcp/ only)
-PLACE_WNS_MIN=-0.4             # ns: the build stops if placement ends below this (see "The watch")
+PLACE_WNS_MIN=-1.0             # ns: the build stops if placement ends below this (see "The watch")
+PHYS_WNS_MIN=-0.25             # ns: ... or phys_opt_design after it
 
 shutdown -h +$DEADLINE_MIN
 export HOME=/root  # cloud-init runs this without HOME; Vivado needs it
@@ -93,9 +94,20 @@ setsid python3 aws_build_dcp_from_cl.py --cl $CL --mode small_shell --no-encrypt
   --clock_recipe_a A1 --clock_recipe_b B0 --clock_recipe_c C0 --clock_recipe_hbm H0 &
 build_pid=$!
 # The watch: stop the build early, saving its hours, if the floorplan does
-# not apply (a critical warning on its file) or if placement ends with a
-# worst slack below PLACE_WNS_MIN (core build 2: -2.81 placed, -2.45 routed).
-abort=
+# not apply (a critical warning on its file), or if the worst slack is
+# below PLACE_WNS_MIN after placement or PHYS_WNS_MIN after phys_opt_design
+# (each summary's first line; a later one comes inside route_design). Past
+# builds: bring-up 4 -0.674 placed, +0.001 phys_opt, +0.069 routed (met);
+# bring-up 3 -1.666, -1.195 (failed); core 2 -2.81, -2.706, -2.450. The
+# checkpoint of the step that stopped it is kept for the reports.
+abort= stop_dcp=
+first_wns() {  # the first number after $1 in the Vivado log, without a trailing dot
+  local w
+  w=$(grep -m1 -o "$1[-0-9.]*" $vlog | sed "s/.*=//; s/\.$//")
+  echo "$w"
+}
+below() { awk -v w="$1" -v m="$2" 'BEGIN {exit !(w + 0 < m + 0)}'; }
+placed= physd=
 while kill -0 $build_pid 2>/dev/null; do
   sleep 60
   vlog=$(ls $CL_DIR/build/scripts/*.vivado.log 2>/dev/null | head -1)
@@ -103,14 +115,30 @@ while kill -0 $build_pid 2>/dev/null; do
   if grep -q "^CRITICAL WARNING.*cl_pnr_user.xdc" $vlog; then
     abort="floorplan: $(grep -m1 '^CRITICAL WARNING.*cl_pnr_user.xdc' $vlog | cut -c1-300)"
   fi
-  wns=$(grep -m1 -o "Post Placement Timing Summary WNS=[-0-9.]*" $vlog | cut -d= -f2)
-  if [ -n "$wns" ] && [ -z "$placed" ]; then
-    placed=1
-    echo "post-place WNS $wns ($(date -u +%FT%TZ))"
-    awk -v w=$wns -v m=$PLACE_WNS_MIN 'BEGIN {exit !(w < m)}' && abort="post-place WNS $wns < $PLACE_WNS_MIN"
+  if [ -z "$placed" ]; then
+    wns=$(first_wns "Post Placement Timing Summary WNS=")
+    if [ -n "$wns" ]; then
+      placed=1
+      echo "post-place WNS $wns ($(date -u +%FT%TZ))"
+      below $wns $PLACE_WNS_MIN && abort="post-place WNS $wns < $PLACE_WNS_MIN" stop_dcp=post_place
+    fi
+  fi
+  if [ -z "$physd" ]; then
+    wns=$(first_wns "Post Physical Optimization Timing Summary | WNS=")
+    if [ -n "$wns" ]; then
+      physd=1
+      echo "post-phys_opt WNS $wns ($(date -u +%FT%TZ))"
+      below $wns $PHYS_WNS_MIN && abort="post-phys_opt WNS $wns < $PHYS_WNS_MIN" stop_dcp=post_phys_opt
+    fi
   fi
   if [ -n "$abort" ]; then
     echo "stopping the build: $abort"
+    if [ -n "$stop_dcp" ]; then  # its checkpoint first (up to 30 min)
+      for i in $(seq 60); do
+        grep -q "$stop_dcp.dcp' has been generated" $vlog && break
+        sleep 30
+      done
+    fi
     kill -TERM -- -$build_pid
     sleep 30
     kill -KILL -- -$build_pid 2>/dev/null
@@ -129,6 +157,7 @@ cd $CL_DIR/build/checkpoints || { echo "CABOSSE-RESULT fail no checkpoints"; fin
 ls -l
 routed=$(ls *.post_route.dcp 2>/dev/null | head -1)
 violated=$(ls *.post_route.VIOLATED.dcp 2>/dev/null | head -1)
+stopped=$([ -n "$stop_dcp" ] && ls *.$stop_dcp.dcp 2>/dev/null | head -1)
 tarball=$(ls *.Developer_CL.tar 2>/dev/null | head -1)
 # The build's own outputs first, before the reports' second Vivado session
 # (its time could meet the deadline).
@@ -137,10 +166,18 @@ aws s3 cp --only-show-errors --recursive $CL_DIR/build/reports/ "$S3/shell-repor
   echo "tarball $S3/$tarball"
 save
 mkdir -p /root/reports && cd /root/reports
-if [ -n "$routed$violated" ]; then
+if [ -n "$stopped" ]; then
+  aws s3 cp --only-show-errors $CL_DIR/build/checkpoints/$stopped "$S3/$stopped" && echo "checkpoint $S3/$stopped"
+fi
+dcp=${routed:-${violated:-$stopped}}
+if [ -n "$dcp" ]; then
   vivado -mode batch -nojournal -log report.log \
     -source /root/cabosse/platforms/f2/timing/report.tcl \
-    -tclargs $CL_DIR/build/checkpoints/${routed:-$violated} > report.out 2>&1
+    -tclargs $CL_DIR/build/checkpoints/$dcp > report.out 2>&1
+  # Where the blocks went (the floorplan's check): cells per SLR and more.
+  [ "$DESIGN" = core ] && vivado -mode batch -nojournal -log analyze.log \
+    -source /root/cabosse/platforms/f2/timing/analyze.tcl \
+    -tclargs $CL_DIR/build/checkpoints/$dcp > analyze.out 2>&1 && cat cells_per_slr.rpt
   sed -n '/Design Timing Summary/,/^$/p;/WNS(ns)/,+3p' timing_summary.rpt | head -12
   head -60 worst_paths.rpt
   grep -E "^\| (CLB LUTs|CLB Registers|Block RAM|DSPs|  LUT as) " utilization.rpt

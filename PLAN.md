@@ -2213,7 +2213,8 @@ more cycles per command):
   engine's groups 0-3 (ports 0-15, their DMAs and lanes). SLR1: groups
   4-7, the engine's issue, step and drain, the controller. SLR2: the
   vector unit. Estimate from build 2's areas: 60-70% of each SLR's LUTs.
-- A register on each side of every SLR crossing, none crossing two SLRs:
+- Registers at the SLR crossings, none crossing two SLRs; a crossing has
+  a register on at least one side and at most a few LUTs on the other:
   - HBM reads on ports 1-31: two plain registers, no ready (port_dma.sv's
     credits keep r_ready high; a simulation check says so). AR: two
     bringup_pipe stages. Port 0 keeps its stage (the host shares it).
@@ -2221,15 +2222,30 @@ more cycles per command):
     its reads and write responses as plain registers (it takes every beat).
   - core.sv: the engine's x reads, writes and done through registers on the
     vector unit's side (`xv_*`); the engine's `XRdLat` is 6 (was 4), so
-    `PopLat` 11 and `Window` 14. The DMAs' errors registered.
+    `PopLat` 11. The vector unit's commands through a queue of 2 on each
+    side; its done and errors, and the DMAs' errors, registered. The
+    controller's settle window grows by 1 (`UnitsResetDelay + 5`).
   - engine.sv: the drain's results through a register per group of 16
-    lanes, then the central one: a write comes 2 cycles later.
-- `scripts/f2/build_cl.sh` stops the build if a floorplan line gives a
-  critical warning or if placement ends below -0.4 ns (`PLACE_WNS_MIN`;
-  build 2: -2.81 placed, -2.45 routed), to save the routing's hours.
-- Cost: 2 more cycles per waiting engine command, and a lane's row buffer
-  reserved 2 cycles longer (step 1b's short-row cost grows); 2 more cycles
-  per engine command's end; a few more per vector LOAD and store.
+    lanes, then the central one: a write comes 2 cycles later. Step's
+    estimates: a register per half of the groups (an SLR each) between the
+    groups' and the central one (`SeenRegs` 3, `Window` 15).
+  - Left with logic after the crossing (review, 2026-11-09; risk, not
+    measured): the engine's DMA commands (`iss_addr0_q` and the
+    handshake), the lanes' pops (`lane_out_ready`) and their valids into
+    `ok_q`, the stages' enables. The next fixes if they fail.
+- `scripts/f2/build_cl.sh` stops the build on a critical warning about the
+  floorplan's file, or if the worst slack is below -1.0 ns after placement
+  or -0.25 ns after phys_opt_design (bring-up 4: -0.674, +0.001, routed
+  +0.069; core build 2: -2.81, -2.706, -2.45). It keeps that step's
+  checkpoint, reports on it, and reports every block's cells per SLR
+  (analyze.tcl), to check the floorplan took.
+- Cost (estimates): 2 more cycles per waiting engine command and a lane's
+  row buffer reserved 2-3 cycles longer (step 1b's short-row cost grows);
+  3 more cycles per engine command's end (the drain's 2, the done's 1);
+  2 more per vector command given, 1 more per vector done; a few more per
+  vector LOAD and store. Not measured on SmolLM2 yet.
+- Tests: the engine's own tests run its default `XRdLat` 4; the core's
+  and the F2 wrapper's run 6.
 - Owner (2026-11-09): one more full build approved, launched when the
   analysis gives confidence of 250 MHz; no cloud trial run before it.
 

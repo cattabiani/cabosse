@@ -11,7 +11,7 @@
 if {[llength $argv] == 1} {open_checkpoint [lindex $argv 0]}
 
 set CORE WRAPPER/CL/u_core/u_core
-set BLOCKS {u_vec u_engine}
+set BLOCKS {u_vec u_engine u_controller}
 
 proc try_report {name script} {
   set t [clock seconds]

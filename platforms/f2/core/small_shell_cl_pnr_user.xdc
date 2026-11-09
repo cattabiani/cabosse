@@ -189,13 +189,15 @@ set_property USER_SLR_ASSIGNMENT SLR1 [get_cells {WRAPPER/CL/u_core/u_core/u_eng
 set_property USER_SLR_ASSIGNMENT SLR1 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_group\[7\].*}]
 set_property USER_SLR_ASSIGNMENT SLR1 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_seen\[7\].*}]
 set_property USER_SLR_ASSIGNMENT SLR1 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_drain\[7\].*}]
+set_property USER_SLR_ASSIGNMENT SLR0 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_half\[0\].*}]
+set_property USER_SLR_ASSIGNMENT SLR1 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_half\[1\].*}]
 # ... and the rest of it (issue, step, drain) in SLR1
-set_property USER_SLR_ASSIGNMENT SLR1 [get_cells -filter {NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_dma*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_lane*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_group*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_seen*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_drain*"} {WRAPPER/CL/u_core/u_core/u_engine/*}]
+set_property USER_SLR_ASSIGNMENT SLR1 [get_cells -filter {NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_dma*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_lane*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_group*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_seen*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_drain*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_half*"} {WRAPPER/CL/u_core/u_core/u_engine/*}]
 
 # The controller, the vector unit and the core's registers on its side
 set_property USER_SLR_ASSIGNMENT SLR1 [get_cells {WRAPPER/CL/u_core/u_core/u_controller}]
-set_property USER_SLR_ASSIGNMENT SLR1 [get_cells {WRAPPER/CL/u_core/u_core/eng_done_q_reg}]
-set_property USER_SLR_ASSIGNMENT SLR1 [get_cells {WRAPPER/CL/u_core/u_core/eng_err_q_reg}]
+set_property USER_SLR_ASSIGNMENT SLR1 [get_cells {WRAPPER/CL/u_core/u_core/u_vec_cmd0}]
+set_property USER_SLR_ASSIGNMENT SLR2 [get_cells {WRAPPER/CL/u_core/u_core/u_vec_cmd1}]
 set_property USER_SLR_ASSIGNMENT SLR2 [get_cells {WRAPPER/CL/u_core/u_core/u_vec}]
 set_property USER_SLR_ASSIGNMENT SLR2 [get_cells {WRAPPER/CL/u_core/u_core/xv_*}]
 

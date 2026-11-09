@@ -15,12 +15,14 @@ pblocks (PLAN.md M10, "Approach"):
 - SLR2: the vector unit and the core's registers on its side (xv_*).
 
 Every assignment is to cells that no other line covers (a hierarchical
-cell or the primitives at one level), so no cell has two. Every path
-between SLRs is register to register, at most one SLR apart:
-the stages in platforms/f2/core/f2_core.sv, rtl/core.sv's xv_ registers and
-the engine's per-group registers (rtl/engine.sv). The lanes of a group stay
-together with their DMAs, so no lane spans two SLRs (core build 2's worst
-paths).
+cell or the primitives at one level), so no cell has two. The crossings
+have a register on at least one side and at most a few LUTs on the other,
+none crosses two SLRs: the stages in platforms/f2/core/f2_core.sv,
+rtl/core.sv's xv_ registers and vector-unit command queues, the engine's
+per-group and per-half registers (rtl/engine.sv). Some crossings still
+have logic after them (the engine's DMA commands, the lanes' pops, the
+stages' enables). The lanes of a group stay together with their DMAs, so
+no lane spans two SLRs (core build 2's worst paths).
 
     python3 scripts/f2/floorplan.py          # rewrite the file
     python3 scripts/f2/floorplan.py --check  # exit 1 if it is out of date
@@ -42,6 +44,7 @@ CORE = f"{F2}/u_core"  # core
 ENGINE = f"{CORE}/u_engine"
 # rtl/engine.sv's generate blocks that belong to a group (the rest is central)
 GROUP_BLOCKS = ("gen_group", "gen_seen", "gen_drain")
+HALF_BLOCK = "gen_half"  # rtl/engine.sv: half h of the groups (0: groups 0 .. 3)
 
 OUT = Path(__file__).resolve().parents[2] / "platforms/f2/core/small_shell_cl_pnr_user.xdc"
 
@@ -84,15 +87,20 @@ def lines() -> list[str]:
     for g in range(GROUPS):
         for block in GROUP_BLOCKS:
             out.append(assign(group_slr(g), esc(f"{ENGINE}/{block}[{g}].") + "*"))
+    for h in range(2):
+        out.append(assign(h, esc(f"{ENGINE}/{HALF_BLOCK}[{h}].") + "*"))
     out.append("# ... and the rest of it (issue, step, drain) in SLR1")
-    exclude = [f"{ENGINE}/{b}*" for b in ("gen_dma", "gen_lane", *GROUP_BLOCKS)]
+    exclude = [f"{ENGINE}/{b}*" for b in ("gen_dma", "gen_lane", *GROUP_BLOCKS, HALF_BLOCK)]
     out.append(assign_filtered(1, f"{ENGINE}/*", exclude))
 
     out.append("")
     out.append("# The controller, the vector unit and the core's registers on its side")
+    # (core.sv's single done and error registers are left to the placer: one
+    # register, register to register either way, and a pattern that matched
+    # nothing would stop the build.)
     out.append(assign(1, f"{CORE}/u_controller"))
-    out.append(assign(1, f"{CORE}/eng_done_q_reg"))
-    out.append(assign(1, f"{CORE}/eng_err_q_reg"))
+    out.append(assign(1, f"{CORE}/u_vec_cmd0"))
+    out.append(assign(2, f"{CORE}/u_vec_cmd1"))
     out.append(assign(2, f"{CORE}/u_vec"))
     out.append(assign(2, f"{CORE}/xv_*"))
 
