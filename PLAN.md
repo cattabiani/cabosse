@@ -2165,7 +2165,8 @@ per command):
 platforms/f2/timing/vec_path.sv, reports/data/f2/2026-11-09-vec-path.txt;
 r6i.2xlarge 07:39-09:14 UTC, about $0.80, estimate):
 - The whole unit at the core's shape, every input and output registered.
-  Both runs meet 250 MHz with 0 failing of 322,702 endpoints, but not the
+  Both runs meet 250 MHz with 0 failing endpoints (of 322,702 and 322,495),
+  but not the
   0.1 ns margin (timing.tcl): worst slack +0.008 ns (shell flow) and
   +0.006 ns (explore flow, whole part). 254k LUTs, 227 DSPs.
 - Step 1b's paths are gone: no buffer address and no URAM read in the
