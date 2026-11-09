@@ -100,7 +100,7 @@ build_pid=$!
 # builds: bring-up 4 -0.674 placed, +0.001 phys_opt, +0.069 routed (met);
 # bring-up 3 -1.666, -1.195 (failed); core 2 -2.81, -2.706, -2.450. The
 # checkpoint of the step that stopped it is kept for the reports.
-abort= stop_dcp=
+abort= stop_dcp= linked=
 first_wns() {  # the first number after $1 in the Vivado log, without a trailing dot
   local w
   w=$(grep -m1 -o "$1[-0-9.]*" $vlog | sed "s/.*=//; s/\.$//")
@@ -114,6 +114,7 @@ while kill -0 $build_pid 2>/dev/null; do
   [ -n "$vlog" ] || continue
   if grep -q "^CRITICAL WARNING.*cl_pnr_user.xdc" $vlog; then
     abort="floorplan: $(grep -m1 '^CRITICAL WARNING.*cl_pnr_user.xdc' $vlog | cut -c1-300)"
+    linked=1  # keep the linked checkpoint: the patterns can be checked on it
   fi
   if [ -z "$placed" ]; then
     wns=$(first_wns "Post Placement Timing Summary WNS=")
@@ -158,6 +159,7 @@ ls -l
 routed=$(ls *.post_route.dcp 2>/dev/null | head -1)
 violated=$(ls *.post_route.VIOLATED.dcp 2>/dev/null | head -1)
 stopped=$([ -n "$stop_dcp" ] && ls *.$stop_dcp.dcp 2>/dev/null | head -1)
+linked=$([ -n "$linked" ] && ls *.post_link.dcp 2>/dev/null | head -1)
 tarball=$(ls *.Developer_CL.tar 2>/dev/null | head -1)
 # The build's own outputs first, before the reports' second Vivado session
 # (its time could meet the deadline).
@@ -166,6 +168,8 @@ aws s3 cp --only-show-errors --recursive $CL_DIR/build/reports/ "$S3/shell-repor
   echo "tarball $S3/$tarball"
 save
 mkdir -p /root/reports && cd /root/reports
+[ -n "$linked" ] && aws s3 cp --only-show-errors $CL_DIR/build/checkpoints/$linked "$S3/$linked" &&
+  echo "checkpoint $S3/$linked"
 if [ -n "$stopped" ]; then
   aws s3 cp --only-show-errors $CL_DIR/build/checkpoints/$stopped "$S3/$stopped" && echo "checkpoint $S3/$stopped"
 fi

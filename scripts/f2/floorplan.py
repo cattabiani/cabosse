@@ -58,8 +58,12 @@ HEADER = """\
 
 
 def esc(name: str) -> str:
-    """A cell name as a get_cells pattern: brackets escaped."""
-    return name.replace("[", "\\[").replace("]", "\\]")
+    """A cell name as a get_cells pattern: each bracket as ?, any one character.
+
+    Vivado kept "\\[" as two characters (core build 3 matched nothing), and
+    "?" matches the same names whether it reads "[" as literal or as a set.
+    """
+    return name.replace("[", "?").replace("]", "?")
 
 
 def assign(slr: int, pattern: str) -> str:
