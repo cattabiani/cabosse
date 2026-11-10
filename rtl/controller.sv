@@ -174,8 +174,8 @@ module controller #(
 
   // The reset's way: units_reset_o's register, UnitsResetDelay registers
   // to the units' flops, their registered done and err outputs (1),
-  // core.sv's registers on them (1), and 2 cycles spare.
-  localparam int unsigned SettleMargin = 1 + 1 + 1 + 2;
+  // core.sv's registers on them (1), err_in_q (1), and 2 cycles spare.
+  localparam int unsigned SettleMargin = 1 + 1 + 1 + 1 + 2;
   localparam int unsigned SettleCycles = UnitsResetDelay + SettleMargin;
   localparam int unsigned SettleW      = $clog2(SettleCycles + 1);
 
@@ -271,12 +271,26 @@ module controller #(
   logic [PcW-1:0]   pc_q, pc_d;
 
   // A RAM per word of a command (a plain simple dual-port RAM each, for
-  // Vivado to infer), read together.
+  // Vivado to infer), read together. The host's write reaches it through a
+  // register (M10: the wrapper's write valid to the RAMs' addresses, core
+  // build 5): a cycle after the write is taken, before the next write
+  // (bvalid_q) and so before a start.
+  logic             cb_we_q;
+  logic [2:0]       cb_word_q;
+  logic [CmdAW-1:0] cb_addr_q;
+  logic [31:0]      cb_data_q;
+  always_ff @(posedge clk_i) begin
+    cb_we_q   <= cb_we;
+    cb_word_q <= s_aw_addr_i[4:2];
+    cb_addr_q <= s_aw_addr_i[CmdAW+4:5];
+    cb_data_q <= s_w_data_i;
+  end
+
   for (genvar w = 0; w < 8; w++) begin : gen_bank
     logic [31:0] bank[Commands];
 
     always_ff @(posedge clk_i) begin
-      if (cb_we && s_aw_addr_i[4:2] == 3'(w)) bank[s_aw_addr_i[CmdAW+4:5]] <= s_w_data_i;
+      if (cb_we_q && cb_word_q == 3'(w)) bank[cb_addr_q] <= cb_data_q;
       cmd_q[w] <= bank[pc_d[CmdAW-1:0]];
     end
   end
@@ -351,6 +365,10 @@ module controller #(
   logic go_in_ready, go_out_valid, go_out_unit;
   logic [SeqW-1:0] go_out_seq;
   logic issuing, fire, fail_opcode, fail_mem, fail_end, end_now;
+  // The units' errors through a register here, beside the enables they
+  // drive (M10: core.sv's register to the sequencer's enables, core build 5).
+  logic err_in_q;
+  always_ff @(posedge clk_i) err_in_q <= eng_err_i || vec_err_i;
 
   assign all_done  = eng_issued_q == eng_done_q && vec_issued_q == vec_done_q && !go_out_valid;
   assign stop      = !is_eng && |(reads & written_q);
@@ -364,7 +382,7 @@ module controller #(
   assign fail_end    = issuing && (32'(pc_q) >= commands_q || pc_q >= PcW'(Commands));
   assign active      = issuing && !fail_end;
   assign fail_opcode = active && !known;
-  assign fail_mem    = issuing && (eng_err_i || vec_err_i);
+  assign fail_mem    = issuing && err_in_q;
   assign end_now     = active && op == OpEnd && all_done;
 
   assign eng_valid_o = active && is_eng && kv_ready && (!need_wait || go_in_ready);
