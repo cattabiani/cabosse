@@ -30,7 +30,11 @@ foreach slr {0 1 2} {
 puts $out "leaf cells in an SLR pblock: $assigned of $total"
 puts "CABOSSE-FIT leaf cells in an SLR pblock: $assigned of $total"
 close $out
-report_utilization -pblocks [get_pblocks pblock_slr*] -file pblocks.rpt
-foreach l [split [read [open pblocks.rpt]] \n] {
-  if {[regexp {^\| (CLB LUTs|CLB Registers|Block RAM|URAM|DSPs|Total|pblock)} $l]} {puts "CABOSSE-FIT $l"}
+foreach slr {0 1 2} {
+  report_utilization -pblocks [get_pblocks pblock_slr$slr] -file pblock_slr$slr.rpt
+  set fh [open pblock_slr$slr.rpt]
+  foreach l [split [read $fh] \n] {
+    if {[regexp {^\| (CLB LUTs|CLB Registers|Block RAM Tile|URAM|DSPs)} $l]} {puts "CABOSSE-FIT slr$slr $l"}
+  }
+  close $fh
 }
