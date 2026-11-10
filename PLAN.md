@@ -2291,6 +2291,34 @@ more cycles per command):
   checkpoint and runs only `fitcheck.tcl`, not the 1.5 h report set.
 - Not yet shown: that placement follows the pblocks and that the SLR
   crossings improve; that is the full build's job (owner OK, up to ~$15).
+- Core build 5 (2026-11-10, from #141; `reports/data/f2/2026-11-10-core5.txt`):
+  the pblocks took (no warning on our xdc; 1,582,541 of 1,626,487 leaf cells
+  in an SLR pblock; LUTs SLR0 69%, SLR1 85%, SLR2 56% of each pblock, URAM
+  in SLR2 80%). Post-place WNS -1.268 ns (build 4: -2.843), so the build
+  stopped at the -1.0 check. 10,924 failing endpoints, 53 below -1.0 ns.
+  Instance about 2.2 h of c6i.8xlarge, about $3.5; `report.tcl` on the
+  placed checkpoint, r6i.2xlarge about 45 min, about $0.5 (estimates).
+  Worst families (post-place, wire delays estimated):
+  - Engine, SLR0 to SLR1 with logic after the crossing (the risks named
+    above): lanes' `count_q` to `gen_wgroup[*].ok_q` (-1.27; 0.26 ns logic,
+    3.9 ns wire, -0.90 ns skew; lane 45's LUTs placed far across SLR0
+    first), `cur_q.lanes` and `iss_taken_q` to `ok_q`/`iss_grp_done_q`,
+    DMA `left_q` to the HBM AR stages (-0.95, 69 paths), `iss_ports_q` to
+    DMA `left_q` (-0.80, 240), drain `out_q` to the scale DSPs (-0.96,
+    136), lanes' `rd_ptr_q` to drain `out_q` (-0.84, 145).
+  - Engine x broadcast: `x_data_q` to `gen_group[*].x_q` (-0.96, 371).
+  - Vector unit (all in SLR2; met 250 MHz alone in step 2 at +0.008): the
+    chain's `st_q` to the next stage's multiplier DSP (-1.21, 720 paths;
+    12 levels, 2.55 ns logic), the FMA adder's `s2_q` to `y_o` (-0.90,
+    885), `y_o` to `st_q` (-0.93), `st_q` to `w_beat_q`, `ctl_q.part` to
+    `st_q`. Logic depth plus a crowded SLR2 (URAM 80%).
+  - Control: `eng_err_q` to the controller's `wseq_q` enables (-0.84, 264);
+    the wrapper's `w_out_q` to the controller's BRAM addresses (-0.80).
+  Next (proposal): RTL stages on these families, same bits: a register
+  after each SLR crossing before any logic (`ok_q` inputs, DMA AR and
+  `left_q`, drain to scale), the x broadcast through a register per SLR,
+  and one more pipeline stage in the chain's FMA (multiplier input and
+  adder normalize), checked on the `vec_path` harness first (~$1).
 
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
