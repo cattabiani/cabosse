@@ -18,42 +18,35 @@ if {$dcp ne ""} {open_checkpoint $dcp}
 set_param tcl.collectionResultDisplayLimit 0
 set out [open audit.rpt w]
 
-# The SLR of each clock region, then of each site, cached.
-set CR_SLR [dict create]
+# The SLR of every placed primitive, by name (three bulk queries; a query
+# per cell or per site is far too slow on this design).
+set CELL_SLR [dict create]
 foreach slr [get_slrs] {
-  foreach cr [get_clock_regions -of_objects $slr] {dict set CR_SLR $cr $slr}
-}
-set SITE_SLR [dict create]
-proc site_slr {site} {
-  global CR_SLR SITE_SLR
-  if {$site eq ""} {return unplaced}
-  if {![dict exists $SITE_SLR $site]} {
-    set cr [get_property -quiet CLOCK_REGION [get_sites -quiet $site]]
-    set slr [expr {[dict exists $CR_SLR $cr] ? [dict get $CR_SLR $cr] : ""}]
-    if {$slr eq ""} {set slr [get_slrs -quiet -of_objects [get_sites -quiet $site]]}
-    dict set SITE_SLR $site [expr {$slr eq "" ? "unknown" : $slr}]
-  }
-  return [dict get $SITE_SLR $site]
+  set t [clock seconds]
+  foreach c [get_property NAME [get_cells -quiet -of_objects $slr]] {dict set CELL_SLR $c $slr}
+  puts "CABOSSE-AUDIT $slr [expr {[clock seconds] - $t}] s, [dict size $CELL_SLR] cells so far"
 }
 
-# Primitives placed per SLR, from their sites, as "SLR0 n SLR1 n ..." sorted.
-proc slr_counts {locs} {
+# Primitives per SLR, as "SLR0 n SLR1 n ..." sorted.
+proc slr_counts {names} {
+  global CELL_SLR
   set counts [dict create]
-  foreach loc $locs {dict incr counts [site_slr $loc]}
+  foreach c $names {
+    dict incr counts [expr {[dict exists $CELL_SLR $c] ? [dict get $CELL_SLR $c] : "unplaced"}]
+  }
   return [lsort -stride 2 -index 0 $counts]
 }
 
-# The sites of the primitives under hierarchical cells (read inside each
-# cell's scope: names there are relative to it).
-proc locs_under {hier} {
-  set locs {}
+# The full names of the primitives under hierarchical cells.
+proc prims_under {hier} {
+  set names {}
   foreach h $hier {
     current_instance -quiet $h
     set prims [get_cells -quiet -hierarchical -filter {IS_PRIMITIVE}]
-    if {[llength $prims]} {lappend locs {*}[get_property LOC $prims]}
+    if {[llength $prims]} {lappend names {*}[get_property NAME $prims]}
     current_instance -quiet
   }
-  return $locs
+  return $names
 }
 
 # One floorplan line: its cells, what was kept, where they were placed.
@@ -64,13 +57,13 @@ proc audit_line {out n target expr} {
   set leaf [filter -quiet $cells {IS_PRIMITIVE}]
   set kept 0
   foreach v [get_property -quiet USER_SLR_ASSIGNMENT $hier] {if {$v eq $target} {incr kept}}
-  set locs [locs_under $hier]
-  set by [slr_counts $locs]
+  set prims [prims_under $hier]
+  set by [slr_counts $prims]
   set in [expr {[dict exists $by $target] ? [dict get $by $target] : 0}]
   incr tot_in $in
-  incr tot_all [llength $locs]
+  incr tot_all [llength $prims]
   puts $out "$n $target [llength $cells] [llength $hier] [llength $leaf] $kept\
-    $in/[llength $locs] {$by} | {[slr_counts [get_property -quiet LOC $leaf]]}"
+    $in/[llength $prims] {$by} | {[slr_counts [get_property -quiet NAME $leaf]]}"
 }
 
 puts $out "# line target matched hier leaf kept_on_hier placed_in_target/primitives by_slr (hier) | leaf by_slr"
@@ -82,6 +75,7 @@ foreach line [split [read $fh] \n] {
   incr n
   if {![regexp {^set_property USER_SLR_ASSIGNMENT (\S+) \[(.*)\]\s*$} $line -> target expr]} {continue}
   if {[catch {audit_line $out $n $target $expr} err]} {puts $out "$n $target error: $err"}
+  flush $out
 }
 close $fh
 puts $out "# hierarchical assignments followed: $tot_in of $tot_all primitives in their target SLR"
