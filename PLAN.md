@@ -2295,7 +2295,7 @@ more cycles per command):
   the pblocks took (no warning on our xdc; 1,582,541 of 1,626,487 leaf cells
   in an SLR pblock; LUTs SLR0 69%, SLR1 85%, SLR2 56% of each pblock, URAM
   in SLR2 80%). Post-place WNS -1.268 ns (build 4: -2.843), so the build
-  stopped at the -1.0 check. 10,924 failing endpoints, 53 below -1.0 ns.
+  stopped at the -1.0 check. 10,924 failing endpoints, 49 below -1.0 ns.
   Instance about 2.2 h of c6i.8xlarge, about $3.5; `report.tcl` on the
   placed checkpoint, r6i.2xlarge about 45 min, about $0.5 (estimates).
   Worst families (post-place, wire delays estimated):
