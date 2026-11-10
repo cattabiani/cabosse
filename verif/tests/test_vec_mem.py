@@ -137,7 +137,8 @@ def test_load_speed() -> None:
     took = int(result.done[0] - result.taken[0])
     groups = length // vector.LANES
     print(f"LOAD of {length} BF16: {took} cycles for {groups} groups")
-    assert took <= groups + 70, took  # the reader's start, the chain's 50 cycles, the done queue
+    # the reader's start, the chain's 78 cycles (50 before M10 step 5), the done queue
+    assert took <= groups + 98, took
 
 
 # K: a group, a row of 4 and 8 groups; V: 2 copies, 1 (m = L).

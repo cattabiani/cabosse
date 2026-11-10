@@ -47,16 +47,21 @@ ALL_PORTS = (*PORTS, pytest.param(WIDE, marks=pytest.mark.wide))
 # now on the write path); 62 before D-051's pipelined step and drain. With
 # margin. M10 step 1b: PopLat 6 -> 9 (x read 4 cycles), 3 more. M10 step
 # 4: the drain's group register and slot (2) and step's per-half register
-# (1), 3 more (measured: 140 cycles at 32 ports, the limit was 139).
-STARTUP_CYCLES = 86
+# (1), 3 more (measured: 140 cycles at 32 ports, the limit was 139). M10
+# step 5: registers after the SLR crossings (DMA offer and take, AR, the
+# per-half beat and x, the drain's group copy), 5 more (measured: 145 at 32
+# ports, the limit was 142).
+STARTUP_CYCLES = 91
 # M10 step 1b's cost, measured (PLAN.md, M10): with PopLat 9 a lane's row
 # buffer stays reserved 3 cycles longer, so short rows wait for one. Extra
 # cycles over the perf model: the back-to-back run's (whole run), a SCORES
 # command's at d = 16 (16-cycle rows). Option 1 of 2026-11-08: accepted for
 # now; x prefetch or LaneBanks = 3 would remove it. M10 step 4's per-half
 # register in step's estimates (Window + 1) adds 4 to the run (7 -> 11).
-SHORT_ROW_EXTRA_RUN = 11
-SHORT_ROW_EXTRA_SCORES = 18
+# M10 step 5 (PopLat + 1, a write group's 3 cycles between goes, the DMA
+# offer's round trip), measured: the run 11 -> 15, SCORES at d = 16 18 -> 27.
+SHORT_ROW_EXTRA_RUN = 15
+SHORT_ROW_EXTRA_SCORES = 27
 # Around a beat and the lane's shortest full-rate row.
 COLS = (1, 3, 4, 5, FULL_RATE_LEN - 1, FULL_RATE_LEN, FULL_RATE_LEN + 1, 64, 130)
 
