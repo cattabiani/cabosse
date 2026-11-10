@@ -2255,6 +2255,29 @@ more cycles per command):
   kind); on a floorplan stop the build keeps the linked checkpoint, so the
   patterns can be checked on it without a new build. (The per-SLR register
   chains stay registers: synth_cl.tcl's `-shreg_min_size 16`.)
+- Core build 4 (2026-11-09, from #139): stopped by the watch after
+  placement, WNS -2.843 ns (after phys_opt -1.941). Instance about 3.4 h,
+  about $5 (estimate): the reports and the checkpoint's upload after the
+  stop took about 1.5 h. Worst paths all cross SLR0 to SLR1 with logic on
+  them and 0.73-0.91 ns of clock skew: drain `out_q` to the scale DSPs,
+  HBM RVALID to the skid stages, the lanes' read pointers to their
+  operands, issue to the DMAs' address enables.
+- The floorplan did not take (audit on build 4's placed checkpoint,
+  `platforms/f2/timing/audit.tcl`, 2026-11-10; four r6i.2xlarge runs, about
+  $3 in all, estimate; the first three failed or ran out of time). Its 356
+  lines match 45,623 cells: 181 hierarchical, which keep the property, and
+  45,442 leaf cells (registers in generate blocks), where Vivado ignores
+  it (warning 12-8092). Of the 181, at least two were placed in another
+  SLR: HBM stage `gen_hbm[0].gen_r_pipe.u_r` (SLR0, placed in SLR1) and
+  lane 86 (SLR1, placed in SLR0); counting all of them did not finish in
+  55 min. The RTL's attributes took: `dont_touch` on all 488
+  `mul_fabric_q` cells, `max_fanout` 128 gave 1,280 replicas of
+  `load_we_q`, largest net 103 loads.
+- New rule (owner, 2026-11-10, AGENTS.md): only hints Vivado is shown to
+  apply. The soft SLR assignments go. Proposed next (owner to decide):
+  hard pblocks per SLR inside `pblock_CL`, which can hold leaf cells and
+  whose placement `report_utilization -pblocks` shows; and a build that
+  ends right after a failed check.
 
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate

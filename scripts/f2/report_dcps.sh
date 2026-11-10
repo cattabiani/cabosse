@@ -22,8 +22,12 @@ out=/var/log/cabosse.log
 exec > >(tee -a $out > /dev/console) 2>&1
 log=/var/log/cabosse-build.log
 
-save_log() {  # copy the log so far to S3, over the last copy
+save_log() {  # copy the log and each checkpoint's reports so far to S3
   aws s3 cp --only-show-errors $out "$S3/report-dcps.log"
+  for entry in $DCPS; do
+    [ -d "/root/${entry%%=*}" ] && aws s3 cp --only-show-errors --recursive "/root/${entry%%=*}" \
+      "$S3/${entry%%=*}/" --exclude "*" --include "*.rpt" --include "vivado.*"
+  done
 }
 { while sleep 300; do save_log; done & } >>$log 2>&1
 

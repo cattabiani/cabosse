@@ -190,6 +190,15 @@ These are proposed in M0 and will be confirmed when the first code is written
   (`max_fanout`, `dont_touch`, ...) are allowed in `rtl/` as timing or
   area hints only: the design must be correct without them, and each has
   a comment saying why.
+- **Only hints Vivado is shown to apply.** A constraint or attribute
+  (floorplan, `USER_SLR_ASSIGNMENT`, pblock, `max_fanout`, `dont_touch`,
+  ...) stays only if a build shows it was kept and followed:
+  `platforms/f2/timing/audit.tcl` reports what Vivado kept, and
+  `report_utilization -pblocks` where a pblock's cells went. A hint the
+  log says was ignored, or that placement does not follow, is removed,
+  not kept "in case it helps". Soft hints whose effect cannot be checked
+  (`USER_SLR_ASSIGNMENT`) are not used. Read every warning a build prints
+  about our constraint files.
 - Must pass `verilator --lint-only -Wall` with no warnings, or with
   waivers that each have a comment.
 
