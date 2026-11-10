@@ -4,8 +4,8 @@
 # What Vivado kept of our placement hints, on a placed or routed checkpoint
 # (into audit.rpt in the current directory):
 #   vivado -mode batch -source audit.tcl -tclargs placed.dcp [floorplan.xdc]
-# For each USER_SLR_ASSIGNMENT line of the floorplan: the cells it matches
-# (hierarchical or leaf) and whether the property is still on them; then the
+# For each add_cells_to_pblock line of the floorplan: the cells it matches
+# (hierarchical or leaf); then the
 # RTL's synthesis attributes. A hint that is not kept, or kept but not
 # followed, does nothing (AGENTS.md). Each line is written as soon as known.
 
@@ -26,17 +26,15 @@ set n 0
 set fh [open $xdc r]
 set text [read $fh]
 close $fh
-emit "# line target matched hier leaf hier_with_property"
+emit "# line pblock matched hier leaf"
 foreach line [split $text \n] {
   incr n
-  if {![regexp {^set_property USER_SLR_ASSIGNMENT (\S+) \[(.*)\]\s*$} $line -> target expr]} {continue}
+  if {![regexp {^add_cells_to_pblock (\S+) \[(.*)\]\s*$} $line -> target expr]} {continue}
   if {[catch {
     set cells [uplevel #0 $expr]
     set hier [filter -quiet $cells {!IS_PRIMITIVE}]
     set leaf [filter -quiet $cells {IS_PRIMITIVE}]
-    set kept 0
-    foreach v [get_property -quiet USER_SLR_ASSIGNMENT $hier] {if {$v eq $target} {incr kept}}
-    emit "$n $target [llength $cells] [llength $hier] [llength $leaf] $kept"
+    emit "$n $target [llength $cells] [llength $hier] [llength $leaf]"
   } err]} {emit "$n $target error: $err"}
 }
 progress "lines read"

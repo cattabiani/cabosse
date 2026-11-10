@@ -178,8 +178,8 @@ the bring-up: the host owns port 0 between tokens, the core during one.
   directly, and on the vector unit's AXI port, one per SLR it crosses
   (M10). A read takes 4 cycles more than with none on engine ports 1-31,
   3 on engine port 0, 9 for the vector unit.
-- `core/small_shell_cl_pnr_user.xdc`: the floorplan (soft SLR
-  assignments), written by `scripts/f2/floorplan.py`, which says what goes
+- `core/small_shell_cl_pnr_user.xdc`: the floorplan (one hard pblock per SLR
+  , written by `scripts/f2/floorplan.py`, which says what goes
   where and why; `build_cl.sh` copies it into AWS's flow.
 - `core/cabosse_core.sv`: the CL top, on `cl_shell.svh` as the bring-up's.
 - Build: `scripts/f2/build_cl.sh` with `DESIGN=core` (a 9 h deadline:
