@@ -2,7 +2,8 @@
 # Copyright 2026 The Cabosse Authors
 #
 # Does the floorplan fit? On a linked or placed checkpoint of the core in the
-# shell: read the floorplan (the build's own file), then report each SLR
+# shell: read the floorplan (the build's own file, unless the checkpoint has
+# it), then report each SLR
 # pblock's cells and utilization against what its clock regions hold:
 #   vivado -mode batch -source fitcheck.tcl -tclargs dcp.dcp [floorplan.xdc]
 # Writes fit.rpt, pblocks.rpt and (with a CABOSSE-FIT line each) the log.
@@ -13,7 +14,8 @@ set xdc [expr {[llength $argv] > 1 ? [lindex $argv 1] \
   : "[file dirname [file normalize [info script]]]/../core/small_shell_cl_pnr_user.xdc"}]
 open_checkpoint $dcp
 set_param tcl.collectionResultDisplayLimit 0
-read_xdc $xdc
+# a checkpoint from the build has the floorplan already
+if {[llength [get_pblocks -quiet pblock_slr0]] == 0} {read_xdc $xdc}
 set out [open fit.rpt w]
 set total [llength [get_cells -hierarchical -filter {IS_PRIMITIVE}]]
 puts $out "leaf cells in the design: $total"
