@@ -13,14 +13,17 @@
 // W-25) and sticky (the rest, ORed); the operands' own sticky bits stay below
 // them.
 //
-// Three register stages: align | add, count leading zeros | normalize,
-// round. A result leaves 3 cycles after its operands enter; valid_o marks it.
+// Regs register stages: align | add, count leading zeros | normalize, round
+// (Regs = 3, fp_pkg::AddLatency), or with a register between normalize and
+// round (Regs = 4). A result leaves Regs cycles after its operands enter;
+// valid_o marks it.
 
 module fp_add
   import fp_pkg::*;
 #(
-  parameter  int unsigned W   = SigW,
-  parameter  bit          Ftz = 1'b0,
+  parameter  int unsigned W    = SigW,
+  parameter  bit          Ftz  = 1'b0,
+  parameter  int unsigned Regs = AddLatency,  // 3 or 4
   localparam int unsigned OpW = W + 12,  // fp_pkg::operand_t's layout
   localparam int unsigned LzW = $clog2(W)
 ) (
@@ -139,20 +142,36 @@ module fp_add
 
   // A carry shifts right by one; otherwise shift left past the leading zeros,
   // but not below exponent 1 (a subnormal result keeps its leading zeros).
-  logic [W-1:0]   norm;
-  logic [8:0]     norm_exp;
+  // With Regs = 4 the normalized sum is registered (s3) before rounding.
+  typedef struct packed {
+    logic         valid;
+    logic         sign;
+    logic [W-1:0] norm;
+    logic [8:0]   exp;  // norm's
+    logic         nan;
+    logic         inf;
+  } s3_t;
+  s3_t            s3_d, s3;  // s3: s3_d, or its register when Regs = 4
   logic [LzW-1:0] left;
   always_comb begin
-    left = '0;
+    left       = '0;
+    s3_d.valid = s2_q.valid;
+    s3_d.sign  = s2_q.sign;
+    s3_d.nan   = s2_q.nan;
+    s3_d.inf   = s2_q.inf;
     if (s2_q.sum[W]) begin
-      norm     = {s2_q.sum[W:2], s2_q.sum[1] | s2_q.sum[0]};
-      norm_exp = s2_q.exp + 9'd1;
+      s3_d.norm = {s2_q.sum[W:2], s2_q.sum[1] | s2_q.sum[0]};
+      s3_d.exp  = s2_q.exp + 9'd1;
     end else begin
-      left     = (9'(s2_q.lz) < s2_q.exp) ? s2_q.lz : LzW'(s2_q.exp - 9'd1);
-      norm     = s2_q.sum[W-1:0] << left;
-      norm_exp = s2_q.exp - 9'(left);
+      left      = (9'(s2_q.lz) < s2_q.exp) ? s2_q.lz : LzW'(s2_q.exp - 9'd1);
+      s3_d.norm = s2_q.sum[W-1:0] << left;
+      s3_d.exp  = s2_q.exp - 9'(left);
     end
   end
+  logic [W-1:0] norm;
+  logic [8:0]   norm_exp;
+  assign norm     = s3.norm;
+  assign norm_exp = s3.exp;
 
   // Round at FP32's 24 bits; an all-ones significand that rounds up carries
   // into the exponent. From exponent 254 that gives exponent 255 and a zero
@@ -173,19 +192,31 @@ module fp_add
 
   logic [31:0] y_d;
   always_comb begin
-    if (s2_q.nan) y_d = CanonicalNaN;
-    else if (s2_q.inf || overflow) y_d = {s2_q.sign, 8'hFF, 23'h0};
-    else y_d = {s2_q.sign, sig[F32SigW-1] ? exp : 8'h00, sig[F32SigW-2:0]};  // a zero: sig = 0
+    if (s3.nan) y_d = CanonicalNaN;
+    else if (s3.inf || overflow) y_d = {s3.sign, 8'hFF, 23'h0};
+    else y_d = {s3.sign, sig[F32SigW-1] ? exp : 8'h00, sig[F32SigW-2:0]};  // a zero: sig = 0
     y_d = flush_f32(y_d, Ftz);  // after rounding, as the golden model
   end
 
   // --- Registers --------------------------------------------------------------
 
+  if (Regs != 3 && Regs != 4) begin : gen_bad_regs
+    $error("fp_add: Regs must be 3 or 4");
+  end
+  if (Regs == 4) begin : gen_s3_q
+    always_ff @(posedge clk_i) begin
+      s3 <= s3_d;
+      if (!rst_ni) s3.valid <= 1'b0;
+    end
+  end else begin : gen_s3_comb
+    assign s3 = s3_d;
+  end
+
   always_ff @(posedge clk_i) begin
     s1_q    <= s1_d;
     s2_q    <= s2_d;
     y_o     <= y_d;
-    valid_o <= s2_q.valid;
+    valid_o <= s3.valid;
     if (!rst_ni) begin
       s1_q.valid <= 1'b0;
       s2_q.valid <= 1'b0;

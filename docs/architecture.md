@@ -128,7 +128,8 @@ numerics.md, section 2, and the rsqrt, recip and exp of section 5.
 and the integer steps around it (`rtl/fp32_chain.sv`), that every
 operation flows through: add, multiply and FMA use the first stage, exp
 and rsqrt all seven, recip six. Every operation runs at one element per
-cycle per slot, with a latency of 50 cycles. The integer steps (exp's
+cycle per slot, with a latency of 78 cycles (M10: 5 registers in each
+FMA's multiply and 4 in its add for 250 MHz; 50 before). The integer steps (exp's
 rounding of t and its 2^i, the first guesses, exact halvings and scalings)
 need no FP unit. Area (Yosys for UltraScale+, scaled by M3's Vivado
 numbers for one FMA; an estimate until M8): about 9,500 LUTs and 14 DSPs a
@@ -137,8 +138,9 @@ slot, 152,000 LUTs and 224 DSPs for 16 (`scripts/measure_m6.py`).
 - Elementwise work (RoPE, SwiGLU, residual adds, the roundings to BF16)
   takes n ÷ 16 cycles.
 - A sum (RMSNorm's sum of squares, softmax's denominator) puts element `k`
-  into partial sum `k mod 128`. Each slot's adder owns 8 of the sums, so a
-  4-cycle add loop has slack. The 128 sums then go through the fixed tree of
+  into partial sum `k mod 128`. Each slot's adder owns 8 of the sums, so
+  its add loop has slack: the partial enters the first FMA at its adder
+  (after the multiply), and is back 6 cycles later. The 128 sums then go through the fixed tree of
   section 3: 7 levels, about 30 cycles once per sum.
 - `max` is exact, so its order is free.
 - Softmax is six primitive commands. A fused pass of its subtraction,

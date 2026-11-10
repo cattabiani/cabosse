@@ -35,9 +35,11 @@
 // A reduction (docs/numerics.md, sections 3 and 4): element k of a row goes
 // to partial k mod Partials, so lane l of a row's group g to partial
 // Lanes * (g mod Parts) + l, which slot l keeps in its file of Parts. SUM and
-// SUMSQ accumulate with the chain's first FMA (add(x, p), fma(x, x, p)), its
-// result back in the file MulRegs + 5 cycles later, before the partial's next
-// group (Parts >= MulRegs + 6). A row's first Parts groups start from +0 and
+// SUMSQ accumulate with the chain's first FMA (add(x, p), fma(x, x, p)), p
+// read as the FMA's late c (fp_mul_add), when it meets the product: its
+// result is back in the file AddRegs + 2 cycles later, before the
+// partial's next group reads it (Parts >= AddRegs + 2), whatever the
+// multiply's registers. A row's first Parts groups start from +0 and
 // a missing element keeps its partial, so a partial no element reaches stays
 // +0. MAX takes x through the same FMA (add(x, -0) = x; a NaN as the
 // canonical NaN, which max_f32 drops as it does any NaN) and keeps
@@ -107,7 +109,8 @@ module vec_unit
   parameter  logic [31:0]     Bf16Mask = 32'h4644,  // per id: X, QR, P, ATT, M (commands.buffers)
   parameter  logic [31:0]     Read2Mask = 32'h0,    // per id: a second read port (P: 32'h200)
   parameter  int unsigned     AddrW    = 20,
-  parameter  int unsigned     MulRegs  = 2,
+  parameter  int unsigned     MulRegs  = 5,    // the chain's FMAs (M10: 250 MHz in the full core)
+  parameter  int unsigned     AddRegs  = 4,
   parameter  int unsigned     Partials = 128,  // a reduction's partial sums, S (D-030)
   parameter  int unsigned     MemAddrW = 34,   // F2's HBM: 16 GiB
   parameter  int unsigned     KvPorts  = 32,   // the engine's ports: the KV cache's channels (D-062)
@@ -206,8 +209,8 @@ module vec_unit
   localparam int unsigned DoneW = $clog2(Dones + 1);
   localparam int unsigned Depth = (Len + Lanes - 1) / Lanes;  // a bank's entries
   localparam int unsigned DW = $clog2(Depth);
-  localparam int unsigned ChainLat = chain_latency(MulRegs);
-  localparam int unsigned AccLat = mul_add_latency(MulRegs) + 1;  // chain in to s1_y_o
+  localparam int unsigned ChainLat = chain_latency(MulRegs, AddRegs);
+  localparam int unsigned AccLat = mul_add_latency(MulRegs, AddRegs) + 1;  // chain in to s1_y_o
   localparam logic [31:0] NegZero = 32'h8000_0000;
 
   if (Lanes != 2 ** LW || Len < 2 * Lanes) begin : gen_lanes_check
@@ -216,8 +219,8 @@ module vec_unit
   if (Bufs > 32) begin : gen_bufs_check
     $error("Bufs must fit Bf16Mask's 32 bits");
   end
-  if (Partials != Parts * Lanes || Parts != 2 ** PW || Parts < AccLat + 1) begin : gen_parts_check
-    $error("Partials must be a power-of-two multiple of Lanes, at least MulRegs + 6 a slot");
+  if (Partials != Parts * Lanes || Parts != 2 ** PW || Parts < AddRegs + 2) begin : gen_parts_check
+    $error("Partials must be a power-of-two multiple of Lanes, at least AddRegs + 2 a slot");
   end
   if (KvPorts != 2 ** KvW || MemAddrW < ChanW + KvW) begin : gen_mem_check
     $error("KvPorts must be a power of two, MemAddrW hold its channels");
@@ -885,8 +888,12 @@ module vec_unit
     issued_t     sel_q;
     // verilator lint_on UNUSEDSIGNAL
     slot_ctl_t   ctl_q;
-    logic        rst_nq_s;
+    logic        rst_nq_s, late;
     logic [31:0] a_q, b_q, c_q, a, b, c, p;
+    // A sum's partial, read as the chain's late c (1 + MulRegs cycles after
+    // the group enters): the group's first and part, delayed to it.
+    logic          lp_first_q[MulRegs+1];
+    logic [PW-1:0] lp_part_q[MulRegs+1];
     always_ff @(posedge clk_i) begin
       sel_q    <= iss_q[RdLat-2];
       rst_nq_s <= rst_ni;
@@ -898,31 +905,43 @@ module vec_unit
                 : sel_q.b_per_row ? rd_data[sel_q.b][0] : rd_data[sel_q.b][l];
       c_q      <= rd_data[sel_q.c][l];
     end
+    always_ff @(posedge clk_i) begin
+      lp_first_q[0] <= ctl_q.first;
+      lp_part_q[0]  <= ctl_q.part;
+      for (int unsigned j = 1; j <= MulRegs; j++) begin
+        lp_first_q[j] <= lp_first_q[j-1];
+        lp_part_q[j]  <= lp_part_q[j-1];
+      end
+    end
+    assign p = lp_first_q[MulRegs] ? '0 : part_q[l][lp_part_q[MulRegs]];
     always_comb begin
       a = a_q;
       b = b_q;
       c = c_q;
       a[31] = a[31] ^ ctl_q.neg_a;  // exact sign flips; LOAD's a as it came
       b[31] = b[31] ^ ctl_q.neg_b;
-      p = ctl_q.first ? '0 : part_q[l][ctl_q.part];  // a sum's
+      late = ctl_q.red && !ctl_q.rmax;
       if (ctl_q.red) begin  // SUM: add(x, p); SUMSQ: fma(x, x, p); MAX: add(x, -0)
-        b = ctl_q.rmax ? NegZero : ctl_q.sumsq ? a : p;
-        c = p;
+        b = ctl_q.rmax ? NegZero : ctl_q.sumsq ? a : '0;  // p comes late, as c (an add's b)
+        c = '0;
       end
     end
     fp32_chain #(
-      .MulRegs(MulRegs)
+      .MulRegs(MulRegs),
+      .AddRegs(AddRegs)
     ) u_chain (
       .clk_i,
-      .rst_ni (rst_nq_s),
-      .valid_i(grp_valid_q),
-      .op_i   (ctl_q.op),
-      .a_i    (a),
-      .b_i    (b),
-      .c_i    (c),
-      .valid_o(slot_valid[l]),
-      .y_o    (y[l]),
-      .s1_y_o (s1_y[l])
+      .rst_ni  (rst_nq_s),
+      .valid_i (grp_valid_q),
+      .op_i    (ctl_q.op),
+      .a_i     (a),
+      .b_i     (b),
+      .c_i     (c),
+      .late_i  (late),
+      .c_late_i(p),
+      .valid_o (slot_valid[l]),
+      .y_o     (y[l]),
+      .s1_y_o  (s1_y[l])
     );
 
     // A reduction group's result into its partial: a sum's is the FMA's, a

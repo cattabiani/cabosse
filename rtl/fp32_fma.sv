@@ -7,14 +7,17 @@
 //   Fp32Add: y = a + b    = fma(a, 1, b)       (fp_pkg's op codes)
 //   Fp32Mul: y = a * b    = fma(a, b, -0)  (x + -0 = x for every x, -0 too)
 //   any other op_i (fma): y = a * b + c
-// fp_mul_add with M = 24 and MulRegs registers in the product (D-039:
-// 250 MHz on F2 needs them): a result leaves MulRegs + 4 cycles after its
-// operands enter; valid_o marks it.
+// fp_mul_add with M = 24, MulRegs registers in the product (D-039: 250 MHz
+// on F2 needs them) and AddRegs in the add: a result leaves
+// mul_add_latency(MulRegs, AddRegs) cycles after its operands enter;
+// valid_o marks it. late_i, c_late_i: fp_mul_add's late c, which replaces
+// the fma's c (b for Fp32Add) MulRegs cycles after the operands enter.
 
 module fp32_fma
   import fp_pkg::*;
 #(
   parameter int unsigned MulRegs = 2,
+  parameter int unsigned AddRegs = AddLatency,
   parameter bit          Ftz     = 1'b0  // flush-to-zero variant (fp_mul_add)
 ) (
   input  logic        clk_i,
@@ -24,6 +27,8 @@ module fp32_fma
   input  logic [31:0] a_i,
   input  logic [31:0] b_i,
   input  logic [31:0] c_i,
+  input  logic        late_i,
+  input  logic [31:0] c_late_i,
   output logic        valid_o,
   output logic [31:0] y_o
 );
@@ -43,6 +48,7 @@ module fp32_fma
   fp_mul_add #(
     .M      (24),
     .MulRegs(MulRegs),
+    .AddRegs(AddRegs),
     .Ftz    (Ftz)
   ) u_fma (
     .clk_i,
@@ -51,6 +57,8 @@ module fp32_fma
     .a_i(fa),
     .b_i(fb),
     .c_i(fc),
+    .late_i,
+    .c_late_i,
     .valid_o,
     .y_o
   );
