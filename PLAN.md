@@ -2274,10 +2274,23 @@ more cycles per command):
   `mul_fabric_q` cells, `max_fanout` 128 gave 1,280 replicas of
   `load_we_q`, largest net 103 loads.
 - New rule (owner, 2026-11-10, AGENTS.md): only hints Vivado is shown to
-  apply. The soft SLR assignments go. Proposed next (owner to decide):
-  hard pblocks per SLR inside `pblock_CL`, which can hold leaf cells and
-  whose placement `report_utilization -pblocks` shows; and a build that
-  ends right after a failed check.
+  apply. The soft SLR assignments are gone: `floorplan.py` now writes one
+  hard child pblock per SLR inside `pblock_CL` (ranges clipped to the SLR's
+  rows, as literals: an xdc has no loops; `IS_SOFT FALSE`), with every
+  former assignment as `add_cells_to_pblock`.
+- Fit check (2026-11-10, `platforms/f2/timing/fitcheck.tcl` on build 4's
+  placed checkpoint, r6i.2xlarge, 3 short runs, about $0.5 in all,
+  estimate; `reports/data/f2/2026-11-10-fit-check.txt`): all patterns
+  match; 1,582,585 of 1,626,584 leaf cells (97%) are in an SLR pblock (the
+  rest are the shell's and cells no line covers). CLB LUTs against what the
+  pblock holds: SLR0 263k of 384k (69%), SLR1 275k of 324k (85%), SLR2 244k
+  of 430k (57%). SLR1 is tight for routing; groups are about 55k LUTs, so
+  moving one whole group does not balance it (a split by lane would).
+  `analyze.tcl`'s cells-per-SLR report is superseded.
+- A build that stops early (floorplan or WNS check) now keeps the placed
+  checkpoint and runs only `fitcheck.tcl`, not the 1.5 h report set.
+- Not yet shown: that placement follows the pblocks and that the SLR
+  crossings improve; that is the full build's job (owner OK, up to ~$15).
 
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate

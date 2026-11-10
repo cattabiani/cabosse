@@ -7,7 +7,9 @@ import re
 
 import floorplan
 
-LANE_OR_DMA = re.compile(r"SLR(\d) \[get_cells \{.*/u_engine/gen_(lane|dma)\?(\d+)\?\.\*\}\]")
+LANE_OR_DMA = re.compile(
+    r"pblock_slr(\d) \[get_cells \{.*/u_engine/gen_(lane|dma)\?(\d+)\?\.\*\}\]"
+)
 
 
 def test_committed_file_is_current() -> None:

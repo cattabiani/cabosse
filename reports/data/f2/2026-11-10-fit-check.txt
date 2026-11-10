@@ -1,0 +1,38 @@
+CABOSSE-FIT pblock_slr0: parent pblock_CL, IS_SOFT 0, ranges ..., leaf cells 561473
+CABOSSE-FIT pblock_slr1: parent pblock_CL, IS_SOFT 0, ranges ..., leaf cells 570065
+CABOSSE-FIT pblock_slr2: parent pblock_CL, IS_SOFT 0, ranges ..., leaf cells 451047
+CABOSSE-FIT leaf cells in an SLR pblock: 1582585 of 1626584
+CABOSSE-FIT slr0 | CLB LUTs                   | 263474 |     0 |            0 | 263474 |     0 |        448 |    384032 | 68.61 |
+CABOSSE-FIT slr0 | CLB Registers              | 225851 |     0 |            0 | 225851 |     0 |        896 |    768064 | 29.41 |
+CABOSSE-FIT slr0 | CLB Registers                              | 225851 |     0 |            0 | 225851 |     0 |        896 |    768064 |  29.41 |
+CABOSSE-FIT slr0 | Block RAM Tile    |    2.5 |     0 |            0 |  2.5 |     0 |          0 |       600 |  0.42 |
+CABOSSE-FIT slr0 | URAM              |      0 |     0 |            0 |    0 |     0 |          0 |       288 |  0.00 |
+CABOSSE-FIT slr0 | DSPs      |      0 |     0 |            0 |    0 |     0 |          0 |      2544 |  0.00 |
+CABOSSE-FIT slr0 | CLB LUTs                   | 131387 | 82075 | 50012 |  29.88 |  19.00 |  11.58 |
+CABOSSE-FIT slr0 | CLB Registers              | 114892 | 67783 | 43176 |  13.07 |   7.85 |   5.00 |
+CABOSSE-FIT slr0 | Block RAM Tile             |    2.5 |     0 |     0 |   0.37 |   0.00 |   0.00 |
+CABOSSE-FIT slr0 | URAM                       |      0 |     0 |     0 |   0.00 |   0.00 |   0.00 |
+CABOSSE-FIT slr0 | DSPs                       |      0 |     0 |     0 |   0.00 |   0.00 |   0.00 |
+CABOSSE-FIT slr1 | CLB LUTs                   | 274823 |     0 |            0 | 274823 |     0 |          0 |    324000 | 84.82 |
+CABOSSE-FIT slr1 | CLB Registers              | 220932 |     0 |            0 | 220932 |     0 |          0 |    648000 | 34.09 |
+CABOSSE-FIT slr1 | CLB Registers                              | 220932 |     0 |            0 | 220932 |     0 |          0 |    648000 |  34.09 |
+CABOSSE-FIT slr1 | Block RAM Tile    |   12.5 |     0 |            0 | 12.5 |     0 |          0 |       516 |  2.42 |
+CABOSSE-FIT slr1 | URAM              |      0 |     0 |            0 |    0 |     0 |          0 |       256 |  0.00 |
+CABOSSE-FIT slr1 | DSPs           |     16 |     0 |            0 |   16 |     0 |          0 |      2376 |  0.67 |
+CABOSSE-FIT slr1 | CLB LUTs                   | 163106 | 45116 | 66601 |  37.10 |  10.44 |  15.42 |
+CABOSSE-FIT slr1 | CLB Registers              | 132884 | 30420 | 57628 |  15.11 |   3.52 |   6.67 |
+CABOSSE-FIT slr1 | Block RAM Tile             |      0 |  12.5 |     0 |   0.00 |   1.86 |   0.00 |
+CABOSSE-FIT slr1 | URAM                       |      0 |     0 |     0 |   0.00 |   0.00 |   0.00 |
+CABOSSE-FIT slr1 | DSPs                       |      0 |    16 |     0 |   0.00 |   0.52 |   0.00 |
+CABOSSE-FIT slr2 | CLB LUTs                   | 244397 |     0 |            0 | 244397 |     0 |        392 |    429688 | 56.88 |
+CABOSSE-FIT slr2 | CLB Registers              | 174743 |     0 |            0 | 174743 |     0 |        784 |    859376 | 20.33 |
+CABOSSE-FIT slr2 | CLB Registers                              | 174743 |     0 |            0 | 174743 |     0 |        784 |    859376 | 20.33 |
+CABOSSE-FIT slr2 | Block RAM Tile    |    192 |     0 |            0 |  192 |     0 |          0 |       672 | 28.57 |
+CABOSSE-FIT slr2 | URAM              |    256 |     0 |            0 |  256 |     0 |          0 |       320 | 80.00 |
+CABOSSE-FIT slr2 | DSPs           |    227 |     0 |            0 |  227 |     0 |          0 |      3072 |  7.39 |
+CABOSSE-FIT slr2 | URAM288  |    256 |            BLOCKRAM |
+CABOSSE-FIT slr2 | CLB LUTs                   | 11406 | 60988 | 172003 |   2.59 |  14.12 |  39.82 |
+CABOSSE-FIT slr2 | CLB Registers              |  7215 | 40006 | 127522 |   0.82 |   4.63 |  14.76 |
+CABOSSE-FIT slr2 | Block RAM Tile             |     0 |   192 |      0 |   0.00 |  28.57 |   0.00 |
+CABOSSE-FIT slr2 | URAM                       |    80 |   176 |      0 |  25.00 |  55.00 |   0.00 |
+CABOSSE-FIT slr2 | DSPs                       |     0 |     3 |    224 |   0.00 |   0.10 |   7.29 |

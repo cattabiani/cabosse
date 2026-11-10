@@ -174,7 +174,13 @@ if [ -n "$stopped" ]; then
   aws s3 cp --only-show-errors $CL_DIR/build/checkpoints/$stopped "$S3/$stopped" && echo "checkpoint $S3/$stopped"
 fi
 dcp=${routed:-${violated:-$stopped}}
-if [ -n "$dcp" ]; then
+if [ -n "$dcp" ] && [ -n "$abort" ] && [ "$DESIGN" = core ]; then
+  # Stopped early: only the floorplan's fit (cells and utilization per SLR
+  # pblock); the full reports took 1.5 h. The checkpoint is kept above.
+  vivado -mode batch -nojournal -log fit.log -source /root/cabosse/platforms/f2/timing/fitcheck.tcl \
+    -tclargs $CL_DIR/build/checkpoints/$dcp > fit.out 2>&1
+  grep "^CABOSSE-FIT" fit.log
+elif [ -n "$dcp" ]; then
   vivado -mode batch -nojournal -log report.log \
     -source /root/cabosse/platforms/f2/timing/report.tcl \
     -tclargs $CL_DIR/build/checkpoints/$dcp > report.out 2>&1

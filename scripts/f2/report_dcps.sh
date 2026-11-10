@@ -67,6 +67,7 @@ for entry in $DCPS; do
   name=${entry%%=*}
   echo "CABOSSE-BEGIN $name"
   grep -E "^(ERROR|CRITICAL WARNING)" /root/$name/vivado.log | head -10
+  grep "^CABOSSE-FIT" /root/$name/vivado.log
   grep "^CABOSSE-ANALYZE" /root/$name/vivado.log
   sed -n '/WNS(ns)/,+3p' /root/$name/timing_summary.rpt 2>/dev/null | head -4
   cat /root/$name/slack_histogram.rpt 2>/dev/null
