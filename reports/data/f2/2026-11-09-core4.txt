@@ -1,0 +1,454 @@
+# Core build 4 (main 82db10b, 2026-11-09) and the floorplan audit (2026-11-10).
+# From s3://cabosse-builds-628837661672/dcp/2026-11-09-core4/ (cabosse.log, reports/, audit/core4/audit.rpt).
+
+## cabosse.log
+post-place WNS -2.843 (2026-11-09T22:31:33Z)
+stopping the build: post-place WNS -2.843 < -1.0
+INFO: [Place 46-19] Post Replication Timing Summary WNS=-1.941. For the most accurate timing information please run report_timing.
+CABOSSE-RESULT fail stopped early: post-place WNS -2.843 < -1.0
+
+## reports/utilization_slr.rpt (CLB LUTs, registers, URAM, DSP per SLR)
+| CLB LUTs                   | 307313 | 198941 | 289946 |  69.89 |  46.05 |  67.12 |
+| CLB Registers              | 256769 | 158230 | 229091 |  29.20 |  18.31 |  26.52 |
+| URAM                       |     80 |    176 |      0 |  25.00 |  55.00 |   0.00 |
+| DSPs                       |      0 |     19 |    224 |   0.00 |   0.62 |   7.29 |
+
+## reports/slack_histogram.rpt
+# paths (one per endpoint) per slack bin, ns from the bin's lower edge, under 0.2 ns
+-1.95 61
+-1.90 139
+-1.85 187
+-1.80 258
+-1.75 310
+-1.70 256
+-1.65 296
+-1.60 262
+-1.55 243
+-1.50 371
+-1.45 405
+-1.40 407
+-1.35 351
+-1.30 323
+-1.25 362
+-1.20 305
+-1.15 299
+-1.10 382
+-1.05 523
+-1.00 601
+-0.95 612
+-0.90 522
+-0.85 467
+-0.80 425
+-0.75 397
+-0.70 457
+-0.65 632
+-0.60 578
+-0.55 528
+-0.50 603
+-0.45 781
+-0.40 863
+-0.35 773
+-0.30 1038
+-0.25 1242
+-0.20 1321
+-0.15 1346
+-0.10 1588
+-0.05 2027
+0.00 2285
+0.05 2662
+0.10 3034
+0.15 2999
+0.20 16
+
+## worst path families (cabosse.log, post-phys_opt)
+-1.941 136 WRAPPER/CL/u_core/u_core/u_engine/gen_drain[*].out_q_reg[*][*]/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_scale[*].u_mul/u_fma/u_mul/gen_mul_qqq.mul_dsp_q_reg[prod]/DSP_A_B_DATA_INST/B[*]
+-1.934 1 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/gen_hbm[*].gen_r_pipe.u_r/gen_stag
+-1.933 289 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_w/gen_stage[*].skid_q_reg[*]/C
+-1.925 1 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/gen_hbm[*].gen_r_pipe.u_r/gen_stag
+-1.920 230 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<1>_INST/HBM_SNGLBLI_INTF_AXI<9>_INST/ACLK -> WRAPPER/CL/u_core/gen_hbm[*].gen_r_regs.data0_q_re
+-1.920 243 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<1>_INST/HBM_SNGLBLI_INTF_AXI<10>_INST/ACLK -> WRAPPER/CL/u_core/gen_hbm[*].gen_r_regs.data0_q_r
+-1.917 37 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_aw/gen_stage[*].skid_q_reg[*]/C
+-1.916 289 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_w/gen_stage[*].out_q_reg[*]/CE
+-1.915 248 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<1>_INST/HBM_SNGLBLI_INTF_AXI<11>_INST/ACLK -> WRAPPER/CL/u_core/gen_hbm[*].gen_r_regs.data0_q_r
+-1.915 30 WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].a_q_reg[*]/C -> WRAPPER/CL/u_core/u_core/u_vec/gen_slot[*].u_chain/gen_stage[*].d_q_reg[*][special][*]_srl32/D
+-1.914 259 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/gen_hbm[*].gen_r_pipe.u_r/gen_st
+-1.914 475 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/pair_q_reg[*]/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+-1.910 29 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/pair_q_reg[*]_replica/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+-1.908 216 WRAPPER/CL/u_core/u_core/u_engine/x_data_q_reg[*][*][*]/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_group[*].x_q_reg[*][*][*][*]/D
+-1.899 239 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+-1.887 75 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/pair_q_reg[*]_rep/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+-1.878 256 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<2>_INST/ACLK -> WRAPPER/CL/u_core/gen_hbm[*].gen_r_regs.data0_q_re
+-1.871 256 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/gen_hbm[*].gen_r_pipe.u_r/gen_st
+-1.866 6 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/pair_q_reg[*]_rep_replica/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+-1.853 256 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<1>_INST/HBM_SNGLBLI_INTF_AXI<2>_INST/ACLK -> WRAPPER/CL/u_core/gen_hbm[*].gen_r_regs.data0_q_re
+-1.842 481 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/pair_q_reg[*]/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+-1.837 6 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/reserved_q_reg[*]/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_seen[*].grp_res_q_reg[*][*]/D
+-1.820 10 WRAPPER/CL/u_core/u_core/u_engine/cover_q_reg[*][*]/C -> WRAPPER/CL/u_core/u_core/u_engine/est_q_reg[*]/D
+-1.814 244 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+-1.812 456 WRAPPER/CL/u_core/u_core/u_engine/iss_ports_q_reg[*][*]/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_dma[*].u_dma/addr_q_reg[*]/CE
+-1.810 38 WRAPPER/CL/u_hbm/inst/TWO_STACK.u_hbm_top/TWO_STACK_HBM.hbm_two_stack_intf/HBM_ONE_STACK_INTF<0>_INST/HBM_SNGLBLI_INTF_AXI<0>_INST/ACLK -> WRAPPER/CL/u_core/u_aw/gen_stage[*].out_q_reg[*]/CE
+-1.808 80 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/pair_q_reg[*]_rep/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+-1.806 94 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_rep/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/op_a_q_reg[*]/D
+-1.804 21 WRAPPER/CL/u_core/u_core/u_engine/gen_group[*].pipe_q_reg[*][valid]/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/tag_q_reg[*][valid]/D
+-1.804 65 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/read_ptr_q_reg[*]_rep/C -> WRAPPER/CL/u_core/u_core/u_engine/gen_lane[*].u_lane/op_b_q_reg[*]/D
+
+## audit/core4/audit.rpt
+# line target matched hier leaf hier_with_property
+8 SLR0 2 1 1 1
+9 SLR0 2 1 1 1
+10 SLR0 2 1 1 1
+11 SLR0 2 1 1 1
+12 SLR0 2 1 1 1
+13 SLR0 2 1 1 1
+14 SLR0 2 1 1 1
+15 SLR0 2 1 1 1
+16 SLR0 2 1 1 1
+17 SLR0 2 1 1 1
+18 SLR0 2 1 1 1
+19 SLR0 2 1 1 1
+20 SLR0 2 1 1 1
+21 SLR0 2 1 1 1
+22 SLR0 2 1 1 1
+23 SLR0 2 1 1 1
+24 SLR0 2 1 1 1
+25 SLR0 2 1 1 1
+26 SLR0 2 1 1 1
+27 SLR0 2 1 1 1
+28 SLR0 2 1 1 1
+29 SLR0 2 1 1 1
+30 SLR0 2 1 1 1
+31 SLR0 2 1 1 1
+32 SLR0 2 1 1 1
+33 SLR0 2 1 1 1
+34 SLR0 2 1 1 1
+35 SLR0 2 1 1 1
+36 SLR0 2 1 1 1
+37 SLR0 2 1 1 1
+38 SLR0 2 1 1 1
+39 SLR0 2 1 1 1
+40 SLR0 2 1 1 1
+41 SLR0 2 1 1 1
+42 SLR0 2 1 1 1
+43 SLR0 2 1 1 1
+44 SLR0 2 1 1 1
+45 SLR0 2 1 1 1
+46 SLR0 2 1 1 1
+47 SLR0 2 1 1 1
+48 SLR0 2 1 1 1
+49 SLR0 2 1 1 1
+50 SLR0 2 1 1 1
+51 SLR0 2 1 1 1
+52 SLR0 2 1 1 1
+53 SLR0 2 1 1 1
+54 SLR0 2 1 1 1
+55 SLR0 2 1 1 1
+56 SLR0 2 1 1 1
+57 SLR0 2 1 1 1
+58 SLR0 2 1 1 1
+59 SLR0 2 1 1 1
+60 SLR0 2 1 1 1
+61 SLR0 2 1 1 1
+62 SLR0 2 1 1 1
+63 SLR0 2 1 1 1
+64 SLR0 2 1 1 1
+65 SLR0 2 1 1 1
+66 SLR0 2 1 1 1
+67 SLR0 2 1 1 1
+68 SLR0 2 1 1 1
+69 SLR0 2 1 1 1
+70 SLR0 2 1 1 1
+71 SLR0 2 1 1 1
+72 SLR0 2 1 1 1
+73 SLR0 2 1 1 1
+74 SLR0 2 1 1 1
+75 SLR0 2 1 1 1
+76 SLR0 2 1 1 1
+77 SLR0 2 1 1 1
+78 SLR0 2 1 1 1
+79 SLR0 2 1 1 1
+80 SLR0 2 1 1 1
+81 SLR0 2 1 1 1
+82 SLR0 2 1 1 1
+83 SLR0 2 1 1 1
+84 SLR0 2 1 1 1
+85 SLR0 2 1 1 1
+86 SLR0 2 1 1 1
+87 SLR0 2 1 1 1
+88 SLR1 2 1 1 1
+89 SLR1 2 1 1 1
+90 SLR1 2 1 1 1
+91 SLR1 2 1 1 1
+92 SLR1 2 1 1 1
+93 SLR1 2 1 1 1
+94 SLR1 2 1 1 1
+95 SLR1 2 1 1 1
+96 SLR1 2 1 1 1
+97 SLR1 2 1 1 1
+98 SLR1 2 1 1 1
+99 SLR1 2 1 1 1
+100 SLR1 2 1 1 1
+101 SLR1 2 1 1 1
+102 SLR1 2 1 1 1
+103 SLR1 2 1 1 1
+104 SLR1 2 1 1 1
+105 SLR1 2 1 1 1
+106 SLR1 2 1 1 1
+107 SLR1 2 1 1 1
+108 SLR1 2 1 1 1
+109 SLR1 2 1 1 1
+110 SLR1 2 1 1 1
+111 SLR1 2 1 1 1
+112 SLR1 2 1 1 1
+113 SLR1 2 1 1 1
+114 SLR1 2 1 1 1
+115 SLR1 2 1 1 1
+116 SLR1 2 1 1 1
+117 SLR1 2 1 1 1
+118 SLR1 2 1 1 1
+119 SLR1 2 1 1 1
+120 SLR1 2 1 1 1
+121 SLR1 2 1 1 1
+122 SLR1 2 1 1 1
+123 SLR1 2 1 1 1
+124 SLR1 2 1 1 1
+125 SLR1 2 1 1 1
+126 SLR1 2 1 1 1
+127 SLR1 2 1 1 1
+128 SLR1 2 1 1 1
+129 SLR1 2 1 1 1
+130 SLR1 2 1 1 1
+131 SLR1 2 1 1 1
+132 SLR1 2 1 1 1
+133 SLR1 2 1 1 1
+134 SLR1 2 1 1 1
+135 SLR1 2 1 1 1
+136 SLR1 2 1 1 1
+137 SLR1 2 1 1 1
+138 SLR1 2 1 1 1
+139 SLR1 2 1 1 1
+140 SLR1 2 1 1 1
+141 SLR1 2 1 1 1
+142 SLR1 2 1 1 1
+143 SLR1 2 1 1 1
+144 SLR1 1 1 0 1
+145 SLR1 2 1 1 1
+146 SLR1 2 1 1 1
+147 SLR1 2 1 1 1
+148 SLR1 2 1 1 1
+149 SLR1 2 1 1 1
+150 SLR1 2 1 1 1
+151 SLR1 2 1 1 1
+152 SLR1 2 1 1 1
+153 SLR1 2 1 1 1
+154 SLR1 2 1 1 1
+155 SLR1 2 1 1 1
+156 SLR1 2 1 1 1
+157 SLR1 2 1 1 1
+158 SLR1 2 1 1 1
+159 SLR1 2 1 1 1
+160 SLR1 2 1 1 1
+161 SLR1 2 1 1 1
+162 SLR1 2 1 1 1
+163 SLR1 2 1 1 1
+164 SLR1 2 1 1 1
+165 SLR1 2 1 1 1
+166 SLR1 2 1 1 1
+167 SLR1 2 1 1 1
+168 SLR0 775 0 775 0
+169 SLR0 14 0 14 0
+170 SLR0 257 0 257 0
+171 SLR0 841 0 841 0
+172 SLR0 14 0 14 0
+173 SLR0 257 0 257 0
+174 SLR0 840 0 840 0
+175 SLR0 14 0 14 0
+176 SLR0 257 0 257 0
+177 SLR0 842 0 842 0
+178 SLR0 14 0 14 0
+179 SLR0 257 0 257 0
+180 SLR1 841 0 841 0
+181 SLR1 14 0 14 0
+182 SLR1 257 0 257 0
+183 SLR1 840 0 840 0
+184 SLR1 14 0 14 0
+185 SLR1 257 0 257 0
+186 SLR1 841 0 841 0
+187 SLR1 14 0 14 0
+188 SLR1 257 0 257 0
+189 SLR1 841 0 841 0
+190 SLR1 14 0 14 0
+191 SLR1 257 0 257 0
+192 SLR0 64 0 64 0
+193 SLR1 64 0 64 0
+195 SLR1 4915 11 4904 11
+198 SLR1 1 1 0 1
+199 SLR1 1 1 0 1
+200 SLR2 1 1 0 1
+201 SLR2 1 1 0 1
+202 SLR2 447 0 447 0
+205 SLR0 120 0 120 0
+206 SLR0 120 0 120 0
+207 SLR0 1 1 0 1
+208 SLR0 105 0 105 0
+209 SLR0 102 0 102 0
+210 SLR0 259 0 259 0
+211 SLR0 259 0 259 0
+212 SLR0 105 0 105 0
+213 SLR0 102 0 102 0
+214 SLR0 259 0 259 0
+215 SLR0 260 0 260 0
+216 SLR0 105 0 105 0
+217 SLR0 102 0 102 0
+218 SLR0 259 0 259 0
+219 SLR0 259 0 259 0
+220 SLR0 105 0 105 0
+221 SLR0 102 0 102 0
+222 SLR0 259 0 259 0
+223 SLR0 259 0 259 0
+224 SLR0 105 0 105 0
+225 SLR0 102 0 102 0
+226 SLR0 259 0 259 0
+227 SLR0 259 0 259 0
+228 SLR0 105 0 105 0
+229 SLR0 102 0 102 0
+230 SLR0 259 0 259 0
+231 SLR0 259 0 259 0
+232 SLR0 105 0 105 0
+233 SLR0 102 0 102 0
+234 SLR0 259 0 259 0
+235 SLR0 259 0 259 0
+236 SLR0 105 0 105 0
+237 SLR0 102 0 102 0
+238 SLR0 259 0 259 0
+239 SLR0 259 0 259 0
+240 SLR0 105 0 105 0
+241 SLR0 102 0 102 0
+242 SLR0 259 0 259 0
+243 SLR0 260 0 260 0
+244 SLR0 105 0 105 0
+245 SLR0 102 0 102 0
+246 SLR0 259 0 259 0
+247 SLR0 259 0 259 0
+248 SLR0 105 0 105 0
+249 SLR0 102 0 102 0
+250 SLR0 259 0 259 0
+251 SLR0 260 0 260 0
+252 SLR0 105 0 105 0
+253 SLR0 102 0 102 0
+254 SLR0 259 0 259 0
+255 SLR0 259 0 259 0
+256 SLR0 105 0 105 0
+257 SLR0 102 0 102 0
+258 SLR0 259 0 259 0
+259 SLR0 259 0 259 0
+260 SLR0 105 0 105 0
+261 SLR0 102 0 102 0
+262 SLR0 259 0 259 0
+263 SLR0 259 0 259 0
+264 SLR0 105 0 105 0
+265 SLR0 102 0 102 0
+266 SLR0 259 0 259 0
+267 SLR0 259 0 259 0
+268 SLR0 105 0 105 0
+269 SLR1 102 0 102 0
+270 SLR0 259 0 259 0
+271 SLR1 259 0 259 0
+272 SLR0 105 0 105 0
+273 SLR1 102 0 102 0
+274 SLR0 259 0 259 0
+275 SLR1 259 0 259 0
+276 SLR0 105 0 105 0
+277 SLR1 102 0 102 0
+278 SLR0 259 0 259 0
+279 SLR1 259 0 259 0
+280 SLR0 105 0 105 0
+281 SLR1 102 0 102 0
+282 SLR0 259 0 259 0
+283 SLR1 260 0 260 0
+284 SLR0 105 0 105 0
+285 SLR1 102 0 102 0
+286 SLR0 259 0 259 0
+287 SLR1 259 0 259 0
+288 SLR0 105 0 105 0
+289 SLR1 102 0 102 0
+290 SLR0 259 0 259 0
+291 SLR1 259 0 259 0
+292 SLR0 105 0 105 0
+293 SLR1 102 0 102 0
+294 SLR0 259 0 259 0
+295 SLR1 259 0 259 0
+296 SLR0 105 0 105 0
+297 SLR1 102 0 102 0
+298 SLR0 259 0 259 0
+299 SLR1 259 0 259 0
+300 SLR0 105 0 105 0
+301 SLR1 102 0 102 0
+302 SLR0 259 0 259 0
+303 SLR1 259 0 259 0
+304 SLR0 105 0 105 0
+305 SLR1 102 0 102 0
+306 SLR0 259 0 259 0
+307 SLR1 259 0 259 0
+308 SLR0 105 0 105 0
+309 SLR1 102 0 102 0
+310 SLR0 259 0 259 0
+311 SLR1 259 0 259 0
+312 SLR0 105 0 105 0
+313 SLR1 102 0 102 0
+314 SLR0 259 0 259 0
+315 SLR1 259 0 259 0
+316 SLR0 105 0 105 0
+317 SLR1 102 0 102 0
+318 SLR0 259 0 259 0
+319 SLR1 259 0 259 0
+320 SLR0 105 0 105 0
+321 SLR1 102 0 102 0
+322 SLR0 259 0 259 0
+323 SLR1 259 0 259 0
+324 SLR0 105 0 105 0
+325 SLR1 102 0 102 0
+326 SLR0 259 0 259 0
+327 SLR1 259 0 259 0
+328 SLR0 105 0 105 0
+329 SLR1 102 0 102 0
+330 SLR0 259 0 259 0
+331 SLR1 259 0 259 0
+333 SLR0 1 1 0 1
+334 SLR0 1 1 0 1
+335 SLR0 1 1 0 1
+336 SLR0 1 1 0 1
+337 SLR0 46 0 46 0
+338 SLR1 157 0 157 0
+339 SLR0 120 0 120 0
+340 SLR1 159 0 159 0
+341 SLR0 120 0 120 0
+342 SLR1 1167 0 1167 0
+343 SLR0 873 0 873 0
+344 SLR0 787 0 787 0
+345 SLR1 783 0 783 0
+346 SLR0 13 0 13 0
+347 SLR1 12 0 12 0
+349 SLR2 117 0 117 0
+350 SLR1 120 0 120 0
+351 SLR0 119 0 119 0
+352 SLR2 116 0 116 0
+353 SLR1 120 0 120 0
+354 SLR0 119 0 119 0
+355 SLR2 777 0 777 0
+356 SLR1 873 0 873 0
+357 SLR0 872 0 872 0
+358 SLR0 258 0 258 0
+359 SLR1 258 0 258 0
+360 SLR2 258 0 258 0
+361 SLR0 1 0 1 0
+362 SLR1 1 0 1 0
+363 SLR2 1 0 1 0
+364 SLR0 2 0 2 0
+365 SLR1 2 0 2 0
+366 SLR2 2 0 2 0
+367 SLR0 1 0 1 0
+368 SLR1 1 0 1 0
+369 SLR2 1 0 1 0
+372 SLR0 1 1 0 1
+dont_touch mul_fabric_q: 488 cells, 488 with DONT_TOUCH
+max_fanout load_we_q: 1536 cells (1280 replicas), 0 with MAX_FANOUT, largest net 103 loads

@@ -6,9 +6,8 @@
 #   vivado -mode batch -source audit.tcl -tclargs placed.dcp [floorplan.xdc]
 # For each USER_SLR_ASSIGNMENT line of the floorplan: the cells it matches
 # (hierarchical or leaf) and whether the property is still on them; then the
-# RTL's synthesis attributes; then the SLR each assigned cell's primitives
-# were placed in. A hint that is not kept, or kept but not followed, does
-# nothing (AGENTS.md). Cheap parts first, each written as soon as known.
+# RTL's synthesis attributes. A hint that is not kept, or kept but not
+# followed, does nothing (AGENTS.md). Each line is written as soon as known.
 
 set dcp [lindex $argv 0]
 set xdc [expr {[llength $argv] > 1 ? [lindex $argv 1] \
@@ -23,7 +22,6 @@ set out [open audit.rpt w]
 proc emit {line} {puts $::out $line; flush $::out}
 
 # 1. Each line: cells matched, hierarchical or leaf, property kept.
-set LINES {}  ;# {line target hier_names leaf_names}
 set n 0
 set fh [open $xdc r]
 set text [read $fh]
@@ -39,7 +37,6 @@ foreach line [split $text \n] {
     set kept 0
     foreach v [get_property -quiet USER_SLR_ASSIGNMENT $hier] {if {$v eq $target} {incr kept}}
     emit "$n $target [llength $cells] [llength $hier] [llength $leaf] $kept"
-    lappend LINES [list $n $target [get_property -quiet NAME $hier] [get_property -quiet NAME $leaf]]
   } err]} {emit "$n $target error: $err"}
 }
 progress "lines read"
@@ -57,42 +54,8 @@ emit "max_fanout load_we_q: [llength $mf] cells ([llength [filter -quiet $mf {NA
   [llength [filter -quiet $mf {MAX_FANOUT != ""}]] with MAX_FANOUT, largest net [expr {$worst - 1}] loads"
 progress "attributes"
 
-# 3. Placement. Each assigned hierarchical cell and each assigned leaf, by
-# name; then one pass over every placed cell of each SLR (three bulk
-# queries: a query per cell is far too slow on this design), counting it
-# for its nearest assigned ancestor, or for itself if it is an assigned leaf.
-set OWNER [dict create]  ;# assigned cell name -> line
-foreach l $LINES {
-  lassign $l n target hier leaf
-  foreach c [concat $hier $leaf] {dict set OWNER $c $n}
-}
-array set CNT {}  ;# (line,SLR) -> primitives
-foreach slr [get_slrs] {
-  foreach c [get_property NAME [get_cells -quiet -of_objects $slr -filter {IS_PRIMITIVE}]] {
-    set p $c
-    while {1} {
-      if {[dict exists $OWNER $p]} {incr CNT([dict get $OWNER $p],$slr); break}
-      set i [string last / $p]
-      if {$i < 0} {break}
-      set p [string range $p 0 [expr {$i - 1}]]
-    }
-  }
-  progress "$slr counted"
-}
-emit "# line target placed_in_target/primitives by_slr"
-set tot_in 0
-set tot_all 0
-foreach l $LINES {
-  lassign $l n target
-  set by [dict create]
-  foreach slr [get_slrs] {if {[info exists CNT($n,$slr)]} {dict set by $slr $CNT($n,$slr)}}
-  set all 0
-  dict for {s k} $by {incr all $k}
-  set in [expr {[dict exists $by $target] ? [dict get $by $target] : 0}]
-  incr tot_in $in
-  incr tot_all $all
-  emit "$n $target $in/$all {[lsort -stride 2 -index 0 $by]}"
-}
-emit "# assignments followed: $tot_in of $tot_all primitives in their target SLR"
+# Where the cells were placed is not checked here: three bulk queries for
+# the cells of each SLR ran over 55 min on core build 4's checkpoint
+# (r6i.2xlarge). For a pblock, report_utilization -pblocks says it.
 close $out
 progress "done"
