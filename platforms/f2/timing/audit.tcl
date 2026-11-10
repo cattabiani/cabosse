@@ -5,94 +5,94 @@
 # (into audit.rpt in the current directory):
 #   vivado -mode batch -source audit.tcl -tclargs placed.dcp [floorplan.xdc]
 # For each USER_SLR_ASSIGNMENT line of the floorplan: the cells it matches
-# (hierarchical or leaf), whether the property is still on them, and the SLR
-# each of their primitives was placed in. Then the RTL's synthesis
-# attributes: whether the cells carry them and what they did. A hint that is
-# not kept, or kept but not followed, does nothing (AGENTS.md).
+# (hierarchical or leaf) and whether the property is still on them; then the
+# RTL's synthesis attributes; then the SLR each assigned cell's primitives
+# were placed in. A hint that is not kept, or kept but not followed, does
+# nothing (AGENTS.md). Cheap parts first, each written as soon as known.
 
 set dcp [lindex $argv 0]
 set xdc [expr {[llength $argv] > 1 ? [lindex $argv 1] \
   : "[file dirname [file normalize [info script]]]/../core/small_shell_cl_pnr_user.xdc"}]
+set T0 [clock seconds]
+proc progress {msg} {puts "CABOSSE-AUDIT [expr {[clock seconds] - $::T0}] s: $msg"; flush stdout}
 if {$dcp ne ""} {open_checkpoint $dcp}
+progress "checkpoint open"
 # Collections of thousands of cells are turned into lists below.
 set_param tcl.collectionResultDisplayLimit 0
 set out [open audit.rpt w]
+proc emit {line} {puts $::out $line; flush $::out}
 
-# The SLR of every placed primitive, by name (three bulk queries; a query
-# per cell or per site is far too slow on this design).
-set CELL_SLR [dict create]
-foreach slr [get_slrs] {
-  set t [clock seconds]
-  foreach c [get_property NAME [get_cells -quiet -of_objects $slr]] {dict set CELL_SLR $c $slr}
-  puts "CABOSSE-AUDIT $slr [expr {[clock seconds] - $t}] s, [dict size $CELL_SLR] cells so far"
-}
-
-# Primitives per SLR, as "SLR0 n SLR1 n ..." sorted.
-proc slr_counts {names} {
-  global CELL_SLR
-  set counts [dict create]
-  foreach c $names {
-    dict incr counts [expr {[dict exists $CELL_SLR $c] ? [dict get $CELL_SLR $c] : "unplaced"}]
-  }
-  return [lsort -stride 2 -index 0 $counts]
-}
-
-# The full names of the primitives under hierarchical cells.
-proc prims_under {hier} {
-  set names {}
-  foreach h $hier {
-    current_instance -quiet $h
-    set prims [get_cells -quiet -hierarchical -filter {IS_PRIMITIVE}]
-    if {[llength $prims]} {lappend names {*}[get_property NAME $prims]}
-    current_instance -quiet
-  }
-  return $names
-}
-
-# One floorplan line: its cells, what was kept, where they were placed.
-proc audit_line {out n target expr} {
-  global tot_in tot_all
-  set cells [uplevel #0 $expr]
-  set hier [filter -quiet $cells {!IS_PRIMITIVE}]
-  set leaf [filter -quiet $cells {IS_PRIMITIVE}]
-  set kept 0
-  foreach v [get_property -quiet USER_SLR_ASSIGNMENT $hier] {if {$v eq $target} {incr kept}}
-  set prims [prims_under $hier]
-  set by [slr_counts $prims]
-  set in [expr {[dict exists $by $target] ? [dict get $by $target] : 0}]
-  incr tot_in $in
-  incr tot_all [llength $prims]
-  puts $out "$n $target [llength $cells] [llength $hier] [llength $leaf] $kept\
-    $in/[llength $prims] {$by} | {[slr_counts [get_property -quiet NAME $leaf]]}"
-}
-
-puts $out "# line target matched hier leaf kept_on_hier placed_in_target/primitives by_slr (hier) | leaf by_slr"
-set tot_in 0
-set tot_all 0
+# 1. Each line: cells matched, hierarchical or leaf, property kept.
+set LINES {}  ;# {line target hier_names leaf_names}
 set n 0
 set fh [open $xdc r]
-foreach line [split [read $fh] \n] {
+set text [read $fh]
+close $fh
+emit "# line target matched hier leaf hier_with_property"
+foreach line [split $text \n] {
   incr n
   if {![regexp {^set_property USER_SLR_ASSIGNMENT (\S+) \[(.*)\]\s*$} $line -> target expr]} {continue}
-  if {[catch {audit_line $out $n $target $expr} err]} {puts $out "$n $target error: $err"}
-  flush $out
+  if {[catch {
+    set cells [uplevel #0 $expr]
+    set hier [filter -quiet $cells {!IS_PRIMITIVE}]
+    set leaf [filter -quiet $cells {IS_PRIMITIVE}]
+    set kept 0
+    foreach v [get_property -quiet USER_SLR_ASSIGNMENT $hier] {if {$v eq $target} {incr kept}}
+    emit "$n $target [llength $cells] [llength $hier] [llength $leaf] $kept"
+    lappend LINES [list $n $target [get_property -quiet NAME $hier] [get_property -quiet NAME $leaf]]
+  } err]} {emit "$n $target error: $err"}
 }
-close $fh
-puts $out "# hierarchical assignments followed: $tot_in of $tot_all primitives in their target SLR"
+progress "lines read"
 
-# RTL attributes (rtl/fp_product.sv, rtl/dot_lane.sv).
+# 2. RTL attributes (rtl/fp_product.sv, rtl/dot_lane.sv).
 set dt [get_cells -quiet -hierarchical -filter {NAME =~ *mul_fabric_q_reg*}]
-set dt_kept [llength [filter -quiet $dt {DONT_TOUCH}]]
-puts $out "dont_touch mul_fabric_q: [llength $dt] cells, $dt_kept with DONT_TOUCH"
+emit "dont_touch mul_fabric_q: [llength $dt] cells, [llength [filter -quiet $dt {DONT_TOUCH}]] with DONT_TOUCH"
 set mf [get_cells -quiet -hierarchical -filter {NAME =~ *load_we_q_reg*}]
-set mf_kept [llength [filter -quiet $mf {MAX_FANOUT != ""}]]
-set mf_rep [llength [filter -quiet $mf {NAME =~ *_rep*}]]
 set worst 0
-foreach c $mf {
-  set fo [get_property -quiet FLAT_PIN_COUNT [get_nets -quiet -of_objects [get_pins -quiet $c/Q]]]
+foreach net [get_nets -quiet -of_objects [get_pins -quiet -of_objects $mf -filter {REF_PIN_NAME == Q}]] {
+  set fo [get_property -quiet FLAT_PIN_COUNT $net]
   if {$fo ne "" && $fo > $worst} {set worst $fo}
 }
-puts $out "max_fanout load_we_q: [llength $mf] cells ($mf_rep replicas), $mf_kept with MAX_FANOUT,\
-  largest net [expr {$worst - 1}] loads"
+emit "max_fanout load_we_q: [llength $mf] cells ([llength [filter -quiet $mf {NAME =~ *_rep*}]] replicas),\
+  [llength [filter -quiet $mf {MAX_FANOUT != ""}]] with MAX_FANOUT, largest net [expr {$worst - 1}] loads"
+progress "attributes"
+
+# 3. Placement. Each assigned hierarchical cell and each assigned leaf, by
+# name; then one pass over every placed cell of each SLR (three bulk
+# queries: a query per cell is far too slow on this design), counting it
+# for its nearest assigned ancestor, or for itself if it is an assigned leaf.
+set OWNER [dict create]  ;# assigned cell name -> line
+foreach l $LINES {
+  lassign $l n target hier leaf
+  foreach c [concat $hier $leaf] {dict set OWNER $c $n}
+}
+array set CNT {}  ;# (line,SLR) -> primitives
+foreach slr [get_slrs] {
+  foreach c [get_property NAME [get_cells -quiet -of_objects $slr -filter {IS_PRIMITIVE}]] {
+    set p $c
+    while {1} {
+      if {[dict exists $OWNER $p]} {incr CNT([dict get $OWNER $p],$slr); break}
+      set i [string last / $p]
+      if {$i < 0} {break}
+      set p [string range $p 0 [expr {$i - 1}]]
+    }
+  }
+  progress "$slr counted"
+}
+emit "# line target placed_in_target/primitives by_slr"
+set tot_in 0
+set tot_all 0
+foreach l $LINES {
+  lassign $l n target
+  set by [dict create]
+  foreach slr [get_slrs] {if {[info exists CNT($n,$slr)]} {dict set by $slr $CNT($n,$slr)}}
+  set all 0
+  dict for {s k} $by {incr all $k}
+  set in [expr {[dict exists $by $target] ? [dict get $by $target] : 0}]
+  incr tot_in $in
+  incr tot_all $all
+  emit "$n $target $in/$all {[lsort -stride 2 -index 0 $by]}"
+}
+emit "# assignments followed: $tot_in of $tot_all primitives in their target SLR"
 close $out
-puts "CABOSSE-AUDIT done"
+progress "done"
