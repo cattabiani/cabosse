@@ -21,10 +21,12 @@ cell or the primitives at one level), so no cell has two. The crossings
 have a register on at least one side and at most a few LUTs on the other,
 none crosses two SLRs: the stages in platforms/f2/core/f2_core.sv,
 rtl/core.sv's xv_ registers and vector-unit command queues, the engine's
-per-group and per-half registers (rtl/engine.sv). Some crossings still
-have logic after them (the engine's DMA commands, the lanes' pops, the
-stages' enables). The lanes of a group stay together with their DMAs, so
-no lane spans two SLRs (core build 2's worst paths).
+per-group and per-half registers (rtl/engine.sv). Since M10 step 5 the
+engine's crossings go into a register with no logic before it (DMA offers
+and takes, the lanes' out_valid, the drain's group results, the beat and x
+per half); some still have logic after them (the lanes' pops, the stages'
+enables). The lanes of a group stay together with their DMAs, so no lane
+spans two SLRs (core build 2's worst paths).
 
     python3 scripts/f2/floorplan.py          # rewrite the file
     python3 scripts/f2/floorplan.py --check  # exit 1 if it is out of date
@@ -73,7 +75,8 @@ CORE = f"{F2}/u_core"  # core
 ENGINE = f"{CORE}/u_engine"
 # rtl/engine.sv's generate blocks that belong to a group (the rest is central)
 GROUP_BLOCKS = ("gen_group", "gen_seen", "gen_drain")
-HALF_BLOCK = "gen_half"  # rtl/engine.sv: half h of the groups (0: groups 0 .. 3)
+# rtl/engine.sv's generate blocks of half h of the groups (0: groups 0 .. 3)
+HALF_BLOCKS = ("gen_half", "gen_bhalf")
 
 OUT = Path(__file__).resolve().parents[2] / "platforms/f2/core/small_shell_cl_pnr_user.xdc"
 
@@ -151,9 +154,10 @@ def lines() -> list[str]:
         for block in GROUP_BLOCKS:
             out.append(assign(group_slr(g), esc(f"{ENGINE}/{block}[{g}].") + "*"))
     for h in range(2):
-        out.append(assign(h, esc(f"{ENGINE}/{HALF_BLOCK}[{h}].") + "*"))
+        for block in HALF_BLOCKS:
+            out.append(assign(h, esc(f"{ENGINE}/{block}[{h}].") + "*"))
     out.append("# ... and the rest of it (issue, step, drain) in SLR1")
-    exclude = [f"{ENGINE}/{b}*" for b in ("gen_dma", "gen_lane", *GROUP_BLOCKS, HALF_BLOCK)]
+    exclude = [f"{ENGINE}/{b}*" for b in ("gen_dma", "gen_lane", *GROUP_BLOCKS, *HALF_BLOCKS)]
     out.append(assign_filtered(1, f"{ENGINE}/*", exclude))
 
     out.append("")

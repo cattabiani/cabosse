@@ -358,16 +358,34 @@ module engine
 
   // --- DMAs --------------------------------------------------------------------
 
-  logic [Ports-1:0]                dma_cmd_valid, dma_cmd_ready;
+  logic [Ports-1:0]                dma_cmd_valid;  // issue's offer to each port
+  logic [Ports-1:0]                dma_took;       // ... which the port took this cycle
   logic [Ports-1:0]                dma_out_valid, dma_out_ready;
   logic [Ports-1:0][DataWidth-1:0] dma_out_data;
   logic [AddrWidth-1:0]            dma_addr;
   logic [ColWidth-1:0]             dma_beats;
   logic [Ports-1:0][CrW-1:0]       dma_out_count;  // beats in each port's FIFO
 
+  // Issue's offer reaches a port through registers on the port's side
+  // (off_*_q), and the port's take goes back through issue's took_q: the
+  // port may sit in another SLR, and each crossing goes into a register
+  // (M10). An offer stays up until issue has seen the take (2 cycles), so
+  // the port takes each offer once (taken_q) and is free again when the
+  // offer drops, which it does for a cycle at least between two commands
+  // (issue's done comes once every port took it).
   for (genvar p = 0; p < Ports; p++) begin : gen_dma
-    logic rst_nq_p;  // the port's copy of the reset
-    always_ff @(posedge clk_i) rst_nq_p <= rst_ni;
+    logic                 rst_nq_p;  // the port's copy of the reset
+    logic                 off_q, taken_q, cmd_ready;
+    logic [AddrWidth-1:0] off_addr_q;
+    logic [ColWidth-1:0]  off_beats_q;
+    always_ff @(posedge clk_i) begin
+      rst_nq_p    <= rst_ni;
+      off_q       <= rst_nq && dma_cmd_valid[p];
+      off_addr_q  <= dma_addr;
+      off_beats_q <= dma_beats;
+      taken_q     <= off_q && (taken_q || dma_took[p]);
+    end
+    assign dma_took[p] = off_q && !taken_q && cmd_ready;
     port_dma #(
       .AddrWidth (AddrWidth),
       .DataWidth (DataWidth),
@@ -377,10 +395,10 @@ module engine
     ) u_dma (
       .clk_i,
       .rst_ni     (rst_nq_p),
-      .cmd_valid_i(dma_cmd_valid[p]),
-      .cmd_ready_o(dma_cmd_ready[p]),
-      .cmd_addr_i (dma_addr),
-      .cmd_beats_i(dma_beats),
+      .cmd_valid_i(off_q && !taken_q),
+      .cmd_ready_o(cmd_ready),
+      .cmd_addr_i (off_addr_q),
+      .cmd_beats_i(off_beats_q),
       .out_valid_o(dma_out_valid[p]),
       .out_ready_i(dma_out_ready[p]),
       .out_data_o (dma_out_data[p]),
@@ -408,6 +426,7 @@ module engine
   logic                 iss_done_q;  // every port took the DMA command (registered, D-051)
   logic [AddrWidth-1:0] iss_addr_q;   // the matrix's or the cache's
   logic [Ports-1:0]     iss_taken_q;  // this DMA command's ports already taken
+  logic [Ports-1:0]     took_q;       // dma_took, registered: taken 2 cycles ago
   logic [Ports-1:0]     iss_ports_q[Heads];  // head_ports(iss_unit_q, a), registered for timing
   unit_t                iss_unit_q;
   unit_t                iss_next_q;  // unit_next(iss_unit_q), a cycle late
@@ -430,12 +449,14 @@ module engine
   assign q_pop[0]      = !iss_busy_q && q_valid[0];
 
   // "Every port took it" is an AND per group of GP ports, of the ports
-  // taken by the end of this cycle, then over the groups, a register each:
-  // as before, iss_done_q comes 2 cycles after the last port takes it. The
-  // next unit's ports, registered from iss_unit_q through 2 registers, are
-  // there by a done: a port takes the command in its unit's first cycle at
-  // the soonest, so a done comes 2 cycles after the unit changed or later.
+  // whose take issue has seen (took_q, a cycle after it), then over the
+  // groups, a register each: iss_done_q comes 3 cycles after the last port
+  // takes it. The next unit's ports, registered from iss_unit_q through 2
+  // registers, are there by a done: a port takes the command a cycle after
+  // its offer at the soonest, so a done comes 4 cycles after the unit
+  // changed or later.
   always_ff @(posedge clk_i) begin
+    took_q     <= dma_took;
     iss_next_q <= unit_next(iss_unit_q);
     for (int unsigned a = 0; a < Heads; a++) iss_next_ports_q[a] <= head_ports(iss_next_q, 1'(a));
     iss_next_addr0_q <= head_addr(iss_addr_q, iss_next_q, 1'b0);
@@ -444,7 +465,7 @@ module engine
       iss_grp_done_q <= '0;
     end else if (iss_busy_q) begin
       for (int unsigned g = 0; g < NG; g++) begin
-        iss_grp_done_q[g] <= &(iss_taken_q[GP*g +: GP] | dma_cmd_ready[GP*g +: GP]
+        iss_grp_done_q[g] <= &(iss_taken_q[GP*g +: GP] | took_q[GP*g +: GP]
                                | ~iss_active[GP*g +: GP]);
       end
     end
@@ -477,7 +498,7 @@ module engine
         if (last_unit(iss_unit_q)) iss_busy_q <= 1'b0;
       end
     end else if (iss_busy_q) begin
-      iss_taken_q <= iss_taken_q | dma_cmd_ready;
+      iss_taken_q <= iss_taken_q | took_q;
       iss_done_q  <= &iss_grp_done_q;
     end
   end
@@ -504,16 +525,17 @@ module engine
   // counts and the lanes' reservations reach the decision through
   // registers, so each decision assumes the worst of the beats it has not
   // seen yet (Window of them). A beat's descriptor then goes through a
-  // central register and PopLat - 1 more in copies per group of 4 ports (16
-  // lanes): PopLat cycles after its decision the beat pops the DMAs and
-  // reaches the lanes, which never refuse it (a lane's ready drops only on
-  // a last beat, and a last beat is decided only with room for it). x goes
-  // the same way, its last register a copy per port holding the head its
-  // lanes take.
+  // central register, a copy per half of the groups (on F2 a half is an
+  // SLR: the crossing goes into a register, M10) and PopLat - 2 more in
+  // copies per group of 4 ports (16 lanes): PopLat cycles after its decision
+  // the beat pops the DMAs and reaches the lanes, which never refuse it (a
+  // lane's ready drops only on a last beat, and a last beat is decided only
+  // with room for it). x goes the same way, its last register a copy per
+  // port holding the head its lanes take.
 
   localparam int unsigned GL       = L / NG;     // lanes per group
   localparam int unsigned XLat     = 3 + XRdLat;  // x_data at stage 2 + XRdLat, its central register
-  localparam int unsigned PopLat   = XLat + 2;
+  localparam int unsigned PopLat   = XLat + 3;    // the half's copy, the group's, the port's
   localparam int unsigned SeenRegs = 3;  // a group's register, a half's, the central one
   // Decisions not yet in what step sees: PopLat to the pop or the lane, one
   // into the FIFO count or the reservation, SeenRegs, and the estimate's own
@@ -750,8 +772,8 @@ module engine
   end
 
   // x: the address from the decision, presented at stage 2, so x_data_i
-  // comes at 2 + XRdLat; a central register (XLat) and the group's take it
-  // to PopLat.
+  // comes at 2 + XRdLat; a central register (XLat), the half's, the group's
+  // and the port's take it to PopLat.
   logic [Heads-1:0][RowWidth-1:0] x_addr_d, x_addr_q;
   logic [BufWidth-1:0]            x_buf_q;
   logic [Heads-1:0][E-1:0][15:0]  x_data_q;
@@ -780,24 +802,40 @@ module engine
   // head when l >> dlog == 1, the same for a port's lanes since d >= 16
   // (the attention commands' precondition, above) >= LanesPerPort
   // (gen_bad_lpp); the other commands read the same x on both ports.
-  for (genvar g = 0; g < NG; g++) begin : gen_group
-    beat_t pipe_q[PopLat-1];  // stages 2 .. PopLat
-    logic [Heads-1:0][E-1:0][15:0] x_q[PopLat-XLat-1];  // stages XLat + 1 .. PopLat - 1
+  // Each half's copies (gen_bhalf, beside gen_half: the floorplan puts both
+  // in the half's SLR): stage 2 of the beat, XLat + 1 of x.
+  beat_t [NH-1:0]                         beat_h;
+  logic  [NH-1:0][Heads-1:0][E-1:0][15:0] x_h;
+  for (genvar h = 0; h < NH; h++) begin : gen_bhalf
+    beat_t                         b_q;
+    logic [Heads-1:0][E-1:0][15:0] x_q;
     always_ff @(posedge clk_i) begin
-      pipe_q[0] <= beat_q;
-      for (int unsigned s = 1; s < PopLat - 1; s++) pipe_q[s] <= pipe_q[s-1];
-      x_q[0] <= x_data_q;
-      for (int unsigned s = 1; s < PopLat - XLat - 1; s++) x_q[s] <= x_q[s-1];
+      b_q <= beat_q;
+      x_q <= x_data_q;
+      if (!rst_nq) b_q.valid <= 1'b0;
+    end
+    assign beat_h[h] = b_q;
+    assign x_h[h]    = x_q;
+  end
+
+  for (genvar g = 0; g < NG; g++) begin : gen_group
+    beat_t pipe_q[PopLat-2];  // stages 3 .. PopLat
+    logic [Heads-1:0][E-1:0][15:0] x_q[PopLat-XLat-2];  // stages XLat + 2 .. PopLat - 1
+    always_ff @(posedge clk_i) begin
+      pipe_q[0] <= beat_h[g/HG];
+      for (int unsigned s = 1; s < PopLat - 2; s++) pipe_q[s] <= pipe_q[s-1];
+      x_q[0] <= x_h[g/HG];
+      for (int unsigned s = 1; s < PopLat - XLat - 2; s++) x_q[s] <= x_q[s-1];
       if (!rst_nq) begin
-        for (int unsigned s = 0; s < PopLat - 1; s++) pipe_q[s].valid <= 1'b0;
+        for (int unsigned s = 0; s < PopLat - 2; s++) pipe_q[s].valid <= 1'b0;
       end
     end
-    assign beat_at[g] = pipe_q[PopLat-2];
+    assign beat_at[g] = pipe_q[PopLat-3];
     for (genvar p = GP * g; p < GP * (g + 1); p++) begin : gen_port
-      logic second_q;  // at PopLat - 1, from the beat at PopLat - 2 (pipe_q[s] is stage s + 2)
+      logic second_q;  // at PopLat - 1, from the beat at PopLat - 2 (pipe_q[s] is stage s + 3)
       always_ff @(posedge clk_i) begin
-        second_q <= (p * LanesPerPort) >> pipe_q[(PopLat-2)-2].dlog == 1;
-        x_at[p]  <= x_q[PopLat-XLat-2][second_q];
+        second_q <= (p * LanesPerPort) >> pipe_q[(PopLat-2)-3].dlog == 1;
+        x_at[p]  <= x_q[PopLat-XLat-3][second_q];
       end
       assign dma_out_ready[p] = beat_at[g].valid && beat_at[g].active[p];
     end
@@ -853,13 +891,15 @@ module engine
 
   // --- Drain: results to the write port, Writes lanes per cycle ----------------
   //
-  // No one-cycle loop across the lanes (D-051): each write group's "every
-  // lane with a result has one" is registered at the group, for the unit
-  // draining, the one after it and the queue's next command's first unit
-  // (the cycle after a unit's end reads one of the last two); a group's
-  // lanes pop the cycle after its go, so the group waits two cycles before
-  // its next go (its registered state is the pop's by then); its results go
-  // to the multiply through a register.
+  // No one-cycle loop across the lanes (D-051): the lanes' out_valid come
+  // through a register on the drain's side (out_valid_q: a group may sit in
+  // another SLR, and the crossing goes into a register, M10), then each
+  // write group's "every lane with a result has one" is registered, for the
+  // unit draining, the one after it and the queue's next command's first
+  // unit (the cycle after a unit's end reads one of the last two); a
+  // group's lanes pop the cycle after its go, so the group waits Recent = 3
+  // cycles before its next go (its registered state is the pop's by then);
+  // its results go to the multiply through registers.
   //
   // Nothing in a go is computed from a unit in the same cycle: the unit
   // after the one draining (aft) and the queue head's first unit (ini) are
@@ -870,13 +910,15 @@ module engine
   // the successors' "results are there" is group 0's only.
 
   // A go's results: a register in each group of GL lanes (one of its WG
-  // write groups, selected by a copy of drain_grp_q), then the central
-  // register (slot_q), then fp32_fma. A group may sit in another SLR than
-  // the drain (platforms/f2, the floorplan): its register is the crossing's.
-  // The lanes pop the cycle after the go, so their results are still there
-  // for the group's register.
-  localparam int unsigned WG    = GL / Writes;   // write groups per group
-  localparam int unsigned WrLat = DrainLat + 3;  // group's register, slot_q, fp32_fma
+  // write groups, selected by a copy of drain_grp_q), a copy of it on the
+  // drain's side (grp_out_q), then the central register (slot_q), then
+  // fp32_fma. A group may sit in another SLR than the drain (platforms/f2,
+  // the floorplan): the crossing goes from the group's register into its
+  // copy, with no logic between (M10). The lanes pop the cycle after the
+  // go, so their results are still there for the group's register.
+  localparam int unsigned WG     = GL / Writes;   // write groups per group
+  localparam int unsigned WrLat  = DrainLat + 4;  // group's register, its copy, slot_q, fp32_fma
+  localparam int unsigned Recent = 3;  // cycles a write group waits after its go
 
   typedef struct packed {
     unit_t         unit;
@@ -898,31 +940,37 @@ module engine
   logic                     ok_aft_q, ok_ini_q;  // ... group 0's, for the successors
   logic                     unit_new_q;       // cur_q changed last cycle
   logic                     from_ini_q;       // ... to a command's first unit
-  logic [1:0]               gone_q;           // a go in each of the last two cycles
-  logic [GW-1:0]            gone_grp_q[2];
+  logic [L-1:0]             out_valid_q;      // lane_out_valid, registered
+  logic [Recent-1:0]        gone_q;           // a go in each of the last Recent cycles
+  logic [GW-1:0]            gone_grp_q[Recent];
   logic                     go, pass_end, drain_end, drain_load, unit_load, ok, recent;
   logic                     aft_ready, ini_ready;
 
   assign pass_row = res_row(cur_q.unit);
   for (genvar s = 0; s < Writes; s++) begin : gen_slot
     assign has[s]     = RowWidth'(drain_grp_q) * RowWidth'(Writes) + RowWidth'(s) < RowWidth'(cur_q.lanes);
-    assign aft_has[s] = !lane_out_valid[s] && s < 32'(aft_q.lanes);  // a result missing
-    assign ini_has[s] = !lane_out_valid[s] && s < 32'(ini_q.lanes);
+    assign aft_has[s] = !out_valid_q[s] && s < 32'(aft_q.lanes);  // a result missing
+    assign ini_has[s] = !out_valid_q[s] && s < 32'(ini_q.lanes);
   end
   for (genvar k = 0; k < Groups; k++) begin : gen_wgroup
     logic [Writes-1:0] cur;  // per lane: has its result, or has none to give
     for (genvar s = 0; s < Writes; s++) begin : gen_lane_ok
-      assign cur[s] = lane_out_valid[k*Writes+s] || k * Writes + s >= 32'(cur_q.lanes);
+      assign cur[s] = out_valid_q[k*Writes+s] || k * Writes + s >= 32'(cur_q.lanes);
     end
     always_ff @(posedge clk_i) ok_q[k] <= &cur;
   end
   always_ff @(posedge clk_i) begin
-    ok_aft_q <= !(|aft_has);
-    ok_ini_q <= !(|ini_has);
+    out_valid_q <= lane_out_valid;
+    ok_aft_q    <= !(|aft_has);
+    ok_ini_q    <= !(|ini_has);
+  end
+  always_comb begin
+    recent = 1'b0;
+    for (int unsigned i = 0; i < Recent; i++) begin
+      recent = recent || (gone_q[i] && gone_grp_q[i] == drain_grp_q);
+    end
   end
   assign ok         = !unit_new_q ? ok_q[drain_grp_q] : from_ini_q ? ok_ini_q : ok_aft_q;
-  assign recent     = (gone_q[0] && gone_grp_q[0] == drain_grp_q)
-                      || (gone_q[1] && gone_grp_q[1] == drain_grp_q);
   assign aft_ready  = aft_age_q == 2'd2;
   assign ini_ready  = ini_age_q == 2'd2;
   assign go         = drain_busy_q && ok && !recent && (!end_q || cur_q.last || aft_ready);
@@ -951,14 +999,14 @@ module engine
       lane_out_ready[l] <= go && 32'(drain_grp_q) == l / Writes && has[l%Writes];
     end
     gone_grp_q[0] <= drain_grp_q;
-    gone_grp_q[1] <= gone_grp_q[0];
+    for (int unsigned i = 1; i < Recent; i++) gone_grp_q[i] <= gone_grp_q[i-1];
     from_ini_q    <= drain_load;
     if (!rst_nq) begin
       lane_out_ready <= '0;
       gone_q         <= '0;
       unit_new_q     <= 1'b0;
     end else begin
-      gone_q     <= {gone_q[0], go};
+      gone_q     <= {gone_q[Recent-2:0], go};
       unit_new_q <= unit_load;
     end
   end
@@ -1002,10 +1050,10 @@ module engine
   logic [Writes-1:0][31:0] slot_q, scaled;
   logic [Writes-1:0][15:0] rounded;
 
-  logic [NG-1:0][Writes-1:0][31:0] grp_out;  // each group's register
-  logic [1:0]                      go_q;
-  logic [31:0]                     scale_q[2];
-  logic [GW-1:0]                   grp_q[2];
+  logic [NG-1:0][Writes-1:0][31:0] grp_out, grp_out_q;  // each group's register, its copy
+  logic [2:0]                      go_q;
+  logic [31:0]                     scale_q[3];
+  logic [GW-1:0]                   grp_q[3];
   for (genvar g = 0; g < NG; g++) begin : gen_drain
     logic [GW-1:0]           sel_q;  // drain_grp_q, a cycle late
     logic [Writes-1:0][31:0] out_q;
@@ -1017,14 +1065,17 @@ module engine
   end
 
   always_ff @(posedge clk_i) begin
-    go_q        <= {go_q[0], rst_nq && go};
+    grp_out_q   <= grp_out;
+    go_q        <= {go_q[1:0], rst_nq && go};
     scale_q[0]  <= drain_scale_q;
-    scale_q[1]  <= scale_q[0];
     grp_q[0]    <= drain_grp_q;
-    grp_q[1]    <= grp_q[0];
-    mul_valid_q <= rst_nq && go_q[1];
-    mul_scale_q <= scale_q[1];
-    slot_q      <= grp_out[32'(grp_q[1])/WG];
+    for (int unsigned i = 1; i < 3; i++) begin
+      scale_q[i] <= scale_q[i-1];
+      grp_q[i]   <= grp_q[i-1];
+    end
+    mul_valid_q <= rst_nq && go_q[2];
+    mul_scale_q <= scale_q[2];
+    slot_q      <= grp_out_q[32'(grp_q[2])/WG];
     if (!rst_nq) go_q <= '0;
   end
 
@@ -1039,6 +1090,8 @@ module engine
       .a_i    (slot_q[s]),
       .b_i    (mul_scale_q),
       .c_i    ('0),
+      .late_i  (1'b0),
+      .c_late_i('0),
       // verilator lint_off PINCONNECTEMPTY
       .valid_o(),
       // verilator lint_on PINCONNECTEMPTY

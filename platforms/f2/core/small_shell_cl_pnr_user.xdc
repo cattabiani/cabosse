@@ -205,9 +205,11 @@ add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/ge
 add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_seen?7?.*}]
 add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_drain?7?.*}]
 add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_half?0?.*}]
+add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_bhalf?0?.*}]
 add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_half?1?.*}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_bhalf?1?.*}]
 # ... and the rest of it (issue, step, drain) in SLR1
-add_cells_to_pblock pblock_slr1 [get_cells -filter {NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_dma*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_lane*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_group*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_seen*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_drain*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_half*"} {WRAPPER/CL/u_core/u_core/u_engine/*}]
+add_cells_to_pblock pblock_slr1 [get_cells -filter {NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_dma*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_lane*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_group*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_seen*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_drain*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_half*" && NAME !~ "WRAPPER/CL/u_core/u_core/u_engine/gen_bhalf*"} {WRAPPER/CL/u_core/u_core/u_engine/*}]
 
 # The controller, the vector unit and the core's registers on its side
 add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_core/u_controller}]
