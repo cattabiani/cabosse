@@ -897,7 +897,7 @@ module engine
   // write group's "every lane with a result has one" is registered, for the
   // unit draining, the one after it and the queue's next command's first
   // unit (the cycle after a unit's end reads one of the last two); a
-  // group's lanes pop the cycle after its go, so the group waits Recent = 3
+  // group's lanes pop the cycle after its go, so the group waits Recent
   // cycles before its next go (its registered state is the pop's by then);
   // its results go to the multiply through registers.
   //
@@ -917,8 +917,11 @@ module engine
   // copy, with no logic between (M10). The lanes pop the cycle after the
   // go, so their results are still there for the group's register.
   localparam int unsigned WG     = GL / Writes;   // write groups per group
-  localparam int unsigned WrLat  = DrainLat + 4;  // group's register, its copy, slot_q, fp32_fma
-  localparam int unsigned Recent = 3;  // cycles a write group waits after its go
+  // A go to slot_q's load: sel_q, the group's out_q, its copy grp_out_q.
+  localparam int unsigned SlotLat = 3;
+  localparam int unsigned WrLat   = DrainLat + SlotLat + 1;  // ... slot_q, fp32_fma
+  // Cycles a write group waits after its go: the pop, out_valid_q, ok_q.
+  localparam int unsigned Recent  = 1 + 1 + 1;
 
   typedef struct packed {
     unit_t         unit;
@@ -1051,9 +1054,9 @@ module engine
   logic [Writes-1:0][15:0] rounded;
 
   logic [NG-1:0][Writes-1:0][31:0] grp_out, grp_out_q;  // each group's register, its copy
-  logic [2:0]                      go_q;
-  logic [31:0]                     scale_q[3];
-  logic [GW-1:0]                   grp_q[3];
+  logic [SlotLat-1:0]              go_q;
+  logic [31:0]                     scale_q[SlotLat];
+  logic [GW-1:0]                   grp_q[SlotLat];
   for (genvar g = 0; g < NG; g++) begin : gen_drain
     logic [GW-1:0]           sel_q;  // drain_grp_q, a cycle late
     logic [Writes-1:0][31:0] out_q;
@@ -1066,16 +1069,16 @@ module engine
 
   always_ff @(posedge clk_i) begin
     grp_out_q   <= grp_out;
-    go_q        <= {go_q[1:0], rst_nq && go};
+    go_q        <= {go_q[SlotLat-2:0], rst_nq && go};
     scale_q[0]  <= drain_scale_q;
     grp_q[0]    <= drain_grp_q;
-    for (int unsigned i = 1; i < 3; i++) begin
+    for (int unsigned i = 1; i < SlotLat; i++) begin
       scale_q[i] <= scale_q[i-1];
       grp_q[i]   <= grp_q[i-1];
     end
-    mul_valid_q <= rst_nq && go_q[2];
-    mul_scale_q <= scale_q[2];
-    slot_q      <= grp_out_q[32'(grp_q[2])/WG];
+    mul_valid_q <= rst_nq && go_q[SlotLat-1];
+    mul_scale_q <= scale_q[SlotLat-1];
+    slot_q      <= grp_out_q[32'(grp_q[SlotLat-1])/WG];
     if (!rst_nq) go_q <= '0;
   end
 

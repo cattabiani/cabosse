@@ -211,12 +211,13 @@ module vec_unit
   localparam int unsigned ChainLat = chain_latency(MulRegs, AddRegs);
   localparam int unsigned AccLat = mul_add_latency(MulRegs, AddRegs) + 1;  // chain in to s1_y_o
   // A store group's place in the stores' queue, from its read (grp_fire) to
-  // the writer's take freeing it at full rate: rq_q, RdLat + 1 to the chain,
-  // the chain, w_valid_q, the queue's output and kv_credit_q. The queue holds
+  // the writer's take freeing it at full rate (the terms in order: rq_q,
+  // iss_q to the chain, the chain, w_valid_q, the queue's output and
+  // kv_credit_q). The queue holds
   // at least that many groups, so a store of one beat a group (OUTPUT) runs
   // a group a cycle whatever the chain's length (M10 step 5: 64 places
   // throttled OUTPUT to 64 groups in 87 cycles).
-  localparam int unsigned KvTrip = RdLat + ChainLat + 5;
+  localparam int unsigned KvTrip = 1 + (RdLat + 1) + ChainLat + 1 + 1 + 1;
   localparam int unsigned KvDepth = 2 ** $clog2(KvTrip);
   localparam int unsigned MW = $clog2(KvDepth + 1);
   localparam logic [31:0] NegZero = 32'h8000_0000;

@@ -168,10 +168,6 @@ module fp_add
       s3_d.exp  = s2_q.exp - 9'(left);
     end
   end
-  logic [W-1:0] norm;
-  logic [8:0]   norm_exp;
-  assign norm     = s3.norm;
-  assign norm_exp = s3.exp;
 
   // Round at FP32's 24 bits; an all-ones significand that rounds up carries
   // into the exponent. From exponent 254 that gives exponent 255 and a zero
@@ -181,13 +177,13 @@ module fp_add
   logic [F32SigW-1:0] sig;
   logic [7:0]         exp;  // when there is no overflow
   always_comb begin
-    guard    = norm[W-F32SigW-1];
-    sticky   = |norm[W-F32SigW-2:0];
-    round_up = guard && (sticky || norm[W-F32SigW]);
-    rounded  = {1'b0, norm[W-1-:F32SigW]} + (F32SigW + 1)'(round_up);
+    guard    = s3.norm[W-F32SigW-1];
+    sticky   = |s3.norm[W-F32SigW-2:0];
+    round_up = guard && (sticky || s3.norm[W-F32SigW]);
+    rounded  = {1'b0, s3.norm[W-1-:F32SigW]} + (F32SigW + 1)'(round_up);
     sig      = rounded[F32SigW] ? rounded[F32SigW:1] : rounded[F32SigW-1:0];
-    exp      = norm_exp[7:0] + 8'(rounded[F32SigW]);
-    overflow = norm_exp >= 9'd255;
+    exp      = s3.exp[7:0] + 8'(rounded[F32SigW]);
+    overflow = s3.exp >= 9'd255;
   end
 
   logic [31:0] y_d;

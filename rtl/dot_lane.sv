@@ -374,6 +374,9 @@ module dot_lane
   end
 
   // --- Output FIFO --------------------------------------------------------------
+  //
+  // verif/stubs/dot_lane.sv copies this FIFO and in_ready_o (the engine's
+  // depth check): a change here goes there too.
 
   logic [31:0] fifo_q[OutDepth];
   logic [OW-1:0] rd_ptr_q, wr_ptr_q;

@@ -2362,6 +2362,10 @@ more cycles per command; branch `m10/slr-regs`):
   speed groups + 70 -> + 98.
 - Not addressed: lanes' `rd_ptr_q` to the drain's `out_q` (-0.84, inside
   one SLR: wire), the -0.6 to -0.8 ns families.
+- Idea if SLR1 runs out of LUTs (review, estimate, not measured): each
+  group zeroes its `out_q` when not selected and a register per half ORs
+  its groups in the half's SLR, so `grp_out_q` is 2 copies, not 8, and the
+  drain's 8:1 select of 256 bits becomes 2:1 (about 300 LUTs in SLR1).
 - Tests (2026-11-11): default 1056 passed, slow 39 passed; after
   `engine_startup_cycles` 85, test_engine and test_core (with slow) 124
   passed.
