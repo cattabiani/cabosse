@@ -216,8 +216,8 @@ def generated() -> dict[str, str]:
     )
     depth_limits = (
         f"`dot_lane` at most {constant(RTL_CHECKS, 'MAX_LANE_DEPTH')} cells; the engine "
-        f"with the FMA stubbed at most {constant(RTL_CHECKS, 'MAX_ENGINE_CONTROL_DEPTH')} "
-        "(8 ports)."
+        "with the FMA and the lanes stubbed at most "
+        f"{constant(RTL_CHECKS, 'MAX_ENGINE_CONTROL_DEPTH')} (8 ports)."
     )
     return {
         "verdict": blocks.verdict(exit_rows, "M5"),

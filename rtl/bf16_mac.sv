@@ -34,6 +34,8 @@ module bf16_mac #(
     .a_i(w_i),
     .b_i(x_i),
     .c_i(acc_i),
+    .late_i  (1'b0),
+    .c_late_i('0),
     .valid_o,
     .y_o
   );

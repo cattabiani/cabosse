@@ -28,7 +28,7 @@
 #include "verilated.h"
 
 constexpr int kResetCycles = 2;   ///< cycles in reset before the first input
-constexpr int kDrainCycles = 64;  ///< after the last result: more than any pipeline depth we use
+constexpr int kDrainCycles = 128;  ///< after the last result: more than any pipeline depth we use (vec chain: 78)
 constexpr uint64_t kMaxIdleCycles = 100'000;  ///< handshake drivers: cycles with no progress before calling it a hang
 constexpr int kExitBadInput = 2;  ///< exit code: the input is malformed
 constexpr int kExitHang = 3;      ///< exit code: the block hangs, or a result is missing

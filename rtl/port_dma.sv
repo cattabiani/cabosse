@@ -16,10 +16,13 @@
 // memory never waits for the engine. Full rate needs Depth to cover the beats
 // in flight: about the memory's latency plus one burst.
 //
-// The next command is taken the cycle after the current one's last burst is
-// requested, while its data may still be on the way. So a command costs at
-// least 2 cycles of requests: commands of 1 beat run at half rate (the
-// engine's are hundreds of beats per port).
+// A burst is decided into a register (ar_*_o all registered, M10: the
+// decision's logic stays beside its counters, away from the AXI stages),
+// and the next one once that register is empty: at most a burst every 2
+// cycles. The next command is taken the cycle after the current one's last
+// burst is decided, while its data may still be on the way. So a command
+// costs at least 2 cycles of requests: commands of 1 beat run at half rate
+// (the engine's are hundreds of beats per port).
 //
 // The data FIFO is Slices FIFOs side by side, slice s holding bits s * W
 // ... of each beat (W = DataWidth / Slices), each with its own pointers: in
@@ -94,7 +97,10 @@ module port_dma #(
   logic [CrW-1:0]        reserved_q;  // beats requested and not yet out
   logic [IdxW:0]         to_page;     // beats to the next 4 KB boundary, 1 .. PageBeats
   logic [LenW-1:0]       cap, left, len;
-  logic                  cmd_fire, ar_fire, out_fire;
+  logic                  cmd_fire, ar_fire, out_fire, decide;
+  logic                  ar_valid_q;  // a burst decided, not yet taken
+  logic [AddrWidth-1:0]  ar_addr_q;
+  logic [7:0]            ar_len_q;
 
   // The burst: the fewest of the beats to the page's end, MaxBurst and the
   // beats left, each narrowed to a burst's width before comparing.
@@ -105,10 +111,11 @@ module port_dma #(
 
   assign cmd_ready_o = left_q == '0;
   assign cmd_fire    = cmd_valid_i && cmd_ready_o;
-  assign ar_valid_o  = left_q != '0 && (CrW'(Depth) - reserved_q >= CrW'(len));
+  assign decide      = !ar_valid_q && left_q != '0 && (CrW'(Depth) - reserved_q >= CrW'(len));
+  assign ar_valid_o  = ar_valid_q;
   assign ar_fire     = ar_valid_o && ar_ready_i;
-  assign ar_addr_o   = addr_q;
-  assign ar_len_o    = 8'(len - 1'b1);
+  assign ar_addr_o   = ar_addr_q;
+  assign ar_len_o    = ar_len_q;
   assign ar_size_o   = 3'(OffW);
   assign ar_burst_o  = Incr;
 
@@ -119,15 +126,25 @@ module port_dma #(
     end else if (cmd_fire) begin
       addr_q <= cmd_addr_i;
       left_q <= cmd_beats_i;
-    end else if (ar_fire) begin
+    end else if (decide) begin
       addr_q <= addr_q + (AddrWidth'(len) << OffW);
       left_q <= left_q - CountWidth'(len);
     end
   end
 
   always_ff @(posedge clk_i) begin
+    if (!rst_ni) ar_valid_q <= 1'b0;
+    else if (decide) ar_valid_q <= 1'b1;
+    else if (ar_fire) ar_valid_q <= 1'b0;
+    if (decide) begin
+      ar_addr_q <= addr_q;
+      ar_len_q  <= 8'(len - 1'b1);
+    end
+  end
+
+  always_ff @(posedge clk_i) begin
     if (!rst_ni) reserved_q <= '0;
-    else reserved_q <= reserved_q + (ar_fire ? CrW'(len) : '0) - CrW'(out_fire);
+    else reserved_q <= reserved_q + (decide ? CrW'(len) : '0) - CrW'(out_fire);
   end
 
   // --- Data side: FIFO, errors -------------------------------------------------

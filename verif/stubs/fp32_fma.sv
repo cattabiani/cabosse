@@ -9,6 +9,7 @@ module fp32_fma
   import fp_pkg::*;
 #(
   parameter int unsigned MulRegs = 2,
+  parameter int unsigned AddRegs = AddLatency,
   parameter bit          Ftz     = 1'b0
 ) (
   input  logic        clk_i,
@@ -18,11 +19,13 @@ module fp32_fma
   input  logic [31:0] a_i,
   input  logic [31:0] b_i,
   input  logic [31:0] c_i,
+  input  logic        late_i,
+  input  logic [31:0] c_late_i,
   output logic        valid_o,
   output logic [31:0] y_o
 );
   always_ff @(posedge clk_i) begin
     valid_o <= valid_i;
-    y_o     <= a_i ^ b_i ^ c_i ^ {30'b0, op_i};
+    y_o     <= a_i ^ b_i ^ (late_i ? c_late_i : c_i) ^ {30'b0, op_i};
   end
 endmodule

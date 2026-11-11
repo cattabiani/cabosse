@@ -52,9 +52,13 @@ PERIODS = {
     "recip subnormal": ("recip", 0, 0x0080_0000),
     "recip from 2^125": ("recip", 0x7E00_0000, 0x7F80_0000),
 }
-# fp32_chain's FMA registers: the same bits at each (the default, 2, in the
-# other tests).
-PIPELINES = {"mulregs0": (("MulRegs", 0),), "mulregs1": (("MulRegs", 1),)}
+# fp32_chain's FMA registers: the same bits at each (the default, MulRegs 2
+# and AddRegs 3, in the other tests; the vector unit's, rtl/vec_unit.sv).
+PIPELINES = {
+    "mulregs0": (("MulRegs", 0),),
+    "mulregs1": (("MulRegs", 1),),
+    "vec_unit": (("MulRegs", 5), ("AddRegs", 4)),
+}
 SWEEP = os.environ.get("CABOSSE_SWEEP") == "1"  # the every-input run, on request
 SWEEP_CHUNK = 1 << 22  # inputs per chunk of it (memory: bulk.WORKERS at once)
 

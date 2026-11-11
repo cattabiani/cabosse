@@ -21,9 +21,10 @@ package fp_pkg;
   localparam int unsigned AddLatency = 3;  // fp_add's registers (vec_tree's add)
 
   // fp_mul_add's latency (bf16_mac, fp32_fma): fp_product's mul_regs
-  // registers, one, then fp_add's.
-  function automatic int unsigned mul_add_latency(int unsigned mul_regs);
-    return mul_regs + 1 + AddLatency;
+  // registers, one, then fp_add's add_regs.
+  function automatic int unsigned mul_add_latency(int unsigned mul_regs,
+                                                  int unsigned add_regs = AddLatency);
+    return mul_regs + 1 + add_regs;
   endfunction
 
   // fp32_chain's op_i (D-048): the vector unit's arithmetic, one result per
@@ -41,8 +42,9 @@ package fp_pkg;
   // fp32_chain's stages (D-048), and its latency: its entry register, then
   // the stages, each an fp32_fma and a register.
   localparam int unsigned ChainStages = 7;
-  function automatic int unsigned chain_latency(int unsigned mul_regs);
-    return 1 + ChainStages * (mul_add_latency(mul_regs) + 1);
+  function automatic int unsigned chain_latency(int unsigned mul_regs,
+                                                int unsigned add_regs = AddLatency);
+    return 1 + ChainStages * (mul_add_latency(mul_regs, add_regs) + 1);
   endfunction
 
   // An operand: (-1)^sign * sig * 2^(exp - 126 - W) for a significand of W

@@ -21,181 +21,181 @@
  },
  "latency": {
   "provenance": {
-   "commit": "f16cb396d8a55591285c87143e489fc304604337",
+   "commit": "c8b5bd889dc1c85731e104507cd5f6bb2cce1443",
    "dirty": false,
-   "date": "2026-11-08",
+   "date": "2026-11-11",
    "machine": "Linux x86_64"
   },
   "0": {
-   "cycles": 194253,
-   "model_cycles": 186162.0,
+   "cycles": 219597,
+   "model_cycles": 219598.0,
    "worst": {
-    "index": 5,
-    "kind": "mul",
-    "cycles": 60,
-    "model_cycles": 54.0,
-    "off": 0.11111111111111116
+    "index": 0,
+    "kind": "load",
+    "cycles": 198,
+    "model_cycles": 199.0,
+    "off": -0.005025125628140725
    },
    "cycles_by_kind": {
-    "load": 7106,
-    "sumsq": 12322,
-    "mul": 31570,
-    "add": 16050,
-    "rsqrt": 3660,
-    "rotate_half": 2160,
-    "fma": 4980,
-    "kv_store": 5370,
+    "load": 7198,
+    "sumsq": 12566,
+    "mul": 40894,
+    "add": 21118,
+    "rsqrt": 5368,
+    "rotate_half": 3000,
+    "fma": 6660,
+    "kv_store": 6210,
     "v_store": 2880,
-    "max": 44370,
-    "exp": 6690,
-    "sum": 44370,
-    "recip": 6450,
-    "output": 6275
+    "max": 45450,
+    "exp": 8370,
+    "sum": 45450,
+    "recip": 8130,
+    "output": 6303
    },
    "latencies": {
     "vector_startup_cycles": {
-     "59": 785
+     "87": 785
     },
     "load_latency_cycles": {
-     "75": 63
+     "76": 63
     },
     "reduction_tail_cycles": {
-     "107": 61
+     "83": 61
     },
     "kv_store_latency_cycles": {
      "72": 30,
      "6216": 1
     },
     "reduction_row_cycles": {
-     "164": 60
+     "168": 60
     }
    }
   },
   "63": {
-   "cycles": 196863,
-   "model_cycles": 188772.0,
+   "cycles": 222207,
+   "model_cycles": 222208.0,
    "worst": {
-    "index": 5,
-    "kind": "mul",
-    "cycles": 60,
-    "model_cycles": 54.0,
-    "off": 0.11111111111111116
+    "index": 0,
+    "kind": "load",
+    "cycles": 198,
+    "model_cycles": 199.0,
+    "off": -0.005025125628140725
    },
    "cycles_by_kind": {
-    "load": 7106,
-    "sumsq": 12322,
-    "mul": 32380,
-    "add": 16860,
-    "rsqrt": 3660,
-    "rotate_half": 2160,
-    "fma": 4980,
-    "kv_store": 5370,
+    "load": 7198,
+    "sumsq": 12566,
+    "mul": 41704,
+    "add": 21928,
+    "rsqrt": 5368,
+    "rotate_half": 3000,
+    "fma": 6660,
+    "kv_store": 6210,
     "v_store": 2880,
-    "max": 44460,
-    "exp": 7500,
-    "sum": 44460,
-    "recip": 6450,
-    "output": 6275
+    "max": 45540,
+    "exp": 9180,
+    "sum": 45540,
+    "recip": 8130,
+    "output": 6303
    },
    "latencies": {
     "vector_startup_cycles": {
-     "59": 785
+     "87": 785
     },
     "load_latency_cycles": {
-     "75": 63
+     "76": 63
     },
     "reduction_tail_cycles": {
-     "107": 61
+     "83": 61
     },
     "kv_store_latency_cycles": {
      "72": 30,
      "6216": 1
     },
     "reduction_row_cycles": {
-     "164": 60
+     "168": 60
     }
    }
   },
   "1023": {
-   "cycles": 249063,
-   "model_cycles": 240972.0,
+   "cycles": 274407,
+   "model_cycles": 274408.0,
    "worst": {
-    "index": 5,
-    "kind": "mul",
-    "cycles": 60,
-    "model_cycles": 54.0,
-    "off": 0.11111111111111116
+    "index": 0,
+    "kind": "load",
+    "cycles": 198,
+    "model_cycles": 199.0,
+    "off": -0.005025125628140725
    },
    "cycles_by_kind": {
-    "load": 7106,
-    "sumsq": 12322,
-    "mul": 48580,
-    "add": 33060,
-    "rsqrt": 3660,
-    "rotate_half": 2160,
-    "fma": 4980,
-    "kv_store": 5370,
+    "load": 7198,
+    "sumsq": 12566,
+    "mul": 57904,
+    "add": 38128,
+    "rsqrt": 5368,
+    "rotate_half": 3000,
+    "fma": 6660,
+    "kv_store": 6210,
     "v_store": 2880,
-    "max": 46260,
-    "exp": 23700,
-    "sum": 46260,
-    "recip": 6450,
-    "output": 6275
+    "max": 47340,
+    "exp": 25380,
+    "sum": 47340,
+    "recip": 8130,
+    "output": 6303
    },
    "latencies": {
     "vector_startup_cycles": {
-     "59": 785
+     "87": 785
     },
     "load_latency_cycles": {
-     "75": 63
+     "76": 63
     },
     "reduction_tail_cycles": {
-     "107": 61
+     "83": 61
     },
     "kv_store_latency_cycles": {
      "72": 30,
      "6216": 1
     },
     "reduction_row_cycles": {
-     "164": 60
+     "168": 60
     }
    }
   },
   "8191": {
-   "cycles": 805863,
-   "model_cycles": 800172.0,
+   "cycles": 829287,
+   "model_cycles": 829288.0,
    "worst": {
-    "index": 5,
-    "kind": "mul",
-    "cycles": 60,
-    "model_cycles": 54.0,
-    "off": 0.11111111111111116
+    "index": 0,
+    "kind": "load",
+    "cycles": 198,
+    "model_cycles": 199.0,
+    "off": -0.005025125628140725
    },
    "cycles_by_kind": {
-    "load": 7106,
-    "sumsq": 12322,
-    "mul": 169540,
-    "add": 154020,
-    "rsqrt": 3660,
-    "rotate_half": 2160,
-    "fma": 4980,
-    "kv_store": 5370,
+    "load": 7198,
+    "sumsq": 12566,
+    "mul": 178864,
+    "add": 159088,
+    "rsqrt": 5368,
+    "rotate_half": 3000,
+    "fma": 6660,
+    "kv_store": 6210,
     "v_store": 2880,
-    "max": 143220,
-    "exp": 144660,
-    "sum": 143220,
-    "recip": 6450,
-    "output": 6275
+    "max": 143340,
+    "exp": 146340,
+    "sum": 143340,
+    "recip": 8130,
+    "output": 6303
    },
    "latencies": {
     "vector_startup_cycles": {
-     "59": 785
+     "87": 785
     },
     "load_latency_cycles": {
-     "75": 63
+     "76": 63
     },
     "reduction_tail_cycles": {
-     "107": 61
+     "83": 61
     },
     "kv_store_latency_cycles": {
      "72": 30,

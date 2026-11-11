@@ -27,15 +27,19 @@
 // is normal). Special inputs (NaN, zeros, infinities, rsqrt of a negative)
 // are classified at the entry and set the result at the exit.
 //
-// Each stage is its fp32_fma (MulRegs + 4 cycles) and a register: a result
-// leaves 1 + 7 * (MulRegs + 5) cycles after its operands enter (50 at the
-// default); valid_o marks it. No stall (AGENTS.md: a fixed-latency
-// arithmetic pipeline).
+// Each stage is its fp32_fma (mul_add_latency(MulRegs, AddRegs) cycles) and
+// a register: a result leaves chain_latency(MulRegs, AddRegs) = 1 + 7 *
+// (MulRegs + AddRegs + 2) cycles after its operands enter (50 at MulRegs 2,
+// AddRegs 3); valid_o marks it. No stall (AGENTS.md: a fixed-latency
+// arithmetic pipeline). late_i (with an add or an fma) gives the first
+// stage's FMA a late c (fp_mul_add): c_late_i, 1 + MulRegs cycles after the
+// operands enter, replaces the fma's c (an add's b).
 
 module fp32_chain
   import fp_pkg::*;
 #(
-  parameter int unsigned MulRegs = 2
+  parameter int unsigned MulRegs = 2,
+  parameter int unsigned AddRegs = AddLatency
 ) (
   input  logic        clk_i,
   input  logic        rst_ni,
@@ -44,15 +48,18 @@ module fp32_chain
   input  logic [31:0] a_i,
   input  logic [31:0] b_i,
   input  logic [31:0] c_i,
+  input  logic        late_i,
+  input  logic [31:0] c_late_i,  // 1 + MulRegs cycles after valid_i, for late_i
   output logic        valid_o,
   output logic [31:0] y_o,
-  // The first stage's FMA result, MulRegs + 5 cycles after its operands
-  // enter: the vector unit's reductions accumulate with it (D-050)
+  // The first stage's FMA result, mul_add_latency(MulRegs, AddRegs) + 1
+  // cycles after its operands enter: the vector unit's reductions accumulate
+  // with it (D-050)
   output logic [31:0] s1_y_o
 );
 
   localparam int unsigned Stages = ChainStages;
-  localparam int unsigned FmaLatency = mul_add_latency(MulRegs);
+  localparam int unsigned FmaLatency = mul_add_latency(MulRegs, AddRegs);
 
   // FP32 bits (docs/numerics.md, section 5; golden.funcs).
   localparam logic [31:0] OneHalf = 32'h3FC0_0000, PosInf = 32'h7F80_0000;
@@ -286,9 +293,11 @@ module fp32_chain
   // alongside: each stage's from its FMA's valid_o.
   state_t st_q[Stages+1];
   logic   valid_q[Stages+1];
+  logic   late_q;  // late_i, with st_q[0]
   always_ff @(posedge clk_i) begin
     st_q[0]    <= entry(op_i, a_i, b_i, c_i);
     valid_q[0] <= rst_ni && valid_i;
+    late_q     <= late_i;
   end
 
   for (genvar s = 0; s < Stages; s++) begin : gen_stage
@@ -301,17 +310,20 @@ module fp32_chain
     state_t      d_q[FmaLatency];  // the state, delayed to meet r
     assign f = operands(s + 1, st_q[s]);
     fp32_fma #(
-      .MulRegs(MulRegs)
+      .MulRegs(MulRegs),
+      .AddRegs(AddRegs)
     ) u_fma (
       .clk_i,
       .rst_ni,
-      .valid_i(valid_q[s]),
-      .op_i   (f.op),
-      .a_i    (f.a),
-      .b_i    (f.b),
-      .c_i    (f.c),
-      .valid_o(r_valid),
-      .y_o    (r)
+      .valid_i (valid_q[s]),
+      .op_i    (f.op),
+      .a_i     (f.a),
+      .b_i     (f.b),
+      .c_i     (f.c),
+      .late_i  (s == 0 && late_q),
+      .c_late_i(c_late_i),
+      .valid_o (r_valid),
+      .y_o     (r)
     );
     always_ff @(posedge clk_i) begin
       d_q[0] <= st_q[s];

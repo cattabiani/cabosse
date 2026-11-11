@@ -44,6 +44,8 @@ module fma_path #(
     .a_i    (a_q),
     .b_i    (b_q),
     .c_i    (c_q),
+    .late_i  (1'b0),
+    .c_late_i('0),
     .valid_o(valid),
     .y_o    (y)
   );
