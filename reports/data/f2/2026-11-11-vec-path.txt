@@ -1,0 +1,50 @@
+# vec_path harness after M10 step 5 (branch m10/slr-regs, 2026-11-11): the vector unit alone at 250 MHz, MulRegs 5, AddRegs 4.
+# From s3://cabosse-builds-628837661672/dcp/2026-11-11-vec-path/ (cabosse.log, run1/ shell flow, run2/ explore flow).
+# r6i.2xlarge about 1.5 h (about $1, estimate). Both runs meet 250 MHz, neither the 0.1 ns margin (timing.tcl exit 1).
+
+CABOSSE-RESULT top=vec_path loop_cycles=1 retime=0 flow=explore place=- wns_ns=0.019
+CABOSSE-TIMING-FAILED top=vec_path wns_ns=0.019
+CABOSSE-RESULT top=vec_path loop_cycles=1 retime=0 flow=shell place=SSI_SpreadLogic_high wns_ns=0.027
+CABOSSE-TIMING-FAILED top=vec_path wns_ns=0.027
+CABOSSE-RESULT top=vec_path loop_cycles=1 retime=0 flow=shell place=SSI_SpreadLogic_high wns_ns=0.027
+CABOSSE-RESULT top=vec_path loop_cycles=1 retime=0 flow=explore place=- wns_ns=0.019
+
+## run1: slack histogram and worst families
+# paths (one per endpoint) per slack bin, ns from the bin's lower edge, under 0.2 ns
+0.00 15
+0.05 79
+0.10 254
+0.15 348
+0.20 8
+0.027 335 u_vec/w_data_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/wr_data_q_reg[*][*]/D
+0.028 72 ext_w_data_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/wr_data_q_reg[*][*]/D
+0.031 9 ext_w_mask_q_reg[*]/C -> u_vec/gen_buf[*].u_banks/wr_mask_q_reg[*]/D
+0.037 7 u_vec/w_data_q_reg[*][*]/C -> u_vec/gen_buf[*].gen_read2.u_banks2/wr_data_q_reg[*][*]/D
+0.051 3 u_vec/wd_q_reg[addr][*]__0/C -> u_vec/gen_buf[*].u_banks/wr_addr_q_reg[*]/D
+0.053 5 u_vec/gen_buf[*].u_banks/rd_rot_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/rd_data_o_reg[*][*]/D
+0.059 6 u_vec/wd_q_reg[mask][*]__0/C -> u_vec/gen_buf[*].u_banks/wr_mask_q_reg[*]/D
+0.061 38 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_qqq.mul_fabric_q_reg[prod][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q_reg[exp][*]/D
+0.071 129 u_vec/rst_nq_reg/C -> u_vec/u_tree/v_q_reg[*][*]/CE
+0.078 8 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_add/y_o_reg[*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].st_q_reg[*][i][*]/D
+0.079 13 u_vec/t_w_data_reg[*]/C -> u_vec/gen_buf[*].u_banks/wr_data_q_reg[*][*]/D
+0.116 54 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_qqq.mul_fabric_q_reg[prod][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+
+## run2: slack histogram and worst families
+# paths (one per endpoint) per slack bin, ns from the bin's lower edge, under 0.2 ns
+0.00 2
+0.05 13
+0.10 79
+0.15 121
+0.20 2
+0.019 27 ext_w_data_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/wr_data_q_reg[*][*]/D
+0.062 107 u_vec/w_data_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/wr_data_q_reg[*][*]/D
+0.064 4 u_vec/t_w_addr_reg[*]/C -> u_vec/gen_buf[*].u_banks/wr_addr_q_reg[*]/D
+0.081 2 u_vec/u_tree/v_q_reg[*][*]/C -> u_vec/u_tree/u_add/s1_q_reg[lo][*]/D
+0.109 32 u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_mul_qqq.mul_fabric_q_reg[prod][*]/C -> u_vec/gen_slot[*].u_chain/gen_stage[*].u_fma/u_fma/u_mul/gen_norm_q.norm_q_reg[sig][*]/D
+0.110 4 u_vec/gen_slot[*].sel_q_reg[c][*]/C -> u_vec/gen_slot[*].c_q_reg[*]/R
+0.111 5 u_vec/t_w_data_reg[*]/C -> u_vec/gen_buf[*].u_banks/wr_data_q_reg[*][*]/D
+0.114 3 ext_w_addr_q_reg[*]/C -> u_vec/gen_buf[*].u_banks/wr_addr_q_reg[*]/D
+0.121 5 ext_w_mask_q_reg[*]/C -> u_vec/gen_buf[*].u_banks/wr_mask_q_reg[*]/D
+0.124 5 u_vec/wd_q_reg[mask][*]__0/C -> u_vec/gen_buf[*].u_banks/wr_mask_q_reg[*]/D
+0.136 10 u_vec/gen_buf[*].u_banks/rd_rot_q_reg[*][*]/C -> u_vec/gen_buf[*].u_banks/rd_data_o_reg[*][*]/D
+0.137 1 u_vec/wd_q_reg[mask][*]__0/C -> u_vec/gen_buf[*].gen_read2.u_banks2/wr_mask_q_reg[*]/D

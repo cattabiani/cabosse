@@ -2373,6 +2373,172 @@ more cycles per command; branch `m10/slr-regs`):
 - Tests (2026-11-11): default 1056 passed, slow 39 passed; after
   `engine_startup_cycles` 85, test_engine and test_core (with slow) 124
   passed.
+- vec_path harness after step 5 (2026-11-11,
+  reports/data/f2/2026-11-11-vec-path.txt; r6i.2xlarge about $1, estimate):
+  +0.027 ns (shell flow) and +0.019 (explore), 0 failing, still under the
+  0.1 ns margin. Worst: the slots' `w_data_q` and the engine's `ext_w_data_q`
+  to the 21 buffers' write registers (1 level, 94% wire), then the fma's
+  `mul_fabric_q` to `norm_q`. The chain's step-5 stages are no longer near
+  the worst.
+- Core build 6 (2026-11-11, main 862b927;
+  reports/data/f2/2026-11-11-core6.txt; c6i.8xlarge about 4.3 h, about $6,
+  and the checkpoint's reports on an r6i.2xlarge about 20 min, about $0.25,
+  estimates; M10 total about $27, over the $15 line, owner knows):
+  post-place WNS -0.638 (build 5: -1.268), after phys_opt -0.366, TNS -349,
+  2,980 failing endpoints of 1.54 M, so the build stopped at the -0.25
+  check. Pblocks took (LUTs SLR0 69%, SLR1 85%, SLR2 57%; SLLs SLR0-1 39%,
+  SLR1-2 7%). The placer calls the design highly congested: level 5-6
+  windows in every SLR, the engine's lanes (groups 2-5 and 7) and the
+  vector unit's buffers 7 and 11 (URAM 100% there). Worst families after
+  phys_opt, all wire (80-97% of the path):
+  - Engine, SLR1 to SLR0: `lane_out_ready` to the lanes' pops (`count_q`,
+    `rd_ptr_q`; -0.37, 4.4 ns of wire, 1 LUT); issue's `iss_addr1_q`
+    through the head mux to the ports' `off_addr_q` (-0.32, 667 paths, 4.0
+    to 4.2 ns of wire, some through SLR0 and back). Step 5's one register
+    per crossing is not enough when the ends sit 350 rows apart.
+  - Engine, SLR0 to SLR1: a group's `out_q` to `grp_out_q` (-0.31, 3.3 ns
+    of wire and -0.65 of skew); the HBM's AXI outputs to `data0_q` on
+    mostly ports 24-31 (-0.32, about 700 paths: 0.65 ns in the HBM block, 2.9 of
+    wire, -0.7 of skew: the first register was placed far from the HBM).
+  - Engine, inside an SLR: lanes' `rd_ptr_q` to the drain's `out_q`
+    (-0.33, 63); `ok_q` to `lane_out_ready` (-0.32, 6 levels); a lane's
+    own paths at 3.0-3.5 ns of wire for 8-10 levels (`addend_q` and
+    `op_a_q` into fp_add, `s2_q` to `y_o`, `w_q` into the LUT multiplier:
+    -0.30, about 330 paths together): the lanes are placed loosely in
+    the congested windows. Step's enables (`step_last_cyc_q`,
+    `step_age_q` to wide CEs, -0.26).
+  - Vector unit (all SLR2): the reductions' loop, `y_o` to `part_q` (-0.31,
+    429) and `c_q` (the late partial) into the adder (-0.30, 139); the
+    buffers' read data into the slots' operands (`rd_data_o` to `a_q`,
+    `b_q`: -0.30, 232, a 22:1 select over the whole SLR); `rq_q` to the
+    buffers' `rd_entry_q` (-0.28, 393); the fma's normalize (-0.25, 250);
+    the tree's operand into its adder (-0.29, 12 levels).
+  - Small: the host's and port 0's skid stages' valid to 260-290 CEs
+    (-0.28); the controller's command RAM output into its address (-0.21);
+    `host_port_q` across three SLRs (-0.30); `core_rst_nq` into f2_core's
+    and the controller's registers (-0.20).
+  - Hold after phys_opt -1.985 (estimated; routed builds met hold).
+
+**Step 6, proposed (2026-11-11, Fable; needs the owner's OK): two registers
+per crossing, credits for the DMA commands, the lanes' products on DSPs,
+the HBM stages beside the HBM, the vector unit's broadcasts.** Same bits;
+more cycles per command. One branch, one PR, then one full build. The
+rule learnt from builds 5 and 6: a signal that crosses an SLR goes
+sender register, a register with one load and no logic (free to float to
+the boundary), receiver register, then logic; a broadcast gets a copy per
+SLR, then per group. Nothing below is a numerics change.
+1. Engine, issue to the DMAs (`rtl/engine.sv`, `rtl/port_dma.sv`): a
+   command FIFO of 2 per port (stream_fifo, inside `gen_dma[p]`) with a
+   credit counter per port on issue's side. Issue pushes a head's command
+   to every active port in one cycle when each has a credit (one AND over
+   32 counters and `iss_active`, in one cycle, from registers), then goes
+   to the next head or unit as soon as `iss_next_q` and its ports are
+   there (an age counter like step's, 2-3 cycles per unit). The push
+   travels: the head's address and beats muxed into one central register
+   (`dma_cmd_q`, no mux after it), a copy per SLR (in a new per-region
+   block, below), the port's FIFO. The pop returns: `pop_q` in `gen_dma[p]`,
+   a copy per SLR, issue's counters. The offer/take handshake, `took_q`,
+   `taken_q` and `iss_grp_done_q` go; `iss_done_q` becomes "all pushed".
+   Expected: SCORES' per-head cost back near step 1b's (the 9% loss of
+   step 5 came from this handshake and PopLat, not separated).
+2. Engine regions (`rtl/engine.sv`, `scripts/f2/floorplan.py`): the halves
+   (`gen_half`, `gen_bhalf`, NH) become regions, a parameter table of each
+   group's region (packed array), so group 7 can go to SLR2 (item 8). Per
+   region: the beat and x copies (as now), the seen/min copies, the DMA
+   command copies and the pop collectors (item 1), the `lane_out_ready`
+   copies (item 3).
+3. Engine, the drain's crossings: `lane_out_ready` goes central register,
+   a copy per group in `gen_drain[g]` (the group's SLR), then the lanes'
+   pops (Recent 4). `lane_out_valid` goes a register per group in
+   `gen_drain[g]`, then the central `out_valid_q` (Recent 5). The results:
+   a register per port of its 4 lanes' outputs (the lane's 2:1 FIFO mux
+   then a 4-wide register, inside `gen_drain[g]` or a port block), the
+   group's `out_q` selects between its 2 ports' registers, a second
+   register in the group's SLR (free to float), then `grp_out_q` and the
+   central select (SlotLat 5, WrLat +2). `go`'s fan-out to the 128
+   `lane_out_ready` and the 16:1 `ok_q` select: `ok` for the next group
+   precomputed into a register (`ok_q[drain_grp_q + 1]` is known a cycle
+   ahead), or the select kept and `max_fanout` 32 on `go` (verified in the
+   audit).
+4. Engine, step's estimates: the half's `h_min_q`/`h_res_q` cross into
+   `min_q` through a min and an OR; a central-side copy first (SeenRegs
+   4, Window +1). Step's wide enables (`unit_end`, `fire` into
+   `step_unit_q`, `step_active_q`): registered copies per field group or
+   `max_fanout` 32, verified in the audit.
+5. Engine, the lanes' products on DSPs (`rtl/fp_product.sv`, M = 8): the
+   8 x 8 significand multiply with `(* use_dsp = "yes" *)` and its
+   register as the DSP's P register (Regs 2 as now: DSP output register,
+   then normalize). Yosys counts 315 LUTs for one product without a DSP
+   (`synth_xilinx -nodsp`, 2026-11-11), 4 per lane, 128 lanes: the
+   multiply itself is about 150-200 of them, so about 80-100k LUTs leave
+   the engine (estimate; Vivado's count differs), SLR1 from 85% to about
+   75%, and the `w_q` to `mul_q` family goes. 512 DSPs of 9,024; none used
+   in SLR0 today. Same product bits (exact either way; the tests say so).
+   If Vivado's DSP columns stretch the lanes instead (longer `w_q`/`x_q`
+   wires), the lane harness (`lane_path.sv`, about $1) shows it before the
+   full build: run it.
+6. Engine lanes, PopLat: LaneBanks 3 (dot_lane `Banks`), so the row buffer
+   reserved longer by steps 1b, 5 and this step's PopLat no longer stalls
+   short rows (SCORES at d = 16, 64: the measured +9% at 8191). About +512
+   flops and +150 LUTs a lane (estimate).
+7. HBM stages (`platforms/f2/core/f2_core.sv`, floorplan): a pblock on the
+   bottom clock-region row (`CLOCKREGION_X0Y0:X7Y0`, inside pblock_CL) for
+   every port's stage beside the HBM (`gen_r_regs.*0_q`, `u_ar`'s last
+   stage, port 0's `u_r`, `u_aw`, `u_w`, `u_b` near stage), checked with
+   `report_utilization -pblocks` and the audit. Read stages per port: 2 for
+   SLR0 ports, 3 for SLR1, 4 for SLR2 (the middle ones float); AR likewise.
+   The skid stages' valid to 260-290 CEs: `max_fanout` 64 on
+   `bringup_pipe`'s valids (verified in the audit). Port 0's `u_w` takes
+   the HBM's `w_ready` into a register first (one more stage beside the
+   HBM).
+8. Floorplan: group 7 (ports 28-31, lanes 112-127, their DMAs and HBM
+   stages) to SLR2, SLR1 to about 65% LUTs before item 5, SLR2 to about
+   72%. If item 5 brings SLR1 under 75% on its own, the move can wait:
+   decide from the fit check on the linked checkpoint (fitcheck.tcl; the
+   build's own check at 35 min). `fitcheck.tcl` reports the new pblock too.
+9. Vector unit (`rtl/vec_unit.sv`, `rtl/tile_buffer.sv`, `rtl/vec_tree.sv`,
+   `rtl/fp_product.sv`): (a) the reductions' loop: a register on the first
+   FMA's `y_o` into `part_q` and one on `part_q` into `c_late_i`; the loop
+   becomes AddRegs + 4 = 8 = Parts, so `Partials` stays 128 (the check
+   `Parts >= AddRegs + 4`). (b) The buffers' read: each buffer registers
+   its read address before `entry()` (`tile_buffer` RdLat 5; `rq_q`'s and
+   `xv_r_addr_q`'s fan-out of 20 bits to 336 adders becomes 21 registers),
+   and the slots' 22:1 operand select in two levels, a register per group
+   of about 6 buffers then the final select (one more cycle: the `iss_q`
+   pipeline and `ld_d` follow RdLat; `ext_r_data_o` too, so core's
+   `XRdLat` 8 and the engine's PopLat 14, covered by item 6). (c) The write
+   broadcast (the harness's worst): a copy of `w_data_q`, `ext_w_data`,
+   `t_w_data` and their addresses and masks per group of about 6 buffers
+   (+1 cycle; `done_o` of a buffer write moves with it, so the controller
+   still sees the write in the RAM; a test checks a dependent read after
+   done). (d) The fma's normalize split: `fp_product` Regs 6, a register
+   between the leading-zero count and the shift (chain 78 -> 85;
+   `chain_latency`, `KvTrip`, the perf model). (e) The tree: a register on
+   the operands into its adder (+1 cycle a level, `reduction_tail_cycles`).
+10. Small ones: `host_port_q` and `sel` through a register in `u_host`
+    (SLR0); f2_core's AXI-Lite inputs through a `bringup_pipe` stage;
+    a registered reset copy for the controller and for f2_core's own logic
+    (as the units' in step 1a; the controller's settle window covers it);
+    the controller's command RAM read through its output register (the
+    sequencer one cycle later per fetch); the group's `lane_in_valid`
+    compare (`l < lanes`) precomputed in the group's last pipe stage.
+11. Bookkeeping: `floorplan.py` regenerated and `--check`ed, every new
+    pattern matching cells (a miss stops the build); lint `-Wall` clean;
+    the engine depth check (`verif/stubs/dot_lane.sv` follows the lane's
+    FIFO); `scripts/test.sh` default and slow; the measured cycle costs
+    (`scripts/measure_m6.py`, `measure_m5_engine.py`: `engine_startup`,
+    `vector_startup`, `reduction_*`, `load_latency`) into `model/designs/
+    v0.json` and the test bounds, each told to the owner; PLAN notes;
+    /simplify and /code-review high.
+12. Builds: the lane harness if item 5 looks doubtful (about $1); then the
+    full build with the early stop as it is (about $6-8). Expected from the
+    families: every family at or below -0.2 has a structural fix above;
+    the vector unit's in-core margin and the congestion are the risks, so
+    plan for two builds, not one. If the second still misses by under
+    0.1 ns: the vec_path harness's remaining families (its `w_data_q`
+    copies are item 9c) and the placer directive (AWS's script takes
+    `--place`; ExtraTimingOpt instead of SSI_SpreadLogic_high, which
+    spreads a 61% design to every corner), one change per build.
 
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
