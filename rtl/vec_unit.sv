@@ -115,7 +115,7 @@ module vec_unit
   parameter  int unsigned     MemAddrW = 34,   // F2's HBM: 16 GiB
   parameter  int unsigned     KvPorts  = 32,   // the engine's ports: the KV cache's channels (D-062)
   parameter  int unsigned     ChanW    = 29,   // log2 of a channel's bytes: 512 MiB
-  parameter  int unsigned     MemDepth = 64,   // beats: port_dma's FIFO; groups: the stores' queue
+  parameter  int unsigned     MemDepth = 64,   // beats: port_dma's FIFO (LOAD)
   parameter  int unsigned     WrOutstanding = 128,  // write bursts sent, not yet answered (to verify on F2)
   parameter  int unsigned     Dones    = 64,   // commands taken and not yet done, at most
   parameter  int unsigned     RdLat    = 4,    // tile_buffer's read: data cycles after the address
@@ -205,12 +205,20 @@ module vec_unit
   localparam int unsigned LanesPerPort = Lanes / E;    // the engine's lanes a port: a beat's chunks
   localparam int unsigned PpW = $clog2(LanesPerPort);
   localparam int unsigned LenW = $clog2(LanesPerPort + 1);  // a burst's beats: K's group
-  localparam int unsigned MW = $clog2(MemDepth + 1);
   localparam int unsigned DoneW = $clog2(Dones + 1);
   localparam int unsigned Depth = (Len + Lanes - 1) / Lanes;  // a bank's entries
   localparam int unsigned DW = $clog2(Depth);
   localparam int unsigned ChainLat = chain_latency(MulRegs, AddRegs);
   localparam int unsigned AccLat = mul_add_latency(MulRegs, AddRegs) + 1;  // chain in to s1_y_o
+  // A store group's place in the stores' queue, from its read (grp_fire) to
+  // the writer's take freeing it at full rate: rq_q, RdLat + 1 to the chain,
+  // the chain, w_valid_q, the queue's output and kv_credit_q. The queue holds
+  // at least that many groups, so a store of one beat a group (OUTPUT) runs
+  // a group a cycle whatever the chain's length (M10 step 5: 64 places
+  // throttled OUTPUT to 64 groups in 87 cycles).
+  localparam int unsigned KvTrip = RdLat + ChainLat + 5;
+  localparam int unsigned KvDepth = 2 ** $clog2(KvTrip);
+  localparam int unsigned MW = $clog2(KvDepth + 1);
   localparam logic [31:0] NegZero = 32'h8000_0000;
 
   if (Lanes != 2 ** LW || Len < 2 * Lanes) begin : gen_lanes_check
@@ -560,7 +568,7 @@ module vec_unit
                      last: grp.is.last, step: KvW'(cur_q.len >> PpW)};
   assign kf_in   = '{v: is_v, o: is_out, two: kb_in.two, pos: cur_q.mrow[LW-1:0]};
 
-  stream_fifo #(.Width(DataWidth), .Depth(MemDepth)) u_kv_queue (
+  stream_fifo #(.Width(DataWidth), .Depth(KvDepth)) u_kv_queue (
     .clk_i,
     .rst_ni     (rst_nq),
     .in_valid_i (kv_beat_valid),
@@ -574,7 +582,7 @@ module vec_unit
     // verilator lint_on PINCONNECTEMPTY
   );
 
-  stream_fifo #(.Width($bits(kv_burst_t)), .Depth(MemDepth)) u_kv_bursts (
+  stream_fifo #(.Width($bits(kv_burst_t)), .Depth(KvDepth)) u_kv_bursts (
     .clk_i,
     .rst_ni     (rst_nq),
     .in_valid_i (kv_push),
@@ -588,7 +596,7 @@ module vec_unit
     // verilator lint_on PINCONNECTEMPTY
   );
 
-  stream_fifo #(.Width($bits(kv_fmt_t)), .Depth(MemDepth)) u_kv_fmts (
+  stream_fifo #(.Width($bits(kv_fmt_t)), .Depth(KvDepth)) u_kv_fmts (
     .clk_i,
     .rst_ni     (rst_nq),
     .in_valid_i (kv_push),
@@ -682,7 +690,7 @@ module vec_unit
   assign err_o = rd_err || wr_err;
 
   always_ff @(posedge clk_i) begin
-    if (!rst_nq) kv_credit_q <= MW'(MemDepth);
+    if (!rst_nq) kv_credit_q <= MW'(KvDepth);
     else kv_credit_q <= kv_credit_q - MW'(kv_push) + MW'(q_take);
   end
 

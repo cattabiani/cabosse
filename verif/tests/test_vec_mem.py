@@ -197,6 +197,25 @@ def test_output(a: Buf, n: int) -> None:
 
 
 @rtl.needs_verilator
+def test_output_speed() -> None:
+    """A long OUTPUT, a one-beat burst a group, takes a group a cycle: the
+    stores' queue has a place for every group between its read and the
+    writer's take (vec_unit's KvTrip)."""
+    length = 4096
+    rng = np.random.default_rng(SEED)
+    cmd = Command(Op.OUTPUT, a=Buf.LOGITS, n=length, addr=LOAD_ADDR)
+    result = vector.check(
+        [Step(cmd)], vector.random_buffers(rng, length), length, "speed", random_memory(rng)
+    )
+    took = int(result.done[0] - result.taken[0])
+    groups = length // (vector.LANES // 2)
+    print(f"OUTPUT of {length} FP32: {took} cycles for {groups} groups")
+    # the reads, the chain's 78 cycles, the queue, the write's response (measured;
+    # 762 with M10 step 5's chain and the queue's 64 places)
+    assert took <= groups + 89, took
+
+
+@rtl.needs_verilator
 def test_kv_store_into_a_slave_that_waits_for_data() -> None:
     """A write port that takes an address only once its burst's data is in
     (AXI allows it): the unit's data must not wait for the address."""
@@ -292,7 +311,7 @@ def test_error_responses(which: str) -> None:
 @rtl.needs_verilator
 def test_kv_queue_fills() -> None:
     """KV_STOREs of 4 heads of 256 back to back into a write port that takes
-    a beat in 20 cycles: 192 groups, more than the queue's 64, so groups
+    a beat in 20 cycles: 192 groups, more than the queue's 128, so groups
     wait for a place."""
     length = 1024
     rng = np.random.default_rng(SEED)
