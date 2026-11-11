@@ -12,7 +12,9 @@ if {[llength $argv] == 1} {open_checkpoint [lindex $argv 0]}
 set NEAR_NS 0.2
 
 report_timing_summary -no_header -file timing_summary.rpt
-report_timing -max_paths 3 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+report_timing -max_paths 40 -nworst 1 -path_type full -input_pins -file worst_paths.rpt
+# Per path: logic and net delay, skew, levels, SLR crossings, high fan-out (a table).
+report_design_analysis -timing -setup -max_paths 300 -file design_analysis.rpt
 # Start, end and slack of the worst 200 paths.
 report_timing -max_paths 200 -nworst 1 -path_type summary -file worst_paths_summary.rpt
 # Logic levels per path, and the nets with the most loads.
