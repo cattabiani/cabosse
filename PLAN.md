@@ -2388,7 +2388,7 @@ more cycles per command; branch `m10/slr-regs`):
   2,980 failing endpoints of 1.54 M, so the build stopped at the -0.25
   check. Pblocks took (LUTs SLR0 69%, SLR1 85%, SLR2 57%; SLLs SLR0-1 39%,
   SLR1-2 7%). The placer calls the design highly congested: level 5-6
-  windows in every SLR, the engine's lanes (groups 2, 3, 5, 7) and the
+  windows in every SLR, the engine's lanes (groups 2-5 and 7) and the
   vector unit's buffers 7 and 11 (URAM 100% there). Worst families after
   phys_opt, all wire (80-97% of the path):
   - Engine, SLR1 to SLR0: `lane_out_ready` to the lanes' pops (`count_q`,
@@ -2398,7 +2398,7 @@ more cycles per command; branch `m10/slr-regs`):
     per crossing is not enough when the ends sit 350 rows apart.
   - Engine, SLR0 to SLR1: a group's `out_q` to `grp_out_q` (-0.31, 3.3 ns
     of wire and -0.65 of skew); the HBM's AXI outputs to `data0_q` on
-    ports 24-31 (-0.32, about 700 paths: 0.65 ns in the HBM block, 2.9 of
+    mostly ports 24-31 (-0.32, about 700 paths: 0.65 ns in the HBM block, 2.9 of
     wire, -0.7 of skew: the first register was placed far from the HBM).
   - Engine, inside an SLR: lanes' `rd_ptr_q` to the drain's `out_q`
     (-0.33, 63); `ok_q` to `lane_out_ready` (-0.32, 6 levels); a lane's
