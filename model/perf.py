@@ -496,8 +496,9 @@ def vector_cycles(steps: tuple[Step, ...], design: dict[str, float]) -> list[flo
     `vector_startup_cycles` after its start (its groups through the chain)
     or once the writer is done with the last store's, and it is done
     `kv_store_latency_cycles` after its last beat (its writes answered; the
-    walk is not held back by a full store queue, MemDepth groups, which
-    SmolLM2's stores do not fill); a reduction
+    walk is not held back by the store queue: it has a place for every
+    group between its read and the writer's take, rtl/vec_unit.sv's KvTrip,
+    and SmolLM2's stores do not fill it); a reduction
     `reduction_tail_cycles` later (its last row's tree), whose rows end at
     least `reduction_row_cycles` apart; the next step starts once a
     reduction is done. Dones come in order, one a cycle at most."""

@@ -2352,11 +2352,15 @@ more cycles per command; branch `m10/slr-regs`):
   83, `reduction_row_cycles` 164 -> 168, `load_latency_cycles` 75 -> 76,
   `engine_startup_cycles` 76 -> 85; the vector unit's step at position
   1023 274,407 cycles (was 249,063), every vector command within 0.5% of
-  the model. SCORES' short rows wait for a lane's row buffer (step 1b's
-  cost, `PopLat` one longer): +9.4% at position 8191, +9.1% at 1023, not
-  modelled; M5's "SCORES and VALUES use >= 90% of the model" reads 91.5%,
-  and the worst engine command is 9.3% off the model (limit 10%). The
-  next `PopLat` cycle breaks both: x prefetch or `LaneBanks` 3 first.
+  the model. SCORES' short rows got slower: +9.4% at position 8191, +9.1%
+  at 1023, not modelled. Two causes, not separated: `PopLat` one longer
+  (a lane's row buffer reserved longer, step 1b's cost) and issue's DMA
+  handshake (offer, take, `took_q`: a head every 5 cycles, was 3). M5's
+  "SCORES and VALUES use >= 90% of the model" reads 91.5%, and the worst
+  engine command is 9.3% off the model (limit 10%): the next cycle there
+  breaks both. Remedies: x prefetch or `LaneBanks` 3 (the row buffer); a
+  small command FIFO per port with credits on issue's side (the
+  handshake, review 2026-11-11).
   Test bounds raised (measured): engine start-up 86 -> 91 (145 at 32
   ports), back-to-back extra 11 -> 15, SCORES at d = 16 18 -> 27, LOAD
   speed groups + 70 -> + 98.

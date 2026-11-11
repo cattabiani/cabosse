@@ -426,7 +426,7 @@ module engine
   logic                 iss_done_q;  // every port took the DMA command (registered, D-051)
   logic [AddrWidth-1:0] iss_addr_q;   // the matrix's or the cache's
   logic [Ports-1:0]     iss_taken_q;  // this DMA command's ports already taken
-  logic [Ports-1:0]     took_q;       // dma_took, registered: taken 2 cycles ago
+  logic [Ports-1:0]     took_q;       // dma_took, registered: taken a cycle ago
   logic [Ports-1:0]     iss_ports_q[Heads];  // head_ports(iss_unit_q, a), registered for timing
   unit_t                iss_unit_q;
   unit_t                iss_next_q;  // unit_next(iss_unit_q), a cycle late
@@ -905,8 +905,8 @@ module engine
   // after the one draining (aft) and the queue head's first unit (ini) are
   // registered, then their lane counts and last flags, two cycles after
   // their source changes. A pass ends, or a command loads, only once its
-  // successor's are there; a unit takes at least three cycles anyway (one
-  // group waits two cycles between its goes). A unit starts at group 0, so
+  // successor's are there; a unit takes at least four cycles anyway (one
+  // group waits Recent = 3 cycles between its goes). A unit starts at group 0, so
   // the successors' "results are there" is group 0's only.
 
   // A go's results: a register in each group of GL lanes (one of its WG

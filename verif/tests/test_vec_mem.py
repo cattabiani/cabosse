@@ -210,9 +210,10 @@ def test_output_speed() -> None:
     took = int(result.done[0] - result.taken[0])
     groups = length // (vector.LANES // 2)
     print(f"OUTPUT of {length} FP32: {took} cycles for {groups} groups")
-    # the reads, the chain's 78 cycles, the queue, the write's response (measured;
-    # 762 with M10 step 5's chain and the queue's 64 places)
-    assert took <= groups + 89, took
+    # the reads, the chain's 78 cycles, the queue, the write's response:
+    # measured 89, a few cycles of margin; a throttled queue is far above
+    # (762 with M10 step 5's chain and the queue's 64 places)
+    assert took <= groups + 96, took
 
 
 @rtl.needs_verilator
