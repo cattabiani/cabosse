@@ -2320,6 +2320,52 @@ more cycles per command):
   and one more pipeline stage in the chain's FMA (multiplier input and
   adder normalize), checked on the `vec_path` harness first (~$1).
 
+**Step 5, a register after each SLR crossing** (2026-11-10/11; same bits,
+more cycles per command; branch `m10/slr-regs`):
+- Engine: issue's DMA offer goes to each port through registers on the
+  port's side (`off_*_q`), and the port's take comes back through
+  `took_q` (issue's done 3 cycles after the last take, was 2). The lanes'
+  `out_valid` reach the drain through `out_valid_q` (a write group waits
+  `Recent` = 3 cycles after its go, was 2); each group's results through
+  a copy on the drain's side (`grp_out_q`, a write 1 cycle later). The
+  beat and x reach the groups through a copy per half of the groups
+  (`gen_bhalf`, one per SLR; in the floorplan): `PopLat` one longer.
+- `port_dma`: each burst decided into a register (`ar_*_q`), at most one
+  every 2 cycles (16-beat bursts: plenty).
+- Controller: the units' errors and the command buffer's write registered.
+- Vector unit: the chain's FMAs at `MulRegs` 5 and `AddRegs` 4 (`fp_add`
+  takes an optional register between normalize and round); a
+  reduction's partial enters the first FMA at the adder (`late_i`,
+  `c_late_i`), so its loop (`Parts >= AddRegs + 2`) skips the multiply.
+  Chain 50 -> 78 cycles.
+- Found by the tests: the stores' queue had `MemDepth` = 64 places, less
+  than a store group's round trip (`RdLat + ChainLat + 5` = 87), so OUTPUT
+  ran at 64/87 of its rate (SmolLM2: 8488 cycles against 6303). The queue
+  is now sized from it (`KvDepth` 128); `test_output_speed` checks the
+  rate (601 cycles for 512 groups; 762 with 64 places).
+- The engine's depth check stubs the lanes (`verif/stubs/dot_lane.sv`):
+  in the flattened engine Yosys mapped a lane's adder 6 cells deeper than
+  the lane alone (23 here, 21 on main), which hid the engine's own path.
+  Its own: 21 on main and here; bound 22 -> 21.
+- Cost, measured (SmolLM2; reports/data/M6.json, M5-engine.json): perf
+  model `vector_startup_cycles` 59 -> 87, `reduction_tail_cycles` 107 ->
+  83, `reduction_row_cycles` 164 -> 168, `load_latency_cycles` 75 -> 76,
+  `engine_startup_cycles` 76 -> 85; the vector unit's step at position
+  1023 274,407 cycles (was 249,063), every vector command within 0.5% of
+  the model. SCORES' short rows wait for a lane's row buffer (step 1b's
+  cost, `PopLat` one longer): +9.4% at position 8191, +9.1% at 1023, not
+  modelled; M5's "SCORES and VALUES use >= 90% of the model" reads 91.5%,
+  and the worst engine command is 9.3% off the model (limit 10%). The
+  next `PopLat` cycle breaks both: x prefetch or `LaneBanks` 3 first.
+  Test bounds raised (measured): engine start-up 86 -> 91 (145 at 32
+  ports), back-to-back extra 11 -> 15, SCORES at d = 16 18 -> 27, LOAD
+  speed groups + 70 -> + 98.
+- Not addressed: lanes' `rd_ptr_q` to the drain's `out_q` (-0.84, inside
+  one SLR: wire), the -0.6 to -0.8 ns families.
+- Tests (2026-11-11): default 1056 passed, slow 39 passed; after
+  `engine_startup_cycles` 85, test_engine and test_core (with slow) 124
+  passed.
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
