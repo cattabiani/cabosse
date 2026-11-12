@@ -177,12 +177,12 @@ fi
 # post_phys_opt whatever happens later): the congestion reports and, when
 # there is no routed checkpoint (the route failed, or a watch stopped the
 # build), the fit check use it, and it goes to S3.
-placed_dcp=$(ls *.post_phys_opt.dcp 2>/dev/null | head -1)
-[ -n "$placed_dcp" ] || placed_dcp=$(ls *.post_place.dcp 2>/dev/null | head -1)
+placed_dcp=$(cd $CL_DIR/build/checkpoints && ls *.post_phys_opt.dcp 2>/dev/null | head -1)
+[ -n "$placed_dcp" ] || placed_dcp=$(cd $CL_DIR/build/checkpoints && ls *.post_place.dcp 2>/dev/null | head -1)
 [ "$DESIGN" = core ] || placed_dcp=  # the bring-up design keeps its old behaviour
-if [ -z "$routed$violated" ]; then
-  for f in *.post_place.dcp *.post_phys_opt.dcp; do
-    [ -f "$f" ] && [ "$f" != "$stopped" ] &&
+if [ -z "$routed$violated" ] && [ "$DESIGN" = core ]; then
+  for f in $(cd $CL_DIR/build/checkpoints && ls *.post_place.dcp *.post_phys_opt.dcp 2>/dev/null); do
+    [ -f "$CL_DIR/build/checkpoints/$f" ] && [ "$f" != "$stopped" ] &&
       aws s3 cp --only-show-errors $CL_DIR/build/checkpoints/$f "$S3/$f" && echo "checkpoint $S3/$f"
   done
 fi
