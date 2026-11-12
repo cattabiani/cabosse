@@ -2630,6 +2630,157 @@ step 6; they depend on the DSPs relieving SLR1) and the vector unit's
 in-core margin. If build 7 shows them, that is step 7, planned from its
 families.
 
+**Core build 7 (2026-11-12, main 1662f8e; reports/data/f2/2026-11-12-core7.txt):
+not routable.** c6i.8xlarge about 9 h, about $12 (estimate). Post-place
+WNS -0.386, post-phys_opt -0.176 (TNS -0.955), so both checks passed and
+the build went to route_design (AggressiveExplore, -tns_cleanup). After
+5.5 h it ended with "Design is not legally routed. There are 2328 node
+overlaps" (3,097 signals failed for congestion). The overlaps in global
+iteration 1 fell to about 2,300-2,500 and stayed there: a shortage of
+wires in one place, not a slow route. No checkpoint, fit check or audit.
+- Where: the router's initial estimate is level 5 (global/short, 32x32)
+  and its timing congestion level 6. Every hot window is tiles INT_X96 to
+  X111, rows 240-476: SLR1's east edge of pblock_CL, beside the shell's
+  static region and the notch it cuts at clock region X4Y5. The worst
+  is East, a 16x16 window at 91.7% (INT_X96Y368 to X111Y447).
+- Who: the 10 listed overlapping nodes are lanes 99, 102, 110 and 111
+  (group 6) against the CL's PCIS SmartConnect (`u_pcis`), AWS_CLK_GEN's
+  AXI-Lite converter and the debug bridge. The shell's logic has to sit
+  at that edge (its partition pins); the engine's lanes in pblock_slr1
+  fill the same area.
+- Cause (reading of the logs, not yet measured on a checkpoint): SLR1
+  holds 64 lanes, the engine's central logic and the controller (85% of
+  its LUTs at build 6, before the DSP products; not measured since), and
+  its free area ends in that east strip. SLR2 holds the vector unit only
+  (57%). The group-7 move (step 6 item 8) waited for a fit check that
+  never ran because the build passed the timing checks.
+
+**Before the next build (low priority, scripts only, no cloud).**
+`scripts/f2/build_cl.sh` keeps a placed checkpoint only when its own
+watch stops the build. A failed route_design leaves nothing to analyse,
+so build 7's 9 h gave only logs. Change it so that:
+- the post_place and post_phys_opt checkpoints (AWS's flow writes them)
+  go to S3 whenever there is no routed one, and the fit check runs on
+  the latest of them, as for an early stop;
+- if route_design fails, `report_design_analysis -congestion` and
+  `report_route_status` run on the routed-but-illegal design (or on the
+  post_phys_opt checkpoint), saved to S3;
+- optional: a route watch that stops the build when global iteration 1's
+  overlaps have not fallen below a set count after a set time (values to
+  decide from build 7's log: under 3,000 after the 2nd hour), to save
+  the rest of a hopeless route.
+
+**Step 7 (2026-11-12, accepted by the owner): make SLR1 routable at
+250 MHz.** The proposal of 2026-11-12 (options A and B) went to an expert
+review; the owner accepted the reviewed plan below on 2026-11-12. It is
+decided: do not reopen A versus B, the directive, or the order of the
+items. Do item 1 and item 2 as described (each on its own branch and PR,
+self-reviewed and merged). Build 8's launch still needs the owner's OK in
+the session that launches it (hard rule 3).
+
+Context. Device: AMD VU47P (3 SLRs, HBM below SLR0) on AWS F2, Small
+Shell, 250 MHz. Our logic lives in the shell's reconfigurable pblock
+`pblock_CL`; the shell's static region takes clock regions X6-X7 in SLR1
+and most of X4Y5, so in SLR1 the CL is X0-X5 with a notch at X4Y5 (a strip
+SLICE_X122Y300:X145Y359 stays ours). The shell's CL-side logic (`u_pcis`
+SmartConnect, AWS_CLK_GEN, the debug bridge) is in `pblock_CL` but in none
+of our pblocks, and must sit next to its partition pins at that edge. The
+engine has 32 HBM ports in 8 groups of 4; each group has 16 lanes and 4
+DMAs. `scripts/f2/floorplan.py` writes one hard pblock per SLR: SLR0
+groups 0-3 plus the HBM stages; SLR1 groups 4-7, the engine's central
+logic (issue, step, drain) and the controller; SLR2 the vector unit. Last
+measured fill (build 6, before the DSP products): LUTs SLR0 69%, SLR1 85%,
+SLR2 57%; SLLs SLR0-1 39%, SLR1-2 7%. No build has measured the fill
+since step 6 moved the products onto DSPs, LUTs or DSPs.
+
+Reading of build 7 (reviewed, agreed). The hot band INT_X96-X111, rows
+240-476, is clock-region column X5 over the full height of SLR1: the only
+part of the CL that touches the static shell on its east. X5Y5 is a
+peninsula (static X6Y5 east, static X4Y5 west apart from the strip), so
+every net between X5Y4 and X5Y6, and everything that reaches the shell's
+partition pins, passes through it. The router's East cluster (level 6,
+aspect ratio 0.11) is that corridor. Two users compete for it: the shell's
+CL-side IP, which has no choice, and group 6's lanes, put there because
+SSI_SpreadLogic_high spreads the pblock's contents evenly, edges included.
+The overlap count plateaued at about 2,300 after 21 rip-up passes with the
+East window at 92%: a wire shortage, not slow convergence. Neither
+-tns_cleanup (a post-pass) nor hold fixing caused it (routed builds met
+hold). For 250 MHz: build 7's -0.176 ns after phys_opt is a pre-route
+estimate; under level 5-6 congestion the router loses several tenths of a
+nanosecond against it (build 7's router reported -4.5 ns after it gave up
+on timing). The fix must bring congestion to level 4 or below, not just
+make the route legal.
+
+Plan, in order:
+
+1. Build script first, no cloud (the task "Before the next build" above,
+   plus three additions). From the post-place checkpoint the script also
+   saves: the shell's partition-pin locations (property `HD.PARTPIN_LOCS`
+   on the CL's PCIS, OCL and SDA interface pins), `report_utilization
+   -pblocks` with DSPs, and `report_design_analysis -congestion`. Log the
+   router's initial estimate lines (`Route 35-448`, `Route 35-581`) and
+   the placer's `Place 46-14` warning on every build; no hard stop on
+   them yet (no saved log of a routed build records its level, so there
+   is no calibration point; build 8 gives the first). The plateau rule on
+   the overlap count is optional and fires late (global iteration 1 ends
+   hours into the route).
+
+2. Build 8 = A + B, in one build (owner's OK, c6i.8xlarge, about $12 if
+   it routes to the end, estimate). Both changes are attributable from
+   the reports alone: A shows as region 2 holding group 7 in the
+   utilization table, B as the lanes' child pblock kept and filled
+   (`audit.tcl`, `report_utilization -pblocks`). A alone is indirect (the
+   spread directive still pushes lanes into X5). B's failure mode is
+   cheap: an over-full child pblock fails in the placer in minutes.
+   - A: move group 7 to SLR2 (step 6 item 8). `Region2` 8 -> 7 in
+     `platforms/f2/core/f2_core.sv` (passed to `rtl/engine.sv`) and
+     `REGION2` in `floorplan.py`, regenerated and `--check`ed. Ports
+     28-31, lanes 112-127, their DMAs and HBM stages go to pblock_slr2;
+     their read path gets the SLR2 stage count (4 instead of 3). Run
+     `scripts/test.sh` default and slow; report whether
+     `engine_startup_cycles` moves (M5 measurement). Expected (estimates
+     from build 6): SLR1 to roughly 55-60%, SLR2 to roughly 65-70%;
+     SLR1-2 SLLs rise by group 7's 4 HBM data paths and its results.
+   - B: keep the engine and the controller out of the corridor. In
+     `floorplan.py`, a hard child pblock of pblock_slr1 for everything of
+     ours in SLR1 (lanes, DMAs, central logic, controller) that leaves
+     out clock-region column X5 (Y4-Y7) and the X4Y5 strip. Site ranges
+     read from the device (the strip is SLICE_X122Y300:X145Y359; column
+     X5's ranges per site type, DSP columns included, from the shell's
+     GRID_RANGES clipped as `clip()` does). Column X5 is left to the
+     shell's IP and to whatever of ours must reach the host interfaces.
+     Expected: the child pblock at roughly 70% of SLR1's remaining 19
+     clock regions (estimate; the fit check of build 8 is the first real
+     number, DSPs included).
+   - Placer directive unchanged (SSI_SpreadLogic_high): builds 4-7
+     improved monotonically under it as the floorplan changed, so it
+     stays the control.
+   - Not done: a pblock for `u_pcis` (safe, the cells are in the CL
+     partition, but pinning the shell's IP does not keep our lanes out;
+     excluding ours does).
+
+3. Read build 8's reports before deciding anything else:
+   - Partition pins. If the PCIS pins are in SLR1's east, the 512-bit
+     PCIS path from `u_pcis` to our host-side logic (port 0's merge and
+     the host's side, in SLR0) crosses the SLR1-SLR0 boundary through the
+     corridor. Then the next floorplan change is to move the host-facing
+     blocks into column X5 of SLR1, the natural use of the corridor.
+   - Congestion level after the exclusions. Level 4 or below with the
+     phys_opt estimate near -0.2 ns makes 250 MHz plausible after route,
+     not assured. If it routes and misses by under 0.3 ns, the next moves
+     are timing-only: build 6's worst families (the lanes' pop handshake
+     across SLRs, the HBM data path's first register far from the HBM)
+     are all wire and shorten as fill drops. If the corridor is still hot
+     with the exclusions in force, the shell's IP alone overflows it, and
+     the lever is the host-facing move above.
+   - Only then, if needed: a congestion-aimed placer directive (AWS's
+     script takes `--place`).
+
+Who does what: the script changes and the generated-xdc regeneration are
+mechanical (Sonnet). The `floorplan.py` edit with the device's site
+ranges, the `Region2` change, the test run and the review of the xdc need
+the stronger model at high effort.
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
