@@ -2670,6 +2670,15 @@ so build 7's 9 h gave only logs. Change it so that:
   decide from build 7's log: under 3,000 after the 2nd hour), to save
   the rest of a hopeless route.
 
+**Done (step 7 item 1):** `build_cl.sh` now keeps the post_place and
+post_phys_opt checkpoints when nothing routed, runs the fit check on the
+latest of them, logs the `Route 35-448/581` and `Place 46-14` lines on every
+build, and runs `platforms/f2/timing/congestion.tcl` on it (congestion and
+route-status reports, per-pblock utilization with DSPs, partition-pin
+locations). Not run yet: neither Vivado nor the AWS flow is on this machine,
+so the Tcl is untested until build 8; each part is wrapped so one failure
+does not stop the others. No route watch (optional, not done).
+
 **Step 7 (2026-11-12, accepted by the owner): make SLR1 routable at
 250 MHz.** The proposal of 2026-11-12 (options A and B) went to an expert
 review; the owner accepted the reviewed plan below on 2026-11-12. It is

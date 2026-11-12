@@ -173,9 +173,31 @@ mkdir -p /root/reports && cd /root/reports
 if [ -n "$stopped" ]; then
   aws s3 cp --only-show-errors $CL_DIR/build/checkpoints/$stopped "$S3/$stopped" && echo "checkpoint $S3/$stopped"
 fi
-dcp=${routed:-${violated:-$stopped}}
-if [ -n "$dcp" ] && [ -n "$abort" ] && [ "$DESIGN" = core ]; then
-  # Stopped early: only the floorplan's fit (cells and utilization per SLR
+# The latest placed checkpoint (AWS's flow writes post_place and
+# post_phys_opt whatever happens later): the congestion reports and, when
+# there is no routed checkpoint (the route failed, or a watch stopped the
+# build), the fit check use it, and it goes to S3.
+placed_dcp=$(ls *.post_phys_opt.dcp 2>/dev/null | head -1)
+[ -n "$placed_dcp" ] || placed_dcp=$(ls *.post_place.dcp 2>/dev/null | head -1)
+[ "$DESIGN" = core ] || placed_dcp=  # the bring-up design keeps its old behaviour
+if [ -z "$routed$violated" ]; then
+  for f in *.post_place.dcp *.post_phys_opt.dcp; do
+    [ -f "$f" ] && [ "$f" != "$stopped" ] &&
+      aws s3 cp --only-show-errors $CL_DIR/build/checkpoints/$f "$S3/$f" && echo "checkpoint $S3/$f"
+  done
+fi
+# The router's congestion estimate and the placer's warning, on every build
+# (no stop on them yet: PLAN.md, M10 step 7).
+grep -hE "Route 35-(448|581)|Place 46-14" $CL_DIR/build/scripts/*.vivado.log | cut -c1-250
+dcp=${routed:-${violated:-${stopped:-$placed_dcp}}}
+if [ -n "$placed_dcp" ] && [ "$DESIGN" = core ]; then
+  vivado -mode batch -nojournal -log congestion.log \
+    -source /root/cabosse/platforms/f2/timing/congestion.tcl \
+    -tclargs $CL_DIR/build/checkpoints/$placed_dcp > congestion.out 2>&1
+  grep "^CABOSSE-CONGESTION" congestion.log
+fi
+if [ -n "$dcp" ] && { [ -n "$abort" ] || [ -z "$routed$violated" ]; } && [ "$DESIGN" = core ]; then
+  # Stopped early or not routed: only the floorplan's fit (cells and utilization per SLR
   # pblock); the full reports took 1.5 h. The checkpoint is kept above.
   vivado -mode batch -nojournal -log fit.log -source /root/cabosse/platforms/f2/timing/fitcheck.tcl \
     -tclargs $CL_DIR/build/checkpoints/$dcp > fit.out 2>&1
