@@ -2580,8 +2580,7 @@ As proposed, with these differences:
   took step 5's 9% back, bounds 0); LOAD of 4096 BF16 groups + 101 (+ 98
   bound before), OUTPUT groups + 98 (89; bound 96 -> 105).
 - Perf model (2026-11-12, scripts/measure_m6.py latency and
-  measure_m5_engine.py real on the branch before review; to be rerun on the
-  final tree): `vector_startup_cycles` 87 -> 96, `reduction_tail_cycles` 83
+  measure_m5_engine.py real, rerun on the clean final tree: same numbers): `vector_startup_cycles` 87 -> 96, `reduction_tail_cycles` 83
   -> 85, `reduction_row_cycles` 168 -> 179, `engine_startup_cycles` 85 ->
   92 (VALUES at position 63; MATVECs 89, SCORES 82-90: SCORES no longer set
   aside). `load_latency_cycles` 76 and `kv_store_latency_cycles` 72
