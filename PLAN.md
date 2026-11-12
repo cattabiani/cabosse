@@ -2670,6 +2670,82 @@ so build 7's 9 h gave only logs. Change it so that:
   decide from build 7's log: under 3,000 after the 2nd hour), to save
   the rest of a hopeless route.
 
+**Step 7, proposed (2026-11-12): make SLR1 routable. Two options, for
+review before the owner decides.**
+
+Context for a reviewer. Device: AMD VU47P (3 SLRs, HBM below SLR0) on
+AWS F2, Small Shell, 250 MHz. Our logic lives in the shell's
+reconfigurable pblock `pblock_CL`; the shell's static region takes
+clock regions X6-X7 in SLR1 and most of X4Y5, so in SLR1 the CL is X0-X5
+with a notch at X4Y5 (a strip SLICE_X122Y300:X145Y359 stays ours). The
+shell's CL-side logic (`u_pcis` SmartConnect, AWS_CLK_GEN, the debug
+bridge) is in `pblock_CL` but in none of our pblocks, and sits near
+that notch. The engine has 32 HBM ports in 8 groups of 4; each group has
+16 lanes (BF16 dot products, products on DSPs since step 6) and 4 DMAs.
+`scripts/f2/floorplan.py` writes one hard pblock per SLR: SLR0 groups 0-3
+plus the HBM stages; SLR1 groups 4-7, the engine's central logic
+(issue, step, drain) and the controller; SLR2 the vector unit. Every SLR
+crossing is registered on both sides with a free register in between.
+Last measured fill (build 6, before the DSP products): LUTs SLR0 69%,
+SLR1 85%, SLR2 57% of each pblock; SLLs SLR0-1 39%, SLR1-2 7%. Build 7
+(above): timing fine after phys_opt (-0.176 ns), route failed with
+2,328 overlaps, all of them in SLR1's east strip (INT_X96-X111) where
+group 6's lanes meet the shell's logic.
+
+Common to both options, first: the build-script task above, so the next
+build keeps its placed checkpoint and a congestion report even if route
+fails. Then one full build (c6i.8xlarge, about $12 if it routes to the
+end, estimate) with the owner's OK. The fit check of that build gives
+the real per-SLR fill after the DSP products, which no build has
+measured yet.
+
+Option A: move group 7 to SLR2 (step 6 item 8).
+- Change: `Region2` 8 -> 7 in `platforms/f2/core/f2_core.sv` (passed to
+  `rtl/engine.sv`) and `REGION2` in `floorplan.py`, regenerated and
+  `--check`ed. Ports 28-31, lanes 112-127, their DMAs and HBM stages go to
+  pblock_slr2. The engine already supports a region 2 (step 6); their
+  read path gets the SLR2 stage count (4 instead of 3).
+- Expected (estimates from build 6's fill and step 6's DSP estimate,
+  80-100k LUTs out of the engine): SLR1 from roughly 70-73% to roughly
+  55-60%, SLR2 from 57% to roughly 65-70%. SLR1-2 SLLs rise by group 7's
+  4 HBM data paths and its results (to count).
+- Cycles: region 2's longer crossing may add latency to group 7's
+  commands; the tests and the measured engine costs say whether
+  `engine_startup_cycles` moves (`scripts/test.sh` default and slow, the
+  M5 measurement).
+- Risk: it lowers SLR1's total fill but does not stop the placer from
+  using the east strip; if build 7's congestion was local (the edge), not
+  total, it may stay.
+
+Option B: option A, plus keep the lanes out of SLR1's east strip.
+- Change: in `floorplan.py`, a child pblock of pblock_slr1 for SLR1's
+  lanes and DMAs that leaves out clock-region column X5 (Y4-Y7) and the
+  X4Y5 strip. Central logic, the controller and the shell's logic can
+  still use them. Exact site ranges to read from the device.
+- Cost: about 4 of SLR1's roughly 23 clock regions (estimate) are closed
+  to the lanes, so B is only possible together with A; the lanes' own
+  pblock would be at roughly 70% (estimate).
+- Risk: two changes in one build (the project's rule is one change per
+  build where it can be helped); a new pblock must be shown to be kept
+  and followed (`audit.tcl`, `report_utilization -pblocks`).
+
+Recommendation: A first, with the script task. If its congestion report
+still shows the east strip hot, B next. Other levers not chosen now: a
+placer directive aimed at congestion instead of SSI_SpreadLogic_high
+(AWS's script takes `--place`), fewer lanes, a pblock for the shell's
+`u_pcis`.
+
+Questions for the reviewer:
+1. Is the reading right: local congestion at the CL's boundary with the
+   static region, made worse by SLR1's total fill? Or is something else in
+   the logs (e.g. the -tns_cleanup run, the router's hold fixing) more
+   likely?
+2. A or B for the next build, or another option?
+3. Is it safe and useful to place `u_pcis` (the shell's SmartConnect) in
+   a small pblock of its own at that edge?
+4. Is a route watch on the overlap count (stop if the count has not
+   fallen below N after T hours) a sound early stop?
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
