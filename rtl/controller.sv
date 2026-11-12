@@ -15,8 +15,8 @@
 // not write the command buffer while a token runs.
 //
 // A token: pc runs from 0; the command at pc is read from the buffer (a
-// synchronous RAM, read at the next pc so it is there the cycle after a
-// handover) and handed over when its unit takes it and these hold (D-068,
+// synchronous RAM with an output register, read at the next pc so it is
+// there two cycles after a handover; M10 step 6) and handed over when its unit takes it and these hold (D-068,
 // model/commands.py: stops, engine_waits, kv_waits):
 // - stop: a command off the engine (the vector unit's, END) that reads a
 //   buffer written since the last stop waits until every command handed over
@@ -188,7 +188,7 @@ module controller #(
   assign s_w_ready_o  = wr;
   assign s_b_valid_o  = bvalid_q;
   assign s_b_resp_o   = 2'b00;
-  assign rd          = s_ar_valid_i && !rvalid_q;
+  assign rd          = rst_ni && s_ar_valid_i && !rvalid_q;  // none taken in reset (core.sv's copy)
   assign s_ar_ready_o = rd;
   assign s_r_valid_o  = rvalid_q;
   assign s_r_data_o   = rdata_q;
@@ -255,7 +255,7 @@ module controller #(
 
   localparam int unsigned CmdAW = $clog2(Commands);
 
-  logic [7:0][31:0] cmd_q;  // the command at pc
+  logic [7:0][31:0] cmd_q;  // the command at pc, where cmd_ok_q (below)
   logic [AddrW-1:0] run_token_q, run_t_q, run_stride_q;  // the registers at start
 
   always_ff @(posedge clk_i) begin
@@ -289,9 +289,12 @@ module controller #(
   for (genvar w = 0; w < 8; w++) begin : gen_bank
     logic [31:0] bank[Commands];
 
+    logic [31:0] ram_q;  // the RAM's read, then its output register (cmd_q)
+
     always_ff @(posedge clk_i) begin
       if (cb_we_q && cb_word_q == 3'(w)) bank[cb_addr_q] <= cb_data_q;
-      cmd_q[w] <= bank[pc_d[CmdAW-1:0]];
+      ram_q    <= bank[pc_d[CmdAW-1:0]];
+      cmd_q[w] <= ram_q;
     end
   end
 
@@ -358,6 +361,8 @@ module controller #(
   // from the command buffer (2 such commands a layer, a few cycles each).
   logic [HeadWidth-1:0] group_q, rem_q;
   logic                 group_ok_q, fresh_q;  // fresh: cmd_q is a new command
+  logic                 cmd_ok_q;  // cmd_q is pc's: not the cycle after a start or a handover
+  logic                 fetch_q;   // a start or a handover last cycle
 
   assign cmd_group_o = group_q;
 
@@ -378,7 +383,7 @@ module controller #(
                    : 1'b1;
   assign need_wait = is_eng && !waited_q[BufW'(f_a)];
 
-  assign issuing     = busy_q && !ctl_reset;
+  assign issuing     = busy_q && !ctl_reset && cmd_ok_q;
   assign fail_end    = issuing && (32'(pc_q) >= commands_q || pc_q >= PcW'(Commands));
   assign active      = issuing && !fail_end;
   assign fail_opcode = active && !known;
@@ -392,8 +397,10 @@ module controller #(
   assign fire        = (eng_valid_o && eng_ready_i) || (vec_valid_o && vec_ready_i);
 
   always_ff @(posedge clk_i) begin
-    fresh_q <= start || fire;
-    if (start || fire) begin  // the next command's group is not known yet
+    fetch_q  <= start || fire;
+    fresh_q  <= fetch_q;
+    cmd_ok_q <= !(start || fire);
+    if (start || fire || fetch_q) begin  // the next command's group is not known yet
       group_ok_q <= 1'b0;
     end else if (fresh_q) begin
       group_q <= '0;
