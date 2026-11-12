@@ -82,9 +82,10 @@ CL = "WRAPPER/CL"
 F2 = f"{CL}/u_core"  # f2_core
 PBLOCK = "pblock_slr"  # + the SLR; created by HEADER
 HBM_PBLOCK = "pblock_hbm"  # the bottom clock-region row, in pblock_slr0
-HBM_ROW = "CLOCKREGION_X0Y0:CLOCKREGION_X7Y0"
+HBM_ROW = ("CLOCKREGION", 0, 0, 7, 0)
 SLR1_CORE = "pblock_slr1_core"  # our SLR1 logic, in pblock_slr1 but out of the corridor
 CORRIDOR_X = 5  # the clock-region column SLR1_CORE leaves out
+STRIP = ("SLICE", 122, 300, 145, 359)  # X4Y5's slices in pblock_CL, also left out
 FLOAT = "*_fq_reg*"  # rtl/engine.sv's registers free to float
 CORE = f"{F2}/u_core"  # core
 ENGINE = f"{CORE}/u_engine"
@@ -105,20 +106,37 @@ HEADER = """\
 """
 
 
-def clip(slr: int) -> list[str]:
+Range = tuple[str, int, int, int, int]  # site type (or CLOCKREGION), x0, y0, x1, y1
+
+
+def parse_range(text: str) -> Range:
+    """'KIND_X<x0>Y<y0>:KIND_X<x1>Y<y1>' as a Range."""
+    m = re.fullmatch(r"(\w+?)_X(\d+)Y(\d+):\w+?_X(\d+)Y(\d+)", text)
+    assert m, text
+    return m[1], *map(int, m.groups()[1:])
+
+
+def format_range(r: Range) -> str:
+    kind, x0, y0, x1, y1 = r
+    return f"{kind}_X{x0}Y{y0}:{kind}_X{x1}Y{y1}"
+
+
+def clip(slr: int) -> list[Range]:
     """SLR's part of pblock_CL's ranges, each clipped to the SLR's rows of its site type."""
     out = []
-    for r in SHELL_CL_RANGES.split():
-        m = re.fullmatch(r"(\w+?)_X(\d+)Y(\d+):\w+?_X(\d+)Y(\d+)", r)
-        assert m, r
-        kind, x0, y0, x1, y1 = m[1], *map(int, m.groups()[1:])
+    for kind, x0, y0, x1, y1 in map(parse_range, SHELL_CL_RANGES.split()):
         if kind not in ROWS_PER_SLR:
             continue
         lo, hi = slr * ROWS_PER_SLR[kind], (slr + 1) * ROWS_PER_SLR[kind] - 1
         y0, y1 = max(y0, lo), min(y1, hi)
         if y0 <= y1:
-            out.append(f"{kind}_X{x0}Y{y0}:{kind}_X{x1}Y{y1}")
+            out.append((kind, x0, y0, x1, y1))
     return out
+
+
+def slr_pblock(slr: int) -> str:
+    """An SLR's pblock: pblock_CL's ranges in the SLR."""
+    return f"{PBLOCK}{slr}"
 
 
 def pblocks() -> str:
@@ -126,31 +144,28 @@ def pblocks() -> str:
         "# Each SLR's pblock: pblock_CL's ranges clipped to the SLR's rows (an xdc has no loops)."
     ]
     for slr in range(SLRS):
-        out += pblock(f"{PBLOCK}{slr}", "pblock_CL", clip(slr))
-    out += pblock(HBM_PBLOCK, f"{PBLOCK}0", [HBM_ROW])
-    out += pblock(SLR1_CORE, f"{PBLOCK}1", west_of_corridor(clip(1)))
+        out += pblock(slr_pblock(slr), "pblock_CL", clip(slr))
+    out += pblock(HBM_PBLOCK, slr_pblock(0), [HBM_ROW])
+    out += pblock(SLR1_CORE, slr_pblock(1), west_of_corridor(clip(1)))
     return "\n".join(out) + "\n"
 
 
-def west_of_corridor(ranges: list[str]) -> list[str]:
-    """The clock-region ranges, cut at column CORRIDOR_X; the site ranges
-    (in SLR1 only the X4Y5 strip's) dropped."""
+def west_of_corridor(ranges: list[Range]) -> list[Range]:
+    """The clock-region ranges, cut at column CORRIDOR_X. The site ranges are
+    dropped: in SLR1 they are the X4Y5 strip's (STRIP, test_floorplan.py)."""
     out = []
-    for r in ranges:
-        m = re.fullmatch(r"CLOCKREGION_X(\d+)Y(\d+):CLOCKREGION_X(\d+)Y(\d+)", r)
-        if m and int(m[1]) < CORRIDOR_X:
-            x0, y0, x1, y1 = map(int, m.groups())
-            x1 = min(x1, CORRIDOR_X - 1)
-            out.append(f"CLOCKREGION_X{x0}Y{y0}:CLOCKREGION_X{x1}Y{y1}")
+    for kind, x0, y0, x1, y1 in ranges:
+        if kind == "CLOCKREGION" and x0 < CORRIDOR_X:
+            out.append((kind, x0, y0, min(x1, CORRIDOR_X - 1), y1))
     return out
 
 
-def pblock(name: str, parent: str, ranges: list[str]) -> list[str]:
+def pblock(name: str, parent: str, ranges: list[Range]) -> list[str]:
     """A hard pblock of the ranges inside its parent."""
     return [
         f"create_pblock {name}",
         f"set_property PARENT [get_pblocks {parent}] [get_pblocks {name}]",
-        f"resize_pblock {name} -add {{{' '.join(ranges)}}}",
+        f"resize_pblock {name} -add {{{' '.join(map(format_range, ranges))}}}",
         f"set_property IS_SOFT FALSE [get_pblocks {name}]",
     ]
 
@@ -168,7 +183,7 @@ def pblock_name(slr: int | str) -> str:
     """The pblock of our logic in an SLR (SLR1's: SLR1_CORE), or a pblock given by name."""
     if isinstance(slr, str):
         return slr
-    return SLR1_CORE if slr == 1 else f"{PBLOCK}{slr}"
+    return SLR1_CORE if slr == 1 else slr_pblock(slr)
 
 
 def assign(slr: int | str, pattern: str) -> str:
@@ -247,7 +262,7 @@ def lines() -> list[str]:
     for name, near in (("u_ar", 1), ("u_aw", 1), ("u_w", 1), ("u_r", 0), ("u_b", 0)):
         for s in (0, 1):
             pat = esc(f"{F2}/u_host/{name}/gen_stage[{s}].") + "*"
-            out.append(assign(0 if s == near else f"{PBLOCK}1", pat))
+            out.append(assign(0 if s == near else slr_pblock(1), pat))
     out.append("# The vector unit's AXI: one stage per SLR")
     for name in ("u_v_ar", "u_v_aw", "u_v_w"):  # stage 0 beside the vector unit
         for s, slr in enumerate((2, 1, 0)):

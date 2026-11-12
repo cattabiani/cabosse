@@ -2790,6 +2790,24 @@ mechanical (Sonnet). The `floorplan.py` edit with the device's site
 ranges, the `Region2` change, the test run and the review of the xdc need
 the stronger model at high effort.
 
+**Done (step 7 item 2, code; build 8 not launched):** A: f2_core's
+`Region2` default is `Ports / 4 - Ports / 32` (7 at 32 ports; smaller
+configs unchanged), `floorplan.py`'s `REGION2` with it; group 7's read path
+has 4 stages. B: `pblock_slr1_core`, a hard child of `pblock_slr1`, is
+SLR1's CL clock regions west of column X5 (X0Y4:X4Y4, X0Y5:X3Y5,
+X0Y6:X4Y7; 19 clock regions). Built from clock regions, it needs no
+per-site ranges: SLR1's only site ranges in `pblock_CL` are the X4Y5
+strip's, which it leaves out. All our SLR1 logic is in it, including the
+SLR1 stages of the HBM ports and of the vector unit's AXI; only the host's
+two SLR1 stages (towards PCIS) stay in `pblock_slr1`, free to use the
+corridor. `fitcheck.tcl` reports the child. `engine_startup_cycles` does
+not move: a new test runs the same commands on a 20-port engine with
+default regions and with all three regions populated, and every command
+ends on the same cycle (every region has the same registers). On F2 the
+slowest port's read path is one register longer (4 stages instead of 3).
+Tests: that engine test; the F2 wrapper decoding bit-exact with a group in
+each SLR (16 ports; `slow`, about 18 minutes); the floorplan's corridor.
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.

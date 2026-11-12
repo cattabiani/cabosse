@@ -8,6 +8,8 @@ import re
 
 import floorplan
 
+F2_CORE = floorplan.OUT.parent / "f2_core.sv"
+
 LANE_OR_DMA = re.compile(
     r"pblock_slr(\d)(?:_core)? \[get_cells \{.*/u_engine/gen_(lane|dma)\?(\d+)\?\.\*\}\]"
 )
@@ -35,17 +37,30 @@ def test_lanes_with_their_dma() -> None:
 
 
 def test_slr1_corridor() -> None:
-    """SLR1's child pblock is clock regions west of the corridor, and the
-    only cells placed in SLR1's pblock outside it are the host's stages."""
-    text = floorplan.pblocks()
-    ranges = re.search(rf"resize_pblock {floorplan.SLR1_CORE} -add \{{(.*)\}}", text)[1].split()
-    assert ranges, text
-    for r in ranges:
-        m = re.fullmatch(r"CLOCKREGION_X(\d+)Y(\d+):CLOCKREGION_X(\d+)Y(\d+)", r)
-        assert m and int(m[3]) < floorplan.CORRIDOR_X and 4 <= int(m[2]) <= int(m[4]) <= 7, r
+    """SLR1's child pblock is SLR1's CL clock regions west of the corridor;
+    the only site ranges it leaves out are the X4Y5 strip's; the only cells
+    in SLR1's pblock outside it are the host's stages."""
+    ranges = floorplan.clip(1)
+    kept = floorplan.west_of_corridor(ranges)
+    rows = floorplan.ROWS_PER_SLR["CLOCKREGION"]
+    assert kept
+    for kind, x0, y0, x1, y1 in kept:
+        assert kind == "CLOCKREGION" and x0 <= x1 < floorplan.CORRIDOR_X, kept
+        assert rows <= y0 <= y1 < 2 * rows, kept
+    sites = [r for r in ranges if r[0] != "CLOCKREGION"]
+    assert [r for r in sites if r[0] == "SLICE"] == [floorplan.STRIP], sites
     outside = [
         m[2]
         for line in floorplan.lines()
-        if (m := IN_PBLOCK.search(line)) and m[1] == "pblock_slr1"
+        if (m := IN_PBLOCK.search(line)) and m[1] == floorplan.slr_pblock(1)
     ]
     assert outside and all("/u_host/" in c for c in outside), outside
+
+
+def test_regions_match_f2_core() -> None:
+    """REGION1 and REGION2 are f2_core.sv's defaults at PORTS."""
+    src = F2_CORE.read_text()
+    for name, value in (("Region1", floorplan.REGION1), ("Region2", floorplan.REGION2)):
+        expr = re.search(rf"parameter\s+int unsigned {name}\s*=\s*([^,]+),", src)[1]
+        assert re.fullmatch(r"[\sPorts0-9/+-]+", expr), expr
+        assert eval(expr.replace("/", "//"), {"Ports": floorplan.PORTS}) == value, (name, expr)

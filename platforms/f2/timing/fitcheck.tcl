@@ -20,7 +20,7 @@ set out [open fit.rpt w]
 set total [llength [get_cells -hierarchical -filter {IS_PRIMITIVE}]]
 puts $out "leaf cells in the design: $total"
 set assigned 0
-set names {pblock_slr0 pblock_slr1 pblock_slr1_core pblock_slr2 pblock_hbm}
+set names [lsort [get_pblocks {pblock_slr* pblock_hbm}]]  ;# ours: scripts/f2/floorplan.py
 foreach name $names {
   set pb [get_pblocks $name]
   set n [llength [get_cells -hierarchical -filter "IS_PRIMITIVE && PBLOCK == $name"]]
