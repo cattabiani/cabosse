@@ -2590,6 +2590,8 @@ As proposed, with these differences:
   drain's longer way, which the model has no term for). SCORES at position
   8191 10,160 -> 9,306 cycles. The vector unit's step: 288,371 cycles at
   position 1023 (274,407 after step 5, +5.1%), 837,971 at 8191 (+1.0%).
+- Tests on the final tree (2026-11-12): default 1060 passed (5 report tests
+  failed until the reports were re-rendered, then passed); slow 39 passed.
 
 **Step 6a, proposed (2026-11-12, Fable; for the agent at high effort):
 finish step 6 before its PR.** A check of the branch found items 1-10 in
