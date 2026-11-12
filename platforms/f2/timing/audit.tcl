@@ -42,14 +42,28 @@ progress "lines read"
 # 2. RTL attributes (rtl/fp_product.sv, rtl/dot_lane.sv).
 set dt [get_cells -quiet -hierarchical -filter {NAME =~ *mul_fabric_q_reg*}]
 emit "dont_touch mul_fabric_q: [llength $dt] cells, [llength [filter -quiet $dt {DONT_TOUCH}]] with DONT_TOUCH"
-set mf [get_cells -quiet -hierarchical -filter {NAME =~ *load_we_q_reg*}]
-set worst 0
-foreach net [get_nets -quiet -of_objects [get_pins -quiet -of_objects $mf -filter {REF_PIN_NAME == Q}]] {
-  set fo [get_property -quiet FLAT_PIN_COUNT $net]
-  if {$fo ne "" && $fo > $worst} {set worst $fo}
+# The most loads on any of the nets (a net's pins less its driver).
+proc largest_loads {nets} {
+  set worst 0
+  foreach net $nets {
+    set fo [get_property -quiet FLAT_PIN_COUNT $net]
+    if {$fo ne "" && $fo > $worst} {set worst $fo}
+  }
+  return [expr {$worst > 0 ? $worst - 1 : 0}]
 }
+set mf [get_cells -quiet -hierarchical -filter {NAME =~ *load_we_q_reg*}]
+set loads [largest_loads [get_nets -quiet -of_objects [get_pins -quiet -of_objects $mf -filter {REF_PIN_NAME == Q}]]]
 emit "max_fanout load_we_q: [llength $mf] cells ([llength [filter -quiet $mf {NAME =~ *_rep*}]] replicas),\
-  [llength [filter -quiet $mf {MAX_FANOUT != ""}]] with MAX_FANOUT, largest net [expr {$worst - 1}] loads"
+  [llength [filter -quiet $mf {MAX_FANOUT != ""}]] with MAX_FANOUT, largest net $loads loads"
+set nets [get_nets -quiet -hierarchical -filter {NAME =~ *gen_stage*take*}]
+set reps [llength [lsearch -all $nets *_rep*]]
+emit "max_fanout bringup_pipe take: $reps replica nets, largest net [largest_loads $nets] loads"
+foreach sig {unit_end step_load} {
+  set nets [get_nets -quiet -hierarchical -filter "NAME =~ *u_engine/${sig}*"]
+  emit "max_fanout engine $sig: [llength $nets] nets, largest [largest_loads $nets] loads"
+}
+set dsp [get_cells -quiet -hierarchical -filter {REF_NAME =~ DSP48E2 && NAME =~ *u_engine/gen_lane*}]
+emit "use_dsp fp_product (engine lanes): [llength $dsp] DSP48E2 cells (4 per lane: 512 at 32 ports)"
 progress "attributes"
 
 # Where the cells were placed is not checked here: three bulk queries for

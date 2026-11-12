@@ -24,6 +24,11 @@ module f2_core #(
   parameter  int unsigned Len       = 49152,  // the buffers' elements (SmolLM2's LOGITS, M9)
   parameter  logic [31:0] Build     = 32'h0,  // the commit's first 8 hex digits
   parameter  int unsigned LiteW     = 18,
+  // The engine's regions (rtl/engine.sv), one per SLR: groups of 4 ports
+  // before Region1 in SLR0, before Region2 in SLR1, the rest in SLR2.
+  // scripts/f2/floorplan.py's REGION1, REGION2 must match (its defaults do).
+  parameter  int unsigned Region1   = Ports / 8,
+  parameter  int unsigned Region2   = Ports / 4,
   localparam int unsigned AddrWidth = 34,
   localparam int unsigned DataWidth = 256,
   localparam int unsigned BeatBytes = DataWidth / 8,
@@ -132,55 +137,81 @@ module f2_core #(
   logic [AxilW-1:0] wr_addr_q, rd_addr_q;
   logic [31:0]      wr_data_q, rdata_q;
   logic             host_port_q, wrap_wr, wrap_rd;
+  logic             lite_rst_nq;  // this logic's copy of the reset (M10)
   logic [7:0]       wr_reg, rd_reg;
 
-  assign s_aw_ready_o = !wr_busy_q && s_aw_valid_i && s_w_valid_i;
-  assign s_w_ready_o  = s_aw_ready_o;
-  assign wrap_wr      = s_aw_ready_o && s_aw_addr_i >= WrapBase;
-  assign wr_reg       = s_aw_addr_i[7:0];
+  // The shell's AXI-Lite requests through a stage each first: they come
+  // from another SLR (M10). The stages run on rst_ni, so nothing comes out
+  // of them before lite_rst_nq is high.
+  logic             l_aw_valid, l_aw_ready, l_w_valid, l_w_ready, l_ar_valid, l_ar_ready;
+  logic [LiteW-1:0] l_aw_addr, l_ar_addr;
+  logic [31:0]      l_w_data;
+  // verilator lint_off PINCONNECTEMPTY
+  bringup_pipe #(.Width(LiteW)) u_lite_aw (
+    .clk_i, .rst_ni, .in_valid_i(s_aw_valid_i), .in_ready_o(s_aw_ready_o),
+    .in_data_i(s_aw_addr_i), .busy_o(), .out_valid_o(l_aw_valid), .out_ready_i(l_aw_ready),
+    .out_data_o(l_aw_addr)
+  );
+  bringup_pipe #(.Width(32)) u_lite_w (
+    .clk_i, .rst_ni, .in_valid_i(s_w_valid_i), .in_ready_o(s_w_ready_o),
+    .in_data_i(s_w_data_i), .busy_o(), .out_valid_o(l_w_valid), .out_ready_i(l_w_ready),
+    .out_data_o(l_w_data)
+  );
+  bringup_pipe #(.Width(LiteW)) u_lite_ar (
+    .clk_i, .rst_ni, .in_valid_i(s_ar_valid_i), .in_ready_o(s_ar_ready_o),
+    .in_data_i(s_ar_addr_i), .busy_o(), .out_valid_o(l_ar_valid), .out_ready_i(l_ar_ready),
+    .out_data_o(l_ar_addr)
+  );
+  // verilator lint_on PINCONNECTEMPTY
+
+  assign l_aw_ready   = !wr_busy_q && l_aw_valid && l_w_valid;
+  assign l_w_ready    = l_aw_ready;
+  assign wrap_wr      = l_aw_ready && l_aw_addr >= WrapBase;
+  assign wr_reg       = l_aw_addr[7:0];
   assign c_aw_valid   = aw_out_q;
   assign c_w_valid    = w_out_q;
   assign s_b_valid_o  = wr_core_q ? c_b_valid : wb_q;
   assign s_b_resp_o   = wr_core_q ? c_b_resp : 2'b00;
   assign c_b_ready    = wr_core_q && s_b_ready_i;
 
-  assign s_ar_ready_o = !rd_busy_q && s_ar_valid_i;
-  assign wrap_rd      = s_ar_ready_o && s_ar_addr_i >= WrapBase;
-  assign rd_reg       = s_ar_addr_i[7:0];
+  assign l_ar_ready   = !rd_busy_q && l_ar_valid;
+  assign wrap_rd      = l_ar_ready && l_ar_addr >= WrapBase;
+  assign rd_reg       = l_ar_addr[7:0];
   assign c_ar_valid   = ar_out_q;
   assign s_r_valid_o  = rd_core_q ? c_r_valid : rv_q;
   assign s_r_data_o   = rd_core_q ? c_r_data : rdata_q;
   assign s_r_resp_o   = rd_core_q ? c_r_resp : 2'b00;
   assign c_r_ready    = rd_core_q && s_r_ready_i;
 
+  always_ff @(posedge clk_i) lite_rst_nq <= rst_ni;
   always_ff @(posedge clk_i) begin
-    if (!rst_ni) begin
+    if (!lite_rst_nq) begin
       {wr_busy_q, wr_core_q, aw_out_q, w_out_q, wb_q} <= '0;
       {rd_busy_q, rd_core_q, ar_out_q, rv_q}          <= '0;
       host_port_q <= 1'b1;
     end else begin
       // Writes
-      if (s_aw_ready_o) begin
+      if (l_aw_ready) begin
         wr_busy_q <= 1'b1;
         wr_core_q <= !wrap_wr;
         aw_out_q  <= !wrap_wr;
         w_out_q   <= !wrap_wr;
         wb_q      <= wrap_wr;
-        wr_addr_q <= s_aw_addr_i[AxilW-1:0];
-        wr_data_q <= s_w_data_i;
-        if (wrap_wr && wr_reg == RegHostPort) host_port_q <= s_w_data_i[0];
+        wr_addr_q <= l_aw_addr[AxilW-1:0];
+        wr_data_q <= l_w_data;
+        if (wrap_wr && wr_reg == RegHostPort) host_port_q <= l_w_data[0];
       end else begin
         if (c_aw_ready) aw_out_q <= 1'b0;
         if (c_w_ready) w_out_q <= 1'b0;
         if (s_b_valid_o && s_b_ready_i) {wr_busy_q, wr_core_q, wb_q} <= '0;
       end
       // Reads
-      if (s_ar_ready_o) begin
+      if (l_ar_ready) begin
         rd_busy_q <= 1'b1;
         rd_core_q <= !wrap_rd;
         ar_out_q  <= !wrap_rd;
         rv_q      <= wrap_rd;
-        rd_addr_q <= s_ar_addr_i[AxilW-1:0];
+        rd_addr_q <= l_ar_addr[AxilW-1:0];
         unique case (rd_reg)
           RegId:       rdata_q <= Id;
           RegBuild:    rdata_q <= Build;
@@ -202,14 +233,22 @@ module f2_core #(
 
   // The HBM's AXI ports sit at the die's edge, far from the core's logic
   // (core build 1: their r_valid and w_ready into the DMAs' counters, -5.1
-  // ns), and the engine's ports 16 and up in the next SLR (the floorplan,
-  // small_shell_cl_pnr_user.xdc). AR: two bringup_pipe stages (all
-  // registered, valid and data forward, ready back), the second beside the
-  // HBM. R on ports 1 and up: two plain registers, the first beside the
-  // HBM, no ready: the engine's DMAs take every beat (port_dma.sv's credits:
-  // a burst is asked only with room for it), so r_ready stays high. Port 0
-  // (shared with the vector unit and the host) keeps a bringup_pipe stage.
-  // A read takes 2 cycles more than with one stage.
+  // ns), and the engine's ports in up to three SLRs (the floorplan,
+  // small_shell_cl_pnr_user.xdc). Each port's AR and R go through 2 + its
+  // SLR stages: one beside the HBM (the bottom clock-region row), one
+  // beside the port's DMA, and between them one per SLR crossed, which no
+  // pblock holds (M10 step 6). AR: bringup_pipe stages (all registered,
+  // valid and data forward, ready back). R on ports 1 and up: plain
+  // registers, no ready: the engine's DMAs take every beat (port_dma.sv's
+  // credits: a burst is asked only with room for it), so r_ready stays
+  // high. Port 0 (shared with the vector unit and the host) keeps a
+  // bringup_pipe stage for R, and two for W (the HBM's w_ready into a
+  // register beside it first).
+  localparam int GroupPorts = 4;  // rtl/engine.sv's GP: its regions are of groups of 4 ports
+  function automatic int unsigned port_slr(int p);  // rtl/engine.sv's region_of(p / GP)
+    return p / GroupPorts < int'(Region1) ? 0 : p / GroupPorts < int'(Region2) ? 1 : 2;
+  endfunction
+
   logic [Ports-1:0]                hb_ar_valid, hb_ar_ready, hb_r_valid, hb_r_ready, hb_r_last;
   logic [Ports-1:0][AddrWidth-1:0] hb_ar_addr;
   logic [Ports-1:0][7:0]           hb_ar_len;
@@ -227,7 +266,8 @@ module f2_core #(
   // verilator lint_off PINCONNECTEMPTY
 
   for (genvar p = 0; p < Ports; p++) begin : gen_hbm
-    bringup_pipe #(.Width(AxW), .Stages(2)) u_ar (
+    localparam int unsigned S = 2 + port_slr(p);  // stages: gen_stage[S - 1] beside the HBM
+    bringup_pipe #(.Width(AxW), .Stages(S)) u_ar (
       .clk_i,
       .rst_ni,
       .in_valid_i (hb_ar_valid[p]),
@@ -251,17 +291,23 @@ module f2_core #(
         .out_data_o ({hb_r_data[p], hb_r_resp[p], hb_r_last[p]})
       );
     end else begin : gen_r_regs
-      logic          valid0_q, valid1_q;  // 0 beside the HBM, 1 beside the DMA
-      logic [RW-1:0] data0_q, data1_q;
-      always_ff @(posedge clk_i) begin
-        valid0_q <= rst_ni && r_valid_i[p];
-        valid1_q <= rst_ni && valid0_q;
-        data0_q  <= {r_data_i[p], r_resp_i[p], r_last_i[p]};
-        data1_q  <= data0_q;
+      logic [S:0]         valid;  // gen_stage[0] beside the HBM, gen_stage[S - 1] beside the DMA
+      logic [S:0][RW-1:0] data;
+      assign valid[0] = r_valid_i[p];
+      assign data[0]  = {r_data_i[p], r_resp_i[p], r_last_i[p]};
+      for (genvar s = 0; s < S; s++) begin : gen_stage
+        logic          valid_q;
+        logic [RW-1:0] data_q;
+        always_ff @(posedge clk_i) begin
+          valid_q <= rst_ni && valid[s];
+          data_q  <= data[s];
+        end
+        assign valid[s+1] = valid_q;
+        assign data[s+1]  = data_q;
       end
       assign r_ready_o[p] = 1'b1;
-      assign hb_r_valid[p] = valid1_q;
-      assign {hb_r_data[p], hb_r_resp[p], hb_r_last[p]} = data1_q;
+      assign hb_r_valid[p] = valid[S];
+      assign {hb_r_data[p], hb_r_resp[p], hb_r_last[p]} = data[S];
 `ifndef SYNTHESIS
       always_ff @(posedge clk_i) begin
         if (rst_ni && hb_r_valid[p] && !hb_r_ready[p]) $error("f2_core: port %0d refused a read beat", p);
@@ -281,7 +327,7 @@ module f2_core #(
     .out_ready_i(aw_ready_i[0]),
     .out_data_o ({aw_addr_o[0], aw_len_o[0], aw_burst_o[0]})
   );
-  bringup_pipe #(.Width(WW)) u_w (
+  bringup_pipe #(.Width(WW), .Stages(2)) u_w (
     .clk_i,
     .rst_ni,
     .in_valid_i (hb_w_valid),
@@ -330,9 +376,11 @@ module f2_core #(
   // verilator lint_on UNUSEDSIGNAL
 
   core #(
-    .Ports(Ports),
-    .ChanW(ChanW),
-    .Len  (Len)
+    .Ports  (Ports),
+    .ChanW  (ChanW),
+    .Len    (Len),
+    .Region1(Region1),
+    .Region2(Region2)
   ) u_core (
     .clk_i,
     .rst_ni,

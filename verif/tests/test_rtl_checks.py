@@ -63,7 +63,7 @@ SYNTH_TOPS = [t for t in TOPS if t[0] not in NOT_SYNTHESIZED]
 BAD_SHAPES = [
     # fp_product: its callers delay the addend by Regs cycles; a sixth
     # register would not be placed.
-    ("fp_product", (("Regs", 6),), "Regs must be 0 to 5"),
+    ("fp_product", (("Regs", 7),), "Regs must be 0 to 6"),
     # dot_lane: E = 8 leaves each unit A / E = 2 partial sums for a 4-cycle
     # loop; a group would read a sum still in the adder.
     ("dot_lane", (("E", 8),), "A / E >= 4"),

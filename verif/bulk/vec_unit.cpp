@@ -51,7 +51,7 @@ namespace {
 using Params = Vvec_unit___024root;  // the build's parameters (verif/bulk.py: --public-params)
 constexpr size_t kLanes = Params::vec_unit__DOT__Lanes;
 constexpr size_t kAddrBits = Params::vec_unit__DOT__MemAddrW;
-constexpr size_t kRdLat = Params::vec_unit__DOT__RdLat;  ///< an ext read's data, cycles after its address
+constexpr size_t kRdLat = Params::vec_unit__DOT__SelLat;  ///< an ext read's data, cycles after its address
 constexpr size_t kBeatWords = kLanes / 2;  ///< DataWidth = Lanes * 16 bits
 constexpr size_t kBeatBytes = 4 * kBeatWords;
 constexpr size_t kCmdWords = 16;  ///< op ... scalar, cap, addr low, addr high, token, t, stride, wait

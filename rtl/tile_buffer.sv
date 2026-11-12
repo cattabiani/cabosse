@@ -9,16 +9,21 @@
 //
 // Registered for 250 MHz (M10): every input in a register, the write's
 // banks (data rotated, enables, entries) in a register of their own, the
-// read's data in the RAM's output register (URAM OREG, BRAM DOREG) and the
-// rotated data in a register.
+// read's address in a register before its banks' entries (M10 step 6: one
+// address drove the adders of every bank), the read's data in the RAM's
+// output register (URAM OREG, BRAM DOREG) and the rotated data in a
+// register.
 // - Write: wr_mask_i[i], wr_data_i[i] given in cycle c are in the RAM from
 //   cycle c + 3 on (written at the end of c + 2).
-// - Read: rd_data_o[i] is element rd_addr_i + i, RdLat = 4 cycles after
-//   rd_addr_i. It sees the writes given 2 or more cycles before rd_addr_i,
-//   not the later ones. RdLat is fixed by the registers; the parameter lets
+// - Read: rd_data_o[i] is element rd_addr_i + i, RdLat = 5 cycles after
+//   rd_addr_i. It sees the writes given 1 or more cycles before rd_addr_i,
+//   not the later ones; a write given in the same cycle to the same entry
+//   meets the read in the RAM (simulation: not seen; hardware: the RAM's
+//   collision rule), so no user reads an entry in the cycle it writes it
+//   (vec_unit: reads see the writes given 2 or more cycles before them). RdLat is fixed by the registers; the parameter lets
 //   the users name it (core.sv passes it to vec_unit and the engine).
 module tile_buffer #(
-  parameter  int unsigned RdLat = 4,
+  parameter  int unsigned RdLat = 5,
   parameter  int unsigned N     = 8,
   parameter  int unsigned Depth = 16,
   parameter  int unsigned W     = 64,
@@ -34,8 +39,8 @@ module tile_buffer #(
   output logic [N-1:0][W-1:0] rd_data_o
 );
 
-  if (RdLat != 4) begin : gen_lat_check
-    $error("tile_buffer: RdLat is 4 (its registers)");
+  if (RdLat != 5) begin : gen_lat_check
+    $error("tile_buffer: RdLat is 5 (its registers)");
   end
 
   // Bank b's entry for a vector from element e.
@@ -84,14 +89,17 @@ module tile_buffer #(
     for (int unsigned b = 0; b < N; b++) wr_entry_q[b] <= entry(wr_addr_q, b);
   end
 
-  // Read: each bank's entry in a register, the RAM's, its output register,
-  // the rotation's. The rotation's shift follows the data.
+  // Read: the address in a register, each bank's entry in one, the RAM's,
+  // its output register, the rotation's. The rotation's shift follows the
+  // data.
+  logic [EW-1:0]        rd_addr_q;
   logic [N-1:0][AW-1:0] rd_entry_q;
   logic [SW-1:0]        rd_rot_q[3];  // with rd_entry_q, rd_ram_q, rd_out_q
   logic [N-1:0][W-1:0]  rd_ram_q, rd_out_q, rd_rot;
   always_ff @(posedge clk_i) begin
-    for (int unsigned b = 0; b < N; b++) rd_entry_q[b] <= entry(rd_addr_i, b);
-    rd_rot_q[0] <= rd_addr_i[SW-1:0];
+    rd_addr_q <= rd_addr_i;
+    for (int unsigned b = 0; b < N; b++) rd_entry_q[b] <= entry(rd_addr_q, b);
+    rd_rot_q[0] <= rd_addr_q[SW-1:0];
     rd_rot_q[1] <= rd_rot_q[0];
     rd_rot_q[2] <= rd_rot_q[1];
   end

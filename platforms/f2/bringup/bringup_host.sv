@@ -76,6 +76,7 @@ module bringup_host #(
 );
 
   logic           sel_q;
+  logic           sel_iq;  // sel_i, registered here first: it comes from another SLR (M10)
   logic           ar_valid, aw_valid, w_valid, r_ready, b_ready;  // the host's pipes, memory side
   logic           ar_busy, aw_busy, w_busy;  // a request inside a pipe
   logic [AxW-1:0] ar, aw;
@@ -130,6 +131,7 @@ module bringup_host #(
   assign e_b_valid_o  = !sel_q && m_b_valid_i;
 
   always_ff @(posedge clk_i) begin
+    sel_iq <= sel_i;
     if (!rst_ni) begin
       sel_q    <= 1'b1;
       reads_q  <= '0;
@@ -141,7 +143,7 @@ module bringup_host #(
       writes_q <= writes_q + 8'(sel_q && aw_valid && m_aw_ready_i) - 8'(sel_q && m_b_valid_i && b_ready);
       wlasts_q <= wlasts_q + 8'(sel_q && w_valid && m_w_ready_i && w[0])
                 - 8'(sel_q && m_b_valid_i && b_ready);
-      if (sel_i) sel_q <= 1'b1;
+      if (sel_iq) sel_q <= 1'b1;
       else if (reads_q == '0 && writes_q == '0 && wlasts_q == '0 && !ar_busy && !aw_busy && !w_busy) begin
         sel_q <= 1'b0;
       end

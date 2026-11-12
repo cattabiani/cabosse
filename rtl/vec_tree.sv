@@ -8,9 +8,10 @@
 // (exact, so any order gives the golden reduce_max's bits). start_i takes a
 // row's partials; each of the log2(Width) levels issues a pair a cycle and
 // waits for its last result; done_o then gives the row's value, held in y_o
-// until the next start_i. A level of P pairs takes P + AddLatency cycles, so
-// a row about Width + 3 * log2(Width). busy_o from start_i to done_o;
-// start_i only when idle.
+// until the next start_i. A pair's operands go through a register (a_q, b_q:
+// a Width/2-to-1 select each, M10 step 6) into the adder, so a level of P
+// pairs takes P + 1 + AddLatency cycles, a row about Width + 5 * log2(Width).
+// busy_o from start_i to done_o; start_i only when idle.
 
 module vec_tree
   import fp_pkg::*;
@@ -54,24 +55,31 @@ module vec_tree
   // (this cycle at the latest); the next one reads the values from the cycle
   // after. Past the level's pairs the index wraps, so no read is out of
   // range (an unused read).
-  logic        all_issued, issue, in_flight, level_end, sum_valid;
-  logic [31:0] a, b, sum;
+  logic          all_issued, issue, in_flight, level_end, sum_valid;
+  logic          issue_q;    // a pair's operands in a_q, b_q
+  logic [IW-1:0] idx_q;
+  logic [31:0]   a_q, b_q, sum;
   always_comb begin
-    in_flight = 1'b0;
+    in_flight = issue_q;
     for (int unsigned j = 0; j + 1 < Lat; j++) in_flight |= back_q[j].valid;
   end
   assign all_issued = {1'b0, next_q} == {1'b0, pairs_q} + 1'b1;
   assign issue      = busy_q && !all_issued;
   assign level_end  = busy_q && all_issued && !in_flight;
-  assign a          = v_q[IW'(2*next_q)];
-  assign b          = v_q[IW'(2*next_q+1)];
+
+  always_ff @(posedge clk_i) begin
+    issue_q <= rst_ni && issue;
+    idx_q   <= next_q;
+    a_q     <= v_q[IW'(2*next_q)];
+    b_q     <= v_q[IW'(2*next_q+1)];
+  end
 
   fp_add u_add (
     .clk_i,
     .rst_ni,
-    .valid_i(issue && !max_q),
-    .a_i    (decode_f32(a)),
-    .b_i    (b),
+    .valid_i(issue_q && !max_q),
+    .a_i    (decode_f32(a_q)),
+    .b_i    (b_q),
     .valid_o(sum_valid),
     .y_o    (sum)
   );
@@ -82,7 +90,7 @@ module vec_tree
   // verilator lint_on UNUSEDSIGNAL
 
   always_ff @(posedge clk_i) begin
-    back_q[0] <= '{valid: rst_ni && issue, idx: next_q, max: max_f32(a, b)};
+    back_q[0] <= '{valid: rst_ni && issue_q, idx: idx_q, max: max_f32(a_q, b_q)};
     for (int unsigned j = 1; j < Lat; j++) back_q[j] <= back_q[j-1];
   end
 

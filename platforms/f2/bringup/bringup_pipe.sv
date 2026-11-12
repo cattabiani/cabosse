@@ -41,7 +41,10 @@ module bringup_pipe #(
   for (genvar s = 0; s < Stages; s++) begin : gen_stage
     logic             out_valid_q, skid_valid_q;
     logic [Width-1:0] out_q, skid_q;
-    logic             take;  // the output register loads this cycle
+    // The output register loads this cycle: the enable of Width registers
+    // (260-290 on the HBM's channels, core build 6's -0.28 ns family), so
+    // max_fanout 64 (a hint; platforms/f2/timing/audit.tcl reports it).
+    (* max_fanout = 64 *) logic take;
     assign take       = ready[s+1] || !out_valid_q;
     assign ready[s]   = !skid_valid_q;
     assign valid[s+1] = out_valid_q;

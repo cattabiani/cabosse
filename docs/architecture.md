@@ -128,8 +128,8 @@ numerics.md, section 2, and the rsqrt, recip and exp of section 5.
 and the integer steps around it (`rtl/fp32_chain.sv`), that every
 operation flows through: add, multiply and FMA use the first stage, exp
 and rsqrt all seven, recip six. Every operation runs at one element per
-cycle per slot, with a latency of 78 cycles (M10: 5 registers in each
-FMA's multiply and 4 in its add for 250 MHz; 50 before). The integer steps (exp's
+cycle per slot, with a latency of 85 cycles (M10: 6 registers in each
+FMA's multiply and 4 in its add for 250 MHz; 50 before, 78 after step 5). The integer steps (exp's
 rounding of t and its 2^i, the first guesses, exact halvings and scalings)
 need no FP unit. Area (Yosys for UltraScale+, scaled by M3's Vivado
 numbers for one FMA; an estimate until M8): about 9,500 LUTs and 14 DSPs a

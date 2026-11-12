@@ -25,23 +25,25 @@
 // command is taken while earlier ones drain: the unit does not check that it
 // reads what one of them writes (the controller waits, D-045).
 // Registered for 250 MHz (M10): a group's reads go to the buffers the cycle
-// after the walk sends it, their data come RdLat = 4 cycles later
-// (tile_buffer), each slot selects its operands into registers of its own
-// and takes them the cycle after. A result goes through a register to its
-// write, which the banks hold 3 cycles later: done_o comes a cycle after the
-// write is given, and a later command's first read 2 or more after that. A
-// command is taken the cycle after the last group of the one before.
+// after the walk sends it, their data come RdLat = 5 cycles later
+// (tile_buffer), each slot selects its operands into registers of its own,
+// per group of buffers then among the groups, and takes them the cycle
+// after. A result goes through a register to its write, which the banks
+// hold 4 cycles later: done_o comes a cycle after the write is given, and a
+// later command's first read 2 or more after that. A command is taken the
+// cycle after the last group of the one before.
 //
 // A reduction (docs/numerics.md, sections 3 and 4): element k of a row goes
 // to partial k mod Partials, so lane l of a row's group g to partial
 // Lanes * (g mod Parts) + l, which slot l keeps in its file of Parts. SUM and
 // SUMSQ accumulate with the chain's first FMA (add(x, p), fma(x, x, p)), p
-// read as the FMA's late c (fp_mul_add), when it meets the product: its
-// result is back in the file AddRegs + 2 cycles later, before the
-// partial's next group reads it (Parts >= AddRegs + 2), whatever the
-// multiply's registers. A row's first Parts groups start from +0 and
-// a missing element keeps its partial, so a partial no element reaches stays
-// +0. MAX takes x through the same FMA (add(x, -0) = x; a NaN as the
+// read as the FMA's late c (fp_mul_add), when it meets the product, through
+// a register (p_q, read from the file a cycle before); its result goes into
+// the file through a register too (s1_q, M10 step 6), back AddRegs + 4
+// cycles after the read, before the partial's next group reads it (Parts >=
+// AddRegs + 4), whatever the multiply's registers. A row's first Parts
+// groups start from +0 and a missing element keeps its partial, so a
+// partial no element reaches stays +0. MAX takes x through the same FMA (add(x, -0) = x; a NaN as the
 // canonical NaN, which max_f32 drops as it does any NaN) and keeps
 // max_f32(p, x), from the canonical NaN, which max_f32 leaves to any other
 // value. At a row's end the tree unit (vec_tree) takes its partials, the
@@ -109,7 +111,7 @@ module vec_unit
   parameter  logic [31:0]     Bf16Mask = 32'h4644,  // per id: X, QR, P, ATT, M (commands.buffers)
   parameter  logic [31:0]     Read2Mask = 32'h0,    // per id: a second read port (P: 32'h200)
   parameter  int unsigned     AddrW    = 20,
-  parameter  int unsigned     MulRegs  = 5,    // the chain's FMAs (M10: 250 MHz in the full core)
+  parameter  int unsigned     MulRegs  = 6,    // the chain's FMAs (M10: 250 MHz in the full core)
   parameter  int unsigned     AddRegs  = 4,
   parameter  int unsigned     Partials = 128,  // a reduction's partial sums, S (D-030)
   parameter  int unsigned     MemAddrW = 34,   // F2's HBM: 16 GiB
@@ -118,7 +120,7 @@ module vec_unit
   parameter  int unsigned     MemDepth = 64,   // beats: port_dma's FIFO (LOAD)
   parameter  int unsigned     WrOutstanding = 128,  // write bursts sent, not yet answered (to verify on F2)
   parameter  int unsigned     Dones    = 64,   // commands taken and not yet done, at most
-  parameter  int unsigned     RdLat    = 4,    // tile_buffer's read: data cycles after the address
+  parameter  int unsigned     RdLat    = 5,    // tile_buffer's read: data cycles after the address
   localparam int unsigned     DataWidth = Lanes * 16,  // an AXI beat
   localparam int unsigned     BufW     = $clog2(Bufs),
   localparam int unsigned     LW       = $clog2(Lanes),
@@ -181,7 +183,7 @@ module vec_unit
   input  logic                         ext_r_valid_i,
   input  logic [BufW-1:0]              ext_r_buf_i,
   input  logic [AddrW-1:0]             ext_r_addr_i,
-  output logic [Lanes-1:0][31:0]       ext_r_data_o,  // RdLat = 4 cycles after the address
+  output logic [Lanes-1:0][31:0]       ext_r_data_o,  // RdLat + 1 = 6 cycles after the address
   input  logic [AddrW-1:0]             ext_r2_addr_i,
   output logic [Lanes-1:0][31:0]       ext_r2_data_o  // with ext_r_data_o
 );
@@ -209,7 +211,7 @@ module vec_unit
   localparam int unsigned Depth = (Len + Lanes - 1) / Lanes;  // a bank's entries
   localparam int unsigned DW = $clog2(Depth);
   localparam int unsigned ChainLat = chain_latency(MulRegs, AddRegs);
-  localparam int unsigned AccLat = mul_add_latency(MulRegs, AddRegs) + 1;  // chain in to s1_y_o
+  localparam int unsigned AccLat = mul_add_latency(MulRegs, AddRegs) + 2;  // chain in to s1_q
   // A store group's place in the stores' queue, from its read (grp_fire) to
   // the writer's take freeing it at full rate (the terms in order: rq_q,
   // iss_q to the chain, the chain, w_valid_q, the queue's output and
@@ -217,7 +219,10 @@ module vec_unit
   // at least that many groups, so a store of one beat a group (OUTPUT) runs
   // a group a cycle whatever the chain's length (M10 step 5: 64 places
   // throttled OUTPUT to 64 groups in 87 cycles).
-  localparam int unsigned KvTrip = 1 + (RdLat + 1) + ChainLat + 1 + 1 + 1;
+  // A read's data in the slots' operand registers and on ext: the buffers'
+  // RdLat, then the select among the groups of buffers (below).
+  localparam int unsigned SelLat = RdLat + 1;
+  localparam int unsigned KvTrip = 1 + (SelLat + 1) + ChainLat + 1 + 1 + 1;
   localparam int unsigned KvDepth = 2 ** $clog2(KvTrip);
   localparam int unsigned MW = $clog2(KvDepth + 1);
   localparam logic [31:0] NegZero = 32'h8000_0000;
@@ -228,8 +233,11 @@ module vec_unit
   if (Bufs > 32) begin : gen_bufs_check
     $error("Bufs must fit Bf16Mask's 32 bits");
   end
-  if (Partials != Parts * Lanes || Parts != 2 ** PW || Parts < AddRegs + 2) begin : gen_parts_check
-    $error("Partials must be a power-of-two multiple of Lanes, at least AddRegs + 2 a slot");
+  if (MulRegs < 1) begin : gen_mulregs_check
+    $error("MulRegs must be at least 1 (a partial is read into p_q a cycle before the FMA's late c)");
+  end
+  if (Partials != Parts * Lanes || Parts != 2 ** PW || Parts < AddRegs + 4) begin : gen_parts_check
+    $error("Partials must be a power-of-two multiple of Lanes, at least AddRegs + 4 a slot");
   end
   if (KvPorts != 2 ** KvW || MemAddrW < ChanW + KvW) begin : gen_mem_check
     $error("KvPorts must be a power of two, MemAddrW hold its channels");
@@ -698,8 +706,17 @@ module vec_unit
   // --- Buffers ----------------------------------------------------------------
 
   // tile_buffer: a read's data RdLat cycles after its address; a write
-  // given in cycle c is seen by the reads given from c + 2 on.
-  localparam int unsigned EAW   = DW + LW;  // an element's address in a buffer
+  // given to it in cycle c is seen by the reads given from c + 1 on. The
+  // writes reach the buffers through a copy per group of SelN buffers
+  // (wsrc_q; M10 step 6: one register drove the inputs of all 21), so a
+  // write given here in cycle c is seen by the reads given from c + 2 on.
+  // A read's data reach the slots and ext through a select per group of
+  // SelN buffers into a register, then one among the groups: SelLat =
+  // RdLat + 1 cycles after the address.
+  localparam int unsigned EAW    = DW + LW;  // an element's address in a buffer
+  localparam int unsigned SelW   = BufW >= 4 ? 3 : 1;
+  localparam int unsigned SelN   = 2 ** SelW;                  // buffers a group
+  localparam int unsigned NSel   = (Bufs + SelN - 1) / SelN;   // groups
 
   // The group whose reads go to the buffers this cycle: the walk's of the
   // cycle before (rq_q), the reads' addresses from registers (M10).
@@ -727,23 +744,49 @@ module vec_unit
   logic [Lanes-1:0]        u_w_mask;
   logic [Lanes-1:0][31:0]  u_w_data;
 
+  // The writes' sources, a copy per group of SelN buffers: ext's, and the
+  // unit's with the tree's in it (never in the same cycle, t_go; a tree's
+  // write is lane 0's, its other lanes masked off).
+  typedef struct packed {
+    logic                   ext_valid, u_valid;
+    logic [BufW-1:0]        ext_buf, u_buf;
+    logic [AddrW-1:0]       ext_addr, u_addr;
+    logic [Lanes-1:0]       ext_mask, u_mask;
+    logic [Lanes-1:0][31:0] ext_data, u_data;
+  } wsrc_t;
+  wsrc_t wsrc;
+  always_comb begin
+    wsrc = '{ext_valid: ext_w_valid_i, u_valid: u_w_valid || t_w_valid, ext_buf: ext_w_buf_i,
+             u_buf: t_w_valid ? t_w_buf : u_w_buf, ext_addr: ext_w_addr_i,
+             u_addr: t_w_valid ? t_w_addr : u_w_addr, ext_mask: ext_w_mask_i,
+             u_mask: t_w_valid ? Lanes'(1) : u_w_mask, ext_data: ext_w_data_i, u_data: u_w_data};
+    if (t_w_valid) wsrc.u_data[0] = t_w_data;
+  end
+  wsrc_t wsrc_q[NSel];
+  always_ff @(posedge clk_i) begin
+    for (int unsigned k = 0; k < NSel; k++) begin
+      // The valids as they come: ext's is taken in any cycle (as the
+      // buffers' own inputs are), the tree's and the unit's are reset where made.
+      wsrc_q[k] <= wsrc;
+    end
+  end
+
   // A buffer's read address is the group's where it is a source, else ext's
   // (the banks read every cycle; an unused read is harmless). Its write
   // mask is zero unless this cycle writes it.
   always_comb begin
     for (int unsigned i = 0; i < Bufs; i++) begin
+      wsrc_t w;
+      w = wsrc_q[i/SelN];
       rd_addr[i] = ext_r_addr_i;
       if (rq_valid_q && rq_q.is.c == BufW'(i)) rd_addr[i] = rq_q.is.addr;
       if (rq_valid_q && rq_q.is.b == BufW'(i)) rd_addr[i] = rq_q.b_addr;
       if (rq_valid_q && rq_q.is.a == BufW'(i)) rd_addr[i] = rq_q.a_addr;
-      wr_addr[i] = ext_w_addr_i;
-      wr_mask[i] = ext_w_valid_i && ext_w_buf_i == BufW'(i) ? ext_w_mask_i : '0;
-      wr_data[i] = ext_w_data_i;
-      if (t_w_valid && t_w_buf == BufW'(i)) begin  // never with the slots' (t_w_valid)
-        {wr_addr[i], wr_mask[i], wr_data[i]} = {t_w_addr, Lanes'(1), (Lanes * 32)'(t_w_data)};
-      end
-      if (u_w_valid && u_w_buf == BufW'(i)) begin
-        {wr_addr[i], wr_mask[i], wr_data[i]} = {u_w_addr, u_w_mask, u_w_data};
+      wr_addr[i] = w.ext_addr;
+      wr_mask[i] = w.ext_valid && w.ext_buf == BufW'(i) ? w.ext_mask : '0;
+      wr_data[i] = w.ext_data;
+      if (w.u_valid && w.u_buf == BufW'(i)) begin
+        {wr_addr[i], wr_mask[i], wr_data[i]} = {w.u_addr, w.u_mask, w.u_data};
       end
     end
   end
@@ -793,41 +836,60 @@ module vec_unit
   assign rd_data[0]  = '0;  // NONE
   assign rd2_data[0] = '0;
 
-  // ext's data, RdLat cycles after its address.
-  logic [BufW-1:0] ext_r_buf_q[RdLat];
+  // The buffers' data padded to whole groups of SelN, for the selects.
+  logic [NSel*SelN-1:0][Lanes-1:0][31:0] rd_pad, rd2_pad;
+  assign rd_pad  = (NSel * SelN * Lanes * 32)'(rd_data);
+  assign rd2_pad = (NSel * SelN * Lanes * 32)'(rd2_data);
+  // Buffer id's group and its place in it.
+  function automatic int unsigned sel_grp(logic [BufW-1:0] id);
+    return 32'(id) / SelN;
+  endfunction
+  function automatic logic [SelW-1:0] sel_in(logic [BufW-1:0] id);
+    return SelW'(32'(id) % SelN);
+  endfunction
+
+  // ext's data, SelLat cycles after its address: each group's select, then
+  // the group's.
+  logic [BufW-1:0]               ext_r_buf_q[SelLat];
+  logic [Lanes-1:0][31:0]        ext_lv_q[NSel], ext2_lv_q[NSel];
   always_ff @(posedge clk_i) begin
     ext_r_buf_q[0] <= ext_r_buf_i;
-    for (int unsigned j = 1; j < RdLat; j++) ext_r_buf_q[j] <= ext_r_buf_q[j-1];
+    for (int unsigned j = 1; j < SelLat; j++) ext_r_buf_q[j] <= ext_r_buf_q[j-1];
+    for (int unsigned k = 0; k < NSel; k++) begin
+      ext_lv_q[k]  <= rd_pad[k*SelN+32'(sel_in(ext_r_buf_q[RdLat-1]))];
+      ext2_lv_q[k] <= rd2_pad[k*SelN+32'(sel_in(ext_r_buf_q[RdLat-1]))];
+    end
   end
-  assign ext_r_data_o  = rd_data[ext_r_buf_q[RdLat-1]];
-  assign ext_r2_data_o = rd2_data[ext_r_buf_q[RdLat-1]];
+  assign ext_r_data_o  = ext_lv_q[sel_grp(ext_r_buf_q[SelLat-1])];
+  assign ext_r2_data_o = ext2_lv_q[sel_grp(ext_r_buf_q[SelLat-1])];
 
   // --- Operands, the slots, the write -----------------------------------------
 
   // The group from its reads (rq_q) to the slots: iss_q[j] is rq_q's of
   // j + 1 cycles before. Its data come with iss_q[RdLat - 1]: each slot
-  // selects its operands into registers of its own (gen_slot), from its own
-  // copy of the group's selects. The slots take the group with grp_q =
-  // iss_q[RdLat]. LOAD's group (ld_q, with rq_q) waits alongside (ld_d).
+  // selects its operands, per group of SelN buffers into registers of its
+  // own, then among the groups into its operands' (gen_slot), from its own
+  // copies of the group's selects. The slots take the group with grp_q =
+  // iss_q[SelLat]. LOAD's group (ld_q, with rq_q) waits alongside (ld_d).
   // verilator lint_off UNUSEDSIGNAL
-  issued_t                iss_q[RdLat+1];
+  issued_t                iss_q[SelLat+1];
   issued_t                grp_q;
   // verilator lint_on UNUSEDSIGNAL
-  logic [RdLat:0]         iss_valid_q;
+  logic [SelLat:0]        iss_valid_q;
   logic                   grp_valid_q;
-  logic [Lanes-1:0][31:0] ld_d[RdLat];
+  logic [Lanes-1:0][31:0] ld_d[SelLat];
   always_ff @(posedge clk_i) begin
     iss_q[0]       <= rq_q.is;
     iss_valid_q[0] <= rst_nq && rq_valid_q;
     ld_d[0]        <= ld_q;
-    for (int unsigned j = 1; j <= RdLat; j++) begin
+    for (int unsigned j = 1; j <= SelLat; j++) begin
       iss_q[j]       <= iss_q[j-1];
       iss_valid_q[j] <= rst_nq && iss_valid_q[j-1];
     end
-    for (int unsigned j = 1; j < RdLat; j++) ld_d[j] <= ld_d[j-1];
+    for (int unsigned j = 1; j < SelLat; j++) ld_d[j] <= ld_d[j-1];
   end
-  assign grp_q       = iss_q[RdLat];
-  assign grp_valid_q = iss_valid_q[RdLat];
+  assign grp_q       = iss_q[SelLat];
+  assign grp_valid_q = iss_valid_q[SelLat];
 
   function automatic chain_op_e chain_op(logic [4:0] op);
     case (op)
@@ -894,35 +956,46 @@ module vec_unit
     // rst_nq: one register drives one slot, not 16 (core build 1: grp_q's
     // fields drove 600+ loads). a_q, b_q, c_q: the operands it selected.
     // verilator lint_off UNUSEDSIGNAL
-    issued_t     sel_q;
+    issued_t     sel_q, sel2_q;  // the group at its data's select, at its groups' select
     // verilator lint_on UNUSEDSIGNAL
+    logic [31:0] la_q[NSel], lb_q[NSel], lc_q[NSel];  // each group's operand
     slot_ctl_t   ctl_q;
     logic        rst_nq_s, late;
-    logic [31:0] a_q, b_q, c_q, a, b, c, p;
+    logic [31:0] a_q, b_q, c_q, a, b, c, p_q, s1_q;
     // A sum's partial, read as the chain's late c (1 + MulRegs cycles after
-    // the group enters): the group's first and part, delayed to it.
-    logic          lp_first_q[MulRegs+1];
-    logic [PW-1:0] lp_part_q[MulRegs+1];
+    // the group enters) from p_q, read from the file a cycle before: the
+    // group's first and part, delayed to it.
+    logic          lp_first_q[MulRegs];
+    logic [PW-1:0] lp_part_q[MulRegs];
     always_ff @(posedge clk_i) begin
       sel_q    <= iss_q[RdLat-2];
+      sel2_q   <= sel_q;
       rst_nq_s <= rst_ni;
-      ctl_q    <= '{op: chain_op(sel_q.op), red: reduction(sel_q.op), rmax: sel_q.op == OpMax,
-                    sumsq: sel_q.op == OpSumsq, neg_a: sel_q.neg_a && sel_q.op != OpLoad,
-                    neg_b: sel_q.neg_b, first: sel_q.first, part: sel_q.part};
-      a_q      <= sel_q.op == OpLoad ? ld_d[RdLat-1][l] : rd_data[sel_q.a][l];
-      b_q      <= sel_q.b == '0 ? iss_q[RdLat-1].scalar  // a register's 32 bits, one load per slot
-                : sel_q.b_per_row ? rd_data[sel_q.b][0] : rd_data[sel_q.b][l];
-      c_q      <= rd_data[sel_q.c][l];
+      for (int unsigned k = 0; k < NSel; k++) begin
+        la_q[k] <= rd_pad[k*SelN+32'(sel_in(sel_q.a))][l];
+        lb_q[k] <= rd_pad[k*SelN+32'(sel_in(sel_q.b))][sel_q.b_per_row ? 0 : l];
+        lc_q[k] <= rd_pad[k*SelN+32'(sel_in(sel_q.c))][l];
+      end
+      ctl_q    <= '{op: chain_op(sel2_q.op), red: reduction(sel2_q.op), rmax: sel2_q.op == OpMax,
+                    sumsq: sel2_q.op == OpSumsq, neg_a: sel2_q.neg_a && sel2_q.op != OpLoad,
+                    neg_b: sel2_q.neg_b, first: sel2_q.first, part: sel2_q.part};
+      a_q      <= sel2_q.op == OpLoad ? ld_d[SelLat-1][l] : la_q[sel_grp(sel2_q.a)];
+      b_q      <= sel2_q.b == '0 ? iss_q[SelLat-1].scalar  // a register's 32 bits, one load per slot
+                : lb_q[sel_grp(sel2_q.b)];
+      c_q      <= lc_q[sel_grp(sel2_q.c)];
     end
     always_ff @(posedge clk_i) begin
       lp_first_q[0] <= ctl_q.first;
       lp_part_q[0]  <= ctl_q.part;
-      for (int unsigned j = 1; j <= MulRegs; j++) begin
+      for (int unsigned j = 1; j < MulRegs; j++) begin
         lp_first_q[j] <= lp_first_q[j-1];
         lp_part_q[j]  <= lp_part_q[j-1];
       end
     end
-    assign p = lp_first_q[MulRegs] ? '0 : part_q[l][lp_part_q[MulRegs]];
+    always_ff @(posedge clk_i) begin
+      p_q  <= lp_first_q[MulRegs-1] ? '0 : part_q[l][lp_part_q[MulRegs-1]];
+      s1_q <= s1_y[l];
+    end
     always_comb begin
       a = a_q;
       b = b_q;
@@ -947,7 +1020,7 @@ module vec_unit
       .b_i     (b),
       .c_i     (c),
       .late_i  (late),
-      .c_late_i(p),
+      .c_late_i(p_q),
       .valid_o (slot_valid[l]),
       .y_o     (y[l]),
       .s1_y_o  (s1_y[l])
@@ -963,8 +1036,8 @@ module vec_unit
         for (int unsigned j = 0; j < Parts; j++) part_q[l][j] <= start;
       end
       if (ad.valid && ad.mask[l]) begin
-        part_q[l][ad.part] <= !ad.rmax ? s1_y[l]
-                            : max_f32(ad.row_first ? start : part_q[l][ad.part], s1_y[l]);
+        part_q[l][ad.part] <= !ad.rmax ? s1_q
+                            : max_f32(ad.row_first ? start : part_q[l][ad.part], s1_q);
       end
     end
   end
@@ -991,7 +1064,7 @@ module vec_unit
   } tree_t;
 
   logic                      cap_valid_q, t_pend_q, tree_run, tree_done;
-  logic [$clog2(ChainLat+RdLat+3)-1:0] slot_groups_q;  // groups from the walk to the slots' out, but a reduction's
+  logic [$clog2(ChainLat+SelLat+3)-1:0] slot_groups_q;  // groups from the walk to the slots' out, but a reduction's
   logic                      slot_out;  // one of them leaves the slots (below)
   logic                      cap_rmax_q;
   tree_t                     cap_q, tree_q;

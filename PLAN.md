@@ -2419,7 +2419,7 @@ more cycles per command; branch `m10/slr-regs`):
     and the controller's registers (-0.20).
   - Hold after phys_opt -1.985 (estimated; routed builds met hold).
 
-**Step 6, proposed (2026-11-11, Fable; needs the owner's OK): two registers
+**Step 6, proposed (2026-11-11, Fable; the owner's OK 2026-11-11): two registers
 per crossing, credits for the DMA commands, the lanes' products on DSPs,
 the HBM stages beside the HBM, the vector unit's broadcasts.** Same bits;
 more cycles per command. One branch, one PR, then one full build. The
@@ -2539,6 +2539,96 @@ SLR, then per group. Nothing below is a numerics change.
     copies are item 9c) and the placer directive (AWS's script takes
     `--place`; ExtraTimingOpt instead of SSI_SpreadLogic_high, which
     spreads a 61% design to every corner), one change per build.
+
+**Step 6, done (2026-11-11, owner's OK the same day; branch m10/step6).**
+As proposed, with these differences:
+- Every crossing between the engine's central logic and a region or group
+  has the float in the middle (`_fq`, in no pblock), not only the DMA
+  commands: the beat and x, the DMA commands and pushes, the estimates'
+  mask (chk), the takes back, the estimates back, and the drain's go,
+  out_valid and results. So PopLat = XLat + 4 = 15 (XRdLat 8; the
+  proposal said 14), SeenRegs 5 (4), the drain's ReadyLat 3, Recent 7 (5)
+  and SlotLat 6 (5).
+- Regions: `Region1`, `Region2` (the first group of regions 1 and 2), not a
+  table; f2_core and core pass them. Group 7 stays in SLR1 for now
+  (Region2 = 8); the build's fit check decides (item 8).
+- DMA commands: a FIFO of 4 per port, not 2: a credit's round trip is 8
+  cycles.
+- The drain: `go` is no longer computed from a 16:1 select of `ok_q`: the
+  next cycle's group's "results are there" (the same group or the next,
+  and group 0 for the successors) is registered with its Recent check.
+- The vector unit's selects and write copies: groups of 8 buffers (3
+  groups for 21 buffers), not 6. The write copies make up for the tile's
+  address register, so a read still sees the writes given 2 cycles before
+  it and done_o did not move (the proposal moved done_o).
+- The controller: a cycle between a handover and the next command's
+  checks (the RAM's output register), `fresh` and the group's count a
+  cycle later.
+- Hints, each with an audit.tcl line: `use_dsp` on fp_product's product
+  register (Regs 1-2), `max_fanout` 64 on bringup_pipe's `take`, 32 on
+  step's `step_load` and `unit_end`.
+- Found by the tests: two new reset copies took an input in their first
+  cycle and dropped it (the vector unit's write copies gated ext's write
+  with the unit's reset copy; the controller, a cycle behind the core, took
+  an AXI-Lite read in reset; f2_core's AXI-Lite stages on the copy). Now
+  ext's write is not gated, the controller takes no read in reset, the
+  stages run on rst_ni.
+- Measured (tests, 2026-11-12): engine start-up past the model and the
+  memory's latency 86, 88, 94, 100 cycles at 4, 8, 20, 32 ports (89 at 32
+  before; bound 91 -> 102); the short rows' extra 0 in the back-to-back run
+  and in SCORES at d = 16 (15 and 27 before: LaneBanks 3 and the credits
+  took step 5's 9% back, bounds 0); LOAD of 4096 BF16 groups + 101 (+ 98
+  bound before), OUTPUT groups + 98 (89; bound 96 -> 105).
+- Perf model (2026-11-12, scripts/measure_m6.py latency and
+  measure_m5_engine.py real, rerun on the clean final tree: same numbers): `vector_startup_cycles` 87 -> 96, `reduction_tail_cycles` 83
+  -> 85, `reduction_row_cycles` 168 -> 179, `engine_startup_cycles` 85 ->
+  92 (VALUES at position 63; MATVECs 89, SCORES 82-90: SCORES no longer set
+  aside). `load_latency_cycles` 76 and `kv_store_latency_cycles` 72
+  unchanged. The worst engine command is the token's first, `layers.0.q`
+  (163 cycles over its engine cycles, +8.7% with 92: a cold start, which
+  the rule leaves out); the non-waiting `v` after `k` +6.9% (20 cycles: the
+  drain's longer way, which the model has no term for). SCORES at position
+  8191 10,160 -> 9,306 cycles. The vector unit's step: 288,371 cycles at
+  position 1023 (274,407 after step 5, +5.1%), 837,971 at 8191 (+1.0%).
+- Tests on the final tree (2026-11-12): default 1060 passed (5 report tests
+  failed until the reports were re-rendered, then passed); slow 39 passed.
+
+**Step 6a, proposed (2026-11-12, Fable; for the agent at high effort):
+finish step 6 before its PR.** A check of the branch found items 1-10 in
+the code and the floorplan check passing, but item 11 half done: the
+measurement scripts were run (reports/data/M5-engine.json, M6.json
+modified, uncommitted, M5's provenance `dirty: true`) and the perf model
+was not updated, so `model/designs/v0.json` and the notes above disagree
+with the hardware. No numerics change; no new cloud use except item 4.
+1. Perf model: `vector_startup_cycles` 87 -> 96, `reduction_tail_cycles`
+   83 -> 85, `reduction_row_cycles` 168 -> 179 (M6.json's latencies), the
+   chain 85 in their `source` strings; `engine_startup_cycles` from
+   M5-engine.json's rule (the most a SmolLM2 command after the first took
+   over its engine cycles, SCORES aside; today `v` is 308 against 288 and
+   `q` 883 against 805: check whether `q` is the first command's cold
+   start, which the rule excludes, and say so). Then rerun
+   `scripts/measure_m6.py latency` and `measure_m5_engine.py real` on the
+   committed tree (provenance clean) and confirm the vector commands are
+   back within 0.5% of the model and the worst engine command within
+   10% (today 10.2% and 9.7%: the limits in the M5/M6 checks, not to be
+   loosened; if a command stays off, explain which cycles the model
+   misses). docs/architecture.md and docs/perf.md where they quote the
+   old costs; the "Measured" bullet of step 6 gets the perf parameters
+   and the step's total: the vector unit's step at position 1023 288,371
+   cycles (274,407 after step 5, +5.1%), 837,971 at 8191 (+1.0%).
+2. Commit PLAN.md and the regenerated reports (one commit); `scripts/
+   test.sh` default and slow once more on the final tree, the counts in
+   the step 6 note.
+3. /simplify, then /code-review high (REVIEW.md), the PR, its summary to
+   the owner with every raised bound and perf parameter listed.
+4. Builds, with the owner's OK per launch: the lane harness
+   (`lane_path.sv`, about $1) before the full build, because the lanes'
+   512 DSPs are new; then the full build (about $6-8). The group-7 move
+   (item 8) waits for the build's fit check.
+Not in this step: the lanes' own 8-10 level paths (no structural fix in
+step 6; they depend on the DSPs relieving SLR1) and the vector unit's
+in-core margin. If build 7 shows them, that is step 7, planned from its
+families.
 
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate

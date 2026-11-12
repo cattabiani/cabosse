@@ -97,10 +97,10 @@ v0: first-order design choices (M2), from `model/designs/v0.json`:
 | `accumulators` | 16 partial sums | choice | docs/architecture.md, engine: 4 multiply-adds x a 4-cycle loop (D-027) |
 | `vector_elems_per_cycle` | 16 elements/cycle | choice | docs/architecture.md, vector unit (D-030) |
 | `issue_cycles` | 4 cycles/command | guess | the controller reads a command and hands it over; the waits are counted apart (D-053); M7 measures it |
-| `engine_startup_cycles` | 85 cycles/command | measured by us | per engine command that waits for an earlier result (D-042), weights or KV read ahead: the most a SmolLM2 engine command after the first took over its engine cycles, SCORES aside (VALUES at position 63; MATVECs 81), with the pipelined step control (D-051), M6 rounds 4 and 5's and M10 step 5's registers (was 76); SCORES' short rows also wait for a lane's row buffer (M10 steps 1b and 5: up to +9.4% at position 8191, not modelled), 128-lane RTL in simulation (reports/data/M5-engine.json, real); scenarios with other lanes or accumulators reuse it (estimate: its drain and final sum change with them) |
-| `vector_startup_cycles` | 87 cycles | measured by us | from a vector command's start to its done, past its groups: the chain (78 cycles at MulRegs = 5, AddRegs = 4) and the read and write; SmolLM2's whole decode step on rtl/vec_unit.sv at F2's read latency (also for writes), positions 0, 63, 1023 and 8191, every command of its kind the same (scripts/measure_m6.py latency, reports/data/M6.json); M10 step 1b's pipelined vector unit: 59, was 53; M10 step 5's longer chain: 87 |
-| `reduction_tail_cycles` | 83 cycles | measured by us | a reduction's last row: its partials' last sums and the tree (D-050, one adder), past vector_startup_cycles; measured as vector_startup_cycles |
-| `reduction_row_cycles` | 168 cycles | measured by us | a reduction's rows end at least this far apart: a row's last group waits for the tree to take the row before; measured as vector_startup_cycles |
+| `engine_startup_cycles` | 92 cycles/command | measured by us | per engine command that waits for an earlier result (D-042), weights or KV read ahead: the most a SmolLM2 engine command after the first took over its engine cycles (VALUES at position 63; MATVECs 89, SCORES 82-90), with the pipelined step control (D-051), M6 rounds 4 and 5's and M10 steps 5 and 6's registers (was 85 after step 5, 76 before); since M10 step 6 (LaneBanks 3, DMA commands by credits) SCORES' short rows no longer wait for a lane's row buffer, so SCORES is no longer set aside; the first command (layers.0.q, 163 cycles over) has nothing before it to read its weights behind; 128-lane RTL in simulation (reports/data/M5-engine.json, real); scenarios with other lanes or accumulators reuse it (estimate: its drain and final sum change with them) |
+| `vector_startup_cycles` | 96 cycles | measured by us | from a vector command's start to its done, past its groups: the chain (85 cycles at MulRegs = 6, AddRegs = 4) and the read, its select and the write; SmolLM2's whole decode step on rtl/vec_unit.sv at F2's read latency (also for writes), positions 0, 63, 1023 and 8191, every command of its kind the same (scripts/measure_m6.py latency, reports/data/M6.json); M10 step 1b's pipelined vector unit: 59, was 53; M10 step 5's longer chain: 87; step 6's chain, select and loop registers: 96 |
+| `reduction_tail_cycles` | 85 cycles | measured by us | a reduction's last row: its partials' last sums and the tree (D-050, one adder, its operands registered since M10 step 6), past vector_startup_cycles; measured as vector_startup_cycles (83 before M10 step 6) |
+| `reduction_row_cycles` | 179 cycles | measured by us | a reduction's rows end at least this far apart: a row's last group waits for the tree to take the row before; measured as vector_startup_cycles (168 before M10 step 6's tree register) |
 | `load_latency_cycles` | 76 cycles | measured by us | from LOAD's start to its first beat: the address registered, F2's HBM read latency (70 cycles, docs/f2.md; M8 measured our bring-up path's one-beat read at a median 43-44 cycles at 250 MHz, reports/M8.md, not yet the engine's path; scenarios with another clock reuse it, an estimate: the memory's latency is in ns); measured as vector_startup_cycles |
 | `kv_store_latency_cycles` | 72 cycles | measured by us | from a store's last beat sent (KV_STORE, V_STORE; D-062) to its last write answered (D-044), at the memory model's write latency of 70 cycles (F2's is not documented; M8; reused by scenarios with another clock, an estimate); measured as vector_startup_cycles |
 | `softmax_fused` | 0 flag | choice | D-054: softmax's subtraction, exp and sum in one vector pass, with an FP32 adder before and after each slot's chain; deferred (D-057) |
@@ -160,30 +160,30 @@ a matrix's rows leave lanes idle, or rows are too short for their final sum.
 <!-- begin: predictions -->
 | scenario | position | tokens/s | in order | limited by | memory (ms) | engine (ms) | vector (ms) | commands (ms) |
 |---|---|---|---|---|---|---|---|---|
-| as planned | 0 | 309–836 | 477 | engine | 1.139 | 1.196 | 0.878 | 0.021 |
-| as planned | 1023 | 249–684 | 388 | engine | 1.436 | 1.462 | 1.098 | 0.021 |
-| as planned | 8191 | 96–283 | 146 | memory | 3.528 | 3.504 | 3.317 | 0.021 |
-| 64 lanes x 8, A = 32 | 0 | 311–848 | 482 | engine | 1.138 | 1.179 | 0.873 | 0.021 |
-| 64 lanes x 8, A = 32 | 1023 | 231–560 | 345 | engine | 1.436 | 1.786 | 1.092 | 0.021 |
-| 64 lanes x 8, A = 32 | 8191 | 75–154 | 102 | engine | 3.528 | 6.504 | 3.311 | 0.021 |
-| 512 lanes x 1, A = 4 | 0 | 279–644 | 408 | engine | 1.139 | 1.552 | 0.878 | 0.021 |
-| 512 lanes x 1, A = 4 | 1023 | 209–448 | 298 | engine | 1.436 | 2.233 | 1.098 | 0.021 |
-| 512 lanes x 1, A = 4 | 8191 | 70–133 | 92 | engine | 3.528 | 7.502 | 3.317 | 0.021 |
-| core at 125 MHz | 0 | 188–418 | 239 | engine | 1.139 | 2.392 | 1.757 | 0.043 |
-| core at 125 MHz | 1023 | 152–342 | 194 | engine | 1.436 | 2.923 | 2.195 | 0.043 |
-| core at 125 MHz | 8191 | 58–143 | 73 | engine | 3.528 | 7.009 | 6.634 | 0.043 |
-| 256 lanes, HBM at 450 MHz | 0 | 452–1138 | 632 | vector | 0.633 | 0.682 | 0.878 | 0.021 |
-| 256 lanes, HBM at 450 MHz | 1023 | 358–911 | 501 | vector | 0.798 | 0.879 | 1.098 | 0.021 |
-| 256 lanes, HBM at 450 MHz | 8191 | 129–301 | 173 | vector | 1.960 | 2.438 | 3.317 | 0.021 |
-| fused softmax, max in drain | 0 | 350–836 | 582 | engine | 1.139 | 1.196 | 0.503 | 0.020 |
-| fused softmax, max in drain | 1023 | 281–684 | 472 | engine | 1.436 | 1.462 | 0.639 | 0.020 |
-| fused softmax, max in drain | 8191 | 115–283 | 194 | memory | 3.528 | 3.504 | 1.607 | 0.020 |
-| KV tiles shared | 0 | 309–836 | 477 | engine | 1.138 | 1.196 | 0.878 | 0.021 |
-| KV tiles shared | 1023 | 262–684 | 388 | engine | 1.237 | 1.462 | 1.098 | 0.021 |
-| KV tiles shared | 8191 | 114–285 | 146 | engine | 1.934 | 3.504 | 3.317 | 0.021 |
-| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 0 | 544–1466 | 830 | engine | 0.633 | 0.682 | 0.503 | 0.020 |
-| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 1023 | 428–1138 | 650 | engine | 0.798 | 0.879 | 0.639 | 0.020 |
-| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 8191 | 166–410 | 246 | engine | 1.960 | 2.438 | 1.607 | 0.020 |
+| as planned | 0 | 303–833 | 464 | engine | 1.139 | 1.201 | 0.934 | 0.021 |
+| as planned | 1023 | 245–682 | 379 | engine | 1.436 | 1.467 | 1.153 | 0.021 |
+| as planned | 8191 | 96–283 | 145 | memory | 3.528 | 3.510 | 3.352 | 0.021 |
+| 64 lanes x 8, A = 32 | 0 | 306–844 | 469 | engine | 1.138 | 1.184 | 0.928 | 0.021 |
+| 64 lanes x 8, A = 32 | 1023 | 227–558 | 338 | engine | 1.436 | 1.791 | 1.148 | 0.021 |
+| 64 lanes x 8, A = 32 | 8191 | 75–154 | 101 | engine | 3.528 | 6.509 | 3.346 | 0.021 |
+| 512 lanes x 1, A = 4 | 0 | 274–642 | 398 | engine | 1.139 | 1.557 | 0.934 | 0.021 |
+| 512 lanes x 1, A = 4 | 1023 | 206–447 | 293 | engine | 1.436 | 2.239 | 1.153 | 0.021 |
+| 512 lanes x 1, A = 4 | 8191 | 69–133 | 92 | engine | 3.528 | 7.507 | 3.352 | 0.021 |
+| core at 125 MHz | 0 | 183–416 | 232 | engine | 1.139 | 2.402 | 1.868 | 0.043 |
+| core at 125 MHz | 1023 | 149–341 | 189 | engine | 1.436 | 2.933 | 2.307 | 0.043 |
+| core at 125 MHz | 8191 | 58–142 | 73 | engine | 3.528 | 7.019 | 6.704 | 0.043 |
+| 256 lanes, HBM at 450 MHz | 0 | 439–1070 | 609 | vector | 0.633 | 0.687 | 0.934 | 0.021 |
+| 256 lanes, HBM at 450 MHz | 1023 | 350–867 | 486 | vector | 0.798 | 0.884 | 1.153 | 0.021 |
+| 256 lanes, HBM at 450 MHz | 8191 | 129–298 | 172 | vector | 1.960 | 2.443 | 3.352 | 0.021 |
+| fused softmax, max in drain | 0 | 346–833 | 570 | engine | 1.139 | 1.201 | 0.534 | 0.020 |
+| fused softmax, max in drain | 1023 | 278–682 | 464 | engine | 1.436 | 1.467 | 0.670 | 0.020 |
+| fused softmax, max in drain | 8191 | 115–283 | 193 | memory | 3.528 | 3.510 | 1.638 | 0.020 |
+| KV tiles shared | 0 | 304–833 | 464 | engine | 1.138 | 1.201 | 0.934 | 0.021 |
+| KV tiles shared | 1023 | 258–682 | 379 | engine | 1.237 | 1.467 | 1.153 | 0.021 |
+| KV tiles shared | 8191 | 113–285 | 145 | engine | 1.934 | 3.510 | 3.352 | 0.021 |
+| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 0 | 534–1455 | 805 | engine | 0.633 | 0.687 | 0.534 | 0.020 |
+| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 1023 | 422–1132 | 635 | engine | 0.798 | 0.884 | 0.670 | 0.020 |
+| 256 lanes, HBM at 450 MHz, fused softmax, max in drain | 8191 | 165–409 | 244 | engine | 1.960 | 2.443 | 1.638 | 0.020 |
 <!-- end: predictions -->
 
 ## Sensitivity
@@ -195,7 +195,7 @@ Tokens/s (overlapped) at position 1023, with the input scaled ×0.5 / ×1 / ×2:
 
 | input | as planned | 64 lanes x 8, A = 32 | 512 lanes x 1, A = 4 | core at 125 MHz | 256 lanes, HBM at 450 MHz | fused softmax, max in drain | KV tiles shared | 256 lanes, HBM at 450 MHz, fused softmax, max in drain |
 |---|---|---|---|---|---|---|---|---|
-| `hbm_port_bytes` (to verify) | 376 / 684 / 684 | 376 / 560 / 560 | 376 / 448 / 448 | 342 / 342 / 342 | 677 / 911 / 911 | 376 / 684 / 684 | 437 / 684 / 684 | 677 / 1138 / 1138 |
-| `hbm_read_bytes_per_s` (measured by AWS) | 348 / 684 / 684 | 348 / 560 / 560 | 348 / 448 / 448 | 342 / 342 / 342 | 627 / 911 / 911 | 348 / 684 / 684 | 404 / 684 / 684 | 627 / 1138 / 1138 |
-| `issue_cycles` (guess) | 684 / 684 / 684 | 560 / 560 / 560 | 448 / 448 / 448 | 342 / 342 / 342 | 911 / 911 / 911 | 684 / 684 / 684 | 684 / 684 / 684 | 1138 / 1138 / 1138 |
+| `hbm_port_bytes` (to verify) | 376 / 682 / 682 | 376 / 558 / 558 | 376 / 447 / 447 | 341 / 341 / 341 | 677 / 867 / 867 | 376 / 682 / 682 | 437 / 682 / 682 | 677 / 1132 / 1132 |
+| `hbm_read_bytes_per_s` (measured by AWS) | 348 / 682 / 682 | 348 / 558 / 558 | 348 / 447 / 447 | 341 / 341 / 341 | 627 / 867 / 867 | 348 / 682 / 682 | 404 / 682 / 682 | 627 / 1132 / 1132 |
+| `issue_cycles` (guess) | 682 / 682 / 682 | 558 / 558 / 558 | 447 / 447 / 447 | 341 / 341 / 341 | 867 / 867 / 867 | 682 / 682 / 682 | 682 / 682 / 682 | 1132 / 1132 / 1132 |
 <!-- end: sensitivity -->
