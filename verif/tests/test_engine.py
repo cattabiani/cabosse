@@ -234,6 +234,37 @@ def test_go(ports: int, go_early: int, go_delay: int) -> None:
         assert not late, (label, late, extra)
 
 
+# 20 ports (5 groups) in three regions, F2's shape (4, 3, 1 groups at 32
+# ports): rtl/engine.sv's defaults leave region 2 empty at every port count.
+REGIONS = (("Region1", 2), ("Region2", 4))
+
+
+@rtl.needs_verilator
+def test_three_regions() -> None:
+    """Which region a group is in changes no bit and no cycle: every region
+    has the same registers (rtl/engine.sv), so the commands end on the same
+    cycles as with the default regions (and engine_startup_cycles, measured
+    with those, holds for F2's)."""
+    ports, gen = 20, torch.Generator().manual_seed(SEED)
+    lanes = ports * LANES_PER_PORT
+    back = [Matvec(random_bf16(gen, p * lanes, c)) for p, c in BACK_TO_BACK]
+    go = [
+        Matvec(random_bf16(gen, p * lanes - i % 2, c), a=i, dst=2 + i % 3, wait=w)
+        for i, (w, p, c) in enumerate(GO_COMMANDS)
+    ]
+    batches = {
+        "back to back": (back, {0: random_bf16(gen, 128)}),
+        "go": (go, {i: random_bf16(gen, c) for i, (_, _, c) in enumerate(GO_COMMANDS)}),
+    }
+    memory = dict(latency=GO_LATENCY, outstanding=8, seed=SEED)
+    for name, (mats, xs) in batches.items():
+        default = eng.fetch(mats, xs, ports, **memory)
+        regions = eng.fetch(mats, xs, ports, params=REGIONS, **memory)
+        label = f"{name}, regions {REGIONS}, seed {SEED}"
+        check_bits(mats, xs, regions, label)
+        assert np.array_equal(regions.done, default.done), (label, regions.done, default.done)
+
+
 DEPTHS = (16, 64, 128, 1024)  # 1024: deep enough that the pauses alone limit the rate
 DEFAULT_DEPTH = 128  # rtl/engine.sv's Depth: its run reuses the plain 4-port build
 PAUSES = dict(latency=20, outstanding=8, pause=20, pause_max=40)  # ports paused ~29% of cycles

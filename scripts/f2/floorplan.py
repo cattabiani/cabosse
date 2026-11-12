@@ -13,10 +13,14 @@ cells, and report_utilization -pblocks shows where they went.
   and the engine's region 0: groups 0 .. 3 (ports 0 .. 15, their DMAs and
   lanes). Its bottom clock-region row (pblock_hbm, a child of pblock_slr0):
   every HBM channel's stage beside the HBM (M10 step 6).
-- SLR1: the engine's region 1 (groups 4 .. 7), the engine's central logic
-  (issue, step, drain), the controller.
+- SLR1: the engine's region 1 (groups 4 .. 6), the engine's central logic
+  (issue, step, drain), the controller. All of it in pblock_slr1_core, a
+  child of pblock_slr1 without clock-region column X5 and the X4Y5 strip
+  (M10 step 7, B): column X5 is SLR1's only CL area beside the static shell
+  on its east, the corridor the shell's CL-side IP needs (build 7's
+  congestion). Only the host's stage towards PCIS may use it.
 - SLR2: the vector unit and the core's registers on its side (xv_*), and
-  the engine's region 2 if it has groups (REGION2 < GROUPS).
+  the engine's region 2, group 7 (M10 step 7, A).
 
 Every line adds cells that no other line covers (a hierarchical
 cell or the primitives at one level), so no cell has two. The crossings
@@ -69,16 +73,18 @@ LANES_PER_PORT = 4  # rtl/engine.sv: DataWidth / (16 * E)
 GROUP_PORTS = 4  # rtl/engine.sv's GP
 GROUPS = PORTS // GROUP_PORTS
 # rtl/engine.sv's regions, f2_core's defaults (Region1 = Ports / 8, Region2 =
-# Ports / 4): groups before REGION1 in SLR0, before REGION2 in SLR1, the rest
-# in SLR2.
+# Ports / 4 - Ports / 32): groups before REGION1 in SLR0, before REGION2 in
+# SLR1, the rest in SLR2. Group 7 in SLR2 (M10 step 7, A).
 REGION1 = PORTS // 8
-REGION2 = PORTS // 4
+REGION2 = PORTS // 4 - PORTS // 32
 
 CL = "WRAPPER/CL"
 F2 = f"{CL}/u_core"  # f2_core
 PBLOCK = "pblock_slr"  # + the SLR; created by HEADER
 HBM_PBLOCK = "pblock_hbm"  # the bottom clock-region row, in pblock_slr0
 HBM_ROW = "CLOCKREGION_X0Y0:CLOCKREGION_X7Y0"
+SLR1_CORE = "pblock_slr1_core"  # our SLR1 logic, in pblock_slr1 but out of the corridor
+CORRIDOR_X = 5  # the clock-region column SLR1_CORE leaves out
 FLOAT = "*_fq_reg*"  # rtl/engine.sv's registers free to float
 CORE = f"{F2}/u_core"  # core
 ENGINE = f"{CORE}/u_engine"
@@ -120,9 +126,23 @@ def pblocks() -> str:
         "# Each SLR's pblock: pblock_CL's ranges clipped to the SLR's rows (an xdc has no loops)."
     ]
     for slr in range(SLRS):
-        out += pblock(pblock_name(slr), "pblock_CL", clip(slr))
-    out += pblock(HBM_PBLOCK, pblock_name(0), [HBM_ROW])
+        out += pblock(f"{PBLOCK}{slr}", "pblock_CL", clip(slr))
+    out += pblock(HBM_PBLOCK, f"{PBLOCK}0", [HBM_ROW])
+    out += pblock(SLR1_CORE, f"{PBLOCK}1", west_of_corridor(clip(1)))
     return "\n".join(out) + "\n"
+
+
+def west_of_corridor(ranges: list[str]) -> list[str]:
+    """The clock-region ranges, cut at column CORRIDOR_X; the site ranges
+    (in SLR1 only the X4Y5 strip's) dropped."""
+    out = []
+    for r in ranges:
+        m = re.fullmatch(r"CLOCKREGION_X(\d+)Y(\d+):CLOCKREGION_X(\d+)Y(\d+)", r)
+        if m and int(m[1]) < CORRIDOR_X:
+            x0, y0, x1, y1 = map(int, m.groups())
+            x1 = min(x1, CORRIDOR_X - 1)
+            out.append(f"CLOCKREGION_X{x0}Y{y0}:CLOCKREGION_X{x1}Y{y1}")
+    return out
 
 
 def pblock(name: str, parent: str, ranges: list[str]) -> list[str]:
@@ -145,8 +165,10 @@ def esc(name: str) -> str:
 
 
 def pblock_name(slr: int | str) -> str:
-    """An SLR's pblock, or a pblock given by name."""
-    return slr if isinstance(slr, str) else f"{PBLOCK}{slr}"
+    """The pblock of our logic in an SLR (SLR1's: SLR1_CORE), or a pblock given by name."""
+    if isinstance(slr, str):
+        return slr
+    return SLR1_CORE if slr == 1 else f"{PBLOCK}{slr}"
 
 
 def assign(slr: int | str, pattern: str) -> str:
@@ -219,12 +241,13 @@ def lines() -> list[str]:
     out.append(assign(0, esc(f"{F2}/u_w/gen_stage[0].") + "*"))
     out.append(assign(0, f"{F2}/u_port0"))
     # bringup_host.sv: its logic beside the port; HostStages = 2 per channel,
-    # the stage beside the port in SLR0, the other in SLR1 (towards PCIS).
+    # the stage beside the port in SLR0, the other in SLR1 (towards PCIS),
+    # the one of ours allowed in the corridor.
     out.append(assign_filtered(0, f"{F2}/u_host/*", [f"{F2}/u_host/u_*"]))
     for name, near in (("u_ar", 1), ("u_aw", 1), ("u_w", 1), ("u_r", 0), ("u_b", 0)):
         for s in (0, 1):
             pat = esc(f"{F2}/u_host/{name}/gen_stage[{s}].") + "*"
-            out.append(assign(0 if s == near else 1, pat))
+            out.append(assign(0 if s == near else f"{PBLOCK}1", pat))
     out.append("# The vector unit's AXI: one stage per SLR")
     for name in ("u_v_ar", "u_v_aw", "u_v_w"):  # stage 0 beside the vector unit
         for s, slr in enumerate((2, 1, 0)):
