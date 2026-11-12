@@ -1,0 +1,335 @@
+# Core build 7 (main 1662f8e, M10 step 6, 2026-11-12): route_design failed (congestion).
+# From s3://cabosse-builds-628837661672/dcp/2026-11-12-step6-core/ (cabosse.log, vivado/2026_11_12-121959.vivado.log,
+# shell-reports/). No checkpoint was kept (build_cl.sh keeps one only when its watch stops the build).
+# Instance c6i.8xlarge, about 9 h, about $12 (estimate).
+
+## cabosse.log
+Command: place_design -directive SSI_SpreadLogic_high -no_bufg_opt
+INFO: [Place 30-746] Post Placement Timing Summary WNS=-0.386. For the most accurate timing information please run report_timing.
+post-place WNS -0.386 (2026-11-12T14:30:00Z)
+Command: phys_opt_design -directive AggressiveExplore
+INFO: [Physopt 32-669] Post Physical Optimization Timing Summary | WNS=-0.176 | TNS=-0.955 | WHS=-2.227 | THS=-1282.062 |
+post-phys_opt WNS -0.176 (2026-11-12T15:26:00Z)
+Command: route_design -directive AggressiveExplore -tns_cleanup
+CABOSSE-RESULT fail no routed checkpoint
+
+## vivado log: placer, router
+WARNING: [Place 46-14] The placer has determined that this design is highly congested and may have difficulty routing. Run report_design_analysis -congestion for a detailed report.
+place_design: Time (s): cpu = 03:02:54 ; elapsed = 01:27:35 . Memory (MB): peak = 23813.238 ; gain = 8108.117 ; free physical = 36106 ; free virtual = 50572
+phys_opt_design: Time (s): cpu = 01:08:10 ; elapsed = 00:48:40 . Memory (MB): peak = 24388.246 ; gain = 575.008 ; free physical = 36745 ; free virtual = 51565
+ Number of Nodes with overlaps = 0
+INFO: [Route 35-416] Intermediate Timing Summary | WNS=-0.043 | TNS=-0.043 | WHS=-1.770 | THS=-654.578|
+INFO: [Route 35-416] Intermediate Timing Summary | WNS=-0.043 | TNS=-0.842 | WHS=-2.724 | THS=-1109.590|
+  Number of Node Overlaps             = 0
+INFO: [Route 35-449] Initial Estimated Congestion
+ ________________________________________________________________________
+|           | Global Congestion | Long Congestion   | Short Congestion  |
+|           |___________________|___________________|___________________|
+| Direction | Size   | % Tiles  | Size   | % Tiles  | Size   | % Tiles  |
+|___________|________|__________|________|__________|________|__________|
+|      NORTH|     8x8|      0.46|   16x16|      1.26|   16x16|      2.95|
+|___________|________|__________|________|__________|________|__________|
+|      SOUTH|   32x32|      2.50|   64x64|      7.12|   32x32|      4.27|
+|___________|________|__________|________|__________|________|__________|
+|       EAST|   16x16|      1.23|   16x16|      0.98|   32x32|      4.88|
+|___________|________|__________|________|__________|________|__________|
+|       WEST|     8x8|      1.65|   16x16|      1.73|   32x32|      6.51|
+|___________|________|__________|________|__________|________|__________|
+Congestion Report
+GLOBAL Congestion bounded by tiles (Lower Left Tile -> Upper Right Tile):
+SOUTH
+	INT_X96Y106->INT_X111Y169 (CLEM_X96Y106->DSP_X111Y165)
+	INT_X96Y144->INT_X111Y159 (CLEM_X96Y144->DSP_X111Y155)
+	INT_X96Y143->INT_X111Y158 (CLEM_X96Y143->DSP_X111Y155)
+	INT_X96Y142->INT_X111Y157 (CLEM_X96Y142->DSP_X111Y155)
+	INT_X96Y141->INT_X111Y156 (CLEM_X96Y141->DSP_X111Y155)
+EAST
+	INT_X103Y305->INT_X110Y476 (CLEM_X103Y305->CLEL_R_X110Y476)
+	INT_X104Y416->INT_X111Y423 (CLEM_X104Y416->DSP_X111Y420)
+	INT_X104Y368->INT_X111Y375 (CLEM_X104Y368->DSP_X111Y375)
+	INT_X104Y256->INT_X111Y263 (CLEM_X104Y256->DSP_X111Y260)
+	INT_X104Y447->INT_X111Y454 (CLEM_X104Y447->DSP_X111Y450)
+LONG Congestion bounded by tiles (Lower Left Tile -> Upper Right Tile):
+NORTH
+	INT_X68Y300->INT_X71Y343 (CLEM_X68Y300->CLEL_R_X71Y343)
+	INT_X68Y348->INT_X71Y351 (CLEM_X68Y348->CLEL_R_X71Y351)
+	INT_X68Y340->INT_X71Y343 (CLEM_X68Y340->CLEL_R_X71Y343)
+	INT_X68Y336->INT_X71Y339 (CLEM_X68Y336->CLEL_R_X71Y339)
+	INT_X68Y332->INT_X71Y335 (CLEM_X68Y332->CLEL_R_X71Y335)
+SOUTH
+	INT_X76Y78->INT_X107Y205 (BRAM_X76Y75->CLEL_R_X107Y205)
+	INT_X48Y117->INT_X111Y180 (CLEM_X48Y117->DSP_X111Y180)
+	INT_X48Y116->INT_X111Y179 (CLEM_X48Y116->DSP_X111Y175)
+	INT_X48Y115->INT_X111Y178 (CLEM_X48Y115->DSP_X111Y175)
+	INT_X48Y110->INT_X111Y173 (CLEM_X48Y110->DSP_X111Y170)
+EAST
+	INT_X59Y562->INT_X98Y585 (CLEM_X59Y562->URAM_URAM_DELAY_FT_X98Y585)
+	INT_X66Y569->INT_X81Y584 (CLEM_X66Y569->CLEL_R_X81Y584)
+	INT_X66Y568->INT_X81Y583 (CLEM_X66Y568->CLEL_R_X81Y583)
+	INT_X68Y569->INT_X83Y584 (CLEM_X68Y569->CLEL_R_X83Y584)
+	INT_X68Y568->INT_X83Y583 (CLEM_X68Y568->CLEL_R_X83Y583)
+WEST
+	INT_X45Y573->INT_X84Y584 (CLEM_X45Y573->CLEL_R_X84Y584)
+	INT_X96Y624->INT_X103Y631 (CLEM_X96Y624->DSP_X103Y630)
+	INT_X64Y600->INT_X71Y607 (CLEM_X64Y600->CLEL_R_X71Y607)
+	INT_X64Y560->INT_X71Y567 (CLEM_X64Y560->CLEL_R_X71Y567)
+	INT_X112Y112->INT_X119Y119 (CLEM_X112Y112->DSP_X119Y115)
+SHORT Congestion bounded by tiles (Lower Left Tile -> Upper Right Tile):
+NORTH
+	INT_X103Y344->INT_X110Y439 (CLEM_X103Y344->CLEL_R_X110Y439)
+	INT_X104Y400->INT_X111Y407 (CLEM_X104Y400->DSP_X111Y405)
+	INT_X104Y368->INT_X111Y375 (CLEM_X104Y368->DSP_X111Y375)
+	INT_X104Y352->INT_X111Y359 (CLEM_X104Y352->DSP_X111Y355)
+	INT_X104Y399->INT_X111Y406 (CLEM_X104Y399->DSP_X111Y405)
+SOUTH
+	INT_X102Y296->INT_X109Y375 (CLEL_L_X102Y296->CLEL_R_X109Y375)
+	INT_X104Y416->INT_X111Y423 (CLEM_X104Y416->DSP_X111Y420)
+	INT_X104Y384->INT_X111Y391 (CLEM_X104Y384->DSP_X111Y390)
+	INT_X104Y360->INT_X111Y367 (CLEM_X104Y360->DSP_X111Y365)
+	INT_X104Y352->INT_X111Y359 (CLEM_X104Y352->DSP_X111Y355)
+EAST
+	INT_X95Y241->INT_X110Y464 (CLEM_X95Y241->CLEL_R_X110Y464)
+	INT_X96Y416->INT_X111Y431 (CLEM_X96Y416->DSP_X111Y430)
+	INT_X96Y400->INT_X111Y415 (CLEM_X96Y400->DSP_X111Y415)
+	INT_X96Y368->INT_X111Y383 (CLEM_X96Y368->DSP_X111Y380)
+	INT_X96Y352->INT_X111Y367 (CLEM_X96Y352->DSP_X111Y365)
+WEST
+	INT_X102Y247->INT_X109Y462 (CLEL_L_X102Y247->CLEL_R_X109Y462)
+	INT_X96Y352->INT_X111Y367 (CLEM_X96Y352->DSP_X111Y365)
+	INT_X96Y336->INT_X111Y351 (CLEM_X96Y336->DSP_X111Y350)
+	INT_X48Y320->INT_X63Y335 (CLEM_X48Y320->CLEL_R_X63Y335)
+	INT_X96Y320->INT_X111Y335 (CLEM_X96Y320->DSP_X111Y335)
+
+INFO: [Route 35-448] Estimated Global/Short routing congestion is level 5 (32x32). Congestion levels of 5 and greater can reduce routability and impact timing closure.
+INFO: [Route 35-581] Estimated Timing congestion is level 6 (64x64). Congestion levels of 5 and greater may impact timing closure.
+Phase 5.1 Global Iteration 0
+ Number of Nodes with overlaps = 751458
+ Number of Nodes with overlaps = 198868
+ Number of Nodes with overlaps = 72709
+ Number of Nodes with overlaps = 36624
+ Number of Nodes with overlaps = 22511
+ Number of Nodes with overlaps = 15593
+ Number of Nodes with overlaps = 12383
+ Number of Nodes with overlaps = 11012
+INFO: [Route 35-416] Intermediate Timing Summary | WNS=-0.789 | TNS=-320.102| WHS=N/A    | THS=N/A    |
+WARNING: [Route 35-447] Congestion is preventing the router from routing all nets. The router will prioritize the successful completion of routing all nets over timing optimizations.
+Phase 5.1 Global Iteration 0 | Checksum: 248b3395e
+Phase 5.2 Global Iteration 1
+ Number of Nodes with overlaps = 435263
+ Number of Nodes with overlaps = 244177
+ Number of Nodes with overlaps = 123741
+ Number of Nodes with overlaps = 60741
+ Number of Nodes with overlaps = 30099
+ Number of Nodes with overlaps = 16332
+ Number of Nodes with overlaps = 10130
+ Number of Nodes with overlaps = 7034
+ Number of Nodes with overlaps = 5527
+ Number of Nodes with overlaps = 4595
+ Number of Nodes with overlaps = 4101
+ Number of Nodes with overlaps = 3701
+ Number of Nodes with overlaps = 3357
+ Number of Nodes with overlaps = 3033
+ Number of Nodes with overlaps = 2887
+ Number of Nodes with overlaps = 2702
+ Number of Nodes with overlaps = 2587
+ Number of Nodes with overlaps = 2546
+ Number of Nodes with overlaps = 2415
+ Number of Nodes with overlaps = 2386
+ Number of Nodes with overlaps = 2312
+Phase 5.2 Global Iteration 1 | Checksum: 1918fc43a
+INFO: [Route 35-416] Intermediate Timing Summary | WNS=-4.521 | TNS=-7822.333| WHS=-0.055 | THS=-10.588|
+  Number of Node Overlaps             = 2328
+--GLOBAL Congestion:
+Utilization threshold used for congestion level computation: 0.85
+Congestion Report
+North Dir 2x2 Area, Max Cong = 87.5848%, Congestion bounded by tiles (Lower Left Tile -> Upper Right Tile):
+   INT_X108Y448 -> INT_X109Y449
+   INT_X108Y436 -> INT_X109Y437
+   INT_X110Y434 -> INT_X111Y435
+   INT_X104Y416 -> INT_X105Y417
+   INT_X108Y380 -> INT_X109Y381
+South Dir 2x2 Area, Max Cong = 89.7704%, Congestion bounded by tiles (Lower Left Tile -> Upper Right Tile):
+   INT_X106Y402 -> INT_X107Y403
+   INT_X102Y384 -> INT_X103Y385
+   INT_X104Y352 -> INT_X105Y353
+   INT_X104Y350 -> INT_X105Y351
+   INT_X100Y346 -> INT_X101Y347
+East Dir 16x16 Area, Max Cong = 91.6754%, Congestion bounded by tiles (Lower Left Tile -> Upper Right Tile):
+   INT_X96Y432 -> INT_X111Y447
+   INT_X96Y416 -> INT_X111Y431
+   INT_X96Y400 -> INT_X111Y415
+   INT_X96Y384 -> INT_X111Y399
+   INT_X96Y368 -> INT_X111Y383
+West Dir 4x4 Area, Max Cong = 87.0844%, Congestion bounded by tiles (Lower Left Tile -> Upper Right Tile):
+   INT_X96Y372 -> INT_X99Y375
+   INT_X108Y364 -> INT_X111Y367
+   INT_X92Y348 -> INT_X95Y351
+   INT_X108Y328 -> INT_X111Y331
+   INT_X108Y324 -> INT_X111Y327
+
+------------------------------
+Reporting congestion hotspots
+------------------------------
+Direction: North
+----------------
+Congested clusters found at Level 0
+Effective congestion level: 2 Aspect Ratio: 0.5 Sparse Ratio: 1.375
+Direction: South
+----------------
+Congested clusters found at Level 1
+Effective congestion level: 3 Aspect Ratio: 0.6 Sparse Ratio: 1.6875
+Direction: East
+----------------
+Congested clusters found at Level 4
+Effective congestion level: 6 Aspect Ratio: 0.111111 Sparse Ratio: 0.5625
+Direction: West
+----------------
+Congested clusters found at Level 1
+Effective congestion level: 3 Aspect Ratio: 0.363636 Sparse Ratio: 2.625
+
+Phase 10 Verifying routed nets
+CRITICAL WARNING: [Route 35-162] 3097 signals failed to route due to routing congestion. Please run report_route_status to get a full summary of the design's routing.
+Below is a list of the top 10 physical nodes with signal overlaps and up to 5 of the signals that were contending for this node resource:
+Resolution: Run report_route_status to get a full summary of the design's routing. To find the areas of the congestion, use the route congestion Metrics in the Device View and check the logfile for the Congestion Report.
+1. (509,330,158) NODE_HLONG Hist: 6 Tile Name: INT_X95Y401 Node: EE12_BEG3 Overlapping Nets: 2
+
+Nets:
+WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.gen_downsizer.inst_downsizer/downsizer_pntr[0]
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[110].u_lane/bank_q_reg[0][6]_6410[7]
+
+2. (551,297,162) NODE_HLONG Hist: 4 Tile Name: INT_X105Y433 Node: EE12_BEG5 Overlapping Nets: 2
+
+Nets:
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[99].u_lane/load_we_q[0]
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[110].u_lane/gen_unit[3].u_add/s1_q_reg[lo][24]_i_3__442_n_15
+
+3. (556,359,170) NODE_VLONG12 Hist: 4 Tile Name: INT_X106Y373 Node: NN12_BEG5 Overlapping Nets: 2
+
+Nets:
+WRAPPER/CL/AWS_CLK_GEN/AXIL_CLK_CNV_I/inst/gen_clock_conv.gen_async_lite_conv.clock_conv_lite_fwd_ar/handshake/src_hsdata_ff[17]
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[111].u_lane/gen_unit[2].u_add/gen_unit[2].addend_q_reg[30]_0
+
+4. (571,341,175) NODE_HLONG Hist: 2 Tile Name: INT_X110Y390 Node: WW12_BEG1 Overlapping Nets: 2
+
+Nets:
+WRAPPER/RL/RL_DEBUG_BRIDGE/inst/axi_jtag/inst/u_jtag_proc/tdi
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[110].u_lane/gen_unit[2].pre_slot_q[1]
+
+5. (551,289,214) NODE_VSINGLE Hist: 4 Tile Name: INT_X105Y441 Node: SS1_E_BEG4 Overlapping Nets: 2
+
+Nets:
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[99].u_lane/i___218_n_0
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[102].u_lane/bank_q_reg[1][14]_6017[1]
+
+6. (576,283,291) NODE_HQUAD Hist: 4 Tile Name: INT_X111Y447 Node: WW4_W_BEG1 Overlapping Nets: 2
+
+Nets:
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[99].u_lane/load_we_q_reg[2]_rep__1_n_0
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[99].u_lane/gen_unit[2].u_add/y_o_reg[7]_i_2__496_n_12
+
+7. (551,326,388) NODE_GNODE Hist: 9 Tile Name: INT_X105Y405 Node: INT_NODE_GLOBAL_10_INT_OUT0 Overlapping Nets: 2
+
+Nets:
+WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/m_sc_areset_r_repN
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[110].u_lane/i___231_n_0
+
+8. (551,291,452) NODE_INODE Hist: 2 Tile Name: INT_X105Y439 Node: INT_NODE_IMUX_18_INT_OUT1 Overlapping Nets: 2
+
+CLB Tiles:
+	CLEL_R_X105Y439
+		InstTerms:
+		WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/m_sc_payld[152]_INST_0/I2
+		WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/m_sc_payld[152]_INST_0/I0
+
+Nets:
+WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.gen_downsizer.inst_downsizer/active
+WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.gen_fwft_latency_1.empty_r_reg_rep__0_n_0
+
+9. (547,325,454) NODE_INODE Hist: 4 Tile Name: INT_X104Y406 Node: INT_NODE_IMUX_6_INT_OUT1 Overlapping Nets: 2
+
+CLB Tiles:
+	CLEL_R_X104Y406
+		InstTerms:
+		WRAPPER/CL/u_core/u_core/u_engine/gen_lane[110].u_lane/gen_unit[0].u_add/y_o[7]_i_20__549/I0
+	CLEL_R_X104Y405
+		InstTerms:
+		WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/m_sc_payld[203]_INST_0/I1
+
+Nets:
+WRAPPER/CL/u_pcis/cl_axi_sc_1x1_i/smartconnect_0/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.gen_downsizer.inst_downsizer/downsizer_pntr[0]
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[110].u_lane/gen_unit[0].u_add/p_3_out[0]
+
+10. (556,296,598) NODE_LONG_LOCAL Hist: 7 Tile Name: INT_X106Y434 Node: INT_NODE_SDQ_5_INT_OUT0 Overlapping Nets: 2
+
+Nets:
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[99].u_lane/load_we_q[2]
+WRAPPER/CL/u_core/u_core/u_engine/gen_lane[110].u_lane/bank_q_reg[1][3]_6400[26]
+
+
+ Verification failed
+Phase 10 Verifying routed nets | Checksum: 1a2b625ca
+CRITICAL WARNING: [Route 35-162] 3097 signals failed to route due to routing congestion. Please run report_route_status to get a full summary of the design's routing.
+Phase 10 Verifying routed nets | Checksum: 1a2b625ca
+
+Time (s): cpu = 15:54:19 ; elapsed = 05:30:01 . Memory (MB): peak = 24388.246 ; gain = 0.000 ; free physical = 36988 ; free virtual = 52172
+ERROR: [Route 35-2] Design is not legally routed. There are 2328 node overlaps.
+Resolution: Run report_design_analysis -congestion and -complexity to find potential sources of congestion in the areas where nets are not fully routed and review UG906 for design closure techniques.
+
+Phase 11 Depositing Routes
+Phase 11 Depositing Routes | Checksum: 1a2b625ca
+
+Time (s): cpu = 15:57:05 ; elapsed = 05:31:22 . Memory (MB): peak = 24388.246 ; gain = 0.000 ; free physical = 36992 ; free virtual = 52176
+INFO: [Route 72-16] Aggressive Explore Summary
++======+========+=====+=====+=====+========+==============+===================+
+| Pass |  WNS   | TNS | WHS | THS | Status | Elapsed Time | Solution Selected |
++======+========+=====+=====+=====+========+==============+===================+
+|  1   | -4.521 |  -  |  -  |  -  |  Pass  |   05:28:41   |                   |
+|  2   |   -    |  -  |  -  |  -  |  Skip  |   00:00:00   |                   |
++------+--------+-----+-----+-----+--------+--------------+-------------------+
+
+Total Elapsed time in route_design: 19882.8 secs
+
+Phase 12 Post-Route Event Processing
+INFO: [Constraints 18-12546] INFO: Running DFX DRC before completing route_design
+ERROR: [Constraints 18-1000] Routing results verification failed due to partially-conflicted nets (Up to first 10 of violated nets):  WRAPPER/CL/u_core/u_core/u_engine/gen_lane[110].u_lane/u_tree/s1_q_reg[hi][26]_i_3__109_n_14 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[110].u_lane/u_tree/s1_q_reg[hi][26]_i_5__109_n_0 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[110].u_lane/u_tree/s2_q_reg[lz][3]_0 WRAPPER/CL/u_core/u_core/u_engine/gen_lane[102].u_lane/gen_unit[2].u_add/s2_q_reg[sum][11] WRAPPER/CL/u_core/u_core/u_engine/gen_lane[102].u_lane/gen_unit[2].u_add/s2_q_reg[sum][14] WRAPPER/CL/u_core/u_core/u_engine/gen_lane[102].u_lane/gen_unit[2].u_add/s2_q_reg[sum][17] WRAPPER/CL/u_core/u_core/u_engine/gen_lane[102].u_lane/gen_unit[2].u_add/s2_q_reg[sum][18] WRAPPER/CL/u_core/u_core/u_engine/gen_lane[102].u_lane/gen_unit[2].u_add/s2_q_reg[sum][19] WRAPPER/CL/u_core/u_core/u_engine/gen_lane[102].u_lane/gen_unit[2].u_add/s2_q_reg[sum][22] WRAPPER/CL/u_core/u_core/u_engine/gen_lane[102].u_lane/gen_unit[2].u_add/s2_q_reg[sum][24]
+Phase 12 Post-Route Event Processing | Checksum: 1445c3cb3
+
+Time (s): cpu = 16:00:48 ; elapsed = 05:32:38 . Memory (MB): peak = 24388.246 ; gain = 0.000 ; free physical = 37021 ; free virtual = 52205
+INFO: [Route 35-17] Router encountered errors. Please check the log file for details
+Ending Routing Task | Checksum: 1445c3cb3
+
+Time (s): cpu = 16:01:09 ; elapsed = 05:32:42 . Memory (MB): peak = 24388.246 ; gain = 0.000 ; free physical = 37021 ; free virtual = 52205
+Running DRC after route_design as it did not complete successfully
+INFO: [DRC 23-27] Running DRC with 8 threads
+WARNING: [DRC 23-814] Not all possible (connectivity based) DRCs may have been run because this design is seen as Abstract Shell.
+INFO: [Vivado_Tcl 4-198] DRC finished with 0 Errors, 1 Warnings
+INFO: [Vivado_Tcl 4-199] Please refer to the DRC report (report_drc) for more information.
+INFO: [Common 17-83] Releasing license: Implementation
+21 Infos, 3 Warnings, 1 Critical Warnings and 2 Errors encountered.
+route_design failed
+route_design: Time (s): cpu = 16:08:37 ; elapsed = 05:35:59 . Memory (MB): peak = 24388.246 ; gain = 0.000 ; free physical = 36996 ; free virtual = 52180
+ERROR: [Common 17-39] 'route_design' failed due to earlier errors.
+
+    while executing
+"route_design -directive $ROUTE_DIRECT -tns_cleanup"
+    (file "/root/aws-fpga/hdk/cl/examples/cabosse_core/build/scripts/build_level_1_cl.tcl" line 135)
+
+    while executing
+"source ${scripts_dir}/build_level_1_cl.tcl"
+    ("default" arm line 3)
+    invoked from within
+"switch $BUILD_FLOW {
+  "SynthCL" {
+    source ${scripts_dir}/synth_${CL}.tcl
+  }
+
+  "ImplCL" {
+    source ${scripts_dir}/build_level_1_cl.tcl
+  }
+
+  d..."
+    (file "build_all.tcl" line 265)
+INFO: [Common 17-206] Exiting Vivado at Thu Nov 12 21:03:36 2026...
+ERROR: [Route 35-2] Design is not legally routed. There are 2328 node overlaps.
+Total Elapsed time in route_design: 19882.8 secs
+route_design: Time (s): cpu = 16:08:37 ; elapsed = 05:35:59 . Memory (MB): peak = 24388.246 ; gain = 0.000 ; free physical = 36996 ; free virtual = 52180

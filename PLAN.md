@@ -2630,6 +2630,46 @@ step 6; they depend on the DSPs relieving SLR1) and the vector unit's
 in-core margin. If build 7 shows them, that is step 7, planned from its
 families.
 
+**Core build 7 (2026-11-12, main 1662f8e; reports/data/f2/2026-11-12-core7.txt):
+not routable.** c6i.8xlarge about 9 h, about $12 (estimate). Post-place
+WNS -0.386, post-phys_opt -0.176 (TNS -0.955), so both checks passed and
+the build went to route_design (AggressiveExplore, -tns_cleanup). After
+5.5 h it ended with "Design is not legally routed. There are 2328 node
+overlaps" (3,097 signals failed for congestion). The overlaps in global
+iteration 1 fell to about 2,300-2,500 and stayed there: a shortage of
+wires in one place, not a slow route. No checkpoint, fit check or audit.
+- Where: the router's initial estimate is level 5 (global/short, 32x32)
+  and its timing congestion level 6. Every hot window is tiles INT_X96 to
+  X111, rows 240-476: SLR1's east edge of pblock_CL, beside the shell's
+  static region and the notch it cuts at clock region X4Y5. The worst
+  is East, a 16x16 window at 91.7% (INT_X96Y368 to X111Y447).
+- Who: the 10 listed overlapping nodes are lanes 99, 102, 110 and 111
+  (group 6) against the CL's PCIS SmartConnect (`u_pcis`), AWS_CLK_GEN's
+  AXI-Lite converter and the debug bridge. The shell's logic has to sit
+  at that edge (its partition pins); the engine's lanes in pblock_slr1
+  fill the same area.
+- Cause (reading of the logs, not yet measured on a checkpoint): SLR1
+  holds 64 lanes, the engine's central logic and the controller (85% of
+  its LUTs at build 6, before the DSP products; not measured since), and
+  its free area ends in that east strip. SLR2 holds the vector unit only
+  (57%). The group-7 move (step 6 item 8) waited for a fit check that
+  never ran because the build passed the timing checks.
+
+**Before the next build (low priority, scripts only, no cloud).**
+`scripts/f2/build_cl.sh` keeps a placed checkpoint only when its own
+watch stops the build. A failed route_design leaves nothing to analyse,
+so build 7's 9 h gave only logs. Change it so that:
+- the post_place and post_phys_opt checkpoints (AWS's flow writes them)
+  go to S3 whenever there is no routed one, and the fit check runs on
+  the latest of them, as for an early stop;
+- if route_design fails, `report_design_analysis -congestion` and
+  `report_route_status` run on the routed-but-illegal design (or on the
+  post_phys_opt checkpoint), saved to S3;
+- optional: a route watch that stops the build when global iteration 1's
+  overlaps have not fallen below a set count after a set time (values to
+  decide from build 7's log: under 3,000 after the 2nd hour), to save
+  the rest of a hopeless route.
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
