@@ -3,7 +3,7 @@
 //
 // y = a * b + c with one rounding to FP32 (D-038, D-039), for a and b in
 // fp_product's M + 8-bit format (BF16 for M = 8, FP32 for M = 24) and an
-// FP32 value c: fp_product with MulRegs registers inside (0 to 5), a
+// FP32 value c: fp_product with MulRegs registers inside (0 to 6), a
 // register, then fp_add with AddRegs (3 or 4). A result leaves
 // mul_add_latency(MulRegs, AddRegs) = MulRegs + 1 + AddRegs cycles after its
 // operands enter; valid_o marks it. bf16_mac (M = 8) and fp32_fma (M = 24)

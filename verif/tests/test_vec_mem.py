@@ -137,8 +137,9 @@ def test_load_speed() -> None:
     took = int(result.done[0] - result.taken[0])
     groups = length // vector.LANES
     print(f"LOAD of {length} BF16: {took} cycles for {groups} groups")
-    # the reader's start, the chain's 78 cycles (50 before M10 step 5), the done queue
-    assert took <= groups + 98, took
+    # the reader's start, the chain's 85 cycles (50 before M10 step 5, 78 before
+    # step 6), the done queue; measured 101 (M10 step 6)
+    assert took <= groups + 101, took
 
 
 # K: a group, a row of 4 and 8 groups; V: 2 copies, 1 (m = L).
@@ -210,10 +211,11 @@ def test_output_speed() -> None:
     took = int(result.done[0] - result.taken[0])
     groups = length // (vector.LANES // 2)
     print(f"OUTPUT of {length} FP32: {took} cycles for {groups} groups")
-    # the reads, the chain's 78 cycles, the queue, the write's response:
-    # measured 89, a few cycles of margin; a throttled queue is far above
-    # (762 with M10 step 5's chain and the queue's 64 places)
-    assert took <= groups + 96, took
+    # the reads, the chain's 85 cycles, the queue, the write's response:
+    # measured 98 (89 before M10 step 6's chain and select), a few cycles of
+    # margin; a throttled queue is far above (762 with M10 step 5's chain and
+    # the queue's 64 places)
+    assert took <= groups + 105, took
 
 
 @rtl.needs_verilator

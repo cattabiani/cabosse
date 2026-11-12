@@ -17,8 +17,9 @@
 // the DSPs' own register; 2: after normalizing too; 3: a second one after the
 // multiply; 4: one on the decoded operands too, the DSPs' input registers;
 // 5: a third after the multiply: Vivado takes two into a DSP, so the third
-// is in the fabric and the DSP drives only a register). A result leaves Regs
-// cycles after its operands enter.
+// is in the fabric and the DSP drives only a register; 6: one between the
+// normalize's leading-zero count and its shift, M10 step 6). A result
+// leaves Regs cycles after its operands enter.
 
 module fp_product
   import fp_pkg::*;
@@ -87,6 +88,22 @@ module fp_product
   // prod * 2^(a.exp + b.exp - 252 - 2M) = sig * 2^(exp - 126 - W) with
   // sig = prod << lz, padded to W bits, and exp = a.exp + b.exp - 126 - lz:
   // from -124 - (2M - 1) (both smallest subnormals) to 382.
+  // The count and the product, registered before the shift when Regs >= 6.
+  mul_t           mul_n;
+  logic [LzW-1:0] lz_n;
+  logic           zero_n;
+  if (Regs >= 6) begin : gen_lz_q
+    always_ff @(posedge clk_i) begin
+      mul_n  <= mul_q;
+      lz_n   <= lz;
+      zero_n <= prod_zero;
+    end
+  end else begin : gen_lz_comb
+    assign mul_n  = mul_q;
+    assign lz_n   = lz;
+    assign zero_n = prod_zero;
+  end
+
   typedef struct packed {
     logic               sign;
     logic signed [10:0] exp;
@@ -97,12 +114,12 @@ module fp_product
   } norm_t;
   norm_t norm_d, norm_q;  // norm_q is norm_d when Regs < 2
   always_comb begin
-    norm_d.sign = mul_q.sign;
-    norm_d.exp  = 11'(mul_q.exp_sum) - 11'sd126 - 11'(lz);
-    norm_d.sig  = {mul_q.prod << lz, (W - PW)'(0)};
-    norm_d.zero = prod_zero;
-    norm_d.nan  = mul_q.nan;
-    norm_d.inf  = mul_q.inf;
+    norm_d.sign = mul_n.sign;
+    norm_d.exp  = 11'(mul_n.exp_sum) - 11'sd126 - 11'(lz_n);
+    norm_d.sig  = {mul_n.prod << lz_n, (W - PW)'(0)};
+    norm_d.zero = zero_n;
+    norm_d.nan  = mul_n.nan;
+    norm_d.inf  = mul_n.inf;
   end
 
   // --- Shift below exponent 1, pack ----------------------------------------------
@@ -126,8 +143,8 @@ module fp_product
 
   // --- Registers ------------------------------------------------------------------
 
-  if (Regs > 5) begin : gen_bad_regs
-    $error("fp_product: Regs must be 0 to 5");
+  if (Regs > 6) begin : gen_bad_regs
+    $error("fp_product: Regs must be 0 to 6");
   end
   if (M > F32SigW) begin : gen_bad_m
     $error("fp_product: M must be at most 24, FP32's significand");
@@ -161,7 +178,22 @@ module fp_product
       mul_q     <= mul_dsp_q;
     end
   end else if (Regs >= 1) begin : gen_mul_q
-    always_ff @(posedge clk_i) mul_q <= mul_d;
+    // The significands' product in a register of its own, with use_dsp: the
+    // engine's lanes (M = 8) take a DSP for each of their 512 products,
+    // where Vivado would build them of LUTs (about 150-200 each, M10 step
+    // 6), and the register goes into the DSP. A hint only, the bits are the
+    // same; platforms/f2/timing/audit.tcl counts the lanes' DSPs.
+    (* use_dsp = "yes" *) logic [PW-1:0] prod_q;
+    logic                                sign_q, nan_q, inf_q;
+    logic [9:0]                          exp_sum_q;
+    always_ff @(posedge clk_i) begin
+      prod_q    <= mul_d.prod;
+      sign_q    <= mul_d.sign;
+      exp_sum_q <= mul_d.exp_sum;
+      nan_q     <= mul_d.nan;
+      inf_q     <= mul_d.inf;
+    end
+    assign mul_q = '{sign: sign_q, exp_sum: exp_sum_q, prod: prod_q, nan: nan_q, inf: inf_q};
   end else begin : gen_mul_comb
     logic unused_clk;  // no register, no clock
     assign unused_clk = clk_i;
