@@ -2800,7 +2800,8 @@ per-site ranges: SLR1's only site ranges in `pblock_CL` are the X4Y5
 strip's, which it leaves out. All our SLR1 logic is in it, including the
 SLR1 stages of the HBM ports and of the vector unit's AXI; only the host's
 two SLR1 stages (towards PCIS) stay in `pblock_slr1`, free to use the
-corridor. `fitcheck.tcl` reports the child. `engine_startup_cycles` does
+corridor, as are the floating registers (in no pblock: the engine's `_fq`,
+the HBM's middle stages, group 7's now among them). `fitcheck.tcl` reports the child. `engine_startup_cycles` does
 not move: a new test runs the same commands on a 20-port engine with
 default regions and with all three regions populated, and every command
 ends on the same cycle (every region has the same registers). On F2 the

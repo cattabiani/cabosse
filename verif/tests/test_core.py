@@ -91,8 +91,8 @@ def test_tiny_decodes_bit_exact_in_the_f2_wrapper() -> None:
 @rtl.needs_verilator
 def test_tiny_decodes_bit_exact_in_the_f2_wrapper_on_three_slrs() -> None:
     """The same with a group in each SLR (M10 step 7 put F2's group 7 in
-    SLR2): each port's reads through 2, 3 or 4 stages, its SLR's. About 18
-    minutes (16 ports)."""
+    SLR2): each port's AR and R (but port 0's R) through 2 + its SLR's
+    stages. About 18 minutes (16 ports)."""
     generate_on_sim(16, 1, "f2_core", (("Region1", 1), ("Region2", 2)))
 
 
