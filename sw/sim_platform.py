@@ -21,13 +21,20 @@ class SimPlatform(DriverProcess):
     """A Platform on rtl/core.sv, or on `top` f2_core (the core in its F2
     wrapper, platforms/f2/core/: one memory at global addresses, HBM port 0
     handed over as on F2; verif/bulk/f2_core.cpp): `ports` HBM ports (one
-    channel each, of 2^chan_w bytes) and buffers of `length` elements.
+    channel each, of 2^chan_w bytes) and buffers of `length` elements;
+    `params`, the top's other parameter overrides (f2_core's regions).
     `runs` holds each run's POSITION, trace and CYCLES (verif/breakdown.py)."""
 
     def __init__(
-        self, ports: int, chan_w: int, length: int, top: str = "core", **plusargs: int
+        self,
+        ports: int,
+        chan_w: int,
+        length: int,
+        top: str = "core",
+        params: tuple[tuple[str, int], ...] = (),
+        **plusargs: int,
     ) -> None:
-        params = (("Ports", ports), ("ChanW", chan_w), ("Len", length))
+        params = (("Ports", ports), ("ChanW", chan_w), ("Len", length), *params)
         binary: Path = bulk.build(top, params)
         super().__init__([str(binary), *(f"+{k}={v}" for k, v in plusargs.items())])
         found = (self.ports, self.channel_bytes, self.buffer_elements)

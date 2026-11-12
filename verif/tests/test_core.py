@@ -44,12 +44,14 @@ def check_breakdown(cmds: list[commands.Command], runs: list, ports: int, label:
         assert all(r["cycles"] > 0 for r in b["commands"]), (label, position)
 
 
-def generate_on_sim(ports: int, n_prompts: int, top: str = "core") -> None:
+def generate_on_sim(
+    ports: int, n_prompts: int, top: str = "core", params: tuple[tuple[str, int], ...] = ()
+) -> None:
     """n_prompts conversations of N_NEW tokens on one simulated core (or
-    `top`, the core in its F2 wrapper), each token's trace checked
-    (check_breakdown)."""
+    `top`, the core in its F2 wrapper, with `params`), each token's trace
+    checked (check_breakdown)."""
     model = tiny_model()
-    with SimPlatform(ports, CHAN_W, LENGTH, top) as p:
+    with SimPlatform(ports, CHAN_W, LENGTH, top, params) as p:
         rt = Runtime.open(p, model, CAP)
         cmds = commands.build(rt.layout)
         for k, prompt in enumerate(prompts(n_prompts, model.config.vocab_size)):
@@ -83,6 +85,15 @@ def test_tiny_decodes_bit_exact_in_the_f2_wrapper() -> None:
     channel in its addresses, engine port 0 and the vector unit sharing
     HBM port 0, the host's handovers of it, all on one memory."""
     generate_on_sim(4, 1, "f2_core")
+
+
+@pytest.mark.slow
+@rtl.needs_verilator
+def test_tiny_decodes_bit_exact_in_the_f2_wrapper_on_three_slrs() -> None:
+    """The same with a group in each SLR (M10 step 7 put F2's group 7 in
+    SLR2): each port's AR and R (but port 0's R) through 2 + its SLR's
+    stages. About 18 minutes (16 ports)."""
+    generate_on_sim(16, 1, "f2_core", (("Region1", 1), ("Region2", 2)))
 
 
 @pytest.mark.wide

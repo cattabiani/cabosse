@@ -25,10 +25,11 @@ module f2_core #(
   parameter  logic [31:0] Build     = 32'h0,  // the commit's first 8 hex digits
   parameter  int unsigned LiteW     = 18,
   // The engine's regions (rtl/engine.sv), one per SLR: groups of 4 ports
-  // before Region1 in SLR0, before Region2 in SLR1, the rest in SLR2.
+  // before Region1 in SLR0, before Region2 in SLR1, the rest in SLR2. At 32
+  // ports: groups 0-3, 4-6, 7 (M10 step 7: group 7 to SLR2, SLR1 the fullest).
   // scripts/f2/floorplan.py's REGION1, REGION2 must match (its defaults do).
   parameter  int unsigned Region1   = Ports / 8,
-  parameter  int unsigned Region2   = Ports / 4,
+  parameter  int unsigned Region2   = Ports / 4 - Ports / 32,
   localparam int unsigned AddrWidth = 34,
   localparam int unsigned DataWidth = 256,
   localparam int unsigned BeatBytes = DataWidth / 8,

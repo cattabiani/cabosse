@@ -38,6 +38,7 @@ from lane import FULL_RATE_LEN
 import rtl
 
 SEED = 20261011
+Batch = tuple[list[eng.Command], dict[int, torch.Tensor]]  # commands and their x buffers
 PORTS = (4, 8, 20)  # the smallest, plain, and a factor 5 (owner, 2026-10-15)
 WIDE = 32  # 128 lanes, SmolLM2's engine
 ALL_PORTS = (*PORTS, pytest.param(WIDE, marks=pytest.mark.wide))
@@ -170,16 +171,19 @@ def test_stale_x(ports: int) -> None:
 BACK_TO_BACK = ((1, 64), (3, 128), (2, FULL_RATE_LEN)) * 4 + ((3, 128),)
 
 
+def back_to_back_batch(gen: torch.Generator, ports: int) -> Batch:
+    lanes = ports * LANES_PER_PORT
+    mats = [Matvec(random_bf16(gen, p * lanes, c)) for p, c in BACK_TO_BACK]
+    return mats, {0: random_bf16(gen, 128)}
+
+
 @rtl.needs_verilator
 @pytest.mark.parametrize("ports", ALL_PORTS)
 def test_back_to_back(ports: int) -> None:
     """With the memory at full rate, the commands after the first take
     their perf-model cycles over the whole run, but for SHORT_ROW_EXTRA_RUN
     (M10 step 1b): the next matrix's reads hidden behind the current one."""
-    gen = torch.Generator().manual_seed(SEED)
-    lanes = ports * LANES_PER_PORT
-    mats = [Matvec(random_bf16(gen, p * lanes, c)) for p, c in BACK_TO_BACK]
-    xs = {0: random_bf16(gen, 128)}
+    mats, xs = back_to_back_batch(torch.Generator().manual_seed(SEED), ports)
     result = eng.fetch(mats, xs, ports, latency=40, outstanding=8)
     label = f"back to back, seed {SEED}"
     check_bits(mats, xs, result, label)
@@ -202,6 +206,15 @@ GO_LATENCY = 120  # longer than a waiting command's start-up (design v0's engine
 GOS = ((0, 0), (0, 300), (1000, 0), (500, 40))
 
 
+def go_batch(gen: torch.Generator, ports: int) -> Batch:
+    lanes = ports * LANES_PER_PORT
+    mats = [
+        Matvec(random_bf16(gen, p * lanes - i % 2, c), a=i, dst=2 + i % 3, bf16=i % 3 == 1, wait=w)
+        for i, (w, p, c) in enumerate(GO_COMMANDS)
+    ]
+    return mats, {i: random_bf16(gen, c) for i, (_, _, c) in enumerate(GO_COMMANDS)}
+
+
 @rtl.needs_verilator
 @pytest.mark.parametrize(("go_early", "go_delay"), GOS)
 @pytest.mark.parametrize("ports", ALL_PORTS)
@@ -214,13 +227,7 @@ def test_go(ports: int, go_early: int, go_delay: int) -> None:
     after the go would add the latency and the pipeline). The memory never
     waits on the FIFOs."""
     seed = SEED + 100 * ports + go_delay + go_early
-    gen = torch.Generator().manual_seed(seed)
-    lanes = ports * LANES_PER_PORT
-    mats = [
-        Matvec(random_bf16(gen, p * lanes - i % 2, c), a=i, dst=2 + i % 3, bf16=i % 3 == 1, wait=w)
-        for i, (w, p, c) in enumerate(GO_COMMANDS)
-    ]
-    xs = {i: random_bf16(gen, c) for i, (_, _, c) in enumerate(GO_COMMANDS)}
+    mats, xs = go_batch(torch.Generator().manual_seed(seed), ports)
     gos = dict(go_early=go_early, go_delay=go_delay)
     result = eng.fetch(mats, xs, ports, latency=GO_LATENCY, seed=seed, **gos)
     label = f"{gos}, seed {seed}"
@@ -232,6 +239,28 @@ def test_go(ports: int, go_early: int, go_delay: int) -> None:
         ]
         late = [(i, e) for i, e in enumerate(extra) if i > 0 and mats[i].wait and e >= GO_LATENCY]
         assert not late, (label, late, extra)
+
+
+# 20 ports (5 groups) in three regions, F2's shape (4, 3, 1 groups at 32
+# ports): rtl/engine.sv's defaults leave region 2 empty at every port count.
+REGIONS = (("Region1", 2), ("Region2", 4))
+
+
+@rtl.needs_verilator
+def test_three_regions() -> None:
+    """Which region a group is in changes no bit and no cycle: every region
+    has the same registers (rtl/engine.sv), so the commands end on the same
+    cycles as with the default regions (and engine_startup_cycles, measured
+    with those, holds for F2's)."""
+    ports, gen = 20, torch.Generator().manual_seed(SEED)
+    batches = {"back to back": back_to_back_batch(gen, ports), "go": go_batch(gen, ports)}
+    memory = dict(latency=GO_LATENCY, outstanding=8, seed=SEED)
+    for name, (mats, xs) in batches.items():
+        default = eng.fetch(mats, xs, ports, **memory)
+        regions = eng.fetch(mats, xs, ports, params=REGIONS, **memory)
+        label = f"{name}, regions {REGIONS}, seed {SEED}"
+        check_bits(mats, xs, regions, label)
+        assert np.array_equal(regions.done, default.done), (label, regions.done, default.done)
 
 
 DEPTHS = (16, 64, 128, 1024)  # 1024: deep enough that the pauses alone limit the rate
