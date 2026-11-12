@@ -50,6 +50,25 @@ foreach net [get_nets -quiet -of_objects [get_pins -quiet -of_objects $mf -filte
 }
 emit "max_fanout load_we_q: [llength $mf] cells ([llength [filter -quiet $mf {NAME =~ *_rep*}]] replicas),\
   [llength [filter -quiet $mf {MAX_FANOUT != ""}]] with MAX_FANOUT, largest net [expr {$worst - 1}] loads"
+set worst 0
+set reps 0
+foreach net [get_nets -quiet -hierarchical -filter {NAME =~ *gen_stage*take*}] {
+  if {[string match *_rep* $net]} {incr reps}
+  set fo [get_property -quiet FLAT_PIN_COUNT $net]
+  if {$fo ne "" && $fo > $worst} {set worst $fo}
+}
+emit "max_fanout bringup_pipe take: $reps replica nets, largest net [expr {$worst - 1}] loads"
+foreach sig {unit_end step_load} {
+  set nets [get_nets -quiet -hierarchical -filter "NAME =~ *u_engine/${sig}*"]
+  set worst 0
+  foreach net $nets {
+    set fo [get_property -quiet FLAT_PIN_COUNT $net]
+    if {$fo ne "" && $fo > $worst} {set worst $fo}
+  }
+  emit "max_fanout engine $sig: [llength $nets] nets, largest [expr {$worst - 1}] loads"
+}
+set dsp [get_cells -quiet -hierarchical -filter {REF_NAME =~ DSP48E2 && NAME =~ *u_engine/gen_lane*}]
+emit "use_dsp fp_product (engine lanes): [llength $dsp] DSP48E2 cells (4 per lane: 512 at 32 ports)"
 progress "attributes"
 
 # Where the cells were placed is not checked here: three bulk queries for

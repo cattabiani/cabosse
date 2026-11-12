@@ -19,7 +19,7 @@ module vec_path #(
   localparam int unsigned MemAddrW  = 34,
   localparam int unsigned KvPorts   = 32,
   localparam int unsigned ChanW     = 29,
-  localparam int unsigned RdLat     = 4,
+  localparam int unsigned RdLat     = 5,
   localparam int unsigned DataWidth = Lanes * 16,
   localparam int unsigned BufW      = $clog2(Bufs)
 ) (

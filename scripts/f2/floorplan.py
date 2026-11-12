@@ -9,24 +9,26 @@ build/constraints. One hard pblock per SLR, a child of the CL's pblock_CL
 overridden on hierarchical ones (audit, build 4). A pblock takes leaf
 cells, and report_utilization -pblocks shows where they went.
 
-- SLR0, beside the HBM: the HBM's register stages, port 0's merge and the
-  host's side of it, the ILA, and the engine's groups 0 .. 3 (ports 0 .. 15,
-  their DMAs and lanes).
-- SLR1: the engine's groups 4 .. 7, the engine's central logic (issue, step,
-  drain), the controller.
-- SLR2: the vector unit and the core's registers on its side (xv_*).
+- SLR0, beside the HBM: port 0's merge and the host's side of it, the ILA,
+  and the engine's region 0: groups 0 .. 3 (ports 0 .. 15, their DMAs and
+  lanes). Its bottom clock-region row (pblock_hbm, a child of pblock_slr0):
+  every HBM channel's stage beside the HBM (M10 step 6).
+- SLR1: the engine's region 1 (groups 4 .. 7), the engine's central logic
+  (issue, step, drain), the controller.
+- SLR2: the vector unit and the core's registers on its side (xv_*), and
+  the engine's region 2 if it has groups (REGION2 < GROUPS).
 
 Every line adds cells that no other line covers (a hierarchical
 cell or the primitives at one level), so no cell has two. The crossings
 have a register on at least one side and at most a few LUTs on the other,
 none crosses two SLRs: the stages in platforms/f2/core/f2_core.sv,
 rtl/core.sv's xv_ registers and vector-unit command queues, the engine's
-per-group and per-half registers (rtl/engine.sv). Since M10 step 5 the
-engine's crossings go into a register with no logic before it (DMA offers
-and takes, the lanes' out_valid, the drain's group results, the beat and x
-per half); some still have logic after them (the lanes' pops, the stages'
-enables). The lanes of a group stay together with their DMAs, so no lane
-spans two SLRs (core build 2's worst paths).
+per-group and per-region registers (rtl/engine.sv). Since M10 step 6 a
+crossing goes sender register, a register with one load and no logic,
+receiver register: the middle one (named *_fq in the engine, the middle
+stages of the HBM's channels) is in no pblock, free to sit at the SLR's
+edge. The lanes of a group stay together with their DMAs, so no lane spans
+two SLRs (core build 2's worst paths).
 
     python3 scripts/f2/floorplan.py          # rewrite the file
     python3 scripts/f2/floorplan.py --check  # exit 1 if it is out of date
@@ -66,17 +68,23 @@ PORTS = 32
 LANES_PER_PORT = 4  # rtl/engine.sv: DataWidth / (16 * E)
 GROUP_PORTS = 4  # rtl/engine.sv's GP
 GROUPS = PORTS // GROUP_PORTS
-SLR0_GROUPS = 4  # groups 0 .. 3 in SLR0, the others in SLR1
+# rtl/engine.sv's regions, as f2_core passes them: groups before REGION1 in
+# SLR0, before REGION2 in SLR1, the rest in SLR2.
+REGION1 = 4
+REGION2 = 8
 
 CL = "WRAPPER/CL"
 F2 = f"{CL}/u_core"  # f2_core
 PBLOCK = "pblock_slr"  # + the SLR; created by HEADER
+HBM_PBLOCK = "pblock_hbm"  # the bottom clock-region row, in pblock_slr0
+HBM_ROW = "CLOCKREGION_X0Y0:CLOCKREGION_X7Y0"
+FLOAT = "*_fq_reg*"  # rtl/engine.sv's registers free to float
 CORE = f"{F2}/u_core"  # core
 ENGINE = f"{CORE}/u_engine"
 # rtl/engine.sv's generate blocks that belong to a group (the rest is central)
 GROUP_BLOCKS = ("gen_group", "gen_seen", "gen_drain")
-# rtl/engine.sv's generate blocks of half h of the groups (0: groups 0 .. 3)
-HALF_BLOCKS = ("gen_half", "gen_bhalf")
+# rtl/engine.sv's generate block of region r (in SLR r)
+REGION_BLOCK = "gen_region"
 
 OUT = Path(__file__).resolve().parents[2] / "platforms/f2/core/small_shell_cl_pnr_user.xdc"
 
@@ -116,6 +124,10 @@ def pblocks() -> str:
         out.append(f"set_property PARENT [get_pblocks pblock_CL] [get_pblocks {pb}]")
         out.append(f"resize_pblock {pb} -add {{{' '.join(clip(slr))}}}")
         out.append(f"set_property IS_SOFT FALSE [get_pblocks {pb}]")
+    out.append(f"create_pblock {HBM_PBLOCK}")
+    out.append(f"set_property PARENT [get_pblocks {PBLOCK}0] [get_pblocks {HBM_PBLOCK}]")
+    out.append(f"resize_pblock {HBM_PBLOCK} -add {{{HBM_ROW}}}")
+    out.append(f"set_property IS_SOFT FALSE [get_pblocks {HBM_PBLOCK}]")
     return "\n".join(out) + "\n"
 
 
@@ -128,8 +140,9 @@ def esc(name: str) -> str:
     return name.replace("[", "?").replace("]", "?")
 
 
-def assign(slr: int, pattern: str) -> str:
-    return f"add_cells_to_pblock {PBLOCK}{slr} [get_cells {{{pattern}}}]"
+def assign(slr: int | str, pattern: str) -> str:
+    pb = slr if isinstance(slr, str) else f"{PBLOCK}{slr}"
+    return f"add_cells_to_pblock {pb} [get_cells {{{pattern}}}]"
 
 
 def assign_filtered(slr: int, pattern: str, exclude: list[str]) -> str:
@@ -138,7 +151,11 @@ def assign_filtered(slr: int, pattern: str, exclude: list[str]) -> str:
 
 
 def group_slr(group: int) -> int:
-    return 0 if group < SLR0_GROUPS else 1
+    return 0 if group < REGION1 else 1 if group < REGION2 else 2
+
+
+def port_slr(port: int) -> int:
+    return group_slr(port // GROUP_PORTS)
 
 
 def lines() -> list[str]:
@@ -152,13 +169,14 @@ def lines() -> list[str]:
             out.append(assign(slr, esc(f"{ENGINE}/gen_lane[{p * LANES_PER_PORT + i}].") + "*"))
     for g in range(GROUPS):
         for block in GROUP_BLOCKS:
-            out.append(assign(group_slr(g), esc(f"{ENGINE}/{block}[{g}].") + "*"))
-    for h in range(2):
-        for block in HALF_BLOCKS:
-            out.append(assign(h, esc(f"{ENGINE}/{block}[{h}].") + "*"))
-    out.append("# ... and the rest of it (issue, step, drain) in SLR1")
-    exclude = [f"{ENGINE}/{b}*" for b in ("gen_dma", "gen_lane", *GROUP_BLOCKS, *HALF_BLOCKS)]
-    out.append(assign_filtered(1, f"{ENGINE}/*", exclude))
+            pat = esc(f"{ENGINE}/{block}[{g}].") + "*"
+            out.append(assign_filtered(group_slr(g), pat, [FLOAT]))
+    for r in sorted({group_slr(g) for g in range(GROUPS)}):
+        pat = esc(f"{ENGINE}/{REGION_BLOCK}[{r}].") + "*"
+        out.append(assign_filtered(r, pat, [FLOAT]))
+    out.append("# ... and the rest of it (issue, step, drain) in SLR1, but the floats")
+    exclude = [f"{ENGINE}/{b}*" for b in ("gen_dma", "gen_lane", *GROUP_BLOCKS, REGION_BLOCK)]
+    out.append(assign_filtered(1, f"{ENGINE}/*", [*exclude, FLOAT]))
 
     out.append("")
     out.append("# The controller, the vector unit and the core's registers on its side")
@@ -172,20 +190,26 @@ def lines() -> list[str]:
     out.append(assign(2, f"{CORE}/xv_*"))
 
     out.append("")
-    out.append("# The HBM's stages: the first beside the HBM, the next in the port's group's SLR")
+    out.append("# The HBM's stages (2 + the port's SLR, f2_core.sv): the one beside the HBM")
+    out.append("# in pblock_hbm, the one beside the DMA in the port's SLR, the others free")
     for p in range(PORTS):
-        slr = group_slr(p // GROUP_PORTS)
+        slr = port_slr(p)
+        last = 1 + slr  # the stages' last index
         hbm = f"{F2}/gen_hbm[{p}]"
-        out.append(assign(0, esc(f"{hbm}.u_ar/gen_stage[1].") + "*"))
+        out.append(assign(HBM_PBLOCK, esc(f"{hbm}.u_ar/gen_stage[{last}].") + "*"))
         out.append(assign(slr, esc(f"{hbm}.u_ar/gen_stage[0].") + "*"))
         if p == 0:
-            out.append(assign(0, esc(f"{hbm}.gen_r_pipe.") + "*"))
+            out.append(assign(HBM_PBLOCK, esc(f"{hbm}.gen_r_pipe.") + "*"))
         else:
-            out.append(assign(0, esc(f"{hbm}.gen_r_regs.") + "*0_q_reg*"))
-            out.append(assign(slr, esc(f"{hbm}.gen_r_regs.") + "*1_q_reg*"))
-    out.append("# Port 0: its write channels, the merge, the host's side")
-    for name in ("u_aw", "u_w", "u_b", "u_port0"):
-        out.append(assign(0, f"{F2}/{name}"))
+            out.append(assign(HBM_PBLOCK, esc(f"{hbm}.gen_r_regs.gen_stage[0].") + "*"))
+            out.append(assign(slr, esc(f"{hbm}.gen_r_regs.gen_stage[{last}].") + "*"))
+    out.append("# Port 0: its write channels (beside the HBM; W's other stage in SLR0), the")
+    out.append("# merge, the host's side")
+    for name in ("u_aw", "u_b"):
+        out.append(assign(HBM_PBLOCK, f"{F2}/{name}"))
+    out.append(assign(HBM_PBLOCK, esc(f"{F2}/u_w/gen_stage[1].") + "*"))
+    out.append(assign(0, esc(f"{F2}/u_w/gen_stage[0].") + "*"))
+    out.append(assign(0, f"{F2}/u_port0"))
     # bringup_host.sv: its logic beside the port; HostStages = 2 per channel,
     # the stage beside the port in SLR0, the other in SLR1 (towards PCIS).
     out.append(assign_filtered(0, f"{F2}/u_host/*", [f"{F2}/u_host/u_*"]))
