@@ -2670,9 +2670,13 @@ so build 7's 9 h gave only logs. Change it so that:
   decide from build 7's log: under 3,000 after the 2nd hour), to save
   the rest of a hopeless route.
 
-**Step 7 (2026-11-12, reviewed): make SLR1 routable at 250 MHz.** The
-proposal of 2026-11-12 (options A and B) went to an expert review; this is
-the reviewed plan. Build 8 needs the owner's OK before launch.
+**Step 7 (2026-11-12, accepted by the owner): make SLR1 routable at
+250 MHz.** The proposal of 2026-11-12 (options A and B) went to an expert
+review; the owner accepted the reviewed plan below on 2026-11-12. It is
+decided: do not reopen A versus B, the directive, or the order of the
+items. Do item 1 and item 2 as described (each on its own branch and PR,
+self-reviewed and merged). Build 8's launch still needs the owner's OK in
+the session that launches it (hard rule 3).
 
 Context. Device: AMD VU47P (3 SLRs, HBM below SLR0) on AWS F2, Small
 Shell, 250 MHz. Our logic lives in the shell's reconfigurable pblock
