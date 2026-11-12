@@ -28,10 +28,10 @@
 // after the walk sends it, their data come RdLat = 5 cycles later
 // (tile_buffer), each slot selects its operands into registers of its own,
 // per group of buffers then among the groups, and takes them the cycle
-// after. A result goes through a register to its
-// write, which the banks hold 4 cycles later: done_o comes a cycle after the
-// write is given, and a later command's first read 2 or more after that. A
-// command is taken the cycle after the last group of the one before.
+// after. A result goes through a register to its write, which the banks
+// hold 4 cycles later: done_o comes a cycle after the write is given, and a
+// later command's first read 2 or more after that. A command is taken the
+// cycle after the last group of the one before.
 //
 // A reduction (docs/numerics.md, sections 3 and 4): element k of a row goes
 // to partial k mod Partials, so lane l of a row's group g to partial
@@ -41,9 +41,9 @@
 // a register (p_q, read from the file a cycle before); its result goes into
 // the file through a register too (s1_q, M10 step 6), back AddRegs + 4
 // cycles after the read, before the partial's next group reads it (Parts >=
-// AddRegs + 4), whatever the multiply's registers. A row's first Parts groups start from +0 and
-// a missing element keeps its partial, so a partial no element reaches stays
-// +0. MAX takes x through the same FMA (add(x, -0) = x; a NaN as the
+// AddRegs + 4), whatever the multiply's registers. A row's first Parts
+// groups start from +0 and a missing element keeps its partial, so a
+// partial no element reaches stays +0. MAX takes x through the same FMA (add(x, -0) = x; a NaN as the
 // canonical NaN, which max_f32 drops as it does any NaN) and keeps
 // max_f32(p, x), from the canonical NaN, which max_f32 leaves to any other
 // value. At a row's end the tree unit (vec_tree) takes its partials, the
@@ -232,6 +232,9 @@ module vec_unit
   end
   if (Bufs > 32) begin : gen_bufs_check
     $error("Bufs must fit Bf16Mask's 32 bits");
+  end
+  if (MulRegs < 1) begin : gen_mulregs_check
+    $error("MulRegs must be at least 1 (a partial is read into p_q a cycle before the FMA's late c)");
   end
   if (Partials != Parts * Lanes || Parts != 2 ** PW || Parts < AddRegs + 4) begin : gen_parts_check
     $error("Partials must be a power-of-two multiple of Lanes, at least AddRegs + 4 a slot");
@@ -741,25 +744,30 @@ module vec_unit
   logic [Lanes-1:0]        u_w_mask;
   logic [Lanes-1:0][31:0]  u_w_data;
 
-  // The writes' sources, a copy per group of SelN buffers.
+  // The writes' sources, a copy per group of SelN buffers: ext's, and the
+  // unit's with the tree's in it (never in the same cycle, t_go; a tree's
+  // write is lane 0's, its other lanes masked off).
   typedef struct packed {
-    logic                   ext_valid, t_valid, u_valid;
-    logic [BufW-1:0]        ext_buf, t_buf, u_buf;
-    logic [AddrW-1:0]       ext_addr, t_addr, u_addr;
+    logic                   ext_valid, u_valid;
+    logic [BufW-1:0]        ext_buf, u_buf;
+    logic [AddrW-1:0]       ext_addr, u_addr;
     logic [Lanes-1:0]       ext_mask, u_mask;
     logic [Lanes-1:0][31:0] ext_data, u_data;
-    logic [31:0]            t_data;
   } wsrc_t;
+  wsrc_t wsrc;
+  always_comb begin
+    wsrc = '{ext_valid: ext_w_valid_i, u_valid: u_w_valid || t_w_valid, ext_buf: ext_w_buf_i,
+             u_buf: t_w_valid ? t_w_buf : u_w_buf, ext_addr: ext_w_addr_i,
+             u_addr: t_w_valid ? t_w_addr : u_w_addr, ext_mask: ext_w_mask_i,
+             u_mask: t_w_valid ? Lanes'(1) : u_w_mask, ext_data: ext_w_data_i, u_data: u_w_data};
+    if (t_w_valid) wsrc.u_data[0] = t_w_data;
+  end
   wsrc_t wsrc_q[NSel];
   always_ff @(posedge clk_i) begin
     for (int unsigned k = 0; k < NSel; k++) begin
       // The valids as they come: ext's is taken in any cycle (as the
       // buffers' own inputs are), the tree's and the unit's are reset where made.
-      wsrc_q[k] <= '{ext_valid: ext_w_valid_i, t_valid: t_w_valid,
-                     u_valid: u_w_valid, ext_buf: ext_w_buf_i, t_buf: t_w_buf,
-                     u_buf: u_w_buf, ext_addr: ext_w_addr_i, t_addr: t_w_addr,
-                     u_addr: u_w_addr, ext_mask: ext_w_mask_i, u_mask: u_w_mask,
-                     ext_data: ext_w_data_i, u_data: u_w_data, t_data: t_w_data};
+      wsrc_q[k] <= wsrc;
     end
   end
 
@@ -777,9 +785,6 @@ module vec_unit
       wr_addr[i] = w.ext_addr;
       wr_mask[i] = w.ext_valid && w.ext_buf == BufW'(i) ? w.ext_mask : '0;
       wr_data[i] = w.ext_data;
-      if (w.t_valid && w.t_buf == BufW'(i)) begin  // never with the slots' (t_w_valid)
-        {wr_addr[i], wr_mask[i], wr_data[i]} = {w.t_addr, Lanes'(1), (Lanes * 32)'(w.t_data)};
-      end
       if (w.u_valid && w.u_buf == BufW'(i)) begin
         {wr_addr[i], wr_mask[i], wr_data[i]} = {w.u_addr, w.u_mask, w.u_data};
       end

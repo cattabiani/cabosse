@@ -26,6 +26,7 @@ module f2_core #(
   parameter  int unsigned LiteW     = 18,
   // The engine's regions (rtl/engine.sv), one per SLR: groups of 4 ports
   // before Region1 in SLR0, before Region2 in SLR1, the rest in SLR2.
+  // scripts/f2/floorplan.py's REGION1, REGION2 must match (its defaults do).
   parameter  int unsigned Region1   = Ports / 8,
   parameter  int unsigned Region2   = Ports / 4,
   localparam int unsigned AddrWidth = 34,
@@ -140,7 +141,8 @@ module f2_core #(
   logic [7:0]       wr_reg, rd_reg;
 
   // The shell's AXI-Lite requests through a stage each first: they come
-  // from another SLR (M10).
+  // from another SLR (M10). The stages run on rst_ni, so nothing comes out
+  // of them before lite_rst_nq is high.
   logic             l_aw_valid, l_aw_ready, l_w_valid, l_w_ready, l_ar_valid, l_ar_ready;
   logic [LiteW-1:0] l_aw_addr, l_ar_addr;
   logic [31:0]      l_w_data;
@@ -162,7 +164,7 @@ module f2_core #(
   );
   // verilator lint_on PINCONNECTEMPTY
 
-  assign l_aw_ready   = lite_rst_nq && !wr_busy_q && l_aw_valid && l_w_valid;
+  assign l_aw_ready   = !wr_busy_q && l_aw_valid && l_w_valid;
   assign l_w_ready    = l_aw_ready;
   assign wrap_wr      = l_aw_ready && l_aw_addr >= WrapBase;
   assign wr_reg       = l_aw_addr[7:0];
@@ -172,7 +174,7 @@ module f2_core #(
   assign s_b_resp_o   = wr_core_q ? c_b_resp : 2'b00;
   assign c_b_ready    = wr_core_q && s_b_ready_i;
 
-  assign l_ar_ready   = lite_rst_nq && !rd_busy_q && l_ar_valid;
+  assign l_ar_ready   = !rd_busy_q && l_ar_valid;
   assign wrap_rd      = l_ar_ready && l_ar_addr >= WrapBase;
   assign rd_reg       = l_ar_addr[7:0];
   assign c_ar_valid   = ar_out_q;
@@ -231,7 +233,7 @@ module f2_core #(
 
   // The HBM's AXI ports sit at the die's edge, far from the core's logic
   // (core build 1: their r_valid and w_ready into the DMAs' counters, -5.1
-  // ns), and the engine's ports in all three SLRs (the floorplan,
+  // ns), and the engine's ports in up to three SLRs (the floorplan,
   // small_shell_cl_pnr_user.xdc). Each port's AR and R go through 2 + its
   // SLR stages: one beside the HBM (the bottom clock-region row), one
   // beside the port's DMA, and between them one per SLR crossed, which no
@@ -242,8 +244,9 @@ module f2_core #(
   // high. Port 0 (shared with the vector unit and the host) keeps a
   // bringup_pipe stage for R, and two for W (the HBM's w_ready into a
   // register beside it first).
-  function automatic int unsigned port_slr(int p);  // signed: Region1 may be 0
-    return p / 4 < int'(Region1) ? 0 : p / 4 < int'(Region2) ? 1 : 2;
+  localparam int GroupPorts = 4;  // rtl/engine.sv's GP: its regions are of groups of 4 ports
+  function automatic int unsigned port_slr(int p);  // rtl/engine.sv's region_of(p / GP)
+    return p / GroupPorts < int'(Region1) ? 0 : p / GroupPorts < int'(Region2) ? 1 : 2;
   endfunction
 
   logic [Ports-1:0]                hb_ar_valid, hb_ar_ready, hb_r_valid, hb_r_ready, hb_r_last;

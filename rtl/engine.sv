@@ -77,7 +77,7 @@ module engine
   parameter  int unsigned BufWidth     = 8,    // buffer ids (docs/architecture.md, "Encoding")
   parameter  int unsigned Writes       = 8,    // results per cycle on the write port
   parameter  int unsigned CmdDepth     = 4,    // commands queued per stage
-  parameter  int unsigned XRdLat       = 4,    // x_addr_o to x_data_i, cycles (vec_unit's RdLat)
+  parameter  int unsigned XRdLat       = 4,    // x_addr_o to x_data_i, cycles (core.sv: SelLat + 2)
   parameter  int unsigned E            = 4,    // pairs per lane per cycle
   parameter  int unsigned A            = 16,   // partial sums per row (D-027)
   parameter  int unsigned MaxD         = 128,  // largest head dimension
@@ -379,14 +379,10 @@ module engine
     $error("engine: the regions need Region1 <= Region2 <= Ports / 4");
   end
 
-  function automatic int unsigned region_lo(int unsigned r);
-    return r == 0 ? 0 : r == 1 ? Region1 : Region2;
-  endfunction
-  function automatic int unsigned region_hi(int unsigned r);
-    return r == 0 ? Region1 : r == 1 ? Region2 : NG;
-  endfunction
-  function automatic int unsigned region_of(int g);  // signed: Region1 may be 0
-    return g < int'(Region1) ? 0 : g < int'(Region2) ? 1 : 2;
+  // Region r's groups: RegionB[r] .. RegionB[r + 1] - 1.
+  localparam int unsigned RegionB[4] = '{0, Region1, Region2, NG};
+  function automatic int unsigned region_of(int g);  // signed: RegionB[1] may be 0
+    return g < int'(RegionB[1]) ? 0 : g < int'(RegionB[2]) ? 1 : 2;
   endfunction
 
   // --- DMAs --------------------------------------------------------------------
@@ -533,8 +529,9 @@ module engine
       dma_push_q <= iss_push ? iss_act_q : '0;
       ret_q      <= dma_ret_at;
       for (int unsigned p = 0; p < Ports; p++) begin
-        dma_cr_q[p] <= dma_cr_q[p] - DcW'(iss_push && iss_act_q[p]) + DcW'(ret_q[p]);
-        dma_cr_ok_q[p]   <= dma_cr_q[p] - DcW'(iss_push && iss_act_q[p]) + DcW'(ret_q[p]) != '0;
+        automatic logic [DcW-1:0] cr_n = dma_cr_q[p] - DcW'(iss_push && iss_act_q[p]) + DcW'(ret_q[p]);
+        dma_cr_q[p]    <= cr_n;
+        dma_cr_ok_q[p] <= cr_n != '0;
       end
       if (q_pop[0]) begin
         iss_busy_q   <= 1'b1;
@@ -865,7 +862,7 @@ module engine
   logic [Heads-1:0][E-1:0][15:0] x_r[3];     // ... its x, at XLat + 2
 
   for (genvar r = 0; r < 3; r++) begin : gen_region
-    localparam int unsigned Lo = region_lo(r), Hi = region_hi(r);
+    localparam int unsigned Lo = RegionB[r], Hi = RegionB[r+1];
     localparam int unsigned P0 = GP * Lo, NP = GP * (Hi - Lo);  // its ports
     if (Lo < Hi) begin : gen_on
       logic                          rst_nq_r;  // the region's copy of the reset
@@ -898,7 +895,7 @@ module engine
         push_rq  <= push_fq;
         pop_fq   <= dma_pop_q[P0 +: NP];
         rmin_q   <= min_tree(mins, Hi - Lo);
-        rres_q    <= res;
+        rres_q   <= res;
         rmin_fq  <= rmin_q;
         rres_fq   <= rres_q;
         if (!rst_nq_r) begin
@@ -1062,14 +1059,13 @@ module engine
   logic [Groups-1:0]        ok_d;                // per write group: its results are there
   logic                     ok_same_q, ok_inc_q; // drain_grp_q's and the next one's, for the next cycle
   logic                     ok_aft_q, ok_ini_q;  // ... group 0's, for the successors
-  logic                     went_q;              // a go last cycle
   logic                     unit_new_q;          // cur_q changed last cycle
   logic                     from_ini_q;          // ... to a command's first unit
   logic [L-1:0]             out_valid_at;        // lane_out_valid through its group's registers
   logic [L-1:0]             out_valid_q;         // ... on the drain's side
-  logic [Recent-1:0]        gone_q;              // a go in each of the last Recent cycles
-  logic [GW-1:0]            gone_grp_q[Recent];
-  logic                     rec_same, rec_inc, rec_0;  // a go in Recent - 1 cycles, to each
+  logic [Recent-2:0]        gone_q;              // a go in each of the last Recent - 1 cycles
+  logic [GW-1:0]            gone_grp_q[Recent-1];
+  logic                     rec_same, rec_inc, free_0;  // a go to each in Recent - 1 cycles; group 0 free next cycle
   logic                     go, pass_end, drain_end, drain_load, unit_load, ok;
   logic                     aft_ready, ini_ready;
   logic [GW-1:0]            grp_inc;
@@ -1096,11 +1092,11 @@ module engine
   always_comb begin
     rec_same = 1'b0;
     rec_inc  = 1'b0;
-    rec_0    = 1'b0;
-    for (int unsigned i = 0; i + 1 < Recent; i++) begin
+    free_0   = !(go && drain_grp_q == '0);
+    for (int unsigned i = 0; i + 1 < Recent; i++) begin  // gone_q's every entry
       rec_same = rec_same || (gone_q[i] && gone_grp_q[i] == drain_grp_q);
       rec_inc  = rec_inc || (gone_q[i] && gone_grp_q[i] == grp_inc);
-      rec_0    = rec_0 || (gone_q[i] && gone_grp_q[i] == '0);
+      free_0   = free_0 && !(gone_q[i] && gone_grp_q[i] == '0);
     end
   end
   always_ff @(posedge clk_i) begin
@@ -1108,10 +1104,10 @@ module engine
     // No go this cycle: the same group; a go: the next (a pass's end is unit_new_q).
     ok_same_q   <= ok_d[drain_grp_q] && !rec_same;
     ok_inc_q    <= ok_d[grp_inc] && !rec_inc;
-    ok_aft_q    <= !(|aft_has) && !rec_0 && !(go && drain_grp_q == '0);
-    ok_ini_q    <= !(|ini_has) && !rec_0 && !(go && drain_grp_q == '0);
+    ok_aft_q    <= !(|aft_has) && free_0;
+    ok_ini_q    <= !(|ini_has) && free_0;
   end
-  assign ok         = unit_new_q ? (from_ini_q ? ok_ini_q : ok_aft_q) : went_q ? ok_inc_q : ok_same_q;
+  assign ok         = unit_new_q ? (from_ini_q ? ok_ini_q : ok_aft_q) : gone_q[0] ? ok_inc_q : ok_same_q;
   assign aft_ready  = aft_age_q == 2'd2;
   assign ini_ready  = ini_age_q == 2'd2;
   assign go         = drain_busy_q && ok && (!end_q || cur_q.last || aft_ready);
@@ -1140,16 +1136,14 @@ module engine
     rdy_wg_q      <= WGW'(32'(drain_grp_q) % WG);
     rdy_has_q     <= has;
     gone_grp_q[0] <= drain_grp_q;
-    for (int unsigned i = 1; i < Recent; i++) gone_grp_q[i] <= gone_grp_q[i-1];
+    for (int unsigned i = 1; i + 1 < Recent; i++) gone_grp_q[i] <= gone_grp_q[i-1];
     from_ini_q    <= drain_load;
     if (!rst_nq) begin
       rdy_go_q   <= '0;
       gone_q     <= '0;
-      went_q     <= 1'b0;
       unit_new_q <= 1'b0;
     end else begin
-      gone_q     <= {gone_q[Recent-2:0], go};
-      went_q     <= go;
+      gone_q     <= {gone_q[Recent-3:0], go};
       unit_new_q <= unit_load;
     end
   end
@@ -1203,7 +1197,7 @@ module engine
     logic [WGW-1:0]          wg_fq, wg_rq;
     logic [Writes-1:0]       has_fq, has_rq;
     logic [GL-1:0]           vld_q, vld_fq;
-    logic [GL-1:0][31:0]     lo_q;
+    logic [GL-1:0][31:0]     lo_q;  // the lanes' outputs: their FIFO's read apart from out_q's select (timing)
     logic [Writes-1:0][31:0] out_q, out_fq;
     always_ff @(posedge clk_i) begin
       rst_nq_g <= rst_ni;

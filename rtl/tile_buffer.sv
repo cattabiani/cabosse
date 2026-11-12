@@ -17,7 +17,10 @@
 //   cycle c + 3 on (written at the end of c + 2).
 // - Read: rd_data_o[i] is element rd_addr_i + i, RdLat = 5 cycles after
 //   rd_addr_i. It sees the writes given 1 or more cycles before rd_addr_i,
-//   not the later ones. RdLat is fixed by the registers; the parameter lets
+//   not the later ones; a write given in the same cycle to the same entry
+//   meets the read in the RAM (simulation: not seen; hardware: the RAM's
+//   collision rule), so no user reads an entry in the cycle it writes it
+//   (vec_unit: reads see the writes given 2 or more cycles before them). RdLat is fixed by the registers; the parameter lets
 //   the users name it (core.sv passes it to vec_unit and the engine).
 module tile_buffer #(
   parameter  int unsigned RdLat = 5,

@@ -16,8 +16,9 @@
 //
 // A token: pc runs from 0; the command at pc is read from the buffer (a
 // synchronous RAM with an output register, read at the next pc so it is
-// there two cycles after a handover; M10 step 6) and handed over when its unit takes it and these hold (D-068,
-// model/commands.py: stops, engine_waits, kv_waits):
+// there two cycles after a handover; M10 step 6) and handed over when its
+// unit takes it and these hold (D-068, model/commands.py: stops,
+// engine_waits, kv_waits):
 // - stop: a command off the engine (the vector unit's, END) that reads a
 //   buffer written since the last stop waits until every command handed over
 //   is done; its handover clears the written set (D-045).
@@ -255,7 +256,7 @@ module controller #(
 
   localparam int unsigned CmdAW = $clog2(Commands);
 
-  logic [7:0][31:0] cmd_q;  // the command at pc, where cmd_ok_q (below)
+  logic [7:0][31:0] cmd_q;  // the command at pc, but the cycle after a fetch (fetch_q)
   logic [AddrW-1:0] run_token_q, run_t_q, run_stride_q;  // the registers at start
 
   always_ff @(posedge clk_i) begin
@@ -361,8 +362,7 @@ module controller #(
   // from the command buffer (2 such commands a layer, a few cycles each).
   logic [HeadWidth-1:0] group_q, rem_q;
   logic                 group_ok_q, fresh_q;  // fresh: cmd_q is a new command
-  logic                 cmd_ok_q;  // cmd_q is pc's: not the cycle after a start or a handover
-  logic                 fetch_q;   // a start or a handover last cycle
+  logic                 fetch_q;  // a start or a handover last cycle: cmd_q is not pc's yet
 
   assign cmd_group_o = group_q;
 
@@ -383,7 +383,7 @@ module controller #(
                    : 1'b1;
   assign need_wait = is_eng && !waited_q[BufW'(f_a)];
 
-  assign issuing     = busy_q && !ctl_reset && cmd_ok_q;
+  assign issuing     = busy_q && !ctl_reset && !fetch_q;
   assign fail_end    = issuing && (32'(pc_q) >= commands_q || pc_q >= PcW'(Commands));
   assign active      = issuing && !fail_end;
   assign fail_opcode = active && !known;
@@ -399,7 +399,6 @@ module controller #(
   always_ff @(posedge clk_i) begin
     fetch_q  <= start || fire;
     fresh_q  <= fetch_q;
-    cmd_ok_q <= !(start || fire);
     if (start || fire || fetch_q) begin  // the next command's group is not known yet
       group_ok_q <= 1'b0;
     end else if (fresh_q) begin

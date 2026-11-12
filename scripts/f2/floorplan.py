@@ -68,10 +68,11 @@ PORTS = 32
 LANES_PER_PORT = 4  # rtl/engine.sv: DataWidth / (16 * E)
 GROUP_PORTS = 4  # rtl/engine.sv's GP
 GROUPS = PORTS // GROUP_PORTS
-# rtl/engine.sv's regions, as f2_core passes them: groups before REGION1 in
-# SLR0, before REGION2 in SLR1, the rest in SLR2.
-REGION1 = 4
-REGION2 = 8
+# rtl/engine.sv's regions, f2_core's defaults (Region1 = Ports / 8, Region2 =
+# Ports / 4): groups before REGION1 in SLR0, before REGION2 in SLR1, the rest
+# in SLR2.
+REGION1 = PORTS // 8
+REGION2 = PORTS // 4
 
 CL = "WRAPPER/CL"
 F2 = f"{CL}/u_core"  # f2_core
@@ -119,16 +120,19 @@ def pblocks() -> str:
         "# Each SLR's pblock: pblock_CL's ranges clipped to the SLR's rows (an xdc has no loops)."
     ]
     for slr in range(SLRS):
-        pb = f"{PBLOCK}{slr}"
-        out.append(f"create_pblock {pb}")
-        out.append(f"set_property PARENT [get_pblocks pblock_CL] [get_pblocks {pb}]")
-        out.append(f"resize_pblock {pb} -add {{{' '.join(clip(slr))}}}")
-        out.append(f"set_property IS_SOFT FALSE [get_pblocks {pb}]")
-    out.append(f"create_pblock {HBM_PBLOCK}")
-    out.append(f"set_property PARENT [get_pblocks {PBLOCK}0] [get_pblocks {HBM_PBLOCK}]")
-    out.append(f"resize_pblock {HBM_PBLOCK} -add {{{HBM_ROW}}}")
-    out.append(f"set_property IS_SOFT FALSE [get_pblocks {HBM_PBLOCK}]")
+        out += pblock(pblock_name(slr), "pblock_CL", clip(slr))
+    out += pblock(HBM_PBLOCK, pblock_name(0), [HBM_ROW])
     return "\n".join(out) + "\n"
+
+
+def pblock(name: str, parent: str, ranges: list[str]) -> list[str]:
+    """A hard pblock of the ranges inside its parent."""
+    return [
+        f"create_pblock {name}",
+        f"set_property PARENT [get_pblocks {parent}] [get_pblocks {name}]",
+        f"resize_pblock {name} -add {{{' '.join(ranges)}}}",
+        f"set_property IS_SOFT FALSE [get_pblocks {name}]",
+    ]
 
 
 def esc(name: str) -> str:
@@ -140,14 +144,18 @@ def esc(name: str) -> str:
     return name.replace("[", "?").replace("]", "?")
 
 
+def pblock_name(slr: int | str) -> str:
+    """An SLR's pblock, or a pblock given by name."""
+    return slr if isinstance(slr, str) else f"{PBLOCK}{slr}"
+
+
 def assign(slr: int | str, pattern: str) -> str:
-    pb = slr if isinstance(slr, str) else f"{PBLOCK}{slr}"
-    return f"add_cells_to_pblock {pb} [get_cells {{{pattern}}}]"
+    return f"add_cells_to_pblock {pblock_name(slr)} [get_cells {{{pattern}}}]"
 
 
-def assign_filtered(slr: int, pattern: str, exclude: list[str]) -> str:
+def assign_filtered(slr: int | str, pattern: str, exclude: list[str]) -> str:
     cond = " && ".join(f'NAME !~ "{x}"' for x in exclude)
-    return f"add_cells_to_pblock {PBLOCK}{slr} [get_cells -filter {{{cond}}} {{{pattern}}}]"
+    return f"add_cells_to_pblock {pblock_name(slr)} [get_cells -filter {{{cond}}} {{{pattern}}}]"
 
 
 def group_slr(group: int) -> int:
@@ -163,7 +171,7 @@ def lines() -> list[str]:
 
     out.append("# The engine: each group's lanes, DMAs and registers in the group's SLR")
     for p in range(PORTS):
-        slr = group_slr(p // GROUP_PORTS)
+        slr = port_slr(p)
         out.append(assign(slr, esc(f"{ENGINE}/gen_dma[{p}].") + "*"))
         for i in range(LANES_PER_PORT):
             out.append(assign(slr, esc(f"{ENGINE}/gen_lane[{p * LANES_PER_PORT + i}].") + "*"))

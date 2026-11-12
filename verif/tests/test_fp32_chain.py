@@ -57,7 +57,7 @@ PERIODS = {
 PIPELINES = {
     "mulregs0": (("MulRegs", 0),),
     "mulregs1": (("MulRegs", 1),),
-    "vec_unit": (("MulRegs", 5), ("AddRegs", 4)),
+    "vec_unit": (("MulRegs", 6), ("AddRegs", 4)),
 }
 SWEEP = os.environ.get("CABOSSE_SWEEP") == "1"  # the every-input run, on request
 SWEEP_CHUNK = 1 << 22  # inputs per chunk of it (memory: bulk.WORKERS at once)

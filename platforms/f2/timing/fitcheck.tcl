@@ -20,8 +20,8 @@ set out [open fit.rpt w]
 set total [llength [get_cells -hierarchical -filter {IS_PRIMITIVE}]]
 puts $out "leaf cells in the design: $total"
 set assigned 0
-foreach slr {0 1 2 hbm} {
-  set name [expr {$slr eq "hbm" ? "pblock_hbm" : "pblock_slr$slr"}]
+set names {pblock_slr0 pblock_slr1 pblock_slr2 pblock_hbm}
+foreach name $names {
   set pb [get_pblocks $name]
   set n [llength [get_cells -hierarchical -filter "IS_PRIMITIVE && PBLOCK == $name"]]
   incr assigned $n
@@ -33,12 +33,11 @@ foreach slr {0 1 2 hbm} {
 puts $out "leaf cells in a pblock: $assigned of $total"
 puts "CABOSSE-FIT leaf cells in a pblock: $assigned of $total"
 close $out
-foreach slr {0 1 2 hbm} {
-  set name [expr {$slr eq "hbm" ? "pblock_hbm" : "pblock_slr$slr"}]
+foreach name $names {
   report_utilization -pblocks [get_pblocks $name] -file $name.rpt
   set fh [open $name.rpt]
   foreach l [split [read $fh] \n] {
-    if {[regexp {^\| (CLB LUTs|CLB Registers|Block RAM Tile|URAM|DSPs)} $l]} {puts "CABOSSE-FIT slr$slr $l"}
+    if {[regexp {^\| (CLB LUTs|CLB Registers|Block RAM Tile|URAM|DSPs)} $l]} {puts "CABOSSE-FIT $name $l"}
   }
   close $fh
 }

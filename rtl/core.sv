@@ -50,10 +50,7 @@ module core #(
   localparam int unsigned Writes   = 8,       // the engine's results a cycle
   localparam int unsigned XHeads   = 2,       // the engine's x reads (rtl/engine.sv's Heads)
   localparam int unsigned RdLat    = 5,       // a buffer read's cycles (tile_buffer; engine's XRdLat)
-  // verilator lint_off UNUSEDPARAM
-  // host_r's: the vector unit's select (ext_r_data_o); for the C++ driver (verif/bulk/core.cpp)
-  localparam int unsigned HostRdLat = RdLat + 1,
-  // verilator lint_on UNUSEDPARAM
+  localparam int unsigned SelLat   = RdLat + 1,  // ext_r_data_o's, host_r's: the vector unit's select
   localparam int unsigned AxilW    = 17
 ) (
   input  logic                          clk_i,
@@ -160,6 +157,11 @@ module core #(
   // cycles after the controller's, which holds the AXI-Lite writes and its
   // own state until it is through (controller.sv).
   localparam int unsigned UnitsResetDelay = 2;
+  // A block on a registered copy of the reset leaves it a cycle or more
+  // after its neighbours: it takes no handshake while its copy is low (its
+  // readies off: the controller's AXI-Lite, the units' command readies),
+  // and a write with no ready (ext's into the vector unit) is never gated by
+  // a reset copy (M10 step 6).
   always_ff @(posedge clk_i) begin
     ctl_rst_nq <= rst_ni;
     eng_rst_nq <= rst_ni && !units_reset;
@@ -337,7 +339,7 @@ module core #(
   assign host_r_data_o = ext_r_data;
 
   engine #(
-    .XRdLat   (RdLat + 3),  // the vector unit's select, the xv registers: the address's, the data's
+    .XRdLat   (SelLat + 2),  // the xv registers: the address's, the data's
     .Ports    (Ports),
     .Region1  (Region1),
     .Region2  (Region2),
