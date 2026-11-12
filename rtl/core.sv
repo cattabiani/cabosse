@@ -17,14 +17,14 @@
 // ports (commands.hazards).
 //
 // host_r_*: a read of a buffer's Lanes elements from host_r_addr_i, the data
-// RdLat = 4 cycles after, in place of the engine's read: the simulation's view of
+// RdLat + 1 = 6 cycles after, in place of the engine's read: the simulation's view of
 // any buffer (M7; the logits come back through HBM, OUTPUT: D-071). It must
 // not be used while a token runs.
 //
 // The engine and the vector unit sit in different SLRs on F2 (platforms/f2,
 // the floorplan): every signal between them goes through a register here,
 // on the vector unit's side (the xv_ registers), and the engine's own on
-// its side. The engine's x reads take RdLat + 2 cycles (its XRdLat); its
+// its side. The engine's x reads take RdLat + 3 cycles (its XRdLat); its
 // writes, and its done to the controller, one more cycle (the same for
 // both, so a command after the done still sees every write). The
 // controller (the engine's SLR) gives the vector unit its commands through
@@ -39,6 +39,9 @@ module core #(
   parameter  int unsigned BufP     = 9,       // P's id (commands.Buf)
   parameter  int unsigned ChanW    = 29,      // log2 of a channel's bytes: 512 MiB
   parameter  int unsigned Commands = 2048,
+  // The engine's regions (rtl/engine.sv): the first group of region 1, of region 2.
+  parameter  int unsigned Region1  = Ports / 8,
+  parameter  int unsigned Region2  = Ports / 4,
   localparam int unsigned MemAddrW = 34,      // F2's HBM: 16 GiB
   localparam int unsigned AddrW    = 20,
   localparam int unsigned DataW    = 256,     // an HBM port's beat
@@ -46,7 +49,11 @@ module core #(
   localparam int unsigned E        = 4,       // the engine's pairs a lane a cycle (D-027)
   localparam int unsigned Writes   = 8,       // the engine's results a cycle
   localparam int unsigned XHeads   = 2,       // the engine's x reads (rtl/engine.sv's Heads)
-  localparam int unsigned RdLat    = 4,       // a buffer read's cycles (tile_buffer; engine's XRdLat)
+  localparam int unsigned RdLat    = 5,       // a buffer read's cycles (tile_buffer; engine's XRdLat)
+  // verilator lint_off UNUSEDPARAM
+  // host_r's: the vector unit's select (ext_r_data_o); for the C++ driver (verif/bulk/core.cpp)
+  localparam int unsigned HostRdLat = RdLat + 1,
+  // verilator lint_on UNUSEDPARAM
   localparam int unsigned AxilW    = 17
 ) (
   input  logic                          clk_i,
@@ -123,6 +130,7 @@ module core #(
   localparam int unsigned EBufW     = 8;  // the engine's buffer ids
 
   logic                 eng_rst_nq, vec_rst_nq, units_reset;
+  logic                 ctl_rst_nq;  // the controller's copy of the reset (its settle window covers it)
   logic [4:0]           cmd_op;
   logic [BufW-1:0]      cmd_dst, cmd_a, cmd_b, cmd_c;
   logic [7:0]           cmd_flags;
@@ -153,6 +161,7 @@ module core #(
   // own state until it is through (controller.sv).
   localparam int unsigned UnitsResetDelay = 2;
   always_ff @(posedge clk_i) begin
+    ctl_rst_nq <= rst_ni;
     eng_rst_nq <= rst_ni && !units_reset;
     vec_rst_nq <= rst_ni && !units_reset;
   end
@@ -178,7 +187,7 @@ module core #(
     .UnitsResetDelay(UnitsResetDelay)
   ) u_controller (
     .clk_i,
-    .rst_ni,
+    .rst_ni         (ctl_rst_nq),
     .s_aw_valid_i,
     .s_aw_ready_o,
     .s_aw_addr_i,
@@ -328,8 +337,10 @@ module core #(
   assign host_r_data_o = ext_r_data;
 
   engine #(
-    .XRdLat   (RdLat + 2),  // the xv registers: the address's, the data's
+    .XRdLat   (RdLat + 3),  // the vector unit's select, the xv registers: the address's, the data's
     .Ports    (Ports),
+    .Region1  (Region1),
+    .Region2  (Region2),
     .AddrWidth(MemAddrW),
     .DataWidth(DataW),
     .RowWidth (AddrW),
