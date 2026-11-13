@@ -23,6 +23,13 @@
 # build's (its logs would be overwritten). The instance role needs
 # s3:GetObject on dcp/* for this mode, besides s3:PutObject (added to
 # cabosse-build-dcp's dcp-put policy on 2026-11-13).
+#
+# The deadline: the watchdog saves the logs and powers off DEADLINE_MIN after
+# the start. To extend a running build, put the new total in S3, read within a
+# minute: echo 720 | aws s3 cp - $S3/deadline_min (at most MAX_MIN, a hard
+# shutdown that also covers a dead watchdog). Keep the deadline well above the
+# longest measured run of the same steps: a route cut off at the deadline
+# leaves no routed checkpoint (Vivado cannot save one mid-route).
 
 REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga
@@ -31,12 +38,14 @@ CL=cabosse_$DESIGN
 FROM_DCP=                      # s3://.../<cl>.<tag>.post_phys_opt.dcp (or post_place): route only (above)
 ROUTE_DIRECT=AggressiveExplore # route_design directive with FROM_DCP (AWS's default for the full build)
 DEADLINE_MIN=$([ "$DESIGN" = core ] && echo 540 || echo 240)  # safety net: power off even if something hangs
+MAX_MIN=1440                   # hard limit, extensions included (24 h; c6i.8xlarge ~$37)
+WATCH_S=60                     # watchdog poll period
 S3=                            # s3://bucket/dcp/<build>: everything goes there (the role reads/writes dcp/ only)
 PLACE_WNS_MIN=-1.0             # ns: the build stops if placement ends below this (see "The watch")
 PHYS_WNS_MIN=-0.25             # ns: ... or phys_opt_design after it
 RECIPES="--clock_recipe_a A1 --clock_recipe_b B0 --clock_recipe_c C0 --clock_recipe_hbm H0"
 
-shutdown -h +$DEADLINE_MIN
+shutdown -h +$MAX_MIN  # the watchdog (below) powers off at DEADLINE_MIN
 export HOME=/root  # cloud-init runs this without HOME; Vivado needs it
 export CL_DIR=/root/aws-fpga/hdk/cl/examples/$CL
 out=/var/log/cabosse.log
@@ -60,6 +69,22 @@ finish() {  # the last copies, then power off
   exit
 }
 { while sleep 300; do save; done & } >>$log 2>&1
+
+watchdog() {  # finish() at the deadline: DEADLINE_MIN, or the minutes in $S3/deadline_min (header)
+  local limit=$DEADLINE_MIN new
+  while sleep $WATCH_S; do
+    new=$(aws s3 cp --only-show-errors "$S3/deadline_min" - 2>/dev/null | tr -d '[:space:]')
+    [[ $new =~ ^[0-9]+$ ]] && new=$((10#$new > MAX_MIN ? MAX_MIN : 10#$new)) || new=$limit
+    if ((new != limit)); then
+      limit=$new
+      echo "deadline now $limit min after the start ($(date -u +%FT%TZ))"
+    fi
+    ((SECONDS >= limit * ${MIN_S:-60})) || continue  # MIN_S: tests only
+    echo "CABOSSE-RESULT fail deadline: $limit min"
+    finish
+  done
+}
+watchdog &
 
 section() { echo "CABOSSE-BEGIN $1"; }
 done_() { echo "CABOSSE-END $1"; }
