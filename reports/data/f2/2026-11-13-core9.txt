@@ -1,0 +1,62 @@
+# Core build 9 (main 941611a, M10 step 7 items 1+2 with the parent-pblock fix, 2026-11-13): stopped by our phys_opt gate.
+# From s3://cabosse-builds-628837661672/dcp/2026-11-13-core9/ (cabosse.log, vivado/2026_11_13-084127.vivado.log,
+# reports/). Checkpoints post_place and post_phys_opt are kept there (not in the repo).
+# Instance c6i.8xlarge, 08:40 to 11:56 UTC build, report scripts to 12:06 (about 3.5 h, about $5.5, estimate).
+
+## cabosse.log
+Command: place_design -directive SSI_SpreadLogic_high -no_bufg_opt
+INFO: [Place 30-746] Post Placement Timing Summary WNS=-0.596.
+post-place WNS -0.596 (2026-11-13T10:51:28Z)
+WARNING: [Place 46-14] The placer has determined that this design is highly congested and may have difficulty routing.
+Command: phys_opt_design -directive AggressiveExplore
+INFO: [Physopt 32-669] Post Physical Optimization Timing Summary | WNS=-0.317 | TNS=-60.203 | WHS=-1.165 | THS=-1340.661 |
+post-phys_opt WNS -0.317 (2026-11-13T11:54:29Z)
+CABOSSE-RESULT fail stopped early: post-phys_opt WNS -0.317 < -0.25
+
+## Step times (vivado log, elapsed)
+synth_design 00:18:49, opt_design 00:04:26, place_design 01:29:36 (peak 23975 MB), phys_opt_design 00:56:05 (peak 24543 MB)
+
+## phys_opt_design summary (cabosse.log)
+|  Optimization            |  WNS Gain (ns)  |  TNS Gain (ns)  |  Added Cells  |  Removed Cells  |  Optimized Cells/Nets  |  Dont Touch  |  Iterations  |  Elapsed   |
+|  Fanout                  |          0.000  |         77.361  |           55  |              0  |                    21  |           0  |           3  |  00:02:55  |
+|  Single Cell Placement   |          0.046  |        150.422  |            0  |              0  |                   836  |           0  |           4  |  00:06:38  |
+|  Multi Cell Placement    |          0.012  |          5.288  |            0  |              0  |                    39  |           0  |           4  |  00:02:14  |
+|  Rewire                  |          0.097  |         34.373  |           18  |              0  |                    42  |           0  |           3  |  00:03:47  |
+|  Critical Cell           |          0.044  |         26.716  |           64  |              0  |                    50  |           0  |           3  |  00:07:35  |
+|  SLR Crossing            |          0.000  |         23.366  |            4  |              0  |                   174  |           0  |           3  |  00:07:24  |
+|  DSP Register            |          0.000  |          5.462  |          117  |              0  |                    69  |           0  |           2  |  00:09:09  |
+|  BRAM Register           |          0.000  |          4.396  |           50  |              0  |                     3  |           0  |           2  |  00:00:23  |
+|  URAM Register           |          0.000  |          0.000  |            0  |              0  |                     0  |           0  |           2  |  00:00:02  |
+|  Shift Register          |          0.000  |          0.300  |            2  |              0  |                     2  |           0  |           2  |  00:00:14  |
+|  Critical Pin            |          0.000  |          0.150  |            0  |              0  |                     1  |           0  |           1  |  00:00:06  |
+|  Very High Fanout        |          0.000  |          0.000  |           24  |              0  |                    15  |           0  |           1  |  00:01:11  |
+|  BRAM Enable             |          0.000  |          0.000  |            0  |              0  |                     0  |           0  |           1  |  00:00:00  |
+|  Critical Path           |          0.080  |          0.937  |            2  |              0  |                     4  |           0  |           2  |  00:01:01  |
+|  Total                   |          0.279  |        328.772  |          336  |              0  |                  1256  |           0  |          33  |  00:42:39  |
+
+## fit check (reports/fit.rpt)
+leaf cells in the design: 1810401
+pblock_hbm: parent pblock_slr0, IS_SOFT 0, ranges CLOCKREGION_X0Y0:CLOCKREGION_X7Y0, leaf cells 13222
+pblock_slr0: parent pblock_CL, IS_SOFT 0, ranges SLICE_X118Y60:SLICE_X145Y119 SLICE_X206Y60:SLICE_X219Y119 SLICE_X221Y60:SLICE_X232Y119 SLICE_X120Y120:SLICE_X145Y179 URAM288_X2Y16:URAM288_X2Y47 DSP48E2_X30Y18:DSP48E2_X31Y41 DSP48E2_X16Y18:DSP48E2_X19Y65 RAMB36_X12Y12:RAMB36_X13Y23 RAMB36_X8Y12:RAMB36_X9Y35 RAMB18_X12Y24:RAMB18_X13Y47 RAMB18_X8Y24:RAMB18_X9Y71 CLOCKREGION_X0Y0:CLOCKREGION_X7Y0 CLOCKREGION_X5Y1:CLOCKREGION_X6Y1 CLOCKREGION_X0Y1:CLOCKREGION_X3Y2 CLOCKREGION_X5Y2:CLOCKREGION_X5Y2 CLOCKREGION_X0Y3:CLOCKREGION_X5Y3, leaf cells 589779
+pblock_slr1: parent pblock_CL, IS_SOFT 0, ranges SLICE_X122Y300:SLICE_X145Y359 URAM288_X2Y80:URAM288_X2Y95 DSP48E2_X16Y114:DSP48E2_X19Y137 RAMB36_X8Y60:RAMB36_X9Y71 RAMB18_X8Y120:RAMB18_X9Y143 CLOCKREGION_X0Y4:CLOCKREGION_X5Y4 CLOCKREGION_X0Y5:CLOCKREGION_X3Y5 CLOCKREGION_X5Y5:CLOCKREGION_X5Y5 CLOCKREGION_X0Y6:CLOCKREGION_X5Y7, leaf cells 2300
+pblock_slr1_core: parent pblock_slr1, IS_SOFT 0, ranges CLOCKREGION_X0Y4:CLOCKREGION_X4Y4 CLOCKREGION_X0Y5:CLOCKREGION_X3Y5 CLOCKREGION_X0Y6:CLOCKREGION_X4Y7, leaf cells 465694
+pblock_slr2: parent pblock_CL, IS_SOFT 0, ranges CLOCKREGION_X0Y8:CLOCKREGION_X7Y11, leaf cells 684552
+leaf cells in a pblock: 1755547 of 1810401
+
+## placer final-level congestion (reports/congestion.rpt; window, cells in it)
+South Long L5 (CLEL_R_X69Y146,CLEL_R_X83Y177) LUT 60% RAMB 0% URAM 0%: WRAPPER/CL/u_core/u_core/u_engine/gen_lane[38].u_lane(57%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[35].u_lane(21%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[32].u_lane(13%)
+West Long L5 (CLEM_X62Y601,CLEL_R_X76Y632) LUT 69% RAMB 41% URAM 100%: WRAPPER/CL/u_core/u_core/u_vec(76%),WRAPPER/CL/u_core/u_core/u_vec/gen_buf[15].u_banks(10%),WRAPPER/CL/u_core/u_core/u_vec/gen_buf[19].u_banks(7%)
+North Short L5 (CLEL_R_X40Y320,CLEM_X55Y351) LUT 84% RAMB NA URAM NA: WRAPPER/CL/u_core/u_core/u_engine/gen_lane[92].u_lane(36%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[85].u_lane(23%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[84].u_lane(18%)
+East Short L5 (CLEL_R_X23Y321,CLEL_R_X38Y352) LUT 81% RAMB 0% URAM 0%: WRAPPER/CL/u_core/u_core/u_engine/gen_lane[65].u_lane(48%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[88].u_lane(31%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[73].u_lane(9%)
+East Short L6 (CLEM_X27Y361,CLEM_X57Y424) LUT 80% RAMB 0% URAM NA: WRAPPER/CL/u_core/u_core/u_engine/gen_lane[111].u_lane(16%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[82].u_lane(16%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[80].u_lane(16%)
+West Short L5 (CLEL_R_X23Y326,CLEL_R_X38Y357) LUT 81% RAMB 0% URAM 0%: WRAPPER/CL/u_core/u_core/u_engine/gen_lane[65].u_lane(41%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[88].u_lane(41%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[73].u_lane(5%)
+West Short L6 (CLEM_X11Y315,CLEM_X41Y378) LUT 78% RAMB 0% URAM 0%: WRAPPER/CL/u_core/u_core/u_engine/gen_lane[74].u_lane(18%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[65].u_lane(18%),WRAPPER/CL/u_core/u_core/u_engine/gen_lane[88].u_lane(16%)
+
+## SLR connectivity (reports/pblock_slr1.rpt)
+| SLR2 <-> SLR1                    |  3309 |       |     23040 | 14.36 |
+|   SLR1 -> SLR2                   |  2295 |       |           |  9.96 |
+|   SLR2 -> SLR1                   |  1014 |       |           |  4.40 |
+| SLR1 <-> SLR0                    |  8734 |       |     23040 | 37.91 |
+|   SLR0 -> SLR1                   |  6669 |       |           | 28.95 |
+|   SLR1 -> SLR0                   |  2065 |       |           |  8.96 |
+| Total SLLs Used                  | 12043 |       |           |       |

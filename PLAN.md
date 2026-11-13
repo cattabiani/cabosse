@@ -2820,6 +2820,20 @@ only own cells, come first in the xdc; a test checks that each parent gets
 cells before its child. Summary: `reports/data/f2/2026-11-13-core8.txt`.
 Build 9 is build 8 with that fix (owner's OK, 2026-11-13).
 
+**Build 9 (2026-11-13, stopped by our phys_opt gate, about 3.5 h, about
+$5.5, estimate):** post-place WNS -0.596, post-phys_opt WNS -0.317 / TNS
+-60.2 (gate -0.25), so no route was tried. The empty-pblock bug is gone:
+`pblock_slr1_core` holds 465,694 leaf cells in 19 clock regions, `pblock_slr0`
+589,779, `pblock_slr2` 684,552, `pblock_hbm` 13,222. The placer's congestion
+(level 5-6) now sits inside `pblock_slr1_core` (LUT use 78-84%, lanes 65-111),
+not in the corridor; `u_vec` in SLR2 is level 5 (URAM 100%). Whether this
+floorplan routes is unknown. Checkpoints are in S3
+(`dcp/2026-11-13-core9/`). Summary: `reports/data/f2/2026-11-13-core9.txt`.
+`partpins.rpt` came out empty (its filter used a property that is probably
+not a pin property, and `-quiet` hid the error); `congestion.tcl` now reads
+the CL cell's pins by name and writes diagnostics (to verify on the next
+run).
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
