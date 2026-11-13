@@ -216,6 +216,18 @@ def port_slr(port: int) -> int:
 def lines() -> list[str]:
     out = [HEADER, pblocks()]
 
+    # Parents first: Vivado fits a child pblock into its parent's ranges when the
+    # child gets its first cells, and a parent without cells yet has none (build 8:
+    # pblock_slr1_core came out empty). pblock_slr1's only own cells are these.
+    out.append("# The host's stages (bringup_host.sv, HostStages = 2 per channel): the one")
+    out.append("# beside the port in SLR0, the other in pblock_slr1, towards PCIS (the")
+    out.append("# corridor's one user of ours). First, so pblock_slr1 has cells before its child.")
+    for name, near in (("u_ar", 1), ("u_aw", 1), ("u_w", 1), ("u_r", 0), ("u_b", 0)):
+        for s in (0, 1):
+            pat = esc(f"{F2}/u_host/{name}/gen_stage[{s}].") + "*"
+            out.append(assign(0 if s == near else slr_pblock(1), pat))
+    out.append("")
+
     out.append("# The engine: each group's lanes, DMAs and registers in the group's SLR")
     for p in range(PORTS):
         slr = port_slr(p)
@@ -259,20 +271,13 @@ def lines() -> list[str]:
             out.append(assign(HBM_PBLOCK, esc(f"{hbm}.gen_r_regs.gen_stage[0].") + "*"))
             out.append(assign(slr, esc(f"{hbm}.gen_r_regs.gen_stage[{last}].") + "*"))
     out.append("# Port 0: its write channels (beside the HBM; W's other stage in SLR0), the")
-    out.append("# merge, the host's side")
+    out.append("# merge, the host's logic beside the port")
     for name in ("u_aw", "u_b"):
         out.append(assign(HBM_PBLOCK, f"{F2}/{name}"))
     out.append(assign(HBM_PBLOCK, esc(f"{F2}/u_w/gen_stage[1].") + "*"))
     out.append(assign(0, esc(f"{F2}/u_w/gen_stage[0].") + "*"))
     out.append(assign(0, f"{F2}/u_port0"))
-    # bringup_host.sv: its logic beside the port; HostStages = 2 per channel,
-    # the stage beside the port in SLR0, the other in SLR1 (towards PCIS),
-    # the one of ours allowed in the corridor.
     out.append(assign_filtered(0, f"{F2}/u_host/*", [f"{F2}/u_host/u_*"]))
-    for name, near in (("u_ar", 1), ("u_aw", 1), ("u_w", 1), ("u_r", 0), ("u_b", 0)):
-        for s in (0, 1):
-            pat = esc(f"{F2}/u_host/{name}/gen_stage[{s}].") + "*"
-            out.append(assign(0 if s == near else slr_pblock(1), pat))
     out.append("# The vector unit's AXI: one stage per SLR")
     for name in ("u_v_ar", "u_v_aw", "u_v_w"):  # stage 0 beside the vector unit
         for s, slr in enumerate((2, 1, 0)):

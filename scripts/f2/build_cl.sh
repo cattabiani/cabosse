@@ -34,7 +34,7 @@ log=/var/log/cabosse-build.log
 save() {  # copy the logs so far to S3, over the last copies
   aws s3 cp --only-show-errors $out "$S3/cabosse.log"
   [ -d "$CL_DIR/build/scripts" ] && aws s3 cp --only-show-errors --recursive "$CL_DIR/build/scripts/" \
-    "$S3/vivado/" --exclude "*" --include "*.log"
+    "$S3/vivado/" --exclude "*" --include "*.log" --exclude ".Xil/*"
 }
 finish() {  # the last copies, then power off
   save

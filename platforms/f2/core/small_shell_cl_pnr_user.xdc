@@ -27,6 +27,20 @@ set_property PARENT [get_pblocks pblock_slr1] [get_pblocks pblock_slr1_core]
 resize_pblock pblock_slr1_core -add {CLOCKREGION_X0Y4:CLOCKREGION_X4Y4 CLOCKREGION_X0Y5:CLOCKREGION_X3Y5 CLOCKREGION_X0Y6:CLOCKREGION_X4Y7}
 set_property IS_SOFT FALSE [get_pblocks pblock_slr1_core]
 
+# The host's stages (bringup_host.sv, HostStages = 2 per channel): the one
+# beside the port in SLR0, the other in pblock_slr1, towards PCIS (the
+# corridor's one user of ours). First, so pblock_slr1 has cells before its child.
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_host/u_ar/gen_stage?0?.*}]
+add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_host/u_ar/gen_stage?1?.*}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_host/u_aw/gen_stage?0?.*}]
+add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_host/u_aw/gen_stage?1?.*}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_host/u_w/gen_stage?0?.*}]
+add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_host/u_w/gen_stage?1?.*}]
+add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_host/u_r/gen_stage?0?.*}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_host/u_r/gen_stage?1?.*}]
+add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_host/u_b/gen_stage?0?.*}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_host/u_b/gen_stage?1?.*}]
+
 # The engine: each group's lanes, DMAs and registers in the group's SLR
 add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_dma?0?.*}]
 add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_core/u_engine/gen_lane?0?.*}]
@@ -355,23 +369,13 @@ add_cells_to_pblock pblock_slr2 [get_cells {WRAPPER/CL/u_core/gen_hbm?31?.u_ar/g
 add_cells_to_pblock pblock_hbm [get_cells {WRAPPER/CL/u_core/gen_hbm?31?.gen_r_regs.gen_stage?0?.*}]
 add_cells_to_pblock pblock_slr2 [get_cells {WRAPPER/CL/u_core/gen_hbm?31?.gen_r_regs.gen_stage?3?.*}]
 # Port 0: its write channels (beside the HBM; W's other stage in SLR0), the
-# merge, the host's side
+# merge, the host's logic beside the port
 add_cells_to_pblock pblock_hbm [get_cells {WRAPPER/CL/u_core/u_aw}]
 add_cells_to_pblock pblock_hbm [get_cells {WRAPPER/CL/u_core/u_b}]
 add_cells_to_pblock pblock_hbm [get_cells {WRAPPER/CL/u_core/u_w/gen_stage?1?.*}]
 add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_w/gen_stage?0?.*}]
 add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_port0}]
 add_cells_to_pblock pblock_slr0 [get_cells -filter {NAME !~ "WRAPPER/CL/u_core/u_host/u_*"} {WRAPPER/CL/u_core/u_host/*}]
-add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_host/u_ar/gen_stage?0?.*}]
-add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_host/u_ar/gen_stage?1?.*}]
-add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_host/u_aw/gen_stage?0?.*}]
-add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_host/u_aw/gen_stage?1?.*}]
-add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_host/u_w/gen_stage?0?.*}]
-add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_host/u_w/gen_stage?1?.*}]
-add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_host/u_r/gen_stage?0?.*}]
-add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_host/u_r/gen_stage?1?.*}]
-add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_host/u_b/gen_stage?0?.*}]
-add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_host/u_b/gen_stage?1?.*}]
 # The vector unit's AXI: one stage per SLR
 add_cells_to_pblock pblock_slr2 [get_cells {WRAPPER/CL/u_core/u_v_ar/gen_stage?0?.*}]
 add_cells_to_pblock pblock_slr1_core [get_cells {WRAPPER/CL/u_core/u_v_ar/gen_stage?1?.*}]
