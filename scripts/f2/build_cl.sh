@@ -18,13 +18,15 @@
 # <cl>.<tag>.post_phys_opt.dcp), only the route runs: platforms/f2/route_cl.tcl
 # on that checkpoint, then AWS's --package-only makes the tarball under the
 # earlier build's tag (also from a .VIOLATED checkpoint: AWS accepts one for
-# an AFI, with a warning). A failed route keeps its partly routed checkpoint.
+# an AFI, with a warning). A failed route keeps its partly routed checkpoint
+# and route status for later analysis. S3 must be a new prefix, not the earlier
+# build's (its logs would be overwritten).
 
 REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga
 DESIGN=bringup                 # or core: platforms/f2/$DESIGN/, its top cabosse_$DESIGN.sv
 CL=cabosse_$DESIGN
-FROM_DCP=                      # s3://.../<cl>.<tag>.post_phys_opt.dcp: route only (above)
+FROM_DCP=                      # s3://.../<cl>.<tag>.post_phys_opt.dcp (or post_place): route only (above)
 ROUTE_DIRECT=AggressiveExplore # route_design directive with FROM_DCP (AWS's default for the full build)
 DEADLINE_MIN=$([ "$DESIGN" = core ] && echo 540 || echo 240)  # safety net: power off even if something hangs
 S3=                            # s3://bucket/dcp/<build>: everything goes there (the role writes dcp/ only)
@@ -39,6 +41,9 @@ out=/var/log/cabosse.log
 exec > >(tee -a $out > /dev/console) 2>&1
 log=/var/log/cabosse-build.log
 [ -n "$S3" ] || { echo "CABOSSE-RESULT fail S3 not set: nothing would outlive the instance"; shutdown -h now; exit 1; }
+case $FROM_DCP in  # no save(): it would overwrite the earlier build's log
+  "$S3"/*) echo "CABOSSE-RESULT fail S3 is FROM_DCP's own prefix: use a new one"; shutdown -h now; exit 1 ;;
+esac
 
 save() {  # copy the logs so far to S3, over the last copies
   aws s3 cp --only-show-errors $out "$S3/cabosse.log"
@@ -60,8 +65,8 @@ done_() { echo "CABOSSE-END $1"; }
 route_only() {  # FROM_DCP: route its placed checkpoint, then AWS's tarball (header)
   local src tag dir=$CL_DIR/build/checkpoints
   src=$(basename "$FROM_DCP")
-  tag=$(sed -nE "s/^$CL\.([0-9_-]+)\.post_[a-z_]+\.dcp$/\1/p" <<<"$src")
-  [ -n "$tag" ] || { echo "CABOSSE-RESULT fail FROM_DCP is not $CL.<tag>.post_<step>.dcp: $FROM_DCP"; finish; }
+  tag=$(sed -nE "s/^$CL\.([0-9_-]+)\.post_(place|phys_opt)\.dcp$/\1/p" <<<"$src")
+  [ -n "$tag" ] || { echo "CABOSSE-RESULT fail FROM_DCP is not $CL.<tag>.post_{place,phys_opt}.dcp: $FROM_DCP"; finish; }
   mkdir -p $dir $CL_DIR/build/reports
   aws s3 cp --only-show-errors "$FROM_DCP" $dir/ || { echo "CABOSSE-RESULT fail download $FROM_DCP"; finish; }
   echo "route $src (tag $tag), directive $ROUTE_DIRECT ($(date -u +%FT%TZ))"
@@ -69,10 +74,9 @@ route_only() {  # FROM_DCP: route its placed checkpoint, then AWS's tarball (hea
     -tclargs $dir/$src $dir $CL_DIR/build/reports $CL $tag $ROUTE_DIRECT >>$log 2>&1
   echo "route exit $?"
   grep "^CABOSSE-ROUTE" $tag.route.vivado.log
-  if [ -f $dir/$CL.$tag.post_route.dcp ] || [ -f $dir/$CL.$tag.post_route.VIOLATED.dcp ]; then
-    python3 aws_build_dcp_from_cl.py --cl $CL --mode small_shell --package-only --tag $tag $RECIPES >>$log 2>&1
-    echo "package exit $?"
-  fi
+  # Fails (exit 1) without a post_route or post_route.VIOLATED checkpoint.
+  python3 aws_build_dcp_from_cl.py --cl $CL --mode small_shell --package-only --tag $tag $RECIPES >>$log 2>&1
+  echo "package exit $?"
 }
 
 section setup
@@ -214,7 +218,7 @@ placed_dcp=$(cd $CL_DIR/build/checkpoints && ls *.post_phys_opt.dcp 2>/dev/null 
 [ -n "$placed_dcp" ] || placed_dcp=$(cd $CL_DIR/build/checkpoints && ls *.post_place.dcp 2>/dev/null | head -1)
 [ "$DESIGN" = core ] || placed_dcp=  # the bring-up design keeps its old behaviour
 [ -z "$FROM_DCP" ] || placed_dcp=  # route only: it and its reports are in S3 from its build
-failed=$(ls *.post_route.FAILED.dcp 2>/dev/null | head -1)  # route only (route_cl.tcl)
+failed=$(cd $CL_DIR/build/checkpoints && ls *.post_route.FAILED.dcp 2>/dev/null | head -1)  # route_cl.tcl
 [ -n "$failed" ] && aws s3 cp --only-show-errors $CL_DIR/build/checkpoints/$failed "$S3/$failed" &&
   echo "checkpoint $S3/$failed"
 if [ -z "$routed$violated" ] && [ "$DESIGN" = core ] && [ -z "$FROM_DCP" ]; then
