@@ -13,15 +13,24 @@
 # fail", if the route has negative slack (the shell flow's VIOLATED
 # checkpoint; PLAN.md, M8: slack >= 0 at 250 MHz), or stops early (the
 # watch, below). The instance powers off when done or at the deadline.
+#
+# With FROM_DCP set (a placed checkpoint of an earlier build in S3,
+# <cl>.<tag>.post_phys_opt.dcp), only the route runs: platforms/f2/route_cl.tcl
+# on that checkpoint, then AWS's --package-only makes the tarball under the
+# earlier build's tag (also from a .VIOLATED checkpoint: AWS accepts one for
+# an AFI, with a warning). A failed route keeps its partly routed checkpoint.
 
 REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga
 DESIGN=bringup                 # or core: platforms/f2/$DESIGN/, its top cabosse_$DESIGN.sv
 CL=cabosse_$DESIGN
+FROM_DCP=                      # s3://.../<cl>.<tag>.post_phys_opt.dcp: route only (above)
+ROUTE_DIRECT=AggressiveExplore # route_design directive with FROM_DCP (AWS's default for the full build)
 DEADLINE_MIN=$([ "$DESIGN" = core ] && echo 540 || echo 240)  # safety net: power off even if something hangs
 S3=                            # s3://bucket/dcp/<build>: everything goes there (the role writes dcp/ only)
 PLACE_WNS_MIN=-1.0             # ns: the build stops if placement ends below this (see "The watch")
 PHYS_WNS_MIN=-0.25             # ns: ... or phys_opt_design after it
+RECIPES="--clock_recipe_a A1 --clock_recipe_b B0 --clock_recipe_c C0 --clock_recipe_hbm H0"
 
 shutdown -h +$DEADLINE_MIN
 export HOME=/root  # cloud-init runs this without HOME; Vivado needs it
@@ -47,6 +56,24 @@ finish() {  # the last copies, then power off
 
 section() { echo "CABOSSE-BEGIN $1"; }
 done_() { echo "CABOSSE-END $1"; }
+
+route_only() {  # FROM_DCP: route its placed checkpoint, then AWS's tarball (header)
+  local src tag dir=$CL_DIR/build/checkpoints
+  src=$(basename "$FROM_DCP")
+  tag=$(sed -nE "s/^$CL\.([0-9_-]+)\.post_[a-z_]+\.dcp$/\1/p" <<<"$src")
+  [ -n "$tag" ] || { echo "CABOSSE-RESULT fail FROM_DCP is not $CL.<tag>.post_<step>.dcp: $FROM_DCP"; finish; }
+  mkdir -p $dir $CL_DIR/build/reports
+  aws s3 cp --only-show-errors "$FROM_DCP" $dir/ || { echo "CABOSSE-RESULT fail download $FROM_DCP"; finish; }
+  echo "route $src (tag $tag), directive $ROUTE_DIRECT ($(date -u +%FT%TZ))"
+  vivado -mode batch -nojournal -log $tag.route.vivado.log -source /root/cabosse/platforms/f2/route_cl.tcl \
+    -tclargs $dir/$src $dir $CL_DIR/build/reports $CL $tag $ROUTE_DIRECT >>$log 2>&1
+  echo "route exit $?"
+  grep "^CABOSSE-ROUTE" $tag.route.vivado.log
+  if [ -f $dir/$CL.$tag.post_route.dcp ] || [ -f $dir/$CL.$tag.post_route.VIOLATED.dcp ]; then
+    python3 aws_build_dcp_from_cl.py --cl $CL --mode small_shell --package-only --tag $tag $RECIPES >>$log 2>&1
+    echo "package exit $?"
+  fi
+}
 
 section setup
 date -u +%FT%TZ
@@ -89,10 +116,14 @@ export CABOSSE_BUILD=${commit:0:8}
 export CABOSSE_REPO=/root/cabosse
 export CABOSSE_DESIGN=$DESIGN
 cd $CL_DIR/build/scripts || { echo "CABOSSE-RESULT fail no build scripts"; finish; }
-# Its own session (process group), so the watch can stop it with its Vivado.
-setsid python3 aws_build_dcp_from_cl.py --cl $CL --mode small_shell --no-encrypt --aws_clk_gen \
-  --clock_recipe_a A1 --clock_recipe_b B0 --clock_recipe_c C0 --clock_recipe_hbm H0 &
-build_pid=$!
+build_pid=
+if [ -n "$FROM_DCP" ]; then
+  route_only
+else
+  # Its own session (process group), so the watch can stop it with its Vivado.
+  setsid python3 aws_build_dcp_from_cl.py --cl $CL --mode small_shell --no-encrypt --aws_clk_gen $RECIPES &
+  build_pid=$!
+fi
 # The watch: stop the build early, saving its hours, if the floorplan does
 # not apply (a critical warning on its file), or if the worst slack is
 # below PLACE_WNS_MIN after placement or PHYS_WNS_MIN after phys_opt_design
@@ -108,7 +139,7 @@ first_wns() {  # the first number after $1 in the Vivado log, without a trailing
 }
 below() { awk -v w="$1" -v m="$2" 'BEGIN {exit !(w + 0 < m + 0)}'; }
 placed= physd=
-while kill -0 $build_pid 2>/dev/null; do
+while [ -n "$build_pid" ] && kill -0 $build_pid 2>/dev/null; do
   sleep 60
   vlog=$(ls $CL_DIR/build/scripts/*.vivado.log 2>/dev/null | head -1)
   [ -n "$vlog" ] || continue
@@ -146,8 +177,10 @@ while kill -0 $build_pid 2>/dev/null; do
     break
   fi
 done
-wait $build_pid
-echo "build exit $?"
+if [ -n "$build_pid" ]; then  # not with FROM_DCP (a bare wait would wait for the save loop)
+  wait $build_pid
+  echo "build exit $?"
+fi
 date -u +%FT%TZ
 grep -hE "^(ERROR|CRITICAL WARNING)" $CL_DIR/build/scripts/*.vivado.log | sort | uniq -c | head -40
 grep -ho "peak = [0-9.]*" $CL_DIR/build/scripts/*.vivado.log | sort -k3 -n | tail -1  # MB
@@ -180,7 +213,11 @@ fi
 placed_dcp=$(cd $CL_DIR/build/checkpoints && ls *.post_phys_opt.dcp 2>/dev/null | head -1)
 [ -n "$placed_dcp" ] || placed_dcp=$(cd $CL_DIR/build/checkpoints && ls *.post_place.dcp 2>/dev/null | head -1)
 [ "$DESIGN" = core ] || placed_dcp=  # the bring-up design keeps its old behaviour
-if [ -z "$routed$violated" ] && [ "$DESIGN" = core ]; then
+[ -z "$FROM_DCP" ] || placed_dcp=  # route only: it and its reports are in S3 from its build
+failed=$(ls *.post_route.FAILED.dcp 2>/dev/null | head -1)  # route only (route_cl.tcl)
+[ -n "$failed" ] && aws s3 cp --only-show-errors $CL_DIR/build/checkpoints/$failed "$S3/$failed" &&
+  echo "checkpoint $S3/$failed"
+if [ -z "$routed$violated" ] && [ "$DESIGN" = core ] && [ -z "$FROM_DCP" ]; then
   for f in $(cd $CL_DIR/build/checkpoints && ls *.post_place.dcp *.post_phys_opt.dcp 2>/dev/null); do
     [ -f "$CL_DIR/build/checkpoints/$f" ] && [ "$f" != "$stopped" ] &&
       aws s3 cp --only-show-errors $CL_DIR/build/checkpoints/$f "$S3/$f" && echo "checkpoint $S3/$f"
