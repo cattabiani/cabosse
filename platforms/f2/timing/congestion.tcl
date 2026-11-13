@@ -8,8 +8,8 @@
 #   - pblocks_dsp.rpt: report_utilization -pblocks of each of our pblocks
 #     (LUTs, registers, DSPs, block RAM)
 #   - partpins.rpt: where the shell's partition pins sit, for the CL's PCIS,
-#     OCL and SDA interfaces (property HD.PARTPIN_LOCS, and the pins' own
-#     locations if that property is empty on the locked static part)
+#     OCL and SDA interfaces (property HD.PARTPIN_LOCS; the file starts with pin counts
+#     and a property list as a diagnostic)
 #   vivado -mode batch -source congestion.tcl -tclargs dcp.dcp
 # Each part runs on its own, so one that fails does not stop the others.
 
@@ -29,11 +29,18 @@ part pblocks {
   }
 }
 part partpins {
+  # Build 9's version filtered on "IS_PARTITION_PIN"; that is not a pin
+  # property (to verify), and -quiet hid the error, so the file came out
+  # empty. Take the CL cell's own pins by name instead, and write the
+  # counts and one pin's property list so an empty result explains itself.
   set out [open partpins.rpt w]
+  set cl [get_cells -quiet WRAPPER/CL]
+  set all [get_pins -quiet -of_objects $cl]
+  puts $out "CL cell: $cl, pins: [llength $all]"
+  if {[llength $all]} {puts $out "properties of [lindex $all 0]: [list_property [lindex $all 0]]"}
   foreach pat {*PCIS* *OCL* *SDA*} {
-    foreach pin [get_pins -quiet -hierarchical -filter "NAME =~ $pat && IS_PARTITION_PIN"] {
-      puts $out "[get_property NAME $pin] HD.PARTPIN_LOCS=[get_property HD.PARTPIN_LOCS $pin]\
-        LOC=[get_property LOC [get_cells -quiet -of_objects $pin]]"
+    foreach pin [get_pins -quiet -of_objects $cl -filter "NAME =~ $pat"] {
+      puts $out "[get_property NAME $pin] HD.PARTPIN_LOCS=[get_property HD.PARTPIN_LOCS $pin]"
     }
   }
   close $out
