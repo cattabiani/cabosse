@@ -20,7 +20,9 @@
 # earlier build's tag (also from a .VIOLATED checkpoint: AWS accepts one for
 # an AFI, with a warning). A failed route keeps its partly routed checkpoint
 # and route status for later analysis. S3 must be a new prefix, not the earlier
-# build's (its logs would be overwritten).
+# build's (its logs would be overwritten). The instance role needs
+# s3:GetObject on dcp/* for this mode, besides s3:PutObject (added to
+# cabosse-build-dcp's dcp-put policy on 2026-11-13).
 
 REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga
@@ -29,7 +31,7 @@ CL=cabosse_$DESIGN
 FROM_DCP=                      # s3://.../<cl>.<tag>.post_phys_opt.dcp (or post_place): route only (above)
 ROUTE_DIRECT=AggressiveExplore # route_design directive with FROM_DCP (AWS's default for the full build)
 DEADLINE_MIN=$([ "$DESIGN" = core ] && echo 540 || echo 240)  # safety net: power off even if something hangs
-S3=                            # s3://bucket/dcp/<build>: everything goes there (the role writes dcp/ only)
+S3=                            # s3://bucket/dcp/<build>: everything goes there (the role reads/writes dcp/ only)
 PLACE_WNS_MIN=-1.0             # ns: the build stops if placement ends below this (see "The watch")
 PHYS_WNS_MIN=-0.25             # ns: ... or phys_opt_design after it
 RECIPES="--clock_recipe_a A1 --clock_recipe_b B0 --clock_recipe_c C0 --clock_recipe_hbm H0"
