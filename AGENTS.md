@@ -130,6 +130,8 @@ one is wrong, say so and explain why, and let the owner decide.
   and Python-only changes, high for RTL and anything a paid build depends
   on. Read only the lines you need (search, line ranges), not whole files.
   Keep replies and status lines short.
+  Before suggesting `/clear`, bring the handoff notes up to date (state,
+  next step, open checks) and name the model and effort the next step needs.
 - When you make a decision that is not already in PLAN.md, write it down:
   either as a proposed decision for the owner to confirm, or as an open
   question.
