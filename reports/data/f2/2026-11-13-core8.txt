@@ -1,0 +1,21 @@
+# Core build 8 (main fd41df3, M10 step 7 item 2, 2026-11-13): opt_design refused to run (DRC HDPR-23).
+# From s3://cabosse-builds-628837661672/dcp/2026-11-13-core8/cabosse.log. No checkpoint uploaded.
+# Instance c6i.8xlarge, 23:57 to 00:36 UTC (about 40 min), about $1 (estimate).
+# Cause: pblock_slr1_core got its first cells (xdc line 111) before its parent pblock_slr1 (line 365);
+# Vivado fitted it into the parent's ranges then, while the parent had none, and it came out empty.
+# Fix (build 9): the parent's cells come first (scripts/f2/floorplan.py, test_parents_get_cells_first).
+
+## cabosse.log
+Command: link_design -mode default -reconfig_partitions WRAPPER/CL -top top
+INFO: [Constraints 18-12550] The child Pblock pblock_slr0 is resized to contain within the parent pblock pblock_CL, as the child pblock pblock_slr0 has the property SNAPPING_MODE = NESTED [/root/aws-fpga/hdk/cl/examples/cabosse_core/build/constraints/small_shell_cl_pnr_user.xdc:31]
+INFO: [Constraints 18-12550] The child Pblock pblock_slr1_core is resized to contain within the parent pblock pblock_slr1, as the child pblock pblock_slr1_core has the property SNAPPING_MODE = NESTED [/root/aws-fpga/hdk/cl/examples/cabosse_core/build/constraints/small_shell_cl_pnr_user.xdc:111]
+INFO: [Constraints 18-12550] The child Pblock pblock_slr2 is resized to contain within the parent pblock pblock_CL, as the child pblock pblock_slr2 has the property SNAPPING_MODE = NESTED [/root/aws-fpga/hdk/cl/examples/cabosse_core/build/constraints/small_shell_cl_pnr_user.xdc:171]
+INFO: [Constraints 18-12550] The child Pblock pblock_hbm is resized to contain within the parent pblock pblock_slr0, as the child pblock pblock_hbm has the property SNAPPING_MODE = NESTED [/root/aws-fpga/hdk/cl/examples/cabosse_core/build/constraints/small_shell_cl_pnr_user.xdc:230]
+INFO: [Constraints 18-12550] The child Pblock pblock_slr1 is resized to contain within the parent pblock pblock_CL, as the child pblock pblock_slr1 has the property SNAPPING_MODE = NESTED [/root/aws-fpga/hdk/cl/examples/cabosse_core/build/constraints/small_shell_cl_pnr_user.xdc:365]
+Command: opt_design
+INFO: [Common 17-14] Message 'DRC HDPR-18' appears 100 times and further instances of the messages will be disabled. Use the Tcl command set_msg_config to change the current settings.
+ERROR: [DRC HDPR-23] Nested Pblock ranges must be a subset of parent Pblock ranges: The child Pblock 'pblock_slr1_core' is not contained by the parent Pblock 'pblock_slr1'.
+Child ranges ''.
+INFO: [Project 1-461] DRC finished with 438379 Errors
+opt_design failed
+CABOSSE-RESULT fail no routed checkpoint

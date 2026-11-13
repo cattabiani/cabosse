@@ -67,3 +67,23 @@ def test_regions_match_f2_core() -> None:
         expr = m[1].strip()
         assert re.fullmatch(r"(Ports|\d+)(\s*[-+/]\s*(Ports|\d+))*", expr), expr
         assert eval(expr.replace("/", "//"), {"Ports": floorplan.PORTS}) == value, (name, expr)
+
+
+def test_parents_get_cells_first() -> None:
+    """Each child pblock of ours gets its first cells after its parent does
+    (build 8: pblock_slr1_core, filled first, was fitted into an empty parent)."""
+    text = "\n".join(floorplan.lines())
+    parents = {
+        child: parent
+        for parent, child in re.findall(
+            r"set_property PARENT \[get_pblocks (\S+)\] \[get_pblocks (\S+)\]", text
+        )
+    }
+    first = {}
+    for i, line in enumerate(floorplan.lines()):
+        if m := IN_PBLOCK.search(line):
+            first.setdefault(m[1], i)
+    children = [c for c, p in parents.items() if p in first]
+    assert sorted(children) == [floorplan.HBM_PBLOCK, floorplan.SLR1_CORE], parents
+    for child in children:
+        assert first[parents[child]] < first[child], (child, parents[child])

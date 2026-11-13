@@ -2790,7 +2790,7 @@ mechanical (Sonnet). The `floorplan.py` edit with the device's site
 ranges, the `Region2` change, the test run and the review of the xdc need
 the stronger model at high effort.
 
-**Done (step 7 item 2, code; build 8 not launched):** A: f2_core's
+**Done (step 7 item 2, code):** A: f2_core's
 `Region2` default is `Ports / 4 - Ports / 32` (7 at 32 ports; smaller
 configs unchanged), `floorplan.py`'s `REGION2` with it; group 7's read path
 has 4 stages. B: `pblock_slr1_core`, a hard child of `pblock_slr1`, is
@@ -2808,6 +2808,17 @@ ends on the same cycle (every region has the same registers). On F2 the
 slowest port's read path is one register longer (4 stages instead of 3).
 Tests: that engine test; the F2 wrapper decoding bit-exact with a group in
 each SLR (16 ports; `slow`, about 18 minutes); the floorplan's corridor.
+
+**Build 8 (2026-11-13, failed in about 40 min, about $1, estimate):**
+`opt_design` refused to run: DRC HDPR-23, `pblock_slr1_core` not inside
+`pblock_slr1`, with child ranges `''` (and 438379 follow-on errors). Vivado
+fits a child pblock into its parent when the child gets its first cells;
+`pblock_slr1_core` got them (xdc line 111) before its parent got any (line
+365), so it came out empty. `pblock_hbm` worked in build 7 because
+`pblock_slr0` already had cells. Fix: the host's SLR1 stages, `pblock_slr1`'s
+only own cells, come first in the xdc; a test checks that each parent gets
+cells before its child. Summary: `reports/data/f2/2026-11-13-core8.txt`.
+Build 9 is build 8 with that fix (owner's OK, 2026-11-13).
 
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
