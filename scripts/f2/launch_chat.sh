@@ -97,7 +97,7 @@ sg=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=$SG_NAME
   --query 'SecurityGroups[0].GroupId' --output text)
 if [ "$sg" = None ]; then
   sg=$(aws ec2 create-security-group --group-name "$SG_NAME" --vpc-id "$vpc" \
-    --description "Cabosse: SSH from the owner's address only" --query GroupId --output text)
+    --description "Cabosse: SSH from the owner address only" --query GroupId --output text)
   echo "made security group $SG_NAME: $sg"
 fi
 ip=$(curl -fsS https://checkip.amazonaws.com)
