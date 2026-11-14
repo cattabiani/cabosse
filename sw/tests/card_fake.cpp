@@ -14,7 +14,9 @@
 /// is a vector at a made-up physical address; when a token is done, the
 /// armed window's card memory is copied into it (at PCIM_HOST minus that
 /// address, which must land inside it) and PCIM_DONE set to its beats, or,
-/// with FAKE_PCIM_ERR set, nothing copied and PCIM_ERR set.
+/// with FAKE_PCIM_ERR set, nothing copied and PCIM_ERR set. With
+/// FAKE_NO_PCIM set, the PCIM registers read 0 and nothing is copied (a
+/// wrapper built before PCIM).
 
 #include <algorithm>
 #include <cstdlib>
@@ -58,7 +60,9 @@ class FakeCard final : public card::Card {
         if (token_reads_ > 0) --token_reads_;
         return s;
       }
-      default: return regs_[offset];
+      default:
+        if (no_pcim_ && offset >= card::kWrapPcimBaseLo && offset <= card::kWrapPcimErr) return 0;
+        return regs_[offset];
     }
   }
 
@@ -92,6 +96,7 @@ class FakeCard final : public card::Card {
   static constexpr uint64_t kPagePhys = 0x12'3460'0000;
   std::map<uint64_t, uint32_t> regs_;
   bool host_owns_ = true;  // the wrapper's reset value
+  bool no_pcim_ = std::getenv("FAKE_NO_PCIM") != nullptr;
   int token_reads_ = 0;    // STATUS reads left before the token is done
   static constexpr uint64_t kStatus = 0x0C;
   static constexpr uint32_t kBusy = 1, kDone = 2;
@@ -99,7 +104,7 @@ class FakeCard final : public card::Card {
   /// @brief The wrapper's PCIM copies of a token's window, all answered.
   void copy_window() {
     const uint64_t n = regs_[card::kWrapPcimBytes];
-    if (n == 0) return;
+    if (n == 0 || no_pcim_) return;
     const uint64_t base = uint64_t{regs_[card::kWrapPcimBaseHi]} << 32 | regs_[card::kWrapPcimBaseLo];
     const uint64_t host = uint64_t{regs_[card::kWrapPcimHostHi]} << 32 | regs_[card::kWrapPcimHostLo];
     if (host < kPagePhys || host - kPagePhys + n > page_.size()) throw std::runtime_error("PCIM's window outside the page");

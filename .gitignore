@@ -100,3 +100,4 @@ removeme*
 platforms/f2/host/bringup
 platforms/f2/host/core_driver
 platforms/f2/host/core_clock
+platforms/f2/host/pcis_bench

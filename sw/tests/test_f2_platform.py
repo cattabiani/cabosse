@@ -6,6 +6,9 @@ handovers of HBM port 0 (the fake fails a start while the host holds it,
 memory while the core does), a token's done only once it ran, and bad
 requests. The real card is M9's F2 run."""
 
+import json
+import subprocess
+import time
 from pathlib import Path
 
 import bulk
@@ -100,6 +103,44 @@ def test_output_after_a_pcim_error_reads_card_memory(
             platform.run_until_done()
             assert torch.equal(platform.read_output(addr, n), token), k
     assert "PCIM off for good" in capfd.readouterr().err
+
+
+def test_output_without_pcim_reads_card_memory_at_once(
+    driver: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """A wrapper built before PCIM (build 9's AFI): arming finds no PCIM and
+    turns it off for good, with no wait for copies that never come."""
+    for k, v in {**FAKE, "FAKE_NO_PCIM": "1"}.items():
+        monkeypatch.setenv(k, v)
+    addr, n = 0x2000, 64
+    with F2Platform(driver) as platform:
+        platform.read_output(addr, n)  # arms, finds none
+        for k in range(2):
+            token = torch.full((n,), k + 1, dtype=torch.uint8)
+            platform.mem_write(addr, token)
+            platform.reg_write(REG["CONTROL"], 1)
+            platform.run_until_done()
+            start = time.monotonic()
+            assert torch.equal(platform.read_output(addr, n), token), k
+            assert time.monotonic() - start < 1, "waited for copies"
+    assert "has no PCIM" in capfd.readouterr().err
+
+
+def test_pcis_bench(monkeypatch: pytest.MonkeyPatch) -> None:
+    """pcis_bench on the fake card: a JSON line a plan, all reads matching;
+    a plan this machine lacks is skipped and fails the run."""
+    bench = bulk.build_program("pcis_bench_fake", (HOST / "pcis_bench.cpp", FAKE_CARD))
+    for k, v in FAKE.items():
+        monkeypatch.setenv(k, v)
+    run = subprocess.run(
+        [bench, "4096", "3", "memcpy:1", "memcpy:2"], capture_output=True, text=True
+    )
+    assert run.returncode == 0, run.stderr
+    lines = [json.loads(line) for line in run.stdout.splitlines()]
+    assert [x["plan"] for x in lines] == ["memcpy:1", "memcpy:2"]
+    assert all(x["ok"] and x["bytes"] == 4096 and len(x["us"]) == 3 for x in lines)
+    run = subprocess.run([bench, "64", "1", "load64:1"], capture_output=True, text=True)
+    assert run.returncode == 1 and "skipped" in run.stderr
 
 
 def test_output_off_the_beats_reads_card_memory(platform: F2Platform) -> None:
