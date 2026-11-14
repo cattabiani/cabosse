@@ -3022,6 +3022,12 @@ host 283.0 / 260.4 / 201.2 at positions 0 / 46 / 1023 (run 4's host 224.3
 the README's new animation. launch_chat.sh now works from any AWS account
 (no bucket or role needed; docs/f2-chat.md).
 
+**Step 4, measured (2026-11-14, reports/data/local/2026-11-14-llama/):**
+llama.cpp b11672, SmolLM2-135M BF16, this PC, positions 0 / 46 / 1023:
+CPU (7800X3D) 244.0 / 241.0 / 186.7 tokens/s (79 / 78 / 61% of its 307
+bound); GPU (RTX 4070 Ti) 707.0 / 718.0 / 688.9 (38 / 39 / 37% of 1861).
+Peaks are datasheet values. Step 5: reports/M11.md.
+
 **Notes:** SmolLM2 is too small for a GPU to reach its bandwidth bound (per-token
 launch overhead dominates); the report says so, and the comparison on a
 larger model waits for M12. A cloud GPU or Inferentia2 run (Q-38) is
