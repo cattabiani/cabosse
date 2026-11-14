@@ -2864,8 +2864,8 @@ llama.cpp on the same host: 224.3 / 218.5 / 169.6 tokens/s; the core's
 cycles are 57-72% ahead, its wall clock is not. Summary:
 `reports/data/f2/2026-11-14-core-run4.txt`. Against M10's exit criteria:
 bit-exact yes; 250 MHz no (accepted, run at 200); ≥ 50% of the bound no
-(48%; the cycles a step, not the clock, are below 50%, and the perf model
-predicts this).
+(48%; the share does not depend on the clock: it is the cycles a step, and
+the perf model predicts 50%).
 
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
