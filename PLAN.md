@@ -857,6 +857,25 @@ slice M14 (D-036's M12). *Why:* the wall clock (83.3 tokens/s) is behind
 llama.cpp on the same host (224.3) because of the PCIS logits read (67% of a
 step); a comparison before Q-34 would measure the read, not the core.
 
+**D-077 (2026-11-14) — Build 10 (PCIM in hardware) is deferred; M11 runs
+on build 9's AFI and first tries a faster PCIS read in software** (owner,
+2026-11-14). The PCIM change (#164) stays merged and goes into the next
+core build that has to happen anyway (any M12 RTL change), not into a
+build of its own. M11's order: the manual chat on build 9's AFI; a
+software experiment on the logits read (wider loads, several threads
+reading disjoint slices) measured on the same F2 run; the local llama.cpp
+comparisons; the report. Build 10 is launched only if the logits read
+stays above about 2 ms a token after the experiment. *Why:* neither M11
+aim needs it. The chat works at 83 tokens/s; the comparison's metric
+(share of each device's bandwidth bound, tokens/s) does not change with
+it. The read is a single-threaded memcpy from an uncached BAR mapping, one
+PCIe round trip (~1 µs) per load, which explains 25 MB/s; wider and
+parallel loads may bring the 8 ms read to 1-2 ms (estimate) for about $1
+of F2 time, against $19-20 and ~12.5 h for build 10 (40% of M11's budget).
+Incremental implementation from core9r2's routed checkpoint was rejected:
+untested Tcl inside AWS's flow, and Vivado may not reuse a reference that
+misses timing by -0.682 ns (to verify, if ever needed).
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -2906,12 +2925,17 @@ run 4's summary, which came from the run's logs.
 Steps, each its own branch and PR:
 1. Q-34: `OUTPUT` writes the logits to a pinned host buffer through PCIM
    (a write engine in the F2 wrapper, the buffer's physical address, IOMMU
-   and hugepages checked). One core build, then an F2 run: bit-exact as in
-   M10, wall-clock tokens/s measured.
-2. A manual chat on F2: chat.py takes turns typed by the user; a script
-   launches an F2 instance, loads the AFI, gives the owner a shell on it and
-   powers it off at a deadline.
-3. Comparisons, SmolLM2-135M-Instruct, same positions and greedy decoding,
+   and hugepages checked). Code done (#164). Its core build (build 10) is
+   deferred to the next build that has to happen anyway (D-077).
+2. A manual chat on F2 on build 9's AFI (afi-0c855f8fc0c08bb6b): chat.py
+   takes turns typed by the user; a script launches an F2 instance, loads
+   the AFI, gives the owner a shell on it and powers it off at a deadline.
+3. A faster PCIS logits read in software (D-077): 64-byte loads where the
+   host has AVX-512 (else 32), several threads reading disjoint slices;
+   measured on the chat run's instance (read MB/s, ms a token, wall-clock
+   tokens/s), bit-exact against the golden model as in M10. Build 10 only
+   if the read stays above about 2 ms a token.
+4. Comparisons, SmolLM2-135M-Instruct, same positions and greedy decoding,
    llama.cpp b11672 everywhere (the version in `.tools/` and in
    cpu_baseline.sh): this PC's CPU (Ryzen 7 7800X3D) and GPU (RTX 4070 Ti,
    the CUDA build), and the F2 host's CPU (D-056; it runs inside every F2
@@ -2920,12 +2944,13 @@ Steps, each its own branch and PR:
    bandwidth over bytes read per token; peaks from datasheets, marked as
    such, measured where we can). Data-centre GPUs (A10G, H100) appear as
    bound rows from datasheets only, not measured.
-4. A short report for readers outside chip design: what was measured, on
+5. A short report for readers outside chip design: what was measured, on
    what, at what cost an hour, and what the numbers mean.
 
-**Done when:** logits through PCIM bit-exact on F2 with the wall clock
-measured; the owner has run a manual chat on F2; the comparison table covers
-the devices above, each number traceable to a saved log.
+**Done when:** the owner has run a manual chat on F2; the logits read is
+measured after the software experiment (and PCIM is bit-exact on F2 if
+build 10 was needed); the comparison table covers the devices above, each
+number traceable to a saved log.
 
 **Step 1, design (2026-11-14):** the copy is made in the F2 wrapper,
 `rtl/` unchanged: `f2_pcim.sv` copies each of the vector unit's write beats
