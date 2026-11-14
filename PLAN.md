@@ -838,6 +838,15 @@ against a measured F2 baseline, and only if the core clock is the limiter: it
 then redistributes the SLR1 load rather than sweeping router directives. *Why:*
 routability, not WNS, was the blocker; build 9 was stopped by our own gate.
 
+**D-075 (2026-11-14) — M10 closes at 200 MHz and 48% of the bandwidth
+bound** (owner, 2026-11-14; waives D-072's 250 MHz and ≥ 50% criteria, adds
+to D-074). Core run 4: bit-exact, 316.8 tokens/s from cycles over 1000
+tokens, 48% of the bound at 200 MHz (the perf model estimates 50%). *Why:* the
+gap to 50% is within the model's own error (4.5%), the core is 26% of a wall-clock
+step (the logits read over PCIS is 67%), so 2 points of the ratio move the
+wall clock by under 1%. Q-34 is the larger gain. Cycle work (x prefetch,
+`LaneBanks=3`) and 250 MHz stay open for a later measured need.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -2876,6 +2885,9 @@ cycles are 57-72% ahead, its wall clock is not. Summary:
 bit-exact yes; 250 MHz no (accepted, run at 200); ≥ 50% of the bound no
 (48%; the share does not depend on the clock: it is the cycles a step, and
 the perf model predicts 50%).
+
+- [x] Checkpoint: M10 closed at 200 MHz, 48% of the bound (D-075); the owner
+  accepted it (2026-11-14). Next: M11.
 
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
