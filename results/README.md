@@ -108,6 +108,14 @@ Logs: [baseline/](../reports/data/f2/2026-11-05-core-run3/baseline/).
 | build | date | clock | tokens/s, core (64 tokens) | tokens/s, end to end | bit-exact |
 |---|---|---|---|---|---|
 | core build 1 | 2026-11-05 | 100 MHz | 194.5 | 68.0 | yes |
+| core build 9 (M10) | 2026-11-14 | 200 MHz | 316.8 (see below) | 83.3 (see below) | yes |
+
+Build 9's figures are the 1000-token run, positions 45–1044 (build 1 on the
+same run: 173.8 and 65.4). Its routed design misses 250 MHz by 0.682 ns
+(about 213 MHz), so it runs at 200 MHz (D-074). That is 48% of the bandwidth
+bound at 200 MHz (the perf model estimates 50%), 57–72% ahead of llama.cpp on
+the same CPU by the core's cycles, and the logits read over PCIS still takes
+67% of a step. Log: [run 4](../reports/data/f2/2026-11-14-core-run4.txt).
 
 ## What it is built with, and the licences
 
