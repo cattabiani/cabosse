@@ -827,6 +827,17 @@ and its lesson (data movement dominates), not as a baseline. *Why:* the
 Gemmini run was a small thing, a model 500 times smaller on a 29.8 MHz
 soft core; normalized figures against it say little.
 
+**D-074 (2026-11-14) — Core timing at 250 MHz is accepted as missed; F2 runs
+set `clk_hbm_axi` below the achieved Fmax** (owner, 2026-11-14; D-065's H0
+recipe is unchanged). Build 9's floorplan is accepted because it routes
+(build 7's did not); its miss (-0.682 ns, about 213 MHz) is a floorplan-level
+miss. The build stays timed at 250 MHz, and the host sets `clk_hbm_axi` at
+run time (200 MHz in core run 4, D-064). The build gate after `phys_opt_design`
+moves from -0.25 to -0.6 ns (post-place stays -1.0). 250 MHz work resumes only
+against a measured F2 baseline, and only if the core clock is the limiter: it
+then redistributes the SLR1 load rather than sweeping router directives. *Why:*
+routability, not WNS, was the blocker; build 9 was stopped by our own gate.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -2846,9 +2857,8 @@ lane adders, DSP products, issue logic) and one in the host block. The first run
 pair (core9r) was stopped by its own deadline before the route finished
 (#155 made the deadline extendable). The packaged Developer_CL tarball (with
 the VIOLATED checkpoint) is in S3 (`dcp/2026-11-14-core9r2/`). Summary:
-`reports/data/f2/2026-11-14-core9r2.txt`. Next (step 7 items 3 and 5): an
-AFI from this tarball, and the first F2 run with `clk_hbm_axi` set below
-213 MHz at run time (D-064).
+`reports/data/f2/2026-11-14-core9r2.txt`. Step 7 items 3 (gate, D-074) and 5 (AFI and run, below)
+are done.
 
 **Core run 4 on F2 (2026-11-14, about $0.55, estimate):** AFI
 afi-0c855f8fc0c08bb6b / agfi-00e8542765d44a754 from the core9r2 tarball
