@@ -2927,6 +2927,24 @@ Steps, each its own branch and PR:
 measured; the owner has run a manual chat on F2; the comparison table covers
 the devices above, each number traceable to a saved log.
 
+**Step 1, design (2026-11-14):** the copy is made in the F2 wrapper,
+`rtl/` unchanged: `f2_pcim.sv` copies each of the vector unit's write beats
+inside a window (OUTPUT's logits; set by registers) to PCIM at a host
+physical address, and still writes HBM. One 64-byte PCIM write per 32-byte
+beat, half its strobes set (PCIM takes full 512-bit beats only; PCIe's
+contiguous byte enables hold). The host polls a count of the answered
+copies (`PCIM_DONE`) after the token's done, then reads a 2 MiB hugepage
+(physical address from `/proc/self/pagemap`, as AWS's fpga_dma library;
+no IOMMU in the way: cl_sde's C2H wrote such pages at 14.2 GB/s, M8).
+Clock crossing: `xpm_fifo_async`, one per channel, in the CL top. The
+runtime's new call `read_output` is a memory read on the other
+platforms. Estimates, to measure: 6144 copies of 32 bytes a token may
+stretch OUTPUT beyond its ~25 µs if PCIM takes small writes slower than
+the vector unit makes them (6.4 GB/s at 200 MHz); the wall clock loses the
+~13 ms PCIS read (Q-34). Untested until F2: the crossings, the shell's
+answers, bus mastering, the PCIe ordering of the count's read
+after the copies (relied on, not checked; bit-exactness will show).
+
 **Notes:** SmolLM2 is too small for a GPU to reach its bandwidth bound (per-token
 launch overhead dominates); the report says so, and the comparison on a
 larger model waits for M12. A cloud GPU or Inferentia2 run (Q-38) is
