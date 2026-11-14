@@ -44,7 +44,10 @@ namespace {
 constexpr int kSlot = 0;
 constexpr uint64_t kLine = 64;  ///< a PCIS beat, and a write-combining line
 constexpr uint64_t kHugePage = uint64_t{2} << 20;
-constexpr std::string_view kDefaultRead = "memcpy:1";  ///< M10's read, until pcis_bench measures
+/// The read plan when CABOSSE_PCIS_READ is unset: the fastest on the F2 host
+/// (pcis_bench, 2026-11-14 chat1 run: 0.22 ms for SmolLM2's logits, 896
+/// MB/s; memcpy:1 took 11.4 ms).
+constexpr std::string_view kDefaultRead = "stream32:8";
 constexpr uint64_t kPfnMask = (uint64_t{1} << 55) - 1, kPresent = uint64_t{1} << 63;  ///< pagemap's fields
 
 /// @brief Throw on a failed SDK call.

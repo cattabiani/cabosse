@@ -12,6 +12,7 @@
 # Environment (defaults): AGFI and AFI (core build 9's), MHZ (200),
 # DEADLINE_MIN (120), REF (main: the branch the instance clones; push it
 # first), PCIS_READ (empty: the driver's default plan), BENCH (1);
+# INTERACTIVE= (empty) runs the full measured run instead (M10's run 4);
 # DRY_RUN=1 prints the user data and calls nothing.
 #
 # On first use it makes the SSH key pair "cabosse" (private key in
@@ -29,7 +30,7 @@ DEADLINE_MIN=${DEADLINE_MIN:-120}
 REF=${REF:-main}
 PCIS_READ=${PCIS_READ:-}
 BENCH=${BENCH:-1}
-INTERACTIVE=1
+INTERACTIVE=${INTERACTIVE-1}             # empty: run_core.sh's full plan, chat recording and baselines, then power off
 
 PROFILE=cabosse
 REGION=eu-central-1

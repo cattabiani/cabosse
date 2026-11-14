@@ -62,7 +62,16 @@ finish() {
 }
 { while sleep 60; do save; done & } >>$log 2>&1
 
+# Progress: "[k/N] what (m:ss)" before each stage, N from the settings.
+t0=$SECONDS
+on() { [ -n "$1" ] && echo 1 || echo 0; }
+total=$((5 + 1 + $(on "$BENCH")))  # setup and load; the clock or the plan; the bench
+[ -z "$INTERACTIVE" ] && total=$((total + $(on "$CHAT") + $(on "$BASELINE")))
+k=0
+step() { k=$((k + 1)); printf '[%d/%d] %s (%d:%02d)\n' $k $total "$1" $(((SECONDS - t0) / 60)) $(((SECONDS - t0) % 60)); }
+
 echo "CABOSSE-BEGIN setup"
+step "clone the sources"
 date -u +%FT%TZ
 cd /root || exit 1
 git clone -q --depth 1 -b $REF https://github.com/cattabiani/cabosse.git >>$log 2>&1
@@ -72,21 +81,25 @@ git clone -q --depth 1 -b $AWS_FPGA_REF https://github.com/aws/aws-fpga.git >>$l
 aws_fpga=$(git -C aws-fpga rev-parse HEAD)
 echo "aws-fpga $aws_fpga"
 source /etc/profile >>$log 2>&1
+step "AWS FPGA SDK and host tools"
 cd aws-fpga && { source sdk_setup.sh >>$log 2>&1 || { echo "CABOSSE-RESULT fail sdk_setup failed"; tail -40 $log; finish; }; }
 { apt-get update -q && apt-get install -y -q g++-14; } >>$log 2>&1 || { echo "CABOSSE-RESULT fail g++-14 install failed"; tail -20 $log; finish; }
 make -C /root/cabosse/platforms/f2/host CXX=g++-14 core_driver core_clock pcis_bench >>$log 2>&1 \
   || { echo "CABOSSE-RESULT fail host tools build failed"; tail -40 $log; finish; }
+step "Python environment"
 { curl -LsSf https://astral.sh/uv/$UV_VERSION/install.sh | env UV_INSTALL_DIR=/root/.local/bin sh \
   && /root/.local/bin/uv venv -q -p $PYTHON_VERSION /root/venv \
   && /root/.local/bin/uv pip install -q -p /root/venv/bin/python --index-strategy unsafe-best-match -r /root/cabosse/requirements.txt; } >>$log 2>&1 \
   || { echo "CABOSSE-RESULT fail venv failed"; tail -40 $log; finish; }
 export CABOSSE_WEIGHTS=/root/weights
+step "download SmolLM2-135M-Instruct"
 /root/venv/bin/hf download $MODEL --revision $MODEL_REVISION --local-dir $CABOSSE_WEIGHTS/SmolLM2-135M-Instruct \
   >>$log 2>&1 || { echo "CABOSSE-RESULT fail model download failed"; tail -20 $log; finish; }
 /root/venv/bin/python --version
 echo "CABOSSE-END setup"
 
 echo "CABOSSE-BEGIN load"
+step "load the FPGA image"
 fpga-clear-local-image -S 0 -H
 fpga-load-local-image -S 0 -I $AGFI -H || { echo "CABOSSE-RESULT fail AFI load"; finish; }
 fpga-describe-local-image -S 0 -R -H | tee /root/describe.txt
@@ -109,6 +122,7 @@ echo "CABOSSE-END pcim"
 run_bench() {
   # The clock is set and no driver runs. It overwrites card memory at
   # address 0: a chat after it loads every weight again (Runtime.open).
+  step "PCIS read bench"
   echo "CABOSSE-BEGIN bench"
   /root/cabosse/platforms/f2/host/pcis_bench 196608 9 $BENCH_PLANS | tee /root/pcis_bench.jsonl
   bench_status=${PIPESTATUS[0]}
@@ -130,6 +144,7 @@ bench_status=0
 
 if [ -n "$INTERACTIVE" ]; then
   echo "CABOSSE-BEGIN interactive"
+  step "set the clock to $MHZ MHz"
   /root/cabosse/platforms/f2/host/core_clock $MHZ | tee /root/clock.json
   [ "${PIPESTATUS[0]}" = 0 ] || { echo "CABOSSE-RESULT fail clock"; finish; }
   aws s3 cp --only-show-errors /root/clock.json "$S3/clock.json"
@@ -158,6 +173,7 @@ CHAT_EOF
 fi
 
 echo "CABOSSE-BEGIN plan"
+step "measurements (core_plan.py)"
 /root/venv/bin/python /root/cabosse/scripts/f2/core_plan.py /root/core.jsonl --mhz $MHZ $QUICK
 status=$?
 echo "plan exit $status"
@@ -168,6 +184,7 @@ echo "CABOSSE-END plan"
 chat_status=0
 if [ -n "$CHAT" ]; then
   echo "CABOSSE-BEGIN chat"
+  step "chat recording"
   S3=$S3/chat /root/venv/bin/python /root/cabosse/scripts/f2/chat.py /root/chat --mhz $MHZ
   chat_status=$?
   aws s3 cp --only-show-errors --recursive /root/chat "$S3/chat"
@@ -177,6 +194,7 @@ fi
 baseline_status=0
 if [ -n "$BASELINE" ]; then
   echo "CABOSSE-BEGIN baseline"
+  step "CPU baselines"
   /root/cabosse/scripts/f2/cpu_baseline.sh /root/baseline
   baseline_status=$?
   aws s3 cp --only-show-errors --recursive /root/baseline "$S3/baseline"
