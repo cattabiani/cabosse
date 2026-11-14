@@ -65,6 +65,33 @@ def test_token_between_memory(platform: F2Platform) -> None:
     assert torch.equal(platform.mem_read(0x2000, 64).view(torch.float32), logits)
 
 
+def test_output_through_pcim(platform: F2Platform) -> None:
+    """The first output read arms the PCIM window and reads card memory; after
+    a token, the next comes from the host page (the fake's copy at the
+    token's end): card memory changed after the token does not show."""
+    addr, n = 0x2000, 256
+    first = torch.arange(n // 4, dtype=torch.float32)
+    platform.mem_write(addr, first.view(torch.uint8))
+    assert torch.equal(platform.read_output(addr, n).view(torch.float32), first)
+    for k in range(2):
+        token = first + 100 * (k + 1)
+        platform.mem_write(addr, token.view(torch.uint8))
+        platform.reg_write(REG["CONTROL"], 1)
+        platform.run_until_done()
+        platform.mem_write(addr, torch.zeros(n, dtype=torch.uint8))  # after the copy
+        assert torch.equal(platform.read_output(addr, n).view(torch.float32), token), k
+
+
+def test_output_off_the_beats_reads_card_memory(platform: F2Platform) -> None:
+    """A window not in whole 32-byte beats is never armed: PCIS each time."""
+    data = torch.arange(7, dtype=torch.uint8)
+    platform.mem_write(3, data)
+    platform.reg_write(REG["CONTROL"], 1)
+    platform.run_until_done()
+    for _ in range(2):
+        assert torch.equal(platform.read_output(3, 7), data)
+
+
 @pytest.mark.parametrize(
     "words",
     [(3, 0x4000 - 4, 0, 8), (5, 15, 0, 16), (7,), (99,)],

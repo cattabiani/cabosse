@@ -9,15 +9,26 @@
 /// last lines byte by byte, which PCIS carries as byte strobes (M8). After
 /// the stores a fence and a read of the last line's word: the posted writes
 /// before it are done. Reads go through a line-aligned copy.
+///
+/// The host page for PCIM: one 2 MiB hugepage (vm.nr_hugepages at least 1),
+/// mapped populated and locked, its physical address from
+/// /proc/self/pagemap (root only: others read frame 0), as AWS's fpga_dma
+/// library does. The F2 guest has no IOMMU in the way: AWS's cl_sde wrote
+/// such pages through PCIM at 14 GB/s (M8, reports/data/f2/2026-10-05-cl_sde.txt).
 
+#include <fcntl.h>
 #include <immintrin.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 #include <fpga_mgmt.h>
 #include <fpga_pci.h>
 
 #include <algorithm>
+#include <cerrno>
 #include <cstring>
 #include <format>
+#include <print>
 #include <stdexcept>
 #include <vector>
 
@@ -27,6 +38,8 @@ namespace {
 
 constexpr int kSlot = 0;
 constexpr uint64_t kLine = 64;  ///< a PCIS beat, and a write-combining line
+constexpr uint64_t kHugePage = uint64_t{2} << 20;
+constexpr uint64_t kPfnMask = (uint64_t{1} << 55) - 1, kPresent = uint64_t{1} << 63;  ///< pagemap's fields
 
 /// @brief Throw on a failed SDK call.
 /// @param rc the call's return code.
@@ -59,6 +72,7 @@ class F2Card final : public card::Card {
     if (!__builtin_cpu_supports("avx2")) throw std::runtime_error("PCIS writes need AVX2");
   }
   ~F2Card() override {
+    if (!page_.bytes.empty()) munmap(page_.bytes.data(), page_.bytes.size());
     fpga_pci_detach(pcis_);
     fpga_pci_detach(ocl_);
   }
@@ -100,9 +114,35 @@ class F2Card final : public card::Card {
     std::ranges::copy(std::span(lines).subspan(addr - first, data.size()), data.begin());
   }
 
+  card::HostPage host_page() override {
+    if (page_tried_) return page_;
+    page_tried_ = true;
+    void* va = mmap(nullptr, kHugePage, PROT_READ | PROT_WRITE,
+                    MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_POPULATE | MAP_LOCKED, -1, 0);
+    if (va == MAP_FAILED) {
+      std::println(stderr, "no PCIM page: a 2 MiB hugepage: {} (vm.nr_hugepages?)", std::strerror(errno));
+      return page_;
+    }
+    std::memset(va, 0, kHugePage);
+    uint64_t entry = 0;
+    const int fd = open("/proc/self/pagemap", O_RDONLY);
+    const off_t at = static_cast<off_t>(reinterpret_cast<uintptr_t>(va) / sysconf(_SC_PAGESIZE) * sizeof(entry));
+    const bool read_ok = fd >= 0 && pread(fd, &entry, sizeof(entry), at) == sizeof(entry);
+    if (fd >= 0) close(fd);
+    if (!read_ok || !(entry & kPresent) || (entry & kPfnMask) == 0) {
+      std::println(stderr, "no PCIM page: no physical address in /proc/self/pagemap (not root?)");
+      munmap(va, kHugePage);
+      return page_;
+    }
+    page_ = {std::span(static_cast<std::byte*>(va), kHugePage), (entry & kPfnMask) * static_cast<uint64_t>(sysconf(_SC_PAGESIZE))};
+    return page_;
+  }
+
  private:
   pci_bar_handle_t ocl_ = PCI_BAR_HANDLE_INIT;
   pci_bar_handle_t pcis_ = PCI_BAR_HANDLE_INIT;
+  card::HostPage page_;
+  bool page_tried_ = false;
 
   /// @brief Card memory [offset, offset + n) mapped.
   std::byte* map(uint64_t offset, uint64_t n) {

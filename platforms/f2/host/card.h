@@ -3,8 +3,8 @@
 
 /// @file
 /// @brief What core_driver.cpp needs from the card: the OCL registers (the
-/// core's below kWrapperBase, the wrapper's above) and card memory through
-/// PCIS. card_f2.cpp implements it with AWS's SDK on the F2 instance;
+/// core's below kWrapperBase, the wrapper's above), card memory through
+/// PCIS, and a page of host memory for PCIM's writes. card_f2.cpp implements it with AWS's SDK on the F2 instance;
 /// sw/tests/card_fake.cpp with plain memory, for tests on any machine.
 #pragma once
 
@@ -24,8 +24,22 @@ inline constexpr uint64_t kWrapStatus = kWrapperBase + 0x0C;    ///< bit 1 HBM r
 inline constexpr uint64_t kWrapPorts = kWrapperBase + 0x18;     ///< the core's Ports
 inline constexpr uint64_t kWrapChanW = kWrapperBase + 0x1C;     ///< its ChanW
 inline constexpr uint64_t kWrapLen = kWrapperBase + 0x20;       ///< its Len
+// PCIM's window (M11): card memory [BASE, BASE + BYTES) copied to host HOST + offset
+inline constexpr uint64_t kWrapPcimBaseLo = kWrapperBase + 0x24;
+inline constexpr uint64_t kWrapPcimBaseHi = kWrapperBase + 0x28;
+inline constexpr uint64_t kWrapPcimBytes = kWrapperBase + 0x2C;   ///< 0: no copies
+inline constexpr uint64_t kWrapPcimHostLo = kWrapperBase + 0x30;  ///< a physical address
+inline constexpr uint64_t kWrapPcimHostHi = kWrapperBase + 0x34;
+inline constexpr uint64_t kWrapPcimDone = kWrapperBase + 0x38;    ///< copies answered OKAY; a write clears it and ERR
+inline constexpr uint64_t kWrapPcimErr = kWrapperBase + 0x3C;     ///< copies answered with an error
 inline constexpr uint32_t kWrapIdValue = 0xCAB0'C0E0;
 inline constexpr uint32_t kWrapHbmReady = 2, kWrapHostOwns = 8;
+
+/// @brief Host memory the card writes through PCIM: physically contiguous.
+struct HostPage {
+  std::span<std::byte> bytes;  ///< empty: none
+  uint64_t phys = 0;           ///< the physical address of its first byte
+};
 
 /// @brief The card's registers and memory.
 class Card {
@@ -40,6 +54,9 @@ class Card {
   virtual void write(uint64_t addr, std::span<const std::byte> data) = 0;
   /// @brief Read card memory at a global HBM address, through PCIS.
   virtual void read(uint64_t addr, std::span<std::byte> data) = 0;
+  /// @brief The page PCIM writes into (made on the first call); empty if
+  /// there is none, with the reason on stderr.
+  virtual HostPage host_page() = 0;
 };
 
 /// @brief The card in slot 0, attached (card_f2.cpp or the fake).
