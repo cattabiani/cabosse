@@ -3016,7 +3016,7 @@ cycles are ~2.9 ms at 200 MHz). The read is now far under D-077's 2 ms:
 build 10 is not needed for M11. stream32:8 is the driver's default.
 Run 5 (2026-11-14, full run_core.sh, reports/data/f2/2026-11-14-core-run5.txt):
 all fixtures and the 1000-token run bit-exact through stream32:8; end to
-end 259.2 tokens/s over the 1000 tokens (run 4: 83.3); llama.cpp on that
+end 258.9 tokens/s over the 1000 tokens (mean, positions 45–1044) (run 4: 83.3); llama.cpp on that
 host 283.0 / 260.4 / 201.2 at positions 0 / 46 / 1023 (run 4's host 224.3
 / 218.5 / 169.6: the CPU baseline moves between instances). Its chat is
 the README's new animation. launch_chat.sh now works from any AWS account

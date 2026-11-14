@@ -27,15 +27,14 @@ To run it yourself on F2: [docs/f2-chat.md](../docs/f2-chat.md).
 project's golden model (the bit-exact reference in PyTorch): three 64-token
 prompts and one 1000-token generation, in each of two F2 sessions.
 
-| | first 64 tokens | positions 46–1045 |
-|---|---|---|
-| tokens/s, the core alone (its cycle counter at 100 MHz) | 194.5 | 173.8 |
-| cycles per token (median) | 514,027 | 575,374 |
-| tokens/s, end to end on the host | 68.0 | 65.4 |
+| | 1000-token run, positions 45–1044 |
+|---|---|
+| tokens/s, the core alone (its cycle counter at 100 MHz) | 174.2 |
+| tokens/s, end to end on the host | 65.4 |
 
 "End to end" is the host's wall time per token. It includes reading the
 196 KB of logits back over PCIe at about 22 MB/s, which takes most of the
-time today; the core's own time is about 5 ms a token. In the chat, the
+time today; the core's own time is about 5.7 ms a token. In the chat, the
 median is 13.9 ms a token.
 
 | | |
@@ -107,14 +106,14 @@ Logs: [baseline/](../reports/data/f2/2026-11-05-core-run3/baseline/).
 
 ### History
 
-| build | date | clock | tokens/s, core (64 tokens) | tokens/s, end to end | bit-exact |
+| build | date | clock | tokens/s, core | tokens/s, end to end | bit-exact |
 |---|---|---|---|---|---|
-| core build 1 | 2026-11-05 | 100 MHz | 194.5 | 68.0 | yes |
-| core build 9 (M10) | 2026-11-14 | 200 MHz | 316.8 (see below) | 83.3 (see below) | yes |
-| core build 9, faster logits read (M11) | 2026-11-14 | 200 MHz | 316.0 | 259.2 | yes |
+| core build 1 | 2026-11-05 | 100 MHz | 174.2 | 65.4 | yes |
+| core build 9 (M10) | 2026-11-14 | 200 MHz | 316.8 | 83.3 | yes |
+| core build 9, faster logits read (M11) | 2026-11-14 | 200 MHz | 316.8 | 258.9 | yes |
 
-Build 9's figures are the 1000-token run, positions 45–1044 (build 1 on the
-same run: 173.8 and 65.4). Its routed design misses 250 MHz by 0.682 ns
+All figures are the 1000-token run, tokens over total time at positions
+45–1044. Its routed design misses 250 MHz by 0.682 ns
 (about 213 MHz), so it runs at 200 MHz (D-074). That is 48% of the bandwidth
 bound at 200 MHz (the perf model estimates 50%), 57–72% ahead of llama.cpp on
 the same CPU by the core's cycles, and the logits read over PCIS still takes
@@ -122,7 +121,7 @@ the same CPU by the core's cycles, and the logits read over PCIS still takes
 
 Same build and clock, M11: the host reads the logits with 32-byte
 streaming loads on 8 threads (0.22 ms for 196,608 bytes instead of 11.4
-ms), so the end-to-end rate rises from 83.3 to 259.2 tokens/s on the same
+ms), so the end-to-end rate rises from 83.3 to 258.9 tokens/s on the same
 1000-token run, all of it still bit-exact. The core is now 82% of a step.
 llama.cpp on that run's host CPU made 283.0, 260.4 and 201.2 tokens/s at
 positions 0, 46 and 1023 (run 4's host: 224.3, 218.5, 169.6): end to end,
