@@ -2834,6 +2834,22 @@ not a pin property, and `-quiet` hid the error); `congestion.tcl` now reads
 the CL cell's pins by name and writes diagnostics (to verify on the next
 run).
 
+**Route-only run core9r2 (2026-11-13/14, routed, about 8.3 h, about $13,
+estimate):** build 9's post_phys_opt checkpoint, routed from S3 with
+`FROM_DCP` (`route_design -directive AggressiveExplore`, 7 h 32 min, peak
+23 GB). All 1,452,181 routable nets routed, 0 routing errors: build 9's
+floorplan routes where build 7's did not. Timing misses: WNS -0.682 ns, TNS
+-2798 ns, 14,782 of 1,828,017 endpoints failing, all on `clk_hbm_axi`
+(4 ns); hold met (WHS +0.001). That is a design Fmax of about 213 MHz
+(1 / 4.682 ns). The 12 worst path groups are in the engine (scale FMAs,
+lane adders, DSP products, issue logic) and one in the host block. The first run in this
+pair (core9r) was stopped by its own deadline before the route finished
+(#155 made the deadline extendable). The packaged Developer_CL tarball (with
+the VIOLATED checkpoint) is in S3 (`dcp/2026-11-14-core9r2/`). Summary:
+`reports/data/f2/2026-11-14-core9r2.txt`. Next (step 7 items 3 and 5): an
+AFI from this tarball, and the first F2 run with `clk_hbm_axi` set below
+213 MHz at run time (D-064).
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.
