@@ -21,7 +21,9 @@
 /// start the driver clears PCIM_DONE (after waiting for the last token's
 /// copies if no read took them). No page (card.h), a window that does not
 /// fit it, or one not in whole 32-byte beats: every output read is a PCIS
-/// read. Arming prints the window on stderr.
+/// read. A PCIM error response, or copies missing 5 s after a token, turn
+/// PCIM off for good (PCIS from then on), a failed token until the next
+/// read. Arming and turning off print on stderr.
 ///
 /// Exits 2 on a bad request (an unknown opcode, an address out of range,
 /// input cut short), 3 if a run or a port handover takes longer than its
@@ -36,6 +38,7 @@
 #include <print>
 #include <span>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -73,6 +76,7 @@ struct Driver {
   card::HostPage page{};  ///< PCIM's destination (empty until the first output read)
   uint64_t win_addr = 0, win_bytes = 0;  ///< PCIM's window (0 bytes: not armed)
   bool pending = false;   ///< a token started since its copies were last read
+  bool failed = false;    ///< PCIM gave up on: output reads through PCIS only
 
   /// @brief Give HBM port 0 to the host (PCIS) or to the core, and wait
   /// until the wrapper's STATUS shows it.
@@ -118,25 +122,37 @@ struct Driver {
   }
 
   /// @brief Arm PCIM's window at card memory [addr, addr + n), copied to
-  /// the page's first n bytes.
-  void arm(uint64_t addr, uint64_t n) {
+  /// the page's first n bytes, which start as `now` (the window's bytes,
+  /// just read through PCIS).
+  void arm(uint64_t addr, std::span<const std::byte> now) {
+    if (pending && !wait_copies()) return;  // the last window's copies first
     card.poke(card::kWrapPcimBaseLo, static_cast<uint32_t>(addr));
     card.poke(card::kWrapPcimBaseHi, static_cast<uint32_t>(addr >> 32));
-    card.poke(card::kWrapPcimBytes, static_cast<uint32_t>(n));
+    card.poke(card::kWrapPcimBytes, static_cast<uint32_t>(now.size()));
     card.poke(card::kWrapPcimHostLo, static_cast<uint32_t>(page.phys));
     card.poke(card::kWrapPcimHostHi, static_cast<uint32_t>(page.phys >> 32));
     card.poke(card::kWrapPcimDone, 0);
+    std::ranges::copy(now, page.bytes.begin());
     win_addr = addr;
-    win_bytes = n;
+    win_bytes = now.size();
     pending = false;
-    std::println(stderr, "PCIM: card 0x{:X} + {} bytes to host 0x{:X}", addr, n, page.phys);
+    std::println(stderr, "PCIM: card 0x{:X} + {} bytes to host 0x{:X}", addr, now.size(), page.phys);
+  }
+
+  /// @brief Stop PCIM's copies; output reads go through PCIS (and arm
+  /// again, unless `for_good`).
+  void disarm(const std::string& why, bool for_good) {
+    card.poke(card::kWrapPcimBytes, 0);
+    win_bytes = 0;
+    pending = false;
+    failed = failed || for_good;
+    std::println(stderr, "PCIM off{}: {}", for_good ? " for good, logits through PCIS" : "", why);
   }
 
   /// @brief Before a start: the last token's copies all answered, then the
   /// count cleared.
   void start_copies() {
-    if (win_bytes == 0) return;
-    if (pending) wait_copies();
+    if (win_bytes == 0 || (pending && !wait_copies())) return;
     card.poke(card::kWrapPcimDone, 0);
     pending = true;
   }
@@ -144,24 +160,26 @@ struct Driver {
   /// @brief Wait until PCIM_DONE counts the window's beats. Its read's
   /// completion follows PCIM's writes on the link (PCIe ordering: a
   /// completion does not pass posted writes), so the page holds them then.
-  /// @throws std::runtime_error on an error response or too many copies.
-  /// @throws Hang after kCopiesTimeout.
-  void wait_copies() {
+  /// @return false, PCIM disarmed for good, on an error response, too many
+  /// copies or none for kCopiesTimeout: the run goes on through PCIS.
+  bool wait_copies() {
     const uint64_t beats = win_bytes / kBeatBytes;
     const auto start = std::chrono::steady_clock::now();
     for (;;) {
       if (const uint32_t e = card.peek(card::kWrapPcimErr); e != 0) {
-        throw std::runtime_error(std::format("PCIM: {} error responses", e));
+        disarm(std::format("{} error responses", e), true);
+        return false;
       }
       const uint32_t done = card.peek(card::kWrapPcimDone);
       if (done == beats) break;
-      if (done > beats) throw std::runtime_error(std::format("PCIM: {} copies, the window has {} beats", done, beats));
-      if (std::chrono::steady_clock::now() - start > kCopiesTimeout) {
-        throw Hang(std::format("PCIM: {} of {} copies answered", done, beats));
+      if (done > beats || std::chrono::steady_clock::now() - start > kCopiesTimeout) {
+        disarm(std::format("{} of {} copies answered", done, beats), true);
+        return false;
       }
     }
     pending = false;
     std::atomic_thread_fence(std::memory_order_acquire);
+    return true;
   }
 
   /// @brief An output read (request 8): from the page once armed there.
@@ -170,15 +188,15 @@ struct Driver {
     const auto [addr, n] = range("output read");
     std::vector<uint32_t> words((n + 3) / 4);
     const auto out = std::as_writable_bytes(std::span(words)).first(n);
-    if (win_bytes != 0 && addr == win_addr && n == win_bytes) {
-      if (pending) wait_copies();
+    if (win_bytes != 0 && addr == win_addr && n == win_bytes && (!pending || wait_copies())) {
       std::ranges::copy(page.bytes.first(n), out.begin());
       return words;
     }
     own(true);
     card.read(addr, out);
+    if (failed || n == 0 || addr % kBeatBytes != 0 || n % kBeatBytes != 0) return words;
     if (page.bytes.empty()) page = card.host_page();
-    if (n > 0 && n <= page.bytes.size() && addr % kBeatBytes == 0 && n % kBeatBytes == 0) arm(addr, n);
+    if (n <= page.bytes.size()) arm(addr, out);
     return words;
   }
 
@@ -223,6 +241,8 @@ struct Driver {
           break;
         case protocol::kRun: {
           const uint32_t status = run();
+          // A failed token's copies may never all come: the next read arms again.
+          if ((status & kStatusError) && win_bytes != 0) disarm("the token failed", false);
           answer(std::span(&status, 1));
           break;
         }

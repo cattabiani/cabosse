@@ -2943,7 +2943,11 @@ stretch OUTPUT beyond its ~25 µs if PCIM takes small writes slower than
 the vector unit makes them (6.4 GB/s at 200 MHz); the wall clock loses the
 ~13 ms PCIS read (Q-34). Untested until F2: the crossings, the shell's
 answers, bus mastering, the PCIe ordering of the count's read
-after the copies (relied on, not checked; bit-exactness will show).
+after the copies (relied on, not checked; bit-exactness will show). The
+driver falls back to PCIS for good on a PCIM error response or copies
+missing 5 s after a token (stderr says so), so a paid run still gives its
+tokens. Later, if the measurement asks for it: pair a burst's even and odd
+beats into one full 64-byte write (3072 copies a token instead of 6144).
 
 **Notes:** SmolLM2 is too small for a GPU to reach its bandwidth bound (per-token
 launch overhead dominates); the report says so, and the comparison on a

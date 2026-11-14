@@ -38,6 +38,7 @@ module cabosse_core #(
   localparam int unsigned PcimBytes = 64;  // PCIM's beat
 
   `include "cl_shell.svh"
+`undef CABOSSE_PCIM
 
   // --- The core -------------------------------------------------------------------
 

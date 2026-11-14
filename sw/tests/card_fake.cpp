@@ -13,7 +13,8 @@
 /// port 0, or a start while the host holds it, throws. PCIM: the host page
 /// is a vector at a made-up physical address; when a token is done, the
 /// armed window's card memory is copied into it (at PCIM_HOST minus that
-/// address, which must land inside it) and PCIM_DONE set to its beats.
+/// address, which must land inside it) and PCIM_DONE set to its beats, or,
+/// with FAKE_PCIM_ERR set, nothing copied and PCIM_ERR set.
 
 #include <algorithm>
 #include <cstdlib>
@@ -102,6 +103,10 @@ class FakeCard final : public card::Card {
     const uint64_t base = uint64_t{regs_[card::kWrapPcimBaseHi]} << 32 | regs_[card::kWrapPcimBaseLo];
     const uint64_t host = uint64_t{regs_[card::kWrapPcimHostHi]} << 32 | regs_[card::kWrapPcimHostLo];
     if (host < kPagePhys || host - kPagePhys + n > page_.size()) throw std::runtime_error("PCIM's window outside the page");
+    if (std::getenv("FAKE_PCIM_ERR")) {
+      regs_[card::kWrapPcimErr] = 1;
+      return;
+    }
     std::ranges::copy(std::span(mem_).subspan(base, n), page_.begin() + static_cast<ptrdiff_t>(host - kPagePhys));
     regs_[card::kWrapPcimDone] = static_cast<uint32_t>(n / 32);
   }

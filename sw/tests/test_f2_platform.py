@@ -72,7 +72,8 @@ def test_output_through_pcim(platform: F2Platform) -> None:
     addr, n = 0x2000, 256
     first = torch.arange(n // 4, dtype=torch.float32)
     platform.mem_write(addr, first.view(torch.uint8))
-    assert torch.equal(platform.read_output(addr, n).view(torch.float32), first)
+    for _ in range(2):  # the second from the page, as the first left it
+        assert torch.equal(platform.read_output(addr, n).view(torch.float32), first)
     for k in range(2):
         token = first + 100 * (k + 1)
         platform.mem_write(addr, token.view(torch.uint8))
@@ -80,6 +81,25 @@ def test_output_through_pcim(platform: F2Platform) -> None:
         platform.run_until_done()
         platform.mem_write(addr, torch.zeros(n, dtype=torch.uint8))  # after the copy
         assert torch.equal(platform.read_output(addr, n).view(torch.float32), token), k
+
+
+def test_output_after_a_pcim_error_reads_card_memory(
+    driver: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """An error response turns PCIM off for good: that read and the later
+    ones go through PCIS, and the driver says so on stderr."""
+    for k, v in {**FAKE, "FAKE_PCIM_ERR": "1"}.items():
+        monkeypatch.setenv(k, v)
+    addr, n = 0x2000, 64
+    with F2Platform(driver) as platform:
+        platform.read_output(addr, n)  # arms
+        for k in range(2):
+            token = torch.full((n,), k + 1, dtype=torch.uint8)
+            platform.mem_write(addr, token)
+            platform.reg_write(REG["CONTROL"], 1)
+            platform.run_until_done()
+            assert torch.equal(platform.read_output(addr, n), token), k
+    assert "PCIM off for good" in capfd.readouterr().err
 
 
 def test_output_off_the_beats_reads_card_memory(platform: F2Platform) -> None:

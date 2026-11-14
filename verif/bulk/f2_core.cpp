@@ -47,7 +47,7 @@ constexpr size_t kLen = Params::f2_core__DOT__Len;
 constexpr size_t kAddrBits = 34;
 constexpr size_t kBeatBytes = 32;
 constexpr size_t kBeatWords = kBeatBytes / 4;
-constexpr uint32_t kControl = 0x08, kStart = 1;
+constexpr uint32_t kControl = 0x08, kStart = 1, kStatusError = 4;
 constexpr uint32_t kWrapHostPort = 0x2'0008, kWrapStatus = 0x2'000C, kWrapHostOwns = 8;
 constexpr uint32_t kWrapPcimBaseLo = 0x2'0024, kWrapPcimBaseHi = 0x2'0028, kWrapPcimBytes = 0x2'002C;
 constexpr uint32_t kWrapPcimHostLo = 0x2'0030, kWrapPcimHostHi = 0x2'0034, kWrapPcimDone = 0x2'0038;
@@ -149,8 +149,11 @@ struct Bench {
   }
 
   /// @brief Arm PCIM's window: card memory [addr, addr + n) copied to the
-  /// host page's first n bytes.
-  void arm(uint64_t addr, uint64_t n) {
+  /// host page's first n bytes, which start as `now` (read just before).
+  void arm(uint64_t addr, std::span<const std::byte> now) {
+    if (pending) wait_copies();
+    const uint64_t n = now.size();
+    std::ranges::copy(now, host.begin());
     axil_write(*this, kWrapPcimBaseLo, static_cast<uint32_t>(addr));
     axil_write(*this, kWrapPcimBaseHi, static_cast<uint32_t>(addr >> 32));
     axil_write(*this, kWrapPcimBytes, static_cast<uint32_t>(n));
@@ -290,7 +293,7 @@ int main(int argc, char** argv) {
           } else {
             bench.own(true);
             std::ranges::copy(bytes_at(mem, addr, n), out.begin());
-            if (n > 0 && n <= kHostBytes && addr % kBeatBytes == 0 && n % kBeatBytes == 0) bench.arm(addr, n);
+            if (n > 0 && n <= kHostBytes && addr % kBeatBytes == 0 && n % kBeatBytes == 0) bench.arm(addr, out);
           }
           answer(words);
           break;
@@ -300,6 +303,11 @@ int main(int argc, char** argv) {
           if (!status) {
             std::println(stderr, "hung: no memory traffic for {} cycles", kMaxIdleCycles);
             return kExitHang;
+          }
+          if ((*status & kStatusError) && bench.win_bytes != 0) {  // its copies may never all come
+            axil_write(bench, kWrapPcimBytes, 0);
+            bench.win_bytes = 0;
+            bench.pending = false;
           }
           answer(std::span(&*status, 1));
           break;

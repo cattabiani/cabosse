@@ -166,6 +166,7 @@ module f2_core #(
   logic [AddrWidth-1:0] pcim_base_q;
   logic [31:0]          pcim_bytes_q, pcim_done_q, pcim_err_q;
   logic [HostWidth-1:0] pcim_host_q, pcim_delta_q;
+  logic                 pcim_clear;
   logic                 pm_b_valid_q;  // a PCIM response, registered beside the shell
   logic [1:0]           pm_b_resp_q;
 
@@ -197,6 +198,7 @@ module f2_core #(
   assign l_w_ready    = l_aw_ready;
   assign wrap_wr      = l_aw_ready && l_aw_addr >= WrapBase;
   assign wr_reg       = l_aw_addr[7:0];
+  assign pcim_clear   = wrap_wr && wr_reg == RegPcimDone;  // any value: PCIM_DONE and PCIM_ERR cleared
   assign c_aw_valid   = aw_out_q;
   assign c_w_valid    = w_out_q;
   assign s_b_valid_o  = wr_core_q ? c_b_valid : wb_q;
@@ -222,8 +224,9 @@ module f2_core #(
       pcim_bytes_q <= '0;
       {pcim_done_q, pcim_err_q} <= '0;
     end else begin
-      if (pm_b_valid_q && pm_b_resp_q == 2'b00) pcim_done_q <= pcim_done_q + 1'b1;
-      if (pm_b_valid_q && pm_b_resp_q != 2'b00) pcim_err_q <= pcim_err_q + 1'b1;
+      // A clear (a PCIM_DONE write) keeps this cycle's response
+      pcim_done_q <= (pcim_clear ? '0 : pcim_done_q) + 32'(pm_b_valid_q && pm_b_resp_q == 2'b00);
+      pcim_err_q  <= (pcim_clear ? '0 : pcim_err_q) + 32'(pm_b_valid_q && pm_b_resp_q != 2'b00);
       // Writes
       if (l_aw_ready) begin
         wr_busy_q <= 1'b1;
@@ -241,7 +244,6 @@ module f2_core #(
             RegPcimBytes:  pcim_bytes_q <= l_w_data;
             RegPcimHostLo: pcim_host_q[31:0] <= l_w_data;
             RegPcimHostHi: pcim_host_q[HostWidth-1:32] <= l_w_data;
-            RegPcimDone:   {pcim_done_q, pcim_err_q} <= '0;  // any value: both cleared
             default: ;
           endcase
         end

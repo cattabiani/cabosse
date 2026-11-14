@@ -8,14 +8,14 @@
 // copies (f2_core.sv sends them on and counts their answers).
 //
 // The window: a beat is copied if its address minus win_base_i is below
-// win_bytes_i (0: none). Its settings change only while the core is idle;
+// win_bytes_i (0: none), each beat of a burst on its own. Its settings change only while the core is idle;
 // they are registered here first (a copy beside the tap, a plain register
 // path from the wrapper's registers).
 //
 // AW and W are forks: a request is taken once both its ways have it, each
 // way taking it on its own (a flag each), so neither waits for the other's
-// ready. AW's second way is a queue of the bursts' decisions (copy or not,
-// and the host address), W's the copies. A W beat leaves only once its
+// ready. AW's second way is a queue of the bursts' offsets in the window and
+// host addresses, W's the copies. A W beat leaves only once its
 // burst's decision is in the queue: the queue takes AW without waiting for
 // port 0's AWREADY, so a W beat never waits for AWREADY (AXI: a slave may
 // wait for data before taking an address). Bursts of any length; each beat
@@ -57,7 +57,8 @@ module f2_pcim #(
   output logic [CW-1:0]        c_o
 );
 
-  localparam int unsigned QW = 1 + HostWidth;  // {copy, the burst's host address}
+  localparam int unsigned QW = AddrWidth + HostWidth;  // {its offset in the window, its host address}
+  localparam int unsigned BB = $clog2(BeatBytes);
 
   if (BeatBytes < 2 || 2 ** $clog2(BeatBytes) != BeatBytes) begin : gen_bad_width
     $error("f2_pcim: DataWidth must be a power-of-two number of bytes");
@@ -83,7 +84,7 @@ module f2_pcim #(
   assign m_aw_valid_o = s_aw_valid_i && !aw_m_done_q;
   assign m_aw_o       = s_aw_i;
   assign q_in_valid   = s_aw_valid_i && !aw_q_done_q;
-  assign q_in         = {aw_off < bytes_q, delta_q + HostWidth'(aw_addr)};
+  assign q_in         = {aw_off, delta_q + HostWidth'(aw_addr)};
   assign s_aw_ready_o = (aw_m_done_q || m_aw_ready_i) && (aw_q_done_q || q_in_ready);
 
   always_ff @(posedge clk_i) begin
@@ -114,16 +115,18 @@ module f2_pcim #(
   // --- W: to port 0 and, inside the window, to the copies -----------------------
 
   logic                 copy, w_last, w_fire;
+  logic [AddrWidth-1:0] off;  // the burst's
   logic [HostWidth-1:0] host;
   logic                 w_m_done_q, w_c_done_q;
   logic [7:0]           beat_q;  // the beat's index in its burst
 
-  assign {copy, host} = q_out;
+  assign {off, host}  = q_out;
+  assign copy         = off + AddrWidth'({beat_q, BB'(0)}) < bytes_q;
   assign w_last       = s_w_i[0];
   assign m_w_valid_o  = s_w_valid_i && q_out_valid && !w_m_done_q;
   assign m_w_o        = s_w_i;
   assign c_valid_o    = s_w_valid_i && q_out_valid && copy && !w_c_done_q;
-  assign c_o          = {host + HostWidth'({beat_q, $clog2(BeatBytes)'(0)}), s_w_i[WW-1:1]};
+  assign c_o          = {host + HostWidth'({beat_q, BB'(0)}), s_w_i[WW-1:1]};
   assign s_w_ready_o  = q_out_valid && (w_m_done_q || m_w_ready_i) && (!copy || w_c_done_q || c_ready_i);
   assign w_fire       = s_w_valid_i && s_w_ready_o;
   assign q_out_ready  = w_fire && w_last;
