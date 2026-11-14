@@ -3014,8 +3014,13 @@ EPYC 7R13 (Zen 3). Chat wall clock: 85-87 tokens/s with memcpy:1 (11.5 ms
 a token), 276-283 with stream32:8 (3.5-3.6 ms; the core's ~570,000-590,000
 cycles are ~2.9 ms at 200 MHz). The read is now far under D-077's 2 ms:
 build 10 is not needed for M11. stream32:8 is the driver's default.
-Still to check: the fixtures bit-exact through the new read (next full
-run_core.sh run, which also records the README's chat video).
+Run 5 (2026-11-14, full run_core.sh, reports/data/f2/2026-11-14-core-run5.txt):
+all fixtures and the 1000-token run bit-exact through stream32:8; end to
+end 259.2 tokens/s over the 1000 tokens (run 4: 83.3); llama.cpp on that
+host 283.0 / 260.4 / 201.2 at positions 0 / 46 / 1023 (run 4's host 224.3
+/ 218.5 / 169.6: the CPU baseline moves between instances). Its chat is
+the README's new animation. launch_chat.sh now works from any AWS account
+(no bucket or role needed; docs/f2-chat.md).
 
 **Notes:** SmolLM2 is too small for a GPU to reach its bandwidth bound (per-token
 launch overhead dominates); the report says so, and the comparison on a
