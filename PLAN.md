@@ -2886,6 +2886,9 @@ bit-exact yes; 250 MHz no (accepted, run at 200); ≥ 50% of the bound no
 (48%; the share does not depend on the clock: it is the cycles a step, and
 the perf model predicts 50%).
 
+**Report (2026-11-14):** [reports/M10.md](reports/M10.md): tables copied from
+run 4's summary, which came from the run's logs.
+
 - [x] Checkpoint: M10 closed at 200 MHz, 48% of the bound (D-075); the owner
   accepted it (2026-11-14). Next: M11.
 
