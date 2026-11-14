@@ -1,0 +1,10 @@
+bytes read per token (GGUF BF16 file size, estimate): 270886368
+peak bandwidth: datasheet values (estimates of what is reachable)
+cpu Ryzen 7 7800X3D, DDR5-5200 dual channel: peak 83.2 GB/s, bound 307 tok/s
+  pos     0:   244.0 tok/s = 79.5% of bound
+  pos    46:   241.0 tok/s = 78.5% of bound
+  pos  1023:   186.7 tok/s = 60.8% of bound
+cuda RTX 4070 Ti, GDDR6X: peak 504.0 GB/s, bound 1861 tok/s
+  pos     0:   707.0 tok/s = 38.0% of bound
+  pos    46:   718.0 tok/s = 38.6% of bound
+  pos  1023:   688.9 tok/s = 37.0% of bound
