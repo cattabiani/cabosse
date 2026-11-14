@@ -12,12 +12,14 @@ improve on. Every number comes from a saved log in
 SmolLM2-135M-Instruct on the Cabosse core, on one AWS F2 FPGA, played back
 at the recorded speed (the animation loops). The model is the official
 checkpoint, BF16, with no conversion, quantization or calibration. Both
-answers are greedy and stop at the end of their turn. The second question
-carries the first exchange in the KV cache on the card, so only its 14 new
-tokens are fed. Recording:
-[chat.cast](../reports/data/f2/2026-11-05-core-run2/chat/chat.cast)
-(asciicast v2), [transcript](../reports/data/f2/2026-11-05-core-run2/chat/chat.txt),
-[log](../reports/data/f2/2026-11-05-core-run2/chat/chat.jsonl).
+answers are greedy and stop at the end of their turn, at about 298
+tokens/s on the host's wall clock. The second question carries the first
+exchange in the KV cache on the card, so only its 15 new tokens are fed.
+Core build 9 at 200 MHz, run 5 (2026-11-14). Recording:
+[chat.cast](../reports/data/f2/2026-11-14-core-run5/chat/chat.cast)
+(asciicast v2), [transcript](../reports/data/f2/2026-11-14-core-run5/chat/chat.txt),
+[log](../reports/data/f2/2026-11-14-core-run5/chat/chat.jsonl).
+To run it yourself on F2: [docs/f2-chat.md](../docs/f2-chat.md).
 
 ## Baseline: core build 1 (2026-11-05)
 
@@ -109,6 +111,7 @@ Logs: [baseline/](../reports/data/f2/2026-11-05-core-run3/baseline/).
 |---|---|---|---|---|---|
 | core build 1 | 2026-11-05 | 100 MHz | 194.5 | 68.0 | yes |
 | core build 9 (M10) | 2026-11-14 | 200 MHz | 316.8 (see below) | 83.3 (see below) | yes |
+| core build 9, faster logits read (M11) | 2026-11-14 | 200 MHz | 316.0 | 259.2 | yes |
 
 Build 9's figures are the 1000-token run, positions 45–1044 (build 1 on the
 same run: 173.8 and 65.4). Its routed design misses 250 MHz by 0.682 ns
@@ -116,6 +119,15 @@ same run: 173.8 and 65.4). Its routed design misses 250 MHz by 0.682 ns
 bound at 200 MHz (the perf model estimates 50%), 57–72% ahead of llama.cpp on
 the same CPU by the core's cycles, and the logits read over PCIS still takes
 67% of a step. Log: [run 4](../reports/data/f2/2026-11-14-core-run4.txt).
+
+Same build and clock, M11: the host reads the logits with 32-byte
+streaming loads on 8 threads (0.22 ms for 196,608 bytes instead of 11.4
+ms), so the end-to-end rate rises from 83.3 to 259.2 tokens/s on the same
+1000-token run, all of it still bit-exact. The core is now 82% of a step.
+llama.cpp on that run's host CPU made 283.0, 260.4 and 201.2 tokens/s at
+positions 0, 46 and 1023 (run 4's host: 224.3, 218.5, 169.6): end to end,
+Cabosse is now about level with it on this small model, and ahead at long
+contexts. Log: [run 5](../reports/data/f2/2026-11-14-core-run5.txt).
 
 ## What it is built with, and the licences
 
