@@ -263,3 +263,11 @@ records a scripted chat (asciicast v2, transcript, JSON lines) to
 model: llama.cpp (a pinned release, GGUF BF16 converted by its own script,
 `llama-bench` at positions 0, 46 and 1023) and `transformers`
 (`scripts/measure_m7.py cpu`), to `$S3/baseline/`.
+
+`scripts/f2/launch_chat.sh NAME` (run on the owner's machine) launches the
+same user data with `INTERACTIVE=1` for a manual chat (M11): after the
+load it sets the clock, runs `pcis_bench` and installs `cabosse-chat`
+(`chat.py --interactive`, each chat saved to `$S3/chat-manual/`); the
+instance stays up for SSH until its deadline (default 120 min). It makes
+the SSH key pair `cabosse` (`~/.ssh/cabosse.pem`) and the security group
+`cabosse-ssh` on first use, and opens SSH to this machine's address only.

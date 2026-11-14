@@ -14,6 +14,13 @@
 # (scripts/f2/cpu_baseline.sh) to $S3/baseline/. The instance powers off when
 # done or at the deadline. Root and installs are allowed on the project's
 # own instances (AGENTS.md, rule 2).
+#
+# INTERACTIVE=1 (M11's manual chat, scripts/f2/launch_chat.sh): no plan, chat
+# recording or baselines; after the load it sets the clock (core_clock),
+# runs the bench, installs `cabosse-chat` (chat.py --interactive, each chat
+# to $S3/chat-manual/<time>/) and prints CABOSSE-READY. The instance then
+# stays up for an SSH login until the deadline (`sudo shutdown -h +MIN`
+# moves it).
 
 REF=main                       # branch of github.com/cattabiani/cabosse; set another at launch
 AWS_FPGA_REF=f2                # branch of github.com/aws/aws-fpga
@@ -23,6 +30,7 @@ MHZ=100                        # core clock: core1 closes timing at ~105 MHz, no
 QUICK=                         # --quick: no long fixture
 BENCH=1                        # the PCIS read bench after the plan (empty: none)
 PCIS_READ=                     # the driver's read plan (line_reader.h, e.g. stream32:4; empty: its default)
+INTERACTIVE=                   # 1: set up for a manual chat over SSH, stay up until the deadline
 CHAT=1                         # the chat recording after the plan (empty: none)
 BASELINE=1                     # the CPU baselines after the chat (empty: none)
 DEADLINE_MIN=90                # safety net: power off even if something hangs
@@ -98,7 +106,17 @@ setpci -s "$app_pf" COMMAND=0x06:0x06 && lspci -vv -s "$app_pf" | grep -m1 Contr
 ls /sys/class/iommu; dmesg | grep -i -m5 -e iommu -e amd-vi -e dmar
 echo "CABOSSE-END pcim"
 
-echo "CABOSSE-BEGIN plan"
+run_bench() {
+  # The clock is set and no driver runs. It overwrites card memory at
+  # address 0: a chat after it loads every weight again (Runtime.open).
+  echo "CABOSSE-BEGIN bench"
+  /root/cabosse/platforms/f2/host/pcis_bench 196608 9 $BENCH_PLANS | tee /root/pcis_bench.jsonl
+  bench_status=${PIPESTATUS[0]}
+  aws s3 cp --only-show-errors /root/pcis_bench.jsonl "$S3/pcis_bench.jsonl"
+  echo "bench exit $bench_status"
+  echo "CABOSSE-END bench"
+}
+
 token=$(curl -s -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
 meta() { curl -s -H "X-aws-ec2-metadata-token: $token" "http://169.254.169.254/latest/meta-data/$1"; }
 export S3
@@ -108,23 +126,45 @@ PROVENANCE=$(python3 -c 'import json,sys; print(json.dumps(dict(zip(sys.argv[1::
   cpu "$(grep -m1 '^model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')")
 export PROVENANCE
 [ -n "$PCIS_READ" ] && export CABOSSE_PCIS_READ=$PCIS_READ
+bench_status=0
+
+if [ -n "$INTERACTIVE" ]; then
+  echo "CABOSSE-BEGIN interactive"
+  /root/cabosse/platforms/f2/host/core_clock $MHZ | tee /root/clock.json
+  [ "${PIPESTATUS[0]}" = 0 ] || { echo "CABOSSE-RESULT fail clock"; finish; }
+  aws s3 cp --only-show-errors /root/clock.json "$S3/clock.json"
+  [ -n "$BENCH" ] && run_bench
+  { printf 'export %s=%q\n' S3 "$S3" PROVENANCE "$PROVENANCE" CABOSSE_WEIGHTS "$CABOSSE_WEIGHTS" HF_HUB_OFFLINE 1
+    [ -n "$PCIS_READ" ] && printf 'export CABOSSE_PCIS_READ=%q\n' "$PCIS_READ"; } > /root/chat.env
+  cat > /root/chat.sh <<'CHAT_EOF'
+#!/bin/bash
+# One manual chat (run_core.sh INTERACTIVE=1), saved to S3 when it ends.
+source /root/chat.env
+dir=/root/chat-manual/$(date -u +%Y%m%d-%H%M%S)
+env S3=$S3/chat-manual/${dir##*/} /root/venv/bin/python /root/cabosse/scripts/f2/chat.py "$dir" --interactive "$@"
+trap '' INT  # a second Ctrl-C must not stop the upload
+aws s3 cp --only-show-errors --recursive "$dir" "$S3/chat-manual/${dir##*/}" && echo "saved to $S3/chat-manual/${dir##*/}"
+usec=$(sed -n 's/^USEC=//p' /run/systemd/shutdown/scheduled 2>/dev/null)
+[ -n "$usec" ] && echo "power off at $(date -u -d @$((usec / 1000000)) +%H:%M) UTC; sudo shutdown -h +MIN moves it"
+CHAT_EOF
+  chmod 700 /root/chat.sh
+  printf '#!/bin/bash\nexec sudo /root/chat.sh "$@"\n' > /usr/local/bin/cabosse-chat
+  chmod 755 /usr/local/bin/cabosse-chat
+  echo "bench exit $bench_status"
+  echo "CABOSSE-READY: ssh in and run cabosse-chat"
+  echo "CABOSSE-END interactive"
+  save
+  exit 0  # the instance stays up until the deadline
+fi
+
+echo "CABOSSE-BEGIN plan"
 /root/venv/bin/python /root/cabosse/scripts/f2/core_plan.py /root/core.jsonl --mhz $MHZ $QUICK
 status=$?
 echo "plan exit $status"
 errors=$(grep -c '"error"' /root/core.jsonl)
 echo "steps with an error: $errors"
 echo "CABOSSE-END plan"
-bench_status=0
-if [ -n "$BENCH" ]; then
-  # After the plan: the clock is set and no driver runs. It overwrites card
-  # memory at address 0: the chat after it loads every weight again (Runtime.open).
-  echo "CABOSSE-BEGIN bench"
-  /root/cabosse/platforms/f2/host/pcis_bench 196608 9 $BENCH_PLANS | tee /root/pcis_bench.jsonl
-  bench_status=${PIPESTATUS[0]}
-  aws s3 cp --only-show-errors /root/pcis_bench.jsonl "$S3/pcis_bench.jsonl"
-  echo "bench exit $bench_status"
-  echo "CABOSSE-END bench"
-fi
+[ -n "$BENCH" ] && run_bench
 chat_status=0
 if [ -n "$CHAT" ]; then
   echo "CABOSSE-BEGIN chat"
