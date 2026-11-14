@@ -4,8 +4,10 @@
 platforms/f2/host/core_driver.cpp, a child process on the F2 host serving
 the five calls in the simulation's protocol (sw/driver_protocol.h), so a
 card error does not take Python down. The driver reads the build's Ports,
-ChanW and Len from the wrapper; the runtime reads the logits from card
-memory through PCIS, where OUTPUT writes them (D-071)."""
+ChanW and Len from the wrapper. The runtime reads the logits with
+read_output: the driver arms the wrapper's PCIM window on the first call
+(that one reads card memory through PCIS, D-071), then reads them from a
+hugepage the wrapper's copies land in (M11, Q-34)."""
 
 from pathlib import Path
 

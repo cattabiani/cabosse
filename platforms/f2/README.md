@@ -178,6 +178,12 @@ the bring-up: the host owns port 0 between tokens, the core during one.
   directly, and on the vector unit's AXI port, one per SLR it crosses
   (M10). A read takes 4 cycles more than with none on engine ports 1-31,
   3 on engine port 0, 9 for the vector unit.
+- `core/f2_pcim.sv` (M11, Q-34): on the vector unit's way to port 0, a
+  copy of each write beat inside PCIM's window (the logits) for the host;
+  `f2_core` sends each copy to PCIM as one 64-byte write, the 32-byte beat
+  in its half with its strobes (PCIM takes full 512-bit beats only), and
+  counts the answers. `core/cabosse_core.sv` crosses PCIM's channels into
+  the shell's clock (`xpm_fifo_async`, beside the shell in SLR1).
 - `core/small_shell_cl_pnr_user.xdc`: the floorplan (one hard pblock per SLR),
   written by `scripts/f2/floorplan.py`, which says what goes
   where and why; `build_cl.sh` copies it into AWS's flow.
@@ -202,6 +208,15 @@ offsets, below 0x2_0000. The wrapper's sit above:
 | 0x2_0018 | PORTS | RO | the core's `Ports` |
 | 0x2_001C | CHAN_W | RO | its `ChanW` |
 | 0x2_0020 | LEN | RO | its `Len` |
+| 0x2_0024 | PCIM_BASE_LO | RW | PCIM's window (M11): card memory from here (byte address, beat-aligned) ... |
+| 0x2_0028 | PCIM_BASE_HI | RW | |
+| 0x2_002C | PCIM_BYTES | RW | ... this many bytes (0, reset: no copies) ... |
+| 0x2_0030 | PCIM_HOST_LO | RW | ... copied to host memory here (a physical address) |
+| 0x2_0034 | PCIM_HOST_HI | RW | |
+| 0x2_0038 | PCIM_DONE | RW | copies answered OKAY, one per 32-byte beat; any write clears it and PCIM_ERR |
+| 0x2_003C | PCIM_ERR | RO | copies answered with an error |
+
+The window's registers change only while the core is idle.
 
 HBM port 0 changes hands only between bursts: the host waits for its
 PCIS writes to be done (a read after them) before clearing `HOST_PORT`,
@@ -217,6 +232,16 @@ PCIS writes are two 32-byte AVX2 stores a line; partial lines are byte
 stores, carried as strobes. `sw/tests/test_f2_platform.py` runs it on a
 fake card (`sw/tests/card_fake.cpp`), which fails a start while the host
 holds port 0 and a memory access while the core holds it.
+
+The logits (M11, Q-34): the runtime reads them with request 8, output
+read. The driver's first one for a window arms PCIM there, with a 2 MiB
+hugepage as the destination (its physical address from
+`/proc/self/pagemap`: root), and reads that once through PCIS; later ones
+wait until `PCIM_DONE` counts the window's beats and copy from the page.
+The driver clears `PCIM_DONE` before each start. Without a page (no
+hugepage, not root) every output read goes through PCIS. `run_core.sh`
+reserves the hugepages and turns on bus mastering (PCIM's writes are
+refused without it).
 
 `host/core_clock.cpp` (`make core_clock`) sets clk_hbm_axi once after the
 AFI's load (the clock generator holds the design in reset until then),

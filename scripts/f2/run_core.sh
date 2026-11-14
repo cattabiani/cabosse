@@ -80,6 +80,19 @@ fpga-describe-local-image -S 0 -R -H | tee /root/describe.txt
 aws s3 cp --only-show-errors /root/describe.txt "$S3/describe.txt"
 echo "CABOSSE-END load"
 
+# PCIM (M11): the logits come back as the card's writes into a hugepage
+# (core_driver.cpp): one 2 MiB page a driver, bus mastering on the CL's
+# function (its PCI IDs, cl_shell.svh), and a record of the IOMMU (none
+# expected: AWS's cl_sde wrote such pages by physical address, M8).
+echo "CABOSSE-BEGIN pcim"
+sysctl -w vm.nr_hugepages=4
+grep -i huge /proc/meminfo
+app_pf=$(lspci -D -d 1d0f:f010 | head -1 | cut -d' ' -f1)
+echo "app PF $app_pf"
+setpci -s "$app_pf" COMMAND=0x06:0x06 && lspci -vv -s "$app_pf" | grep -m1 Control:
+ls /sys/class/iommu; dmesg | grep -i -m5 -e iommu -e amd-vi -e dmar
+echo "CABOSSE-END pcim"
+
 echo "CABOSSE-BEGIN plan"
 token=$(curl -s -X PUT http://169.254.169.254/latest/api/token -H "X-aws-ec2-metadata-token-ttl-seconds: 300")
 meta() { curl -s -H "X-aws-ec2-metadata-token: $token" "http://169.254.169.254/latest/meta-data/$1"; }

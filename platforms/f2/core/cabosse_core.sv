@@ -11,6 +11,12 @@
 // registers, then the wrapper's at 0x2_0000); the rest of BAR0 repeats them.
 // PCIS (BAR4) reaches HBM through port 0 only while HOST_PORT is set, and
 // only once STATUS shows HBM ready.
+//
+// PCIM (M11): f2_core's copies of the logits, crossed from clk into
+// clk_main_a0 (the shell's) by an asynchronous FIFO per channel (AW, W; B
+// back), beside the shell in SLR1 (the floorplan). Writes only.
+
+`define CABOSSE_PCIM  // cl_shell.svh leaves PCIM's write channels to this top
 
 `ifndef CABOSSE_BUILD
 `define CABOSSE_BUILD 32'h0
@@ -28,10 +34,19 @@ module cabosse_core #(
   localparam int unsigned DataWidth = 256;
   localparam int unsigned BeatBytes = DataWidth / 8;
   localparam int unsigned LiteW     = 18;
+  localparam int unsigned HostWidth = 64;
+  localparam int unsigned PcimBytes = 64;  // PCIM's beat
 
   `include "cl_shell.svh"
+`undef CABOSSE_PCIM
 
   // --- The core -------------------------------------------------------------------
+
+  logic                     pm_aw_valid, pm_aw_ready, pm_w_valid, pm_w_ready, pm_b_valid;
+  logic [HostWidth-1:0]     pm_aw_addr;
+  logic [8*PcimBytes-1:0]   pm_w_data;
+  logic [PcimBytes-1:0]     pm_w_strb;
+  logic [1:0]               pm_b_resp;
 
   f2_core #(.Ports(Ports), .Build(`CABOSSE_BUILD), .LiteW(LiteW)) u_core (
     .clk_i       (clk),
@@ -61,6 +76,15 @@ module cabosse_core #(
     .h_b_valid_o (h_b_valid),
     .h_b_ready_i (h_b_ready),
     .h_b_resp_o  (h_b_resp),
+    .pcim_aw_valid_o(pm_aw_valid),
+    .pcim_aw_ready_i(pm_aw_ready),
+    .pcim_aw_addr_o (pm_aw_addr),
+    .pcim_w_valid_o (pm_w_valid),
+    .pcim_w_ready_i (pm_w_ready),
+    .pcim_w_data_o  (pm_w_data),
+    .pcim_w_strb_o  (pm_w_strb),
+    .pcim_b_valid_i (pm_b_valid),
+    .pcim_b_resp_i  (pm_b_resp),
     .s_aw_valid_i(lite_aw_valid),
     .s_aw_ready_o(lite_aw_ready),
     .s_aw_addr_i (lite_aw_addr[LiteW-1:0]),
@@ -103,6 +127,158 @@ module cabosse_core #(
     .b_ready_o   (b_ready),
     .b_resp_i    (b_resp)
   );
+
+  // --- PCIM: f2_core's writes crossed into clk_main_a0 ------------------------------
+
+  // Each FIFO first-word-fall-through (dout valid while !empty) in LUT RAM;
+  // a side waits while its reset is busy. AW and W written on clk, B on
+  // clk_main_a0, each FIFO reset on its write side.
+  logic                 pm_rst_q;  // on clk
+  logic                 aw_full, aw_empty, aw_wbusy, w_full, w_empty, w_wbusy;
+  logic                 b_full, b_empty, b_wbusy;
+  logic                 aw_rbusy, w_rbusy, b_rbusy;  // unread: empty stays set while busy
+  always_ff @(posedge clk) pm_rst_q <= !rst_n;
+
+  assign pm_aw_ready = !aw_full && !aw_wbusy;
+  assign pm_w_ready  = !w_full && !w_wbusy;
+  assign pm_b_valid  = !b_empty;  // f2_core takes every response
+
+  xpm_fifo_async #(
+    .CDC_SYNC_STAGES    (3),
+    .FIFO_MEMORY_TYPE   ("distributed"),
+    .FIFO_READ_LATENCY  (0),
+    .FIFO_WRITE_DEPTH   (32),  // LUT RAM is 32 deep anyway; the thresholds well inside its range
+    .PROG_EMPTY_THRESH  (10),
+    .PROG_FULL_THRESH   (10),
+    .READ_DATA_WIDTH    (HostWidth),
+    .READ_MODE          ("fwft"),
+    .USE_ADV_FEATURES   ("0000"),
+    .WRITE_DATA_WIDTH   (HostWidth)
+  ) u_pcim_aw (
+    .rst          (pm_rst_q),
+    .wr_clk       (clk),
+    .wr_en        (pm_aw_valid && pm_aw_ready),
+    .din          (pm_aw_addr),
+    .full         (aw_full),
+    .wr_rst_busy  (aw_wbusy),
+    .rd_clk       (clk_main_a0),
+    .rd_en        (cl_sh_pcim_awvalid && sh_cl_pcim_awready),
+    .dout         (cl_sh_pcim_awaddr),
+    .empty        (aw_empty),
+    .rd_rst_busy  (aw_rbusy),
+    .sleep        (1'b0),
+    .injectsbiterr(1'b0),
+    .injectdbiterr(1'b0),
+    .almost_empty (),
+    .almost_full  (),
+    .data_valid   (),
+    .dbiterr      (),
+    .overflow     (),
+    .prog_empty   (),
+    .prog_full    (),
+    .rd_data_count(),
+    .sbiterr      (),
+    .underflow    (),
+    .wr_ack       (),
+    .wr_data_count()
+  );
+
+  xpm_fifo_async #(
+    .CDC_SYNC_STAGES    (3),
+    .FIFO_MEMORY_TYPE   ("distributed"),
+    .FIFO_READ_LATENCY  (0),
+    .FIFO_WRITE_DEPTH   (32),  // LUT RAM is 32 deep anyway; the thresholds well inside its range
+    .PROG_EMPTY_THRESH  (10),
+    .PROG_FULL_THRESH   (10),
+    .READ_DATA_WIDTH    (9 * PcimBytes),
+    .READ_MODE          ("fwft"),
+    .USE_ADV_FEATURES   ("0000"),
+    .WRITE_DATA_WIDTH   (9 * PcimBytes)
+  ) u_pcim_w (
+    .rst          (pm_rst_q),
+    .wr_clk       (clk),
+    .wr_en        (pm_w_valid && pm_w_ready),
+    .din          ({pm_w_data, pm_w_strb}),
+    .full         (w_full),
+    .wr_rst_busy  (w_wbusy),
+    .rd_clk       (clk_main_a0),
+    .rd_en        (cl_sh_pcim_wvalid && sh_cl_pcim_wready),
+    .dout         ({cl_sh_pcim_wdata, cl_sh_pcim_wstrb}),
+    .empty        (w_empty),
+    .rd_rst_busy  (w_rbusy),
+    .sleep        (1'b0),
+    .injectsbiterr(1'b0),
+    .injectdbiterr(1'b0),
+    .almost_empty (),
+    .almost_full  (),
+    .data_valid   (),
+    .dbiterr      (),
+    .overflow     (),
+    .prog_empty   (),
+    .prog_full    (),
+    .rd_data_count(),
+    .sbiterr      (),
+    .underflow    (),
+    .wr_ack       (),
+    .wr_data_count()
+  );
+
+  xpm_fifo_async #(
+    .CDC_SYNC_STAGES    (3),
+    .FIFO_MEMORY_TYPE   ("distributed"),
+    .FIFO_READ_LATENCY  (0),
+    .FIFO_WRITE_DEPTH   (32),  // LUT RAM is 32 deep anyway; the thresholds well inside its range
+    .PROG_EMPTY_THRESH  (10),
+    .PROG_FULL_THRESH   (10),
+    .READ_DATA_WIDTH    (2),
+    .READ_MODE          ("fwft"),
+    .USE_ADV_FEATURES   ("0000"),
+    .WRITE_DATA_WIDTH   (2)
+  ) u_pcim_b (
+    .rst          (!cross_rst_n),
+    .wr_clk       (clk_main_a0),
+    .wr_en        (sh_cl_pcim_bvalid && cl_sh_pcim_bready),
+    .din          (sh_cl_pcim_bresp),
+    .full         (b_full),
+    .wr_rst_busy  (b_wbusy),
+    .rd_clk       (clk),
+    .rd_en        (!b_empty),
+    .dout         (pm_b_resp),
+    .empty        (b_empty),
+    .rd_rst_busy  (b_rbusy),
+    .sleep        (1'b0),
+    .injectsbiterr(1'b0),
+    .injectdbiterr(1'b0),
+    .almost_empty (),
+    .almost_full  (),
+    .data_valid   (),
+    .dbiterr      (),
+    .overflow     (),
+    .prog_empty   (),
+    .prog_full    (),
+    .rd_data_count(),
+    .sbiterr      (),
+    .underflow    (),
+    .wr_ack       (),
+    .wr_data_count()
+  );
+
+  // PCIM's other write signals: one ID, single full-width INCR beats
+  assign cl_sh_pcim_awid    = '0;
+  assign cl_sh_pcim_awlen   = '0;
+  assign cl_sh_pcim_awsize  = 3'($clog2(PcimBytes));
+  assign cl_sh_pcim_awburst = 2'b01;
+  assign cl_sh_pcim_awcache = '0;
+  assign cl_sh_pcim_awlock  = '0;
+  assign cl_sh_pcim_awprot  = '0;
+  assign cl_sh_pcim_awqos   = '0;
+  assign cl_sh_pcim_awuser  = '0;
+  assign cl_sh_pcim_awvalid = !aw_empty;
+  assign cl_sh_pcim_wid     = '0;
+  assign cl_sh_pcim_wlast   = 1'b1;
+  assign cl_sh_pcim_wuser   = '0;
+  assign cl_sh_pcim_wvalid  = !w_empty;
+  assign cl_sh_pcim_bready  = !b_full && !b_wbusy;
 
   // --- Debug: the ILA on HBM port 0 --------------------------------------------
 

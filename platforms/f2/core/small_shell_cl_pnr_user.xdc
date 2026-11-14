@@ -398,6 +398,20 @@ add_cells_to_pblock pblock_slr2 [get_cells {WRAPPER/CL/u_core/v_b_q_reg?2?*}]
 add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/v_b_valid_q_reg?0?*}]
 add_cells_to_pblock pblock_slr1_core [get_cells {WRAPPER/CL/u_core/v_b_valid_q_reg?1?*}]
 add_cells_to_pblock pblock_slr2 [get_cells {WRAPPER/CL/u_core/v_b_valid_q_reg?2?*}]
+# PCIM (M11): the tap beside port 0; the copies' stage beside it, the other,
+# their AW/W split and response register, and the clock crossings in
+# pblock_slr1, beside the shell's PCIM (SLR1).
+add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_pcim}]
+add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_core/u_pm/gen_stage?0?.*}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/u_pm/gen_stage?1?.*}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/pm_aw_done_q_reg*}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/pm_w_done_q_reg*}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/pm_b_valid_q_reg*}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_core/pm_b_resp_q_reg*}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_pcim_aw}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_pcim_w}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/u_pcim_b}]
+add_cells_to_pblock pblock_slr1 [get_cells {WRAPPER/CL/pm_rst_q_reg}]
 
 # The ILA probes port 0's HBM channels
 add_cells_to_pblock pblock_slr0 [get_cells {WRAPPER/CL/u_ila}]

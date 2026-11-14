@@ -28,6 +28,12 @@ enum Request : uint32_t {
   kBufRead = 5,   ///< simulation only: buffer, first element, elements.
   kQuit = 6,
   kTrace = 7,  ///< simulation only: the controller's handshakes.
+  /// address low, high, bytes: what OUTPUT wrote there. Answer: the bytes
+  /// padded to words. The core's simulation: a memory read. F2 and its
+  /// wrapper's simulation: from host memory, where PCIM's copies land, once
+  /// a request has armed the window (the first one for a window reads card
+  /// memory, PCIS's way).
+  kOutputRead = 8,
 };
 
 /// @brief Read words from stdin.

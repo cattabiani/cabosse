@@ -3,7 +3,7 @@
 
 /// @file
 /// @brief The simulation platform's driver for rtl/core.sv (sw/sim_platform.py):
-/// a long-lived child process that serves the runtime's six calls
+/// a long-lived child process that serves the runtime's calls
 /// (sw/platforms.py) on stdin and stdout, with the HBM behind the core's AXI
 /// ports in a memory model (axi_mem.h).
 ///
@@ -25,6 +25,7 @@
 ///   done with one, the controller handed the vector unit a command, and it
 ///   was done with one, since the last trace. Answer: for each of the five,
 ///   in that order, a count, then the cycles, a low and a high word each.
+/// - 8 output read: as 3 (F2 has its own way: verif/bulk/f2_core.cpp).
 /// The memory is Ports channels of 2^ChanW bytes (calloc: the pages no one
 /// writes cost nothing); engine port p reads channel p, the vector unit's
 /// port the whole of it at global addresses. Plusargs: the memory's
@@ -217,7 +218,8 @@ int main(int argc, char** argv) {
           std::ranges::copy(std::as_bytes(std::span(words)).first(dst.size()), dst.begin());
           break;
         }
-        case protocol::kMemRead: {
+        case protocol::kMemRead:
+        case protocol::kOutputRead: {
           if (!read_exact(a)) throw std::out_of_range("memory read");
           const auto src = bytes_at(mem, uint64_t{a[1]} << 32 | a[0], a[2]);
           std::vector<uint32_t> words((a[2] + 3) / 4);

@@ -90,6 +90,9 @@ class GoldenPlatform:
             self.sync()
         return self.mem.read(addr, n_bytes)
 
+    def read_output(self, addr: int, n_bytes: int) -> torch.Tensor:
+        return self.mem_read(addr, n_bytes)
+
     def sync(self, kinds: frozenset[commands.Kind] = commands.WRITTEN) -> None:
         """Write what the stores and OUTPUT wrote (of `kinds`) into the bytes
         when they are next used (whole caches: slow at long caps, fine for

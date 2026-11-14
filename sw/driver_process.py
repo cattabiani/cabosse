@@ -12,7 +12,7 @@ import numpy as np
 import torch
 
 HELLO = 0x43425349  # 'CBSI'
-REG_WRITE, REG_READ, MEM_WRITE, MEM_READ, RUN, BUF_READ, QUIT, TRACE = range(8)
+REG_WRITE, REG_READ, MEM_WRITE, MEM_READ, RUN, BUF_READ, QUIT, TRACE, OUTPUT_READ = range(9)
 
 
 class DriverError(RuntimeError):
@@ -64,6 +64,11 @@ class DriverProcess:
 
     def mem_read(self, addr: int, n_bytes: int) -> torch.Tensor:
         self.send(MEM_READ, addr & 0xFFFFFFFF, addr >> 32, n_bytes)
+        raw = self.words(-(-n_bytes // 4)).view(np.uint8)[:n_bytes]
+        return torch.from_numpy(raw.copy())
+
+    def read_output(self, addr: int, n_bytes: int) -> torch.Tensor:
+        self.send(OUTPUT_READ, addr & 0xFFFFFFFF, addr >> 32, n_bytes)
         raw = self.words(-(-n_bytes // 4)).view(np.uint8)[:n_bytes]
         return torch.from_numpy(raw.copy())
 
