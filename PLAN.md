@@ -2911,12 +2911,15 @@ Steps, each its own branch and PR:
 2. A manual chat on F2: chat.py takes turns typed by the user; a script
    launches an F2 instance, loads the AFI, gives the owner a shell on it and
    powers it off at a deadline.
-3. Comparisons, SmolLM2-135M-Instruct, same prompt, positions and greedy
-   decoding on every device: llama.cpp on the F2 host's CPU (have), this
-   PC's CPU (Ryzen 7 7800X3D) and GPU (RTX 4070 Ti), and one AWS GPU
-   instance. For each device: wall-clock tokens/s and the share of its
-   memory-bandwidth bound (peak bandwidth over bytes read per token; peaks
-   from datasheets, marked as such, measured where we can).
+3. Comparisons, SmolLM2-135M-Instruct, same positions and greedy decoding,
+   llama.cpp b11672 everywhere (the version in `.tools/` and in
+   cpu_baseline.sh): this PC's CPU (Ryzen 7 7800X3D) and GPU (RTX 4070 Ti,
+   the CUDA build), and the F2 host's CPU (D-056; it runs inside every F2
+   run, about 3-5 min, about $0.15-0.20, estimate). For each device:
+   wall-clock tokens/s and the share of its memory-bandwidth bound (peak
+   bandwidth over bytes read per token; peaks from datasheets, marked as
+   such, measured where we can). Data-centre GPUs (A10G, H100) appear as
+   bound rows from datasheets only, not measured.
 4. A short report for readers outside chip design: what was measured, on
    what, at what cost an hour, and what the numbers mean.
 
@@ -2926,8 +2929,16 @@ the devices above, each number traceable to a saved log.
 
 **Notes:** SmolLM2 is too small for a GPU to reach its bandwidth bound (per-token
 launch overhead dominates); the report says so, and the comparison on a
-larger model waits for M12. TPUs are Google Cloud only (out). Open
-questions for the start of M11: Q-35 to Q-38.
+larger model waits for M12. A cloud GPU or Inferentia2 run (Q-38) is
+considered there only if its instance costs about as much an hour as the F2
+instance or less (owner, 2026-11-14).
+TPUs are Google Cloud only (out).
+
+**Start of M11 (owner, 2026-11-14):** AWS budget $50 for the milestone,
+each launch up to about $10-15 pre-approved and reported after. Q-35: an SSH
+key pair. Q-36: no AWS GPU in M11 (none in the price range is clearly faster
+than the local RTX 4070 Ti, and SmolLM2 cannot use a faster one). Q-37:
+llama.cpp, already built in `.tools/`. Q-38: moved to M12.
 
 ### M12 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
@@ -2955,7 +2966,7 @@ New ones are added as a table:
 | Q-32 | Let a reduction's short rows stop queueing on the tree (D-050)? A row's last group waits for the tree to take the row before, so rows end at least 159 cycles apart (measured): `SUM` and `MAX` over 9 rows of t take about 9 × 159 cycles while t is below about 2,500, 86k of the vector unit's 176k cycles at position 0 for SmolLM2. Options: skip the tree's levels whose right half no element reached (those partials stay +0, or the canonical NaN for `MAX`, so the bits stay, to verify by test); more tree adders (`TreeAdders`). | After M9, on F2's measured numbers (D-058). |
 | Q-33 | How does each token's output (`OUTPUT`: SmolLM2's logits are 196 KB, Qwen2.5-0.5B's 608 KB) reach the host? The host reading card memory through PCIS (no driver; about 3 ms a token for SmolLM2 at about 1 µs per 64 bytes, estimate), the design writing host memory through PCIM (a pinned buffer and its physical address), or the next token picked on chip (greedy only; sampling needs the logits). | Answered (owner, 2026-11-04): PCIS reads first (D-071); PCIM is Q-34. |
 | Q-34 | Should `OUTPUT` write the logits to host memory through PCIM (a write engine in the wrapper, a pinned host buffer and its physical address, IOMMU and hugepages checked) so the wall clock's tokens/s comes close to the device's? With PCIS reads at the 15-16 MB/s M8 measured, SmolLM2's 196 KB of logits take about 13 ms a token against about 2 ms of compute (estimate). Matters for the chat recording. | Answered (owner, 2026-11-14): yes, first step of M11 (D-076). |
-| Q-35 | How does the owner reach the F2 instance for a manual chat: SSM Session Manager (no open port; needs the SSM agent online and an instance-profile policy, which failed once on core9r) or an SSH key pair with a security group open to one IP? Either is an AWS setup change. | M11 step 2. |
-| Q-36 | Which AWS GPU instance for the comparison: g6.xlarge (NVIDIA L4, 300 GB/s) or g5.xlarge (A10G, 600 GB/s)? Peak figures to verify; prices from the AWS price list. | M11 step 3. |
-| Q-37 | Which GPU runtime: llama.cpp with CUDA (same program as the CPU baselines; a local CUDA build, which the owner installs) or Hugging Face `transformers` (already in the venv, slower for single-stream decode)? | M11 step 3. |
-| Q-38 | Add AWS Inferentia2 (inf2.xlarge, AWS's own inference chip) as the "not a GPU" accelerator? Needs the Neuron SDK and a compile step; more work than the other rows. | M11 step 3. |
+| Q-35 | How does the owner reach the F2 instance for a manual chat: SSM Session Manager (no open port; needs the SSM agent online and an instance-profile policy, which failed once on core9r) or an SSH key pair with a security group open to one IP? Either is an AWS setup change. | Answered (owner, 2026-11-14): an SSH key pair, port 22 open to the owner's IP only (M11 notes). |
+| Q-36 | Which AWS GPU instance for the comparison: g6.xlarge (NVIDIA L4, 300 GB/s) or g5.xlarge (A10G, 600 GB/s)? Peak figures to verify; prices from the AWS price list. | Answered (owner, 2026-11-14): neither in M11; the local RTX 4070 Ti instead (M11 notes). |
+| Q-37 | Which GPU runtime: llama.cpp with CUDA (same program as the CPU baselines; a local CUDA build, which the owner installs) or Hugging Face `transformers` (already in the venv, slower for single-stream decode)? | Answered (owner, 2026-11-14): llama.cpp b11672, CPU and CUDA builds already in `.tools/`. |
+| Q-38 | Add AWS Inferentia2 (inf2.xlarge, AWS's own inference chip) as the "not a GPU" accelerator? Needs the Neuron SDK and a compile step; more work than the other rows. | Moved to M12 (owner, 2026-11-14), only if the instance costs about as much an hour as F2 or less. |
