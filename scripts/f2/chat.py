@@ -15,7 +15,7 @@ The conversation stays in the KV cache: each turn feeds only the tokens the
 chat template adds after what the core already holds (an answer cut at
 --max-new is closed by the template's end token, fed with the next turn). A turn that would not fit
 the context with its answer starts a new conversation with that turn alone.
-Typed turns end at an empty line or end of input; after each answer a line
+Typed turns end at /quit or end of input (empty lines are skipped); after each answer a line
 gives its tokens and wall-clock tokens/s (not recorded in chat.cast).
 
 Usage: python chat.py OUT_DIR [--golden] [--mhz MHZ] [--max-new N] [--interactive | TURN ...]
@@ -114,17 +114,20 @@ def answer(
 
 
 def typed_turns() -> Iterator[str]:
-    """The user's turns from the terminal, until an empty line or the end of
-    input."""
+    """The user's turns from the terminal (line editing by readline), until
+    /quit or the end of input; empty lines are skipped."""
+    import readline  # noqa: F401, PLC0415 (input() edits lines once loaded)
+
     while True:
         try:
             line = input("> ").strip()
         except EOFError:
             print()
             return
-        if not line:
+        if line == "/quit":
             return
-        yield line
+        if line:
+            yield line
 
 
 def chat(
@@ -150,20 +153,20 @@ def chat(
 
     messages: list[dict] = []  # the conversation the KV cache holds
     transcript: list[dict] = []  # all of them, for chat.txt
-    fed: list[int] = []  # what the KV cache holds
+    fed: list[int] = []  # the tokens the KV cache holds
     cast = Cast(out / "chat.cast", "Cabosse: SmolLM2-135M-Instruct on AWS F2")
     try:
         for k, user in enumerate(turns):
             turn = {"role": "user", "content": user}
-            alone = prompt([turn])
-            if len(alone) + max_new > rt.context:
-                cast.out(f"(too long: {len(alone)} tokens and {max_new} for the answer)\n")
-                continue
-            messages.append(turn)
-            ids = prompt(messages)
+            ids = prompt([*messages, turn])
             if len(ids) + max_new > rt.context:
-                messages, ids = [turn], alone  # a new conversation with this turn alone
+                ids = prompt([turn])  # a new conversation with this turn alone
+                if len(ids) + max_new > rt.context:
+                    cast.out(f"(too long: {len(ids)} tokens and {max_new} for the answer)\n")
+                    continue
+                messages = []
                 cast.out("(the context is full: a new conversation)\n")
+            messages.append(turn)
             if ids[: len(fed)] != fed:  # the template rewrote the history: start over
                 rt.reset()
                 fed = []
@@ -174,7 +177,7 @@ def chat(
             if typed and stats["wall_s"]:
                 rate = len(stats["wall_s"]) / sum(stats["wall_s"])
                 print(f"[{stats['n_new']} tokens, {rate:.1f} tokens/s wall clock]\n", flush=True)
-            fed = ids + tokens
+            fed = ids + tokens[:-1]  # the last answer token is not stepped yet
             messages.append({"role": "assistant", "content": decode(tokens)})
             transcript += messages[-2:]
             params = {"turn": k, "user": user, "feed": feed}
@@ -221,7 +224,7 @@ def main() -> None:
             rt = Runtime.open(p, model, CAP)
             turns = args.turns
             if args.interactive:
-                print("SmolLM2-135M-Instruct on the core. Type a message; an empty line ends.")
+                print("SmolLM2-135M-Instruct on the core. Type a message; /quit ends.")
                 turns = typed_turns()
             chat(log, rt, tok, turns, args.max_new, args.out, typed=args.interactive)
     except KeyboardInterrupt:

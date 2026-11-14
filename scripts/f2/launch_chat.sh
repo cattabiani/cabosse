@@ -47,11 +47,13 @@ REPO=$(cd "$(dirname "$0")/../.." && pwd)
 
 aws() { command aws --profile "$PROFILE" --region "$REGION" "$@"; }
 
-# The user data: run_core.sh with this launch's settings.
+# The user data: run_core.sh with this launch's settings, plain words only
+# (they go into bash assignments and awk).
 user_data=$(mktemp)
 trap 'rm -f "$user_data" "$user_data.new"' EXIT
 cp "$REPO/scripts/f2/run_core.sh" "$user_data"
 for var in REF AGFI AFI MHZ DEADLINE_MIN S3 INTERACTIVE PCIS_READ BENCH; do
+  [[ "${!var}" =~ ^[A-Za-z0-9._:/@+-]*$ ]] || { echo "$var=${!var}: letters, digits and ._:/@+- only"; exit 1; }
   grep -q "^$var=" "$user_data" || { echo "run_core.sh has no $var= line"; exit 1; }
   # The setting's line only (later lines may start with the name too).
   awk -v var="$var" -v val="${!var}" '!done && index($0, var "=") == 1 { sub(/^[^ ]*/, var "=" val); done = 1 } 1' \
@@ -63,18 +65,33 @@ if [ -n "${DRY_RUN:-}" ]; then  # the user data only, no AWS call
   exit 0
 fi
 
+# The instance clones REF: its scripts must be the ones here.
+git -C "$REPO" fetch -q origin "$REF"
+git -C "$REPO" diff --quiet FETCH_HEAD -- scripts/f2 platforms/f2/host sw model \
+  || { echo "origin/$REF differs from this checkout in scripts/f2, platforms/f2/host, sw or model: push or set REF"; exit 1; }
+
+# One F2 instance at a time (and the group's SSH rules belong to it).
+running=$(aws ec2 describe-instances --filters "Name=instance-type,Values=$TYPE" \
+  "Name=instance-state-name,Values=pending,running" --query 'Reservations[].Instances[].InstanceId' --output text)
+[ -z "$running" ] || { echo "an $TYPE is running already: $running"; exit 1; }
+
 # The key pair: made once; its private key lives only in KEY_FILE.
-if ! aws ec2 describe-key-pairs --key-names "$KEY" >/dev/null 2>&1; then
+if ! keys=$(aws ec2 describe-key-pairs --filters "Name=key-name,Values=$KEY" --query 'KeyPairs[].KeyName' --output text); then
+  echo "describe-key-pairs failed (aws sso login --profile $PROFILE?)"
+  exit 1
+fi
+if [ -z "$keys" ]; then
   [ -e "$KEY_FILE" ] && { echo "$KEY_FILE exists but AWS has no key pair $KEY: move the file away first"; exit 1; }
   (umask 077 && aws ec2 create-key-pair --key-name "$KEY" --key-type ed25519 \
-    --query KeyMaterial --output text >"$KEY_FILE")
+    --query KeyMaterial --output text >"$KEY_FILE.new") && mv "$KEY_FILE.new" "$KEY_FILE"
   echo "made key pair $KEY: $KEY_FILE"
 elif [ ! -e "$KEY_FILE" ]; then
   echo "AWS has key pair $KEY but $KEY_FILE is missing: delete the pair (aws ec2 delete-key-pair --key-name $KEY) and rerun"
   exit 1
 fi
 
-# The security group: SSH from this machine's address only.
+# The security group: SSH from this machine's address only (no instance
+# uses it now: checked above).
 vpc=$(aws ec2 describe-subnets --subnet-ids "$SUBNET" --query 'Subnets[0].VpcId' --output text)
 sg=$(aws ec2 describe-security-groups --filters "Name=group-name,Values=$SG_NAME" "Name=vpc-id,Values=$vpc" \
   --query 'SecurityGroups[0].GroupId' --output text)

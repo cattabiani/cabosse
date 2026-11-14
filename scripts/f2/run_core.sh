@@ -142,6 +142,7 @@ if [ -n "$INTERACTIVE" ]; then
 source /root/chat.env
 dir=/root/chat-manual/$(date -u +%Y%m%d-%H%M%S)
 env S3=$S3/chat-manual/${dir##*/} /root/venv/bin/python /root/cabosse/scripts/f2/chat.py "$dir" --interactive "$@"
+trap '' INT  # a second Ctrl-C must not stop the upload
 aws s3 cp --only-show-errors --recursive "$dir" "$S3/chat-manual/${dir##*/}" && echo "saved to $S3/chat-manual/${dir##*/}"
 usec=$(sed -n 's/^USEC=//p' /run/systemd/shutdown/scheduled 2>/dev/null)
 [ -n "$usec" ] && echo "power off at $(date -u -d @$((usec / 1000000)) +%H:%M) UTC; sudo shutdown -h +MIN moves it"

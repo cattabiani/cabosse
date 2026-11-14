@@ -69,7 +69,9 @@ def test_a_turn_feeds_only_what_the_template_adds(tmp_path, tiny_model) -> None:
     turns = run_chat(tmp_path, tiny_model, tok, max_new=8)
     assert turns[0]["result"]["ended"] and turns[0]["result"]["tokens"] == [end_id]
     assert turns[0]["params"]["feed"] == first
-    assert turns[1]["params"]["feed"] == [START, USER, *tok.ids("yo"), USER_END, START, ASSISTANT]
+    # Turn 0's end token was never stepped: turn 1 feeds it first.
+    want = [end_id, START, USER, *tok.ids("yo"), USER_END, START, ASSISTANT]
+    assert turns[1]["params"]["feed"] == want
 
 
 def test_an_answer_stops_at_max_new_and_the_cast_is_v2(tmp_path, tiny_model) -> None:
@@ -78,8 +80,10 @@ def test_an_answer_stops_at_max_new_and_the_cast_is_v2(tmp_path, tiny_model) -> 
     for t in turns:
         assert t["result"]["n_new"] == 5 and not t["result"]["ended"]
         assert len(t["result"]["wall_s"]) == len(t["result"]["cycles"]) == 4
-    # A cut answer: the next turn feeds the end token the template closes it with.
-    want = [tok.end_id, START, USER, *tok.ids("yo"), USER_END, START, ASSISTANT]
+    # A cut answer: the next turn feeds its last token (never stepped), then
+    # the end token the template closes it with.
+    last = turns[0]["result"]["tokens"][-1]
+    want = [last, tok.end_id, START, USER, *tok.ids("yo"), USER_END, START, ASSISTANT]
     assert turns[1]["params"]["feed"] == want
     lines = (tmp_path / "chat.cast").read_text().splitlines()
     assert json.loads(lines[0])["version"] == 2
@@ -95,6 +99,21 @@ def test_a_partial_character_is_held_back() -> None:
     assert chat.new_text(lambda _: "abc", [0], 1) == ("bc", 3)
 
 
+def test_the_cache_holds_the_whole_conversation(tmp_path, tiny_model) -> None:
+    """Every token the template gives turn 1 is fed exactly once: the
+    positions fed equal the conversation's length."""
+    tok = FakeTokenizer(end_id=255)
+    turns = run_chat(tmp_path, tiny_model, tok, max_new=5)
+    msgs = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": ""}]
+    msgs[1]["content"] = tok.decode(turns[0]["result"]["tokens"])
+    msgs.append({"role": "user", "content": "yo"})
+    whole = tok.apply_chat_template(msgs, True, True)["input_ids"]
+    fed = (
+        turns[0]["params"]["feed"] + turns[0]["result"]["tokens"][:-1] + turns[1]["params"]["feed"]
+    )
+    assert fed == whole
+
+
 def test_a_full_context_starts_a_new_conversation(tmp_path, tiny_model, capsys) -> None:
     """Turn 1 with turn 0's history would pass CAP: it goes alone; a turn too
     long even alone is skipped; chat.txt keeps every answered turn."""
@@ -103,7 +122,7 @@ def test_a_full_context_starts_a_new_conversation(tmp_path, tiny_model, capsys) 
     turns = run_chat(tmp_path, tiny_model, tok, max_new=8, turns=[a, b, c, "d"], typed=True)
     assert [t["params"]["user"] for t in turns] == [a, b, "d"]
     assert turns[1]["params"]["feed"] == [START, USER, *tok.ids(b), USER_END, START, ASSISTANT]
-    assert turns[2]["params"]["feed"][0] == tok.end_id  # "d" follows b's cut answer
+    assert turns[2]["params"]["feed"][1] == tok.end_id  # "d" follows b's cut answer
     out = capsys.readouterr().out
     assert "a new conversation" in out and "too long" in out and "tokens/s" in out
     assert "> " + a not in out  # typed: the terminal showed it already
@@ -111,7 +130,7 @@ def test_a_full_context_starts_a_new_conversation(tmp_path, tiny_model, capsys) 
     assert all(f"user: {x}" in text for x in (a, b, "d"))
 
 
-def test_typed_turns_end_at_an_empty_line(monkeypatch) -> None:
-    lines = iter(["hello ", "again", "", "unread"])
+def test_typed_turns_end_at_quit(monkeypatch) -> None:
+    lines = iter(["hello ", "", "again", "/quit", "unread"])
     monkeypatch.setattr("builtins.input", lambda _: next(lines))
     assert list(chat.typed_turns()) == ["hello", "again"]
