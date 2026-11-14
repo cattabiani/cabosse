@@ -34,7 +34,7 @@ INTERACTIVE=                   # 1: set up for a manual chat over SSH, stay up u
 CHAT=1                         # the chat recording after the plan (empty: none)
 BASELINE=1                     # the CPU baselines after the chat (empty: none)
 DEADLINE_MIN=90                # safety net: power off even if something hangs
-S3=                            # s3://bucket/dcp/<run>: everything goes there (the role writes dcp/ only)
+S3=                            # s3://bucket/dcp/<run>: everything goes there (the role writes dcp/ only); INTERACTIVE may leave it empty
 UV_VERSION=0.12.7              # the installer of Python and the venv
 PYTHON_VERSION=3.14.4
 # SmolLM2's logits (49,152 words) are 196,608 bytes; 9 reads a plan.
@@ -47,11 +47,14 @@ export HOME=/root
 out=/var/log/cabosse.log
 exec > >(tee -a $out > /dev/console) 2>&1
 log=/var/log/cabosse-setup.log
-[ -n "$S3" ] && [ -n "$AGFI" ] || { echo "CABOSSE-RESULT fail S3 and AGFI must be set"; shutdown -h now; exit 1; }
+[ -n "$AGFI" ] && { [ -n "$S3" ] || [ -n "$INTERACTIVE" ]; } \
+  || { echo "CABOSSE-RESULT fail AGFI and S3 must be set (S3 may be empty with INTERACTIVE)"; shutdown -h now; exit 1; }
 
+# put SRC PATH [aws s3 cp options]: SRC to $S3/PATH; nothing without S3.
+put() { [ -z "$S3" ] || aws s3 cp --only-show-errors "${@:3}" "$1" "$S3/$2"; }
 save() {
-  aws s3 cp --only-show-errors $out "$S3/cabosse.log"
-  aws s3 cp --only-show-errors $log "$S3/setup.log"
+  put $out cabosse.log
+  put $log setup.log
 }
 finish() {
   save
@@ -103,7 +106,7 @@ step "load the FPGA image"
 fpga-clear-local-image -S 0 -H
 fpga-load-local-image -S 0 -I $AGFI -H || { echo "CABOSSE-RESULT fail AFI load"; finish; }
 fpga-describe-local-image -S 0 -R -H | tee /root/describe.txt
-aws s3 cp --only-show-errors /root/describe.txt "$S3/describe.txt"
+put /root/describe.txt describe.txt
 echo "CABOSSE-END load"
 
 # PCIM (M11): the logits come back as the card's writes into a hugepage
@@ -126,7 +129,7 @@ run_bench() {
   echo "CABOSSE-BEGIN bench"
   /root/cabosse/platforms/f2/host/pcis_bench 196608 9 $BENCH_PLANS | tee /root/pcis_bench.jsonl
   bench_status=${PIPESTATUS[0]}
-  aws s3 cp --only-show-errors /root/pcis_bench.jsonl "$S3/pcis_bench.jsonl"
+  put /root/pcis_bench.jsonl pcis_bench.jsonl
   echo "bench exit $bench_status"
   echo "CABOSSE-END bench"
 }
@@ -147,7 +150,7 @@ if [ -n "$INTERACTIVE" ]; then
   step "set the clock to $MHZ MHz"
   /root/cabosse/platforms/f2/host/core_clock $MHZ | tee /root/clock.json
   [ "${PIPESTATUS[0]}" = 0 ] || { echo "CABOSSE-RESULT fail clock"; finish; }
-  aws s3 cp --only-show-errors /root/clock.json "$S3/clock.json"
+  put /root/clock.json clock.json
   [ -n "$BENCH" ] && run_bench
   { printf 'export %s=%q\n' S3 "$S3" PROVENANCE "$PROVENANCE" CABOSSE_WEIGHTS "$CABOSSE_WEIGHTS" HF_HUB_OFFLINE 1
     [ -n "$PCIS_READ" ] && printf 'export CABOSSE_PCIS_READ=%q\n' "$PCIS_READ"; } > /root/chat.env
@@ -155,10 +158,13 @@ if [ -n "$INTERACTIVE" ]; then
 #!/bin/bash
 # One manual chat (run_core.sh INTERACTIVE=1), saved to S3 when it ends.
 source /root/chat.env
-dir=/root/chat-manual/$(date -u +%Y%m%d-%H%M%S)
-env S3=$S3/chat-manual/${dir##*/} /root/venv/bin/python /root/cabosse/scripts/f2/chat.py "$dir" --interactive "$@"
+dir=/home/ubuntu/chats/$(date -u +%Y%m%d-%H%M%S)  # the login user's: scp can fetch it
+to=${S3:+$S3/chat-manual/${dir##*/}}  # empty without S3: the chat stays here
+env S3="$to" /root/venv/bin/python /root/cabosse/scripts/f2/chat.py "$dir" --interactive "$@"
 trap '' INT  # a second Ctrl-C must not stop the upload
-aws s3 cp --only-show-errors --recursive "$dir" "$S3/chat-manual/${dir##*/}" && echo "saved to $S3/chat-manual/${dir##*/}"
+chown -R ubuntu:ubuntu /home/ubuntu/chats
+echo "saved in $dir"
+[ -z "$to" ] || { aws s3 cp --only-show-errors --recursive "$dir" "$to" && echo "and in $to"; }
 usec=$(sed -n 's/^USEC=//p' /run/systemd/shutdown/scheduled 2>/dev/null)
 [ -n "$usec" ] && echo "power off at $(date -u -d @$((usec / 1000000)) +%H:%M) UTC; sudo shutdown -h +MIN moves it"
 CHAT_EOF
@@ -187,7 +193,7 @@ if [ -n "$CHAT" ]; then
   step "chat recording"
   S3=$S3/chat /root/venv/bin/python /root/cabosse/scripts/f2/chat.py /root/chat --mhz $MHZ
   chat_status=$?
-  aws s3 cp --only-show-errors --recursive /root/chat "$S3/chat"
+  put /root/chat chat --recursive
   echo "chat exit $chat_status"
   echo "CABOSSE-END chat"
 fi
@@ -197,7 +203,7 @@ if [ -n "$BASELINE" ]; then
   step "CPU baselines"
   /root/cabosse/scripts/f2/cpu_baseline.sh /root/baseline
   baseline_status=$?
-  aws s3 cp --only-show-errors --recursive /root/baseline "$S3/baseline"
+  put /root/baseline baseline --recursive
   echo "baseline exit $baseline_status"
   echo "CABOSSE-END baseline"
 fi

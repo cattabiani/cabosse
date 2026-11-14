@@ -27,5 +27,20 @@ def test_user_data() -> None:
         assert found == [f"{var}={value}"], var
     s3 = [line for line in lines if line.startswith("S3=")]
     assert len(s3) == 1 and s3[0].split()[0].endswith("-t")
-    assert "env S3=$S3/chat-manual/" in run.stdout  # chat.sh's own S3, untouched
+    assert "to=${S3:+$S3/chat-manual/" in run.stdout  # chat.sh's own S3, untouched
     subprocess.run(["bash", "-n"], input=run.stdout, text=True, check=True)
+
+
+def test_user_data_in_another_account() -> None:
+    """Another account (no bucket, no role): the chat keeps its results on
+    the instance; a full run, which needs S3, is refused."""
+    env = os.environ | {"DRY_RUN": "1", "ACCOUNT": "111122223333"}
+    env.pop("BUCKET", None)
+    run = subprocess.run([SCRIPT, "t"], env=env, capture_output=True, text=True, check=True)
+    assert [line.split()[0] for line in run.stdout.splitlines() if line.startswith("S3=")] == [
+        "S3="
+    ]
+    full = subprocess.run(
+        [SCRIPT, "t"], env=env | {"INTERACTIVE": ""}, capture_output=True, text=True
+    )
+    assert full.returncode == 1 and "needs BUCKET" in full.stdout
