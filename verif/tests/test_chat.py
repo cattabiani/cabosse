@@ -54,10 +54,9 @@ def runtime(model: decoder.Model) -> Runtime:
     return Runtime.open(GoldenPlatform(Layout.of(model.config, CAP, ports=PORTS)), model, CAP)
 
 
-def run_chat(tmp_path, model, tok, max_new: int) -> list[dict]:
-    chat.chat(
-        Log(str(tmp_path / "chat.jsonl")), runtime(model), tok, ["hi", "yo"], max_new, tmp_path
-    )
+def run_chat(tmp_path, model, tok, max_new: int, turns=("hi", "yo"), typed=False) -> list[dict]:
+    log = Log(str(tmp_path / "chat.jsonl"))
+    chat.chat(log, runtime(model), tok, turns, max_new, tmp_path, typed=typed)
     return [json.loads(line) for line in (tmp_path / "chat.jsonl").read_text().splitlines()]
 
 
@@ -94,3 +93,25 @@ def test_an_answer_stops_at_max_new_and_the_cast_is_v2(tmp_path, tiny_model) -> 
 def test_a_partial_character_is_held_back() -> None:
     assert chat.new_text(lambda _: "ab�", [0], 1) == ("", 1)
     assert chat.new_text(lambda _: "abc", [0], 1) == ("bc", 3)
+
+
+def test_a_full_context_starts_a_new_conversation(tmp_path, tiny_model, capsys) -> None:
+    """Turn 1 with turn 0's history would pass CAP: it goes alone; a turn too
+    long even alone is skipped; chat.txt keeps every answered turn."""
+    tok = FakeTokenizer(end_id=255)
+    a, b, c = "a" * 60, "b" * 60, "c" * 200
+    turns = run_chat(tmp_path, tiny_model, tok, max_new=8, turns=[a, b, c, "d"], typed=True)
+    assert [t["params"]["user"] for t in turns] == [a, b, "d"]
+    assert turns[1]["params"]["feed"] == [START, USER, *tok.ids(b), USER_END, START, ASSISTANT]
+    assert turns[2]["params"]["feed"][0] == tok.end_id  # "d" follows b's cut answer
+    out = capsys.readouterr().out
+    assert "a new conversation" in out and "too long" in out and "tokens/s" in out
+    assert "> " + a not in out  # typed: the terminal showed it already
+    text = (tmp_path / "chat.txt").read_text()
+    assert all(f"user: {x}" in text for x in (a, b, "d"))
+
+
+def test_typed_turns_end_at_an_empty_line(monkeypatch) -> None:
+    lines = iter(["hello ", "again", "", "unread"])
+    monkeypatch.setattr("builtins.input", lambda _: next(lines))
+    assert list(chat.typed_turns()) == ["hello", "again"]

@@ -2974,6 +2974,15 @@ missing 5 s after a token (stderr says so), so a paid run still gives its
 tokens. Later, if the measurement asks for it: pair a burst's even and odd
 beats into one full 64-byte write (3072 copies a token instead of 6144).
 
+**Step 2, code (2026-11-14):** `chat.py --interactive` reads the turns
+from the terminal (an empty line ends), prints each answer's wall-clock
+tokens/s, and starts a new conversation when a turn and its answer would
+not fit the 2048 positions. `scripts/f2/launch_chat.sh` launches the F2
+instance (`run_core.sh` with `INTERACTIVE=1`: clock, `pcis_bench`,
+`cabosse-chat`), makes the key pair and the SSH security group on first
+use, and prints the SSH command; the instance stays up until its deadline
+(default 120 min, about $5 at $2.475/h, estimate).
+
 **Step 3, code (2026-11-14):** `platforms/f2/host/line_reader.h` reads
 PCIS's whole lines with a plan, `LOAD:THREADS` in `CABOSSE_PCIS_READ`:
 `memcpy` (M10's read, still the default), `load32` (AVX2 32-byte loads,

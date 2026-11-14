@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Copyright 2026 The Cabosse Authors
-"""M9's chat recording (PLAN.md): scripted user turns to SmolLM2 on the
-core, each answer greedy until the end of its turn, streamed live as text
-(whole characters only, the template's markers hidden) and recorded with
-its real timing:
+"""A chat with SmolLM2 on the core (PLAN.md M9's recording, M11's manual
+chat): user turns, scripted or typed (--interactive), each answer greedy
+until the end of its turn, streamed live as text (whole characters only,
+the template's markers hidden) and recorded with its real timing:
 
 - chat.cast: asciicast v2 (https://docs.asciinema.org/manual/asciicast/v2/),
   written as the text appears; play with `asciinema play chat.cast`;
@@ -13,9 +13,12 @@ its real timing:
 
 The conversation stays in the KV cache: each turn feeds only the tokens the
 chat template adds after what the core already holds (an answer cut at
---max-new is closed by the template's end token, fed with the next turn).
+--max-new is closed by the template's end token, fed with the next turn). A turn that would not fit
+the context with its answer starts a new conversation with that turn alone.
+Typed turns end at an empty line or end of input; after each answer a line
+gives its tokens and wall-clock tokens/s (not recorded in chat.cast).
 
-Usage: python chat.py OUT_DIR [--golden] [--mhz MHZ] [--max-new N] [TURN ...]
+Usage: python chat.py OUT_DIR [--golden] [--mhz MHZ] [--max-new N] [--interactive | TURN ...]
   (--golden: the golden platform on the CPU, no card; slow, about 1.3 s a token)
 Environment: S3 and PROVENANCE (plan_log.py); CABOSSE_WEIGHTS (model/paths.py).
 """
@@ -24,7 +27,7 @@ import argparse
 import json
 import sys
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -54,13 +57,15 @@ class Cast:
         header |= {"timestamp": int(time.time()), "title": title}
         self.f.write(json.dumps(header) + "\n")
 
-    def out(self, text: str) -> None:
+    def out(self, text: str, echo: bool = True) -> None:
+        """Record `text` as output now; print it too if `echo`."""
         if not text:
             return
         t = time.monotonic() - self.t0
         self.f.write(json.dumps([round(t, 6), "o", text.replace("\n", "\r\n")]) + "\n")
         self.f.flush()
-        print(text, end="", flush=True)
+        if echo:
+            print(text, end="", flush=True)
 
     def close(self) -> None:
         self.f.close()
@@ -108,44 +113,76 @@ def answer(
     return tokens, stats
 
 
+def typed_turns() -> Iterator[str]:
+    """The user's turns from the terminal, until an empty line or the end of
+    input."""
+    while True:
+        try:
+            line = input("> ").strip()
+        except EOFError:
+            print()
+            return
+        if not line:
+            return
+        yield line
+
+
 def chat(
     log: Log,
     rt: Runtime,
     tok,
-    turns: list[str],
+    turns: Iterable[str],
     max_new: int,
     out: Path,
+    typed: bool = False,
 ) -> list[dict]:
-    """The scripted conversation on `rt`, with the tokenizer `tok` (its chat
-    template). Returns the messages."""
+    """The conversation on `rt`, with the tokenizer `tok` (its chat
+    template); `typed`: the terminal shows the turns already, and each
+    answer's speed. Returns the messages."""
     end_id = tok.convert_tokens_to_ids("<|im_end|>")
 
     def decode(ids: list[int]) -> str:
         return tok.decode(ids, skip_special_tokens=True)
 
-    messages: list[dict] = []
+    def prompt(messages: list[dict]) -> list[int]:
+        ids = tok.apply_chat_template(messages, add_generation_prompt=True, return_dict=True)
+        return list(ids["input_ids"])
+
+    messages: list[dict] = []  # the conversation the KV cache holds
+    transcript: list[dict] = []  # all of them, for chat.txt
     fed: list[int] = []  # what the KV cache holds
     cast = Cast(out / "chat.cast", "Cabosse: SmolLM2-135M-Instruct on AWS F2")
     try:
         for k, user in enumerate(turns):
-            messages.append({"role": "user", "content": user})
-            ids = tok.apply_chat_template(messages, add_generation_prompt=True, return_dict=True)
-            ids = list(ids["input_ids"])
+            turn = {"role": "user", "content": user}
+            alone = prompt([turn])
+            if len(alone) + max_new > rt.context:
+                cast.out(f"(too long: {len(alone)} tokens and {max_new} for the answer)\n")
+                continue
+            messages.append(turn)
+            ids = prompt(messages)
+            if len(ids) + max_new > rt.context:
+                messages, ids = [turn], alone  # a new conversation with this turn alone
+                cast.out("(the context is full: a new conversation)\n")
             if ids[: len(fed)] != fed:  # the template rewrote the history: start over
                 rt.reset()
                 fed = []
             feed = ids[len(fed) :]
-            cast.out(("\n" if k else "") + f"> {user}\n\n")
+            cast.out(("\n" if k and not typed else "") + f"> {user}\n\n", echo=not typed)
             tokens, stats = answer(rt, feed, end_id, max_new, decode, cast)
             cast.out("\n")
+            if typed and stats["wall_s"]:
+                rate = len(stats["wall_s"]) / sum(stats["wall_s"])
+                print(f"[{stats['n_new']} tokens, {rate:.1f} tokens/s wall clock]\n", flush=True)
             fed = ids + tokens
             messages.append({"role": "assistant", "content": decode(tokens)})
+            transcript += messages[-2:]
             params = {"turn": k, "user": user, "feed": feed}
             log.record("turn", params, stats | {"tokens": tokens, "text": messages[-1]["content"]})
     finally:
         cast.close()
-    lines = [f"{m['role']}: {m['content']}" for m in messages]
-    (out / "chat.txt").write_text("\n\n".join(lines) + "\n")
+        lines = [f"{m['role']}: {m['content']}" for m in transcript]
+        (out / "chat.txt").write_text("\n\n".join(lines) + "\n")
     return messages
 
 
@@ -153,6 +190,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("out", type=Path, help="the output directory")
     parser.add_argument("turns", nargs="*", default=TURNS, help="the user's turns")
+    parser.add_argument("--interactive", action="store_true", help="type the turns")
     parser.add_argument("--golden", action="store_true", help="the golden platform, no card")
     parser.add_argument("--mhz", type=int, default=0, help="set the core clock first (F2)")
     parser.add_argument("--max-new", type=int, default=MAX_NEW, help="answer tokens a turn")
@@ -180,7 +218,14 @@ def main() -> None:
     tok = AutoTokenizer.from_pretrained(str(paths.SMOLLM2))
     try:
         with platform as p:
-            chat(log, Runtime.open(p, model, CAP), tok, args.turns, args.max_new, args.out)
+            rt = Runtime.open(p, model, CAP)
+            turns = args.turns
+            if args.interactive:
+                print("SmolLM2-135M-Instruct on the core. Type a message; an empty line ends.")
+                turns = typed_turns()
+            chat(log, rt, tok, turns, args.max_new, args.out, typed=args.interactive)
+    except KeyboardInterrupt:
+        print("\n(stopped)")
     finally:
         log.upload(now=True)
 
