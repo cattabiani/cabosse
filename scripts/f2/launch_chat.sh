@@ -9,16 +9,24 @@
 # or earlier with `sudo shutdown -h now` on it.
 #
 # Usage: scripts/f2/launch_chat.sh NAME   (results go to $BUCKET/<date>-NAME)
-# Environment (defaults): AGFI and AFI (core build 9's), MHZ (200),
+# Works from any AWS account with F2 access (docs/f2-chat.md): the AFI is
+# public (D-078). In the project's account, BUCKET and ROLE default to its
+# results bucket and instance role; elsewhere both default to none, and
+# the chats stay on the instance (/home/ubuntu/chats).
+# Environment (defaults): PROFILE (cabosse, the AWS CLI profile), BUCKET
+# (s3://..., the prefix results go under) and ROLE (an instance profile
+# that can write it), AGFI and AFI (core build 9's), MHZ (200),
 # DEADLINE_MIN (120), REF (main: the branch the instance clones; push it
 # first), PCIS_READ (empty: the driver's default plan), BENCH (1);
-# INTERACTIVE= (empty) runs the full measured run instead (M10's run 4);
+# INTERACTIVE= (empty) runs the full measured run instead (M10's run 4;
+# needs BUCKET and ROLE);
 # DRY_RUN=1 prints the user data and calls nothing.
 #
 # On first use it makes the SSH key pair "cabosse" (private key in
 # ~/.ssh/cabosse.pem) and the security group "cabosse-ssh"; each launch
 # replaces that group's rules with SSH from this machine's public address
-# only (Q-35). Needs the AWS CLI with profile cabosse (aws sso login).
+# only (Q-35). The subnet: the default one in the first availability zone
+# that offers f2.6xlarge (SUBNET overrides).
 
 set -euo pipefail
 
@@ -32,21 +40,35 @@ PCIS_READ=${PCIS_READ:-}
 BENCH=${BENCH:-1}
 INTERACTIVE=${INTERACTIVE-1}             # empty: run_core.sh's full plan, chat recording and baselines, then power off
 
-PROFILE=cabosse
-REGION=eu-central-1
+PROFILE=${PROFILE:-cabosse}
+REGION=eu-central-1                    # the AFI's region
 TYPE=f2.6xlarge
-AMI=ami-092ebd0b9baef5842              # FPGA Developer AMI (Ubuntu) 1.19.2, as the builds
-SUBNET=subnet-04a180fef28bebea7        # eu-central-1b, public addresses on launch
-ROLE=cabosse-build-dcp                 # writes and reads $BUCKET/*
-BUCKET=s3://cabosse-builds-628837661672/dcp
+AMI=ami-092ebd0b9baef5842              # FPGA Developer AMI (Ubuntu) 1.19.2 (AWS Marketplace, free), as the builds
+PROJECT_ACCOUNT=628837661672           # the project's: its bucket and role are the defaults
 KEY=cabosse
 KEY_FILE=$HOME/.ssh/cabosse.pem
 SG_NAME=cabosse-ssh
 LOGIN=ubuntu                           # the AMI's user
-S3=$BUCKET/$(date -u +%F)-$NAME
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 
 aws() { command aws --profile "$PROFILE" --region "$REGION" "$@"; }
+
+if [ -n "${DRY_RUN:-}" ]; then
+  account=${ACCOUNT:-$PROJECT_ACCOUNT}
+elif ! account=$(aws sts get-caller-identity --query Account --output text); then
+  echo "the AWS CLI is not logged in: aws sso login --profile $PROFILE"
+  exit 1
+fi
+if [ "$account" = "$PROJECT_ACCOUNT" ]; then
+  BUCKET=${BUCKET-s3://cabosse-builds-628837661672/dcp}
+  ROLE=${ROLE-cabosse-build-dcp}     # writes and reads $BUCKET/*
+else
+  BUCKET=${BUCKET:-}
+  ROLE=${ROLE:-}
+fi
+S3=${BUCKET:+$BUCKET/$(date -u +%F)-$NAME}
+[ -n "$S3" ] || [ -n "$INTERACTIVE" ] || { echo "a full run (INTERACTIVE=) needs BUCKET and ROLE"; exit 1; }
+[ -z "$BUCKET" ] || [ -n "$ROLE" ] || { echo "BUCKET needs ROLE: an instance profile that can write it"; exit 1; }
 
 # The user data: run_core.sh with this launch's settings, plain words only
 # (they go into bash assignments and awk).
@@ -91,6 +113,15 @@ elif [ ! -e "$KEY_FILE" ]; then
   exit 1
 fi
 
+# The subnet: a default one where F2 runs (default VPCs give public addresses).
+if [ -z "${SUBNET:-}" ]; then
+  azs=$(aws ec2 describe-instance-type-offerings --location-type availability-zone \
+    --filters "Name=instance-type,Values=$TYPE" --query 'InstanceTypeOfferings[].Location' --output text)
+  SUBNET=$(aws ec2 describe-subnets --filters Name=default-for-az,Values=true "Name=availability-zone,Values=${azs//$'\t'/,}" \
+    --query 'sort_by(Subnets, &AvailabilityZone)[0].SubnetId' --output text)
+  [ "$SUBNET" != None ] || { echo "no default subnet in $azs (aws ec2 create-default-vpc, or set SUBNET)"; exit 1; }
+fi
+
 # The security group: SSH from this machine's address only (no instance
 # uses it now: checked above).
 vpc=$(aws ec2 describe-subnets --subnet-ids "$SUBNET" --query 'Subnets[0].VpcId' --output text)
@@ -110,19 +141,19 @@ aws ec2 authorize-security-group-ingress --group-id "$sg" --protocol tcp --port 
 echo "SSH allowed from $ip/32"
 
 id=$(aws ec2 run-instances --image-id "$AMI" --instance-type "$TYPE" --subnet-id "$SUBNET" \
-  --security-group-ids "$sg" --key-name "$KEY" --iam-instance-profile "Name=$ROLE" \
+  --security-group-ids "$sg" --key-name "$KEY" ${ROLE:+--iam-instance-profile "Name=$ROLE"} \
   --instance-initiated-shutdown-behavior terminate \
   --block-device-mappings 'DeviceName=/dev/sda1,Ebs={VolumeSize=120,VolumeType=gp3}' \
   --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=cabosse-$NAME}]" \
   --user-data "file://$user_data" --query 'Instances[0].InstanceId' --output text)
-echo "launched $id ($TYPE, $REF, $AGFI at $MHZ MHz), powers off within $DEADLINE_MIN min; results: $S3"
+echo "launched $id ($TYPE, $REF, $AGFI at $MHZ MHz), powers off within $DEADLINE_MIN min; results: ${S3:-on the instance, /home/ubuntu/chats}"
 aws ec2 wait instance-running --instance-ids "$id"
 addr=$(aws ec2 describe-instances --instance-ids "$id" \
   --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
 cat <<EOF
-Setup takes about 10 minutes (log: aws s3 cp $S3/cabosse.log - --profile $PROFILE).
+Setup takes about 5-10 minutes.
   ssh -i $KEY_FILE -o StrictHostKeyChecking=accept-new $LOGIN@$addr
   tail -f /var/log/cabosse.log    # wait for CABOSSE-READY
-  cabosse-chat                    # /quit ends a chat; it is saved to S3
+  cabosse-chat                    # /quit ends a chat; saved in /home/ubuntu/chats (and S3, with BUCKET)
   sudo shutdown -h +MIN           # move the power-off; 'now' ends (terminates) the instance
 EOF

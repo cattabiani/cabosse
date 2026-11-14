@@ -9,10 +9,18 @@ starts. Same as chocolate: everyone loves the chips, nobody remembers the pod.
 We're making the pod open source.
 
 **Results:** SmolLM2-135M-Instruct runs on an AWS F2 FPGA, bit-exact
-against the reference, at 194.5 tokens/s on the core (first build, 100 MHz).
-See [results/](results/README.md).
+against the reference, at 259 tokens/s end to end over 1000 tokens (316 on
+the core alone; core build 9 at 200 MHz). See [results/](results/README.md).
 
 ![SmolLM2-135M-Instruct answering two questions on the Cabosse core on AWS F2](results/chat-f2.svg)
+
+## Try it on AWS F2
+
+Chat with the model on the FPGA from your own AWS account: no FPGA tools
+and no build (the FPGA image is public). Clone the repository, run one
+script, log in with SSH and type. Setup takes about 5-10 minutes; the
+instance costs about $2.50 an hour (estimate) and powers off by itself.
+Step by step: [docs/f2-chat.md](docs/f2-chat.md).
 
 ## Goal
 
