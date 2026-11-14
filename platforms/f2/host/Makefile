@@ -12,7 +12,7 @@ CXXFLAGS = -std=c++23 -O2 -Wall -Wextra -Werror -I$(SDK_DIR)/userspace/include
 LDFLAGS = -L$(SDK_DIR)/userspace/lib/so -Wl,-rpath,$(SDK_DIR)/userspace/lib/so
 LDLIBS = -lfpga_mgmt
 
-all: bringup core_driver core_clock
+all: bringup core_driver core_clock pcis_bench
 
 # M8's bring-up tool.
 bringup: bringup.cpp
@@ -20,13 +20,17 @@ bringup: bringup.cpp
 
 # The runtime's driver (sw/f2_platform.py); sw/tests/test_f2_platform.py
 # builds it against a fake card instead.
-core_driver: core_driver.cpp card_f2.cpp card.h ../../../sw/driver_protocol.h
+core_driver: core_driver.cpp card_f2.cpp card.h line_reader.h ../../../sw/driver_protocol.h
 	$(CXX) $(CXXFLAGS) -o $@ core_driver.cpp card_f2.cpp $(LDFLAGS) $(LDLIBS)
 
-core_clock: core_clock.cpp card_f2.cpp card.h
+core_clock: core_clock.cpp card_f2.cpp card.h line_reader.h
 	$(CXX) $(CXXFLAGS) -o $@ core_clock.cpp card_f2.cpp $(LDFLAGS) $(LDLIBS)
 
+# The PCIS read rate with each read plan (M11 step 3).
+pcis_bench: pcis_bench.cpp card_f2.cpp card.h line_reader.h
+	$(CXX) $(CXXFLAGS) -o $@ pcis_bench.cpp card_f2.cpp $(LDFLAGS) $(LDLIBS)
+
 clean:
-	rm -f bringup core_driver core_clock
+	rm -f bringup core_driver core_clock pcis_bench
 
 .PHONY: all clean

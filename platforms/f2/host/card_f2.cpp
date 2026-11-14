@@ -8,7 +8,9 @@
 /// each (AVX2: the F2 host has no AVX-512, M8); a range's partial first and
 /// last lines byte by byte, which PCIS carries as byte strobes (M8). After
 /// the stores a fence and a read of the last line's word: the posted writes
-/// before it are done. Reads go through a line-aligned copy.
+/// before it are done. Reads copy whole lines into a line-aligned buffer
+/// with the plan in CABOSSE_PCIS_READ (line_reader.h: "LOAD:THREADS",
+/// default kDefaultRead), then the asked bytes out of it.
 ///
 /// The host page for PCIM: one 2 MiB hugepage (vm.nr_hugepages at least 1),
 /// mapped populated and locked, its physical address from
@@ -26,19 +28,23 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <format>
 #include <print>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 #include "card.h"
+#include "line_reader.h"
 
 namespace {
 
 constexpr int kSlot = 0;
 constexpr uint64_t kLine = 64;  ///< a PCIS beat, and a write-combining line
 constexpr uint64_t kHugePage = uint64_t{2} << 20;
+constexpr std::string_view kDefaultRead = "memcpy:1";  ///< M10's read, until pcis_bench measures
 constexpr uint64_t kPfnMask = (uint64_t{1} << 55) - 1, kPresent = uint64_t{1} << 63;  ///< pagemap's fields
 
 /// @brief Throw on a failed SDK call.
@@ -62,6 +68,16 @@ __attribute__((target("avx2"))) void store_lines(std::byte* out, const std::byte
   }
 }
 
+/// @brief The read plan from CABOSSE_PCIS_READ, else kDefaultRead.
+/// @throws std::runtime_error if it is not one this machine has.
+card::ReadPlan read_plan() {
+  const char* env = std::getenv("CABOSSE_PCIS_READ");
+  const std::string_view text = env ? env : kDefaultRead;
+  const auto plan = card::parse_plan(text);
+  if (!plan) throw std::runtime_error(std::format("CABOSSE_PCIS_READ={}: not a read plan for this machine", text));
+  return *plan;
+}
+
 /// @brief The F2 card: BAR0 and BAR4 attached.
 class F2Card final : public card::Card {
  public:
@@ -70,6 +86,7 @@ class F2Card final : public card::Card {
     check(fpga_pci_attach(kSlot, FPGA_APP_PF, APP_PF_BAR0, 0, &ocl_), "attach BAR0");
     check(fpga_pci_attach(kSlot, FPGA_APP_PF, APP_PF_BAR4, BURST_CAPABLE, &pcis_), "attach BAR4");
     if (!__builtin_cpu_supports("avx2")) throw std::runtime_error("PCIS writes need AVX2");
+    std::println(stderr, "PCIS reads: {}", card::to_string(reader_.plan()));
   }
   ~F2Card() override {
     if (!page_.bytes.empty()) munmap(page_.bytes.data(), page_.bytes.size());
@@ -109,9 +126,9 @@ class F2Card final : public card::Card {
     const uint64_t first = addr / kLine * kLine;
     const uint64_t end = (addr + data.size() + kLine - 1) / kLine * kLine;
     const std::byte* const card = map(first, end - first);
-    std::vector<std::byte> lines(end - first);
-    std::memcpy(lines.data(), card, lines.size());  // device memory: whole lines
-    std::ranges::copy(std::span(lines).subspan(addr - first, data.size()), data.begin());
+    if (lines_.size() < end - first) lines_.resize(end - first);
+    reader_.read(lines_.data(), card, end - first);  // device memory: whole lines
+    std::ranges::copy(std::span(lines_).subspan(addr - first, data.size()), data.begin());
   }
 
   card::HostPage host_page() override {
@@ -143,6 +160,8 @@ class F2Card final : public card::Card {
   pci_bar_handle_t pcis_ = PCI_BAR_HANDLE_INIT;
   card::HostPage page_;
   bool page_tried_ = false;
+  card::LineReader reader_{read_plan()};
+  std::vector<std::byte> lines_;  ///< a read's whole lines
 
   /// @brief Card memory [offset, offset + n) mapped.
   std::byte* map(uint64_t offset, uint64_t n) {

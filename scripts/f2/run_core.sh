@@ -8,7 +8,8 @@
 # Python venv (uv: Python and requirements.txt as this project pins them),
 # download SmolLM2 at the fixtures' revision, and run M9's measurements
 # (scripts/f2/core_plan.py), copying the results (JSON lines with
-# provenance) and the log to S3 as they come; then the chat recording
+# provenance) and the log to S3 as they come; then the PCIS read plans'
+# rates (platforms/f2/host/pcis_bench.cpp) to $S3/pcis_bench.jsonl; then the chat recording
 # (scripts/f2/chat.py) to $S3/chat/, and the CPU baselines
 # (scripts/f2/cpu_baseline.sh) to $S3/baseline/. The instance powers off when
 # done or at the deadline. Root and installs are allowed on the project's
@@ -20,12 +21,16 @@ AGFI=                          # the core AFI's global id (agfi-...)
 AFI=                           # its id (afi-...), for the provenance
 MHZ=100                        # core clock: core1 closes timing at ~105 MHz, not 250
 QUICK=                         # --quick: no long fixture
+BENCH=1                        # the PCIS read bench after the plan (empty: none)
+PCIS_READ=                     # the driver's read plan (line_reader.h, e.g. stream32:4; empty: its default)
 CHAT=1                         # the chat recording after the plan (empty: none)
 BASELINE=1                     # the CPU baselines after the chat (empty: none)
 DEADLINE_MIN=90                # safety net: power off even if something hangs
 S3=                            # s3://bucket/dcp/<run>: everything goes there (the role writes dcp/ only)
 UV_VERSION=0.12.7              # the installer of Python and the venv
 PYTHON_VERSION=3.14.4
+# SmolLM2's logits (49,152 words) are 196,608 bytes; 9 reads a plan.
+BENCH_PLANS="memcpy:1 load32:1 stream32:1 memcpy:4 load32:2 load32:4 load32:8 stream32:2 stream32:4 stream32:8 stream32:16"
 MODEL=HuggingFaceTB/SmolLM2-135M-Instruct
 MODEL_REVISION=12fd25f77366fa6b3b4b768ec3050bf629380bac  # the fixtures' checkpoint
 
@@ -61,7 +66,7 @@ echo "aws-fpga $aws_fpga"
 source /etc/profile >>$log 2>&1
 cd aws-fpga && { source sdk_setup.sh >>$log 2>&1 || { echo "CABOSSE-RESULT fail sdk_setup failed"; tail -40 $log; finish; }; }
 { apt-get update -q && apt-get install -y -q g++-14; } >>$log 2>&1 || { echo "CABOSSE-RESULT fail g++-14 install failed"; tail -20 $log; finish; }
-make -C /root/cabosse/platforms/f2/host CXX=g++-14 core_driver core_clock >>$log 2>&1 \
+make -C /root/cabosse/platforms/f2/host CXX=g++-14 core_driver core_clock pcis_bench >>$log 2>&1 \
   || { echo "CABOSSE-RESULT fail host tools build failed"; tail -40 $log; finish; }
 { curl -LsSf https://astral.sh/uv/$UV_VERSION/install.sh | env UV_INSTALL_DIR=/root/.local/bin sh \
   && /root/.local/bin/uv venv -q -p $PYTHON_VERSION /root/venv \
@@ -102,12 +107,23 @@ PROVENANCE=$(python3 -c 'import json,sys; print(json.dumps(dict(zip(sys.argv[1::
   instance "$(meta instance-id)" instance_type "$(meta instance-type)" az "$(meta placement/availability-zone)" \
   cpu "$(grep -m1 '^model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ *//')")
 export PROVENANCE
+[ -n "$PCIS_READ" ] && export CABOSSE_PCIS_READ=$PCIS_READ
 /root/venv/bin/python /root/cabosse/scripts/f2/core_plan.py /root/core.jsonl --mhz $MHZ $QUICK
 status=$?
 echo "plan exit $status"
 errors=$(grep -c '"error"' /root/core.jsonl)
 echo "steps with an error: $errors"
 echo "CABOSSE-END plan"
+bench_status=0
+if [ -n "$BENCH" ]; then
+  # After the plan: the clock is set and no driver runs. It overwrites card memory.
+  echo "CABOSSE-BEGIN bench"
+  /root/cabosse/platforms/f2/host/pcis_bench 196608 9 $BENCH_PLANS | tee /root/pcis_bench.jsonl
+  bench_status=${PIPESTATUS[0]}
+  aws s3 cp --only-show-errors /root/pcis_bench.jsonl "$S3/pcis_bench.jsonl"
+  echo "bench exit $bench_status"
+  echo "CABOSSE-END bench"
+fi
 chat_status=0
 if [ -n "$CHAT" ]; then
   echo "CABOSSE-BEGIN chat"
@@ -126,5 +142,5 @@ if [ -n "$BASELINE" ]; then
   echo "baseline exit $baseline_status"
   echo "CABOSSE-END baseline"
 fi
-[ $status = 0 ] && [ "$errors" = 0 ] && [ $chat_status = 0 ] && [ $baseline_status = 0 ] && echo "CABOSSE-RESULT pass" || echo "CABOSSE-RESULT fail"
+[ $status = 0 ] && [ "$errors" = 0 ] && [ $bench_status = 0 ] && [ $chat_status = 0 ] && [ $baseline_status = 0 ] && echo "CABOSSE-RESULT pass" || echo "CABOSSE-RESULT fail"
 finish

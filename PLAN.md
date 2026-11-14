@@ -2974,6 +2974,18 @@ missing 5 s after a token (stderr says so), so a paid run still gives its
 tokens. Later, if the measurement asks for it: pair a burst's even and odd
 beats into one full 64-byte write (3072 copies a token instead of 6144).
 
+**Step 3, code (2026-11-14):** `platforms/f2/host/line_reader.h` reads
+PCIS's whole lines with a plan, `LOAD:THREADS` in `CABOSSE_PCIS_READ`:
+`memcpy` (M10's read, still the default), `load32` (AVX2 32-byte loads,
+four lines in flight before their stores) or `stream32` (VMOVNTDQA, which
+on Intel fetches the whole line into a buffer for the line's other
+loads; on AMD Zen 3 to verify), on 1 to 16 threads with disjoint slices.
+`pcis_bench` measures each plan on 196,608 bytes (SmolLM2's logits), 9
+reads each, checked byte for byte; `run_core.sh` runs it after the plan
+(`$S3/pcis_bench.jsonl`) and passes `PCIS_READ` to the driver. The driver
+now sees that a wrapper has no PCIM (PCIM_BYTES does not read back: build
+9) and turns it off at once instead of after 5 s.
+
 **Notes:** SmolLM2 is too small for a GPU to reach its bandwidth bound (per-token
 launch overhead dominates); the report says so, and the comparison on a
 larger model waits for M12. A cloud GPU or Inferentia2 run (Q-38) is

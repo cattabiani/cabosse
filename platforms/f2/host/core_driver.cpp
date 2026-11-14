@@ -21,7 +21,9 @@
 /// start the driver clears PCIM_DONE (after waiting for the last token's
 /// copies if no read took them). No page (card.h), a window that does not
 /// fit it, or one not in whole 32-byte beats: every output read is a PCIS
-/// read. A PCIM error response, or copies missing 5 s after a token, turn
+/// read. A wrapper without PCIM (its PCIM_BYTES does not read back the
+/// window's size: build 9 and older) turns PCIM off for good when arming.
+/// A PCIM error response, or copies missing 5 s after a token, turn
 /// PCIM off for good (PCIS from then on), a failed token until the next
 /// read. Arming and turning off print on stderr.
 ///
@@ -52,6 +54,7 @@ constexpr uint32_t kStart = 1, kStatusBusy = 1, kStatusDone = 2, kStatusError = 
 constexpr auto kRunTimeout = std::chrono::seconds(60);
 constexpr auto kHandoverTimeout = std::chrono::seconds(5);
 constexpr auto kCopiesTimeout = std::chrono::seconds(5);  // after a done: microseconds
+constexpr auto kReadBackTimeout = std::chrono::milliseconds(100);  // a register write's read back
 constexpr uint64_t kBeatBytes = 32;  // the vector unit's beat: one PCIM copy each
 constexpr int kExitCard = 1, kExitBadInput = 2, kExitHang = 3;
 
@@ -132,11 +135,25 @@ struct Driver {
     card.poke(card::kWrapPcimHostLo, static_cast<uint32_t>(page.phys));
     card.poke(card::kWrapPcimHostHi, static_cast<uint32_t>(page.phys >> 32));
     card.poke(card::kWrapPcimDone, 0);
+    if (!reads_back(card::kWrapPcimBytes, static_cast<uint32_t>(now.size()))) {
+      disarm("this wrapper has no PCIM (its build predates it)", true);
+      return;
+    }
     std::ranges::copy(now, page.bytes.begin());
     win_addr = addr;
     win_bytes = now.size();
     pending = false;
     std::println(stderr, "PCIM: card 0x{:X} + {} bytes to host 0x{:X}", addr, now.size(), page.phys);
+  }
+
+  /// @brief Whether OCL register `offset` reads `value` within
+  /// kReadBackTimeout (a read may pass the write before it: poll).
+  bool reads_back(uint64_t offset, uint32_t value) {
+    const auto start = std::chrono::steady_clock::now();
+    while (card.peek(offset) != value) {
+      if (std::chrono::steady_clock::now() - start > kReadBackTimeout) return false;
+    }
+    return true;
   }
 
   /// @brief Stop PCIM's copies; output reads go through PCIS (and arm
