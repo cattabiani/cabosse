@@ -109,7 +109,7 @@ def test_output_without_pcim_reads_card_memory_at_once(
     driver: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
 ) -> None:
     """A wrapper built before PCIM (build 9's AFI): arming finds no PCIM and
-    turns it off for good, with no wait for copies that never come."""
+    turns it off for good, silently, with no wait for copies that never come."""
     for k, v in {**FAKE, "FAKE_NO_PCIM": "1"}.items():
         monkeypatch.setenv(k, v)
     addr, n = 0x2000, 64
@@ -123,7 +123,7 @@ def test_output_without_pcim_reads_card_memory_at_once(
             start = time.monotonic()
             assert torch.equal(platform.read_output(addr, n), token), k
             assert time.monotonic() - start < 1, "waited for copies"
-    assert "has no PCIM" in capfd.readouterr().err
+    assert "PCIM" not in capfd.readouterr().err
 
 
 def test_pcis_bench(monkeypatch: pytest.MonkeyPatch) -> None:

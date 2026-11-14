@@ -6,7 +6,7 @@ no build: the FPGA image (AFI) is public (D-078). One script launches the
 instance; you log in with SSH and type.
 
 Cost: an f2.6xlarge costs about $2.50 an hour (eu-central-1, on demand,
-estimate; check AWS's price list). Setup takes about 5-10 minutes, and the
+estimate; check AWS's price list). Setup takes about 3-10 minutes, and the
 instance powers off by itself after 120 minutes at most. A 20-minute try is
 about $1.
 

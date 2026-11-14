@@ -22,10 +22,10 @@
 /// copies if no read took them). No page (card.h), a window that does not
 /// fit it, or one not in whole 32-byte beats: every output read is a PCIS
 /// read. A wrapper without PCIM (its PCIM_BYTES does not read back the
-/// window's size: build 9 and older) turns PCIM off for good when arming.
-/// A PCIM error response, or copies missing 5 s after a token, turn
-/// PCIM off for good (PCIS from then on), a failed token until the next
-/// read. Arming and turning off print on stderr.
+/// window's size: build 9 and older) turns PCIM off for good when arming,
+/// silently. A PCIM error response, or copies missing 5 s after a token,
+/// turn PCIM off for good (PCIS from then on), a failed token until the
+/// next read. Arming and those turn-offs print on stderr.
 ///
 /// Exits 2 on a bad request (an unknown opcode, an address out of range,
 /// input cut short), 3 if a run or a port handover takes longer than its
@@ -136,7 +136,7 @@ struct Driver {
     card.poke(card::kWrapPcimHostHi, static_cast<uint32_t>(page.phys >> 32));
     card.poke(card::kWrapPcimDone, 0);
     if (!reads_back(card::kWrapPcimBytes, static_cast<uint32_t>(now.size()))) {
-      disarm("PCIM_BYTES does not read back: this wrapper has no PCIM", true);
+      disarm("", true);  // no PCIM in this wrapper (build 9): silent, PCIS is normal there
       return;
     }
     std::ranges::copy(now, page.bytes.begin());
@@ -157,12 +157,13 @@ struct Driver {
   }
 
   /// @brief Stop PCIM's copies; output reads go through PCIS (and arm
-  /// again, unless `for_good`).
+  /// again, unless `for_good`). Says `why` on stderr unless it is empty.
   void disarm(const std::string& why, bool for_good) {
     card.poke(card::kWrapPcimBytes, 0);
     win_bytes = 0;
     pending = false;
     failed = failed || for_good;
+    if (why.empty()) return;
     std::println(stderr, "PCIM off{}: {}", for_good ? " for good, logits through PCIS" : "", why);
   }
 

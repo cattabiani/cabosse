@@ -180,10 +180,10 @@ def runs_table() -> str:
                 f"{long_new(n)}: {blocks.met(long_ok(n))}",
                 f"{statistics.median(f['result']['cycles_median'] for f in fixtures):,.0f}",
                 f"{long['cycles_median']:,}",
-                f"{long['tokens_per_s_cycles']:.1f}",
-                f"{long['tokens_per_s_wall']:.1f}",
+                *(f"{rate:.1f}" for rate in long_tokens_per_s(n)),
             ]
         )
+    first, last = WINDOWS[-1]
     return blocks.table(
         [
             "run",
@@ -191,10 +191,23 @@ def runs_table() -> str:
             "long fixture bit-exact",
             "fixtures, median cycles a step",
             "long, median cycles a step",
-            "long, tokens/s (cycles)",
-            "long, tokens/s (wall)",
+            f"long, tokens/s {first}–{last} (cycles)",
+            f"long, tokens/s {first}–{last} (wall)",
         ],
         rows,
+    )
+
+
+def long_tokens_per_s(n: int) -> tuple[float, float]:
+    """The long run's tokens/s over the new tokens' window (tokens over total
+    time, as the window table and the bound), from CYCLES and wall clock."""
+    r = long_result(n)
+    first, last = WINDOWS[-1]
+    span = slice(first, last + 1)
+    n_tokens = last + 1 - first
+    return (
+        n_tokens * clock_hz(n) / sum(r["cycles"][span]),
+        n_tokens / sum(r["wall_s"][span]),
     )
 
 
@@ -247,16 +260,15 @@ def pcis_table() -> str:
 
 
 def wall_table() -> str:
-    """A decode step's wall time on the long run: the core's cycles, the
-    logits' read at the run's measured PCIS rate (estimate), the rest."""
+    """A decode step's wall time on the long run (mean over the new tokens'
+    window): the core's cycles, the logits' read at the run's measured PCIS
+    rate (estimate), the rest."""
     n = BASELINE_RUN
-    r = long_result(n)
-    wall = r["wall_s_median"]
-    core = r["cycles_median"] / design()["clock_hz"]
+    core, wall = (1 / rate for rate in long_tokens_per_s(n))
     read = LOGITS_BYTES / pcis_read_bytes_per_s(n)
     rest = wall - core - read
     rows = [
-        ["the core (CYCLES, median)", f"{core * 1e3:.2f}", f"{core / wall:.0%}"],
+        ["the core (CYCLES)", f"{core * 1e3:.2f}", f"{core / wall:.0%}"],
         [
             f"logits read, {LOGITS_BYTES:,} B at {pcis_read_bytes_per_s(n) / 1e6:.1f} MB/s"
             " (estimate)",
@@ -264,9 +276,10 @@ def wall_table() -> str:
             f"{read / wall:.0%}",
         ],
         ["the rest (host, driver, commands)", f"{rest * 1e3:.2f}", f"{rest / wall:.0%}"],
-        ["wall clock (median)", f"{wall * 1e3:.2f}", "100%"],
+        ["wall clock", f"{wall * 1e3:.2f}", "100%"],
     ]
-    return blocks.table(["part of a step", "ms", "share"], rows)
+    first, last = WINDOWS[-1]
+    return blocks.table([f"part of a step (mean, positions {first}–{last})", "ms", "share"], rows)
 
 
 def cpu_rows() -> list[list]:

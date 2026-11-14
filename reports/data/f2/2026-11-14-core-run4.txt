@@ -8,12 +8,12 @@
 
 clock {'set_mhz': 200, 'wrap_id': '0xCAB0C0E0', 'build': '941611a0', 'ports': 32, 'chan_w': 29, 'len': 49152, 'clocks_mhz': {'a': [125, 79.16666666666667, 79.16666666666667], 'b': [450, 75, 0], 'c': [300, 80, 0], 'hbm': [200, 0, 0]}}
 fixtures_ok True long_ok True long_new 1000
-| run | 64-token fixtures bit-exact | long fixture bit-exact | fixtures, median cycles a step | long, median cycles a step | long, tokens/s (cycles) | long, tokens/s (wall) |
+| run | 64-token fixtures bit-exact | long fixture bit-exact | fixtures, median cycles a step | long, median cycles a step | long, tokens/s 45–1044 (cycles) | long, tokens/s 45–1044 (wall) |
 |---|---|---|---|---|---|---|
-| 1 | 3 × 64: yes | 1000: yes | 514,014 | 575,374 | 173.8 | 65.4 |
-| 2 | 3 × 64: yes | 1000: yes | 514,023 | 575,372 | 173.8 | 65.0 |
-| 3 | 3 × 64: yes | 1000: yes | 514,004 | 575,352 | 173.8 | 67.5 |
-| 4 | 3 × 64: yes | 1000: yes | 570,388 | 632,819 | 316.0 | 83.3 |
+| 1 | 3 × 64: yes | 1000: yes | 514,014 | 575,374 | 174.2 | 65.4 |
+| 2 | 3 × 64: yes | 1000: yes | 514,023 | 575,372 | 174.2 | 65.1 |
+| 3 | 3 × 64: yes | 1000: yes | 514,004 | 575,352 | 174.2 | 67.5 |
+| 4 | 3 × 64: yes | 1000: yes | 570,388 | 632,819 | 316.8 | 83.3 |
 | positions | measured (cycles) | perf model (estimate) | measured vs model | bandwidth bound | measured / bound | model / bound |
 |---|---|---|---|---|---|---|
 | 0–127 | 351.1 | 368.4 | -4.7% | 747.6 | 47% | 49% |
@@ -26,12 +26,12 @@ fixtures_ok True long_ok True long_new 1000
 | 2 | 400 96 383 386 385 | 14 22 22 22 22 |
 | 3 | 381 89 371 370 371 | 14 23 23 23 23 |
 | 4 | 398 95 382 383 380 | 16 25 25 25 25 |
-| part of a step | ms | share |
+| part of a step (mean, positions 45–1044) | ms | share |
 |---|---|---|
-| the core (CYCLES, median) | 3.16 | 26% |
+| the core (CYCLES) | 3.16 | 26% |
 | logits read, 196,608 B at 24.5 MB/s (estimate) | 8.01 | 67% |
-| the rest (host, driver, commands) | 0.83 | 7% |
-| wall clock (median) | 12.00 | 100% |
+| the rest (host, driver, commands) | 0.84 | 7% |
+| wall clock | 12.00 | 100% |
 | core positions | core, tokens/s | llama.cpp positions | llama.cpp | core vs llama.cpp alone |
 |---|---|---|---|---|
 | 0–127 | 351.1 | 0–127 | 224.3 ± 5.3 | +57% |
