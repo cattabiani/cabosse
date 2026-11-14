@@ -26,6 +26,9 @@ CHAN_W = 20  # 1 MiB channels: the tiny model's layout fits
 LENGTH = 1024  # buffer elements: the tiny model's largest is S, 4 heads x 128
 N_NEW = 64
 PROMPTS = 3
+PCIM_DONE = 0x2_0038  # f2_core's register (platforms/f2/README.md)
+# PCIM in f2_core's bench: latency, a beat 1 cycle in 3, pauses, AW after W
+PCIM_STRESS = {"platency": 40, "prate": 300, "ppause": 20, "ppause_max": 30, "paw_after_w": 1}
 
 
 def prompts(n: int, vocab: int) -> list[list[int]]:
@@ -45,13 +48,17 @@ def check_breakdown(cmds: list[commands.Command], runs: list, ports: int, label:
 
 
 def generate_on_sim(
-    ports: int, n_prompts: int, top: str = "core", params: tuple[tuple[str, int], ...] = ()
+    ports: int,
+    n_prompts: int,
+    top: str = "core",
+    params: tuple[tuple[str, int], ...] = (),
+    plusargs: dict[str, int] | None = None,
 ) -> None:
     """n_prompts conversations of N_NEW tokens on one simulated core (or
     `top`, the core in its F2 wrapper, with `params`), each token's trace
-    checked (check_breakdown)."""
+    checked (check_breakdown); `plusargs` to the driver."""
     model = tiny_model()
-    with SimPlatform(ports, CHAN_W, LENGTH, top, params) as p:
+    with SimPlatform(ports, CHAN_W, LENGTH, top, params, **(plusargs or {})) as p:
         rt = Runtime.open(p, model, CAP)
         cmds = commands.build(rt.layout)
         for k, prompt in enumerate(prompts(n_prompts, model.config.vocab_size)):
@@ -62,6 +69,8 @@ def generate_on_sim(
             check_generation(rt, model, prompt, N_NEW, label)
             seconds = time.monotonic() - start
             check_breakdown(cmds, p.runs, ports, label)
+            if top == "f2_core":  # the last logits came through PCIM, a copy a beat
+                assert p.reg_read(PCIM_DONE) == 4 * model.config.vocab_size // 32, label
             print(f"{label}: {rt.position + 1} tokens in {seconds:.1f} s, last {rt.cycles} cycles")
 
 
@@ -83,8 +92,10 @@ def test_tiny_decodes_bit_exact_at_4_ports() -> None:
 def test_tiny_decodes_bit_exact_in_the_f2_wrapper() -> None:
     """The same in platforms/f2/core/f2_core.sv (M9): each engine port's
     channel in its addresses, engine port 0 and the vector unit sharing
-    HBM port 0, the host's handovers of it, all on one memory."""
-    generate_on_sim(4, 1, "f2_core")
+    HBM port 0, the host's handovers of it, all on one memory. The logits
+    come back through PCIM (M11) from the second token on, PCIM slow and
+    pausing, its AW taken only after W (verif/bulk/f2_core.cpp)."""
+    generate_on_sim(4, 1, "f2_core", plusargs=PCIM_STRESS)
 
 
 @pytest.mark.slow

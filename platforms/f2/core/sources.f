@@ -3,4 +3,5 @@
 ../bringup/bringup_pipe.sv
 ../bringup/bringup_host.sv
 f2_port0.sv
+f2_pcim.sv
 f2_core.sv

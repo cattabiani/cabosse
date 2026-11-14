@@ -11,6 +11,7 @@ cells, and report_utilization -pblocks shows where they went. SLR0's and
 SLR1's pblocks each have a hard child (pblock_hbm, pblock_slr1_core).
 
 - SLR0, beside the HBM: port 0's merge and the host's side of it, the ILA,
+  the PCIM tap (M11),
   and the engine's region 0: groups 0 .. 3 (ports 0 .. 15, their DMAs and
   lanes). Its bottom clock-region row (pblock_hbm, a child of pblock_slr0):
   every HBM channel's stage beside the HBM (M10 step 6).
@@ -20,7 +21,8 @@ SLR1's pblocks each have a hard child (pblock_hbm, pblock_slr1_core).
   (M10 step 7, B): column X5 is SLR1's only CL area beside the static shell
   on its east, the corridor the shell's CL-side IP needs (build 7's
   congestion). Of our cells in a pblock, only the host's stages towards
-  PCIS may use it; the floating registers (below), in none, may too.
+  PCIS and PCIM's side towards the shell (M11) may use it; the floating
+  registers (below), in none, may too.
 - SLR2: the vector unit and the core's registers on its side (xv_*), and
   the engine's region 2, group 7 (M10 step 7, A).
 
@@ -290,6 +292,18 @@ def lines() -> list[str]:
     ):  # stage 0 beside port 0
         for s, slr in enumerate((0, 1, 2)):
             out.append(assign(slr, esc(f"{F2}/{name}[{s}]") + "*"))
+
+    out.append("# PCIM (M11): the tap beside port 0; the copies' stage beside it, the other,")
+    out.append("# their AW/W split and response register, and the clock crossings in")
+    out.append("# pblock_slr1, beside the shell's PCIM (SLR1).")
+    out.append(assign(0, f"{F2}/u_pcim"))
+    out.append(assign(0, esc(f"{F2}/u_pm/gen_stage[0].") + "*"))
+    out.append(assign(slr_pblock(1), esc(f"{F2}/u_pm/gen_stage[1].") + "*"))
+    for name in ("pm_aw_done_q_reg", "pm_w_done_q_reg", "pm_b_valid_q_reg", "pm_b_resp_q_reg"):
+        out.append(assign(slr_pblock(1), f"{F2}/{name}*"))
+    for name in ("u_pcim_aw", "u_pcim_w", "u_pcim_b"):
+        out.append(assign(slr_pblock(1), f"{CL}/{name}"))
+    out.append(assign(slr_pblock(1), f"{CL}/pm_rst_q_reg"))
 
     out.append("")
     out.append("# The ILA probes port 0's HBM channels")

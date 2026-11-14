@@ -16,7 +16,13 @@
 // AXI-Lite: one access at a time, a write's address and data in the same
 // cycle (as the OCL clock converter gives them), the strobes ignored. Below
 // WrapBase the core's registers, passed on; from WrapBase the wrapper's
-// (README.md): its ID, BUILD, HOST_PORT, STATUS and the build's parameters.
+// (README.md): its ID, BUILD, HOST_PORT, STATUS, the build's parameters and
+// PCIM's.
+//
+// PCIM (M11, Q-34): f2_pcim.sv copies the vector unit's writes inside a
+// window (the logits) to host memory, a 64-byte PCIM write each (PCIM takes
+// full 512-bit beats only), the 32-byte beat in its half and the strobes
+// there. PCIM_DONE counts the copies answered OKAY, PCIM_ERR the others.
 
 module f2_core #(
   parameter  int unsigned Ports     = 32,
@@ -31,6 +37,7 @@ module f2_core #(
   parameter  int unsigned Region1   = Ports / 8,
   parameter  int unsigned Region2   = Ports / 4 - Ports / 32,
   localparam int unsigned AddrWidth = 34,
+  localparam int unsigned HostWidth = 64,     // PCIM's addresses
   localparam int unsigned DataWidth = 256,
   localparam int unsigned BeatBytes = DataWidth / 8,
   localparam int unsigned AxilW     = 17      // the core's
@@ -80,6 +87,17 @@ module f2_core #(
   output logic                                 h_b_valid_o,
   input  logic                                 h_b_ready_i,
   output logic [1:0]                           h_b_resp_o,
+  // PCIM's writes (the shell's, through the CL top): single 512-bit beats
+  // (len 0, size 6, INCR), last always set; every response taken
+  output logic                                 pcim_aw_valid_o,
+  input  logic                                 pcim_aw_ready_i,
+  output logic [HostWidth-1:0]                 pcim_aw_addr_o,
+  output logic                                 pcim_w_valid_o,
+  input  logic                                 pcim_w_ready_i,
+  output logic [2*DataWidth-1:0]               pcim_w_data_o,
+  output logic [2*BeatBytes-1:0]               pcim_w_strb_o,
+  input  logic                                 pcim_b_valid_i,
+  input  logic [1:0]                           pcim_b_resp_i,
   // AXI, a port each (sizes: always the full beat)
   output logic [Ports-1:0]                     ar_valid_o,
   input  logic [Ports-1:0]                     ar_ready_i,
@@ -115,11 +133,15 @@ module f2_core #(
   localparam logic [LiteW-1:0] WrapBase = LiteW'(1) << AxilW;
   // The wrapper's registers, by offset from WrapBase (README.md)
   localparam logic [7:0] RegId = 8'h00, RegBuild = 8'h04, RegHostPort = 8'h08,
-                         RegStatus = 8'h0C, RegPorts = 8'h18, RegChanW = 8'h1C, RegLen = 8'h20;
+                         RegStatus = 8'h0C, RegPorts = 8'h18, RegChanW = 8'h1C, RegLen = 8'h20,
+                         RegPcimBaseLo = 8'h24, RegPcimBaseHi = 8'h28, RegPcimBytes = 8'h2C,
+                         RegPcimHostLo = 8'h30, RegPcimHostHi = 8'h34, RegPcimDone = 8'h38,
+                         RegPcimErr = 8'h3C;
   localparam logic [2:0] FullBeat = 3'($clog2(BeatBytes));
   localparam int unsigned AxW = AddrWidth + 8 + 2;
   localparam int unsigned WW  = DataWidth + BeatBytes + 1;
   localparam int unsigned RW  = DataWidth + 2 + 1;
+  localparam int unsigned CopyW = HostWidth + DataWidth + BeatBytes;  // f2_pcim's copies
 
   if (Ports < 1 || Ports > 32 || ChanW + $clog2(Ports) > AddrWidth) begin : gen_bad_ports
     $error("f2_core: Ports must be 1 to 32, their channels within the address");
@@ -140,6 +162,12 @@ module f2_core #(
   logic             host_port_q, wrap_wr, wrap_rd;
   logic             lite_rst_nq;  // this logic's copy of the reset (M10)
   logic [7:0]       wr_reg, rd_reg;
+  // PCIM's window and its answers
+  logic [AddrWidth-1:0] pcim_base_q;
+  logic [31:0]          pcim_bytes_q, pcim_done_q, pcim_err_q;
+  logic [HostWidth-1:0] pcim_host_q, pcim_delta_q;
+  logic                 pm_b_valid_q;  // a PCIM response, registered beside the shell
+  logic [1:0]           pm_b_resp_q;
 
   // The shell's AXI-Lite requests through a stage each first: they come
   // from another SLR (M10). The stages run on rst_ni, so nothing comes out
@@ -185,12 +213,17 @@ module f2_core #(
   assign c_r_ready    = rd_core_q && s_r_ready_i;
 
   always_ff @(posedge clk_i) lite_rst_nq <= rst_ni;
+  always_ff @(posedge clk_i) pcim_delta_q <= pcim_host_q - HostWidth'(pcim_base_q);
   always_ff @(posedge clk_i) begin
     if (!lite_rst_nq) begin
       {wr_busy_q, wr_core_q, aw_out_q, w_out_q, wb_q} <= '0;
       {rd_busy_q, rd_core_q, ar_out_q, rv_q}          <= '0;
       host_port_q <= 1'b1;
+      pcim_bytes_q <= '0;
+      {pcim_done_q, pcim_err_q} <= '0;
     end else begin
+      if (pm_b_valid_q && pm_b_resp_q == 2'b00) pcim_done_q <= pcim_done_q + 1'b1;
+      if (pm_b_valid_q && pm_b_resp_q != 2'b00) pcim_err_q <= pcim_err_q + 1'b1;
       // Writes
       if (l_aw_ready) begin
         wr_busy_q <= 1'b1;
@@ -200,7 +233,18 @@ module f2_core #(
         wb_q      <= wrap_wr;
         wr_addr_q <= l_aw_addr[AxilW-1:0];
         wr_data_q <= l_w_data;
-        if (wrap_wr && wr_reg == RegHostPort) host_port_q <= l_w_data[0];
+        if (wrap_wr) begin
+          unique case (wr_reg)
+            RegHostPort:   host_port_q <= l_w_data[0];
+            RegPcimBaseLo: pcim_base_q[31:0] <= l_w_data;
+            RegPcimBaseHi: pcim_base_q[AddrWidth-1:32] <= l_w_data[AddrWidth-33:0];
+            RegPcimBytes:  pcim_bytes_q <= l_w_data;
+            RegPcimHostLo: pcim_host_q[31:0] <= l_w_data;
+            RegPcimHostHi: pcim_host_q[HostWidth-1:32] <= l_w_data;
+            RegPcimDone:   {pcim_done_q, pcim_err_q} <= '0;  // any value: both cleared
+            default: ;
+          endcase
+        end
       end else begin
         if (c_aw_ready) aw_out_q <= 1'b0;
         if (c_w_ready) w_out_q <= 1'b0;
@@ -221,6 +265,13 @@ module f2_core #(
           RegPorts:    rdata_q <= 32'(Ports);
           RegChanW:    rdata_q <= 32'(ChanW);
           RegLen:      rdata_q <= 32'(Len);
+          RegPcimBaseLo: rdata_q <= pcim_base_q[31:0];
+          RegPcimBaseHi: rdata_q <= 32'(pcim_base_q[AddrWidth-1:32]);
+          RegPcimBytes:  rdata_q <= pcim_bytes_q;
+          RegPcimHostLo: rdata_q <= pcim_host_q[31:0];
+          RegPcimHostHi: rdata_q <= pcim_host_q[HostWidth-1:32];
+          RegPcimDone:   rdata_q <= pcim_done_q;
+          RegPcimErr:    rdata_q <= pcim_err_q;
           default:     rdata_q <= '0;
         endcase
       end else begin
@@ -542,6 +593,91 @@ module f2_core #(
   end
 `endif
 
+  // The vector unit's writes through the PCIM tap (beside port 0), then to port 0
+  logic                 tv_aw_valid, tv_aw_ready, tv_w_valid, tv_w_ready;
+  logic [AxW-1:0]       tv_aw;
+  logic [WW-1:0]        tv_w;
+  logic                 pc_valid, pc_ready;
+  logic [CopyW-1:0]     pc;
+
+  f2_pcim #(
+    .AddrWidth(AddrWidth),
+    .DataWidth(DataWidth),
+    .HostWidth(HostWidth)
+  ) u_pcim (
+    .clk_i,
+    .rst_ni,
+    .win_base_i  (pcim_base_q),
+    .win_bytes_i (AddrWidth'(pcim_bytes_q)),
+    .host_delta_i(pcim_delta_q),
+    .s_aw_valid_i(pv_aw_valid),
+    .s_aw_ready_o(pv_aw_ready),
+    .s_aw_i      (pv_aw),
+    .s_w_valid_i (pv_w_valid),
+    .s_w_ready_o (pv_w_ready),
+    .s_w_i       (pv_w),
+    .m_aw_valid_o(tv_aw_valid),
+    .m_aw_ready_i(tv_aw_ready),
+    .m_aw_o      (tv_aw),
+    .m_w_valid_o (tv_w_valid),
+    .m_w_ready_i (tv_w_ready),
+    .m_w_o       (tv_w),
+    .c_valid_o   (pc_valid),
+    .c_ready_i   (pc_ready),
+    .c_o         (pc)
+  );
+
+  // The copies to the shell's PCIM (SLR1): a stage beside the tap, one
+  // beside the shell. There a copy becomes PCIM's AW and W, sent together
+  // (a flag each: the copy leaves once both are taken; PCIM wants a write's
+  // data within 8 us of its address). The 32-byte beat goes into its half
+  // of the 64-byte one, the strobes with it (contiguous: PCIe's byte-enable
+  // rule).
+  logic                         pm_valid, pm_ready, pm_aw_done_q, pm_w_done_q;
+  logic [HostWidth-1:0]         pm_addr;
+  logic [DataWidth-1:0]         pm_data;
+  logic [BeatBytes-1:0]         pm_strb;
+  logic                         pm_upper;  // the upper half of the 64-byte beat
+
+  // verilator lint_off PINCONNECTEMPTY
+  bringup_pipe #(.Width(CopyW), .Stages(2)) u_pm (
+    .clk_i,
+    .rst_ni,
+    .in_valid_i (pc_valid),
+    .in_ready_o (pc_ready),
+    .in_data_i  (pc),
+    .busy_o     (),
+    .out_valid_o(pm_valid),
+    .out_ready_i(pm_ready),
+    .out_data_o ({pm_addr, pm_data, pm_strb})
+  );
+  // verilator lint_on PINCONNECTEMPTY
+
+  assign pm_upper        = pm_addr[$clog2(BeatBytes)];
+  assign pcim_aw_valid_o = pm_valid && !pm_aw_done_q;
+  assign pcim_aw_addr_o  = {pm_addr[HostWidth-1:$clog2(2 * BeatBytes)], ($clog2(2 * BeatBytes))'(0)};
+  assign pcim_w_valid_o  = pm_valid && !pm_w_done_q;
+  assign pcim_w_data_o   = {pm_data, pm_data};
+  assign pcim_w_strb_o   = pm_upper ? {pm_strb, BeatBytes'(0)} : {BeatBytes'(0), pm_strb};
+  assign pm_ready        = (pm_aw_done_q || pcim_aw_ready_i) && (pm_w_done_q || pcim_w_ready_i);
+
+  always_ff @(posedge clk_i) begin
+    if (!rst_ni) begin
+      {pm_aw_done_q, pm_w_done_q} <= '0;
+    end else if (pm_valid && pm_ready) begin
+      {pm_aw_done_q, pm_w_done_q} <= '0;
+    end else begin
+      if (pcim_aw_valid_o && pcim_aw_ready_i) pm_aw_done_q <= 1'b1;
+      if (pcim_w_valid_o && pcim_w_ready_i) pm_w_done_q <= 1'b1;
+    end
+  end
+
+  // PCIM's responses: a register beside the shell, then the counters
+  always_ff @(posedge clk_i) begin
+    pm_b_valid_q <= rst_ni && pcim_b_valid_i;
+    pm_b_resp_q  <= pcim_b_resp_i;
+  end
+
   f2_port0 #(
     .AddrWidth(AddrWidth),
     .DataWidth(DataWidth)
@@ -558,12 +694,12 @@ module f2_core #(
     .v_ar_i      (pv_ar),
     .v_r_valid_o (pv_r_valid),
     .v_r_ready_i (1'b1),
-    .v_aw_valid_i(pv_aw_valid),
-    .v_aw_ready_o(pv_aw_ready),
-    .v_aw_i      (pv_aw),
-    .v_w_valid_i (pv_w_valid),
-    .v_w_ready_o (pv_w_ready),
-    .v_w_i       (pv_w),
+    .v_aw_valid_i(tv_aw_valid),
+    .v_aw_ready_o(tv_aw_ready),
+    .v_aw_i      (tv_aw),
+    .v_w_valid_i (tv_w_valid),
+    .v_w_ready_o (tv_w_ready),
+    .v_w_i       (tv_w),
     .v_b_valid_o (pv_b_valid),
     .v_b_ready_i (1'b1),
     .m_ar_valid_o(p0_ar_valid),

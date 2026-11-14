@@ -34,7 +34,9 @@
     PCIE_RP_PERSTN      = '0;
     PCIE_RP_TXP         = '0;
     PCIE_RP_TXN         = '0;
-    // PCIM: unused (PLAN.md, M8; Q-33)
+    // PCIM: reads unused; writes unused unless the top defines CABOSSE_PCIM
+    // before including this (the core's, M11) and drives them itself
+`ifndef CABOSSE_PCIM
     cl_sh_pcim_awid     = '0;
     cl_sh_pcim_awaddr   = '0;
     cl_sh_pcim_awlen    = '0;
@@ -53,6 +55,7 @@
     cl_sh_pcim_wuser    = '0;
     cl_sh_pcim_wvalid   = '0;
     cl_sh_pcim_bready   = '0;
+`endif
     cl_sh_pcim_arid     = '0;
     cl_sh_pcim_araddr   = '0;
     cl_sh_pcim_arlen    = '0;
