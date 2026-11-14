@@ -876,6 +876,16 @@ Incremental implementation from core9r2's routed checkpoint was rejected:
 untested Tcl inside AWS's flow, and Vivado may not reuse a reference that
 misses timing by -0.682 ns (to verify, if ever needed).
 
+**D-078 (2026-11-14) — The AFIs we publish results from are public**
+(owner, 2026-11-14). Build 9's AFI (afi-0c855f8fc0c08bb6b /
+agfi-00e8542765d44a754, eu-central-1) has load permission for all AWS
+accounts, so anyone with F2 access can load it without a Vivado build.
+Later AFIs that results come from are made public the same way. *Why:* the
+design, the software and SmolLM2's weights are public already; a private
+AFI would make the shortest reproduction a ~12 h, ~$15-20 build. An AFI
+belongs to one region: users load it in eu-central-1 (copies to other
+regions later, if asked). It costs nothing and can be revoked.
+
 ## Milestones
 
 Each milestone ends at a **checkpoint**: work stops for the owner's review.
@@ -2994,6 +3004,18 @@ reads each, checked byte for byte; `run_core.sh` runs it after the plan
 (`$S3/pcis_bench.jsonl`) and passes `PCIS_READ` to the driver. The driver
 now sees that a wrapper has no PCIM (PCIM_BYTES does not read back: build
 9) and turns it off at once instead of after 5 s.
+
+**Steps 2-3, measured (2026-11-14, run chat1, build 9's AFI at 200 MHz,
+reports/data/f2/2026-11-14-chat1.txt):** the owner chatted over SSH
+(launch_chat.sh). pcis_bench, 196,608 bytes: memcpy:1 11.39 ms (17.3
+MB/s), stream32:1 1.04 ms, stream32:8 0.22 ms (895.7 MB/s, the fastest;
+16 threads 0.26 ms); every read byte-exact. Streaming loads work on the
+EPYC 7R13 (Zen 3). Chat wall clock: 85-87 tokens/s with memcpy:1 (11.5 ms
+a token), 276-283 with stream32:8 (3.5-3.6 ms; the core's ~570,000-590,000
+cycles are ~2.9 ms at 200 MHz). The read is now far under D-077's 2 ms:
+build 10 is not needed for M11. stream32:8 is the driver's default.
+Still to check: the fixtures bit-exact through the new read (next full
+run_core.sh run, which also records the README's chat video).
 
 **Notes:** SmolLM2 is too small for a GPU to reach its bandwidth bound (per-token
 launch overhead dominates); the report says so, and the comparison on a

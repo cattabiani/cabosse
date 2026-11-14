@@ -1,0 +1,35 @@
+# Manual chat run chat1 (M11 steps 2-3), 2026-11-14, f2.6xlarge i-009acb82bd818a5cf, eu-central-1b.
+# AFI afi-0c855f8fc0c08bb6b / agfi-00e8542765d44a754 (core build 9), clk_hbm_axi 200 MHz; cabosse 770f0b8; host CPU AMD EPYC 7R13 Processor.
+# Launched with scripts/f2/launch_chat.sh (run_core.sh INTERACTIVE=1); chats typed by the owner over SSH.
+# Cost: about 30 min of f2.6xlarge at $2.475/h, about $1.25 (estimate).
+# Raw: 2026-11-14-chat1/ (also s3://cabosse-builds-628837661672/dcp/2026-11-14-chat1/). Generated from those files.
+
+PCIS read bench (pcis_bench.jsonl): 196,608 B (SmolLM2's logits), 9 reads a plan, all byte-checked
+| plan | median ms | min ms | MB/s at median | ok |
+|---|---|---|---|---|
+| memcpy:1 | 11.39 | 11.38 | 17.3 | True |
+| load32:1 | 9.73 | 9.66 | 20.2 | True |
+| stream32:1 | 1.04 | 1.03 | 189.6 | True |
+| memcpy:4 | 2.00 | 2.00 | 98.3 | True |
+| load32:2 | 5.08 | 5.01 | 38.7 | True |
+| load32:4 | 2.56 | 2.53 | 76.7 | True |
+| load32:8 | 1.31 | 1.30 | 150.2 | True |
+| stream32:2 | 0.57 | 0.55 | 345.1 | True |
+| stream32:4 | 0.32 | 0.30 | 618.1 | True |
+| stream32:8 | 0.22 | 0.20 | 895.7 | True |
+| stream32:16 | 0.26 | 0.24 | 743.4 | True |
+
+Chats (chat-manual/*/chat.jsonl): wall clock per answer token (prompt tokens excluded). The read plan is not logged:
+the owner set CABOSSE_PCIS_READ=stream32:8 in /root/chat.env before the third chat (the step time shows it).
+| chat | read plan | turn | answer tokens | median ms a token | tokens/s | median CYCLES |
+|---|---|---|---|---|---|---|
+| 20261114-190645 | memcpy:1 | 0 | 48 | 11.49 | 87.0 | 568,485 |
+| 20261114-190645 | memcpy:1 | 1 | 128 | 11.58 | 86.4 | 584,636 |
+| 20261114-190645 | memcpy:1 | 2 | 128 | 11.66 | 85.8 | 602,359 |
+| 20261114-190645 | memcpy:1 | 3 | 128 | 11.75 | 85.1 | 620,216 |
+| 20261114-190909 | memcpy:1 | 0 | 8 | 11.49 | 87.0 | 567,310 |
+| 20261114-190909 | memcpy:1 | 1 | 8 | 11.51 | 86.8 | 568,593 |
+| 20261114-190909 | memcpy:1 | 2 | 8 | 11.51 | 86.8 | 571,610 |
+| 20261114-190909 | memcpy:1 | 3 | 8 | 11.53 | 86.7 | 573,458 |
+| 20261114-191139 | stream32:8 | 0 | 128 | 3.53 | 283.3 | 573,032 |
+| 20261114-191139 | stream32:8 | 1 | 128 | 3.62 | 275.9 | 591,640 |
