@@ -1,0 +1,29 @@
+{
+ "provenance": {
+  "commit": "904a7d07d2afdad30586c4ccd3e4bcfa2aae51db",
+  "dirty": false,
+  "date": "2026-11-14",
+  "machine": "Linux x86_64"
+ },
+ "cpu": "AMD EPYC 7R13 Processor",
+ "threads": 12,
+ "load_average": [
+  7.4736328125,
+  3.68115234375,
+  1.51416015625
+ ],
+ "python": "3.14.4",
+ "torch": "2.14.1+cpu",
+ "transformers": "5.18.0",
+ "attention": "sdpa",
+ "prompt": "The capital of France is",
+ "n_decode": 128,
+ "warmup": 1,
+ "tokens_per_s": [
+  76.7,
+  74.8,
+  71.1,
+  71.9,
+  75.7
+ ]
+}

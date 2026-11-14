@@ -2850,6 +2850,23 @@ the VIOLATED checkpoint) is in S3 (`dcp/2026-11-14-core9r2/`). Summary:
 AFI from this tarball, and the first F2 run with `clk_hbm_axi` set below
 213 MHz at run time (D-064).
 
+**Core run 4 on F2 (2026-11-14, about $0.55, estimate):** AFI
+afi-0c855f8fc0c08bb6b / agfi-00e8542765d44a754 from the core9r2 tarball
+(AWS accepted the VIOLATED checkpoint, as for core build 1), run with
+`clk_hbm_axi` at 200 MHz (`run_core.sh`, MHZ=200, main 904a7d0). All three
+64-token fixtures and the 1000-token fixture are bit-exact, and the chat
+gives the same answers. Over the 1000 new tokens: 632,819 cycles a step (median;
+M9's core build 1: 575,374), 316.8 tokens/s from CYCLES over positions
+45-1044, 48% of the
+bandwidth bound at 200 MHz (666.7); the perf model estimates 331.8 (50%).
+83.3 tokens/s wall clock: the logits read through PCIS is 67% of a step.
+llama.cpp on the same host: 224.3 / 218.5 / 169.6 tokens/s; the core's
+cycles are 57-72% ahead, its wall clock is not. Summary:
+`reports/data/f2/2026-11-14-core-run4.txt`. Against M10's exit criteria:
+bit-exact yes; 250 MHz no (accepted, run at 200); ≥ 50% of the bound no
+(48%; the cycles a step, not the clock, are below 50%, and the perf model
+predicts this).
+
 ### M11 — Larger models, optional weight-only quantization
 Qwen2.5-0.5B (and/or SmolLM2-360M). Quantization is a separate
 sub-milestone.

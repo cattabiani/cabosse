@@ -3,6 +3,7 @@
 # From s3://cabosse-builds-628837661672/dcp/2026-11-14-core9r2/ (cabosse.log, vivado/2026_11_13-084127.route.vivado.log,
 # shell-reports/, reports/). Developer_CL tarball (with the routed VIOLATED checkpoint) is kept there, not in the repo.
 # Instance i-0b3a634599f6267e1, c6i.8xlarge, 23:19 to about 07:39 UTC (about 8.3 h, about $13, estimate).
+# AFI: afi-0c855f8fc0c08bb6b / agfi-00e8542765d44a754 (available 2026-11-14 10:13 UTC; first run: 2026-11-14-core-run4.txt).
 
 ## cabosse.log
 2026-11-13T23:20:18Z
