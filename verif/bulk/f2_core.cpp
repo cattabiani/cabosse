@@ -47,7 +47,7 @@ constexpr size_t kLen = Params::f2_core__DOT__Len;
 constexpr size_t kAddrBits = 34;
 constexpr size_t kBeatBytes = 32;
 constexpr size_t kBeatWords = kBeatBytes / 4;
-constexpr uint32_t kControl = 0x08, kStart = 1, kStatusError = 4;
+constexpr uint32_t kControl = 0x08, kStart = 1;
 constexpr uint32_t kWrapHostPort = 0x2'0008, kWrapStatus = 0x2'000C, kWrapHostOwns = 8;
 constexpr uint32_t kWrapPcimBaseLo = 0x2'0024, kWrapPcimBaseHi = 0x2'0028, kWrapPcimBytes = 0x2'002C;
 constexpr uint32_t kWrapPcimHostLo = 0x2'0030, kWrapPcimHostHi = 0x2'0034, kWrapPcimDone = 0x2'0038;

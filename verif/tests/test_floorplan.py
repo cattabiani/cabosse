@@ -40,7 +40,8 @@ def test_lanes_with_their_dma() -> None:
 def test_slr1_corridor() -> None:
     """SLR1's child pblock is SLR1's CL clock regions west of the corridor;
     the site ranges it leaves out are the X4Y5 strip's; the only cells in
-    SLR1's pblock outside it are the host's stages."""
+    SLR1's pblock outside it are the host's stages towards PCIS and PCIM's
+    side towards the shell (M11)."""
     ranges = floorplan.clip(1)
     kept = floorplan.west_of_corridor(ranges)
     rows = floorplan.ROWS_PER_SLR["CLOCKREGION"]
@@ -55,7 +56,8 @@ def test_slr1_corridor() -> None:
         for line in floorplan.lines()
         if (m := IN_PBLOCK.search(line)) and m[1] == floorplan.slr_pblock(1)
     ]
-    assert outside and all("/u_host/" in c for c in outside), outside
+    shell_side = ("/u_host/", "/u_pm/", "/pm_", "/u_pcim_")
+    assert outside and all(any(s in c for s in shell_side) for c in outside), outside
 
 
 def test_regions_match_f2_core() -> None:
