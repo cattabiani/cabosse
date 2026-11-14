@@ -270,4 +270,4 @@ load it sets the clock, runs `pcis_bench` and installs `cabosse-chat`
 (`chat.py --interactive`, each chat saved to `$S3/chat-manual/`); the
 instance stays up for SSH until its deadline (default 120 min). It makes
 the SSH key pair `cabosse` (`~/.ssh/cabosse.pem`) and the security group
-`cabosse-ssh` on first use, and opens SSH to this machine's address only.
+`cabosse-ssh` on first use, and opens SSH to this machine's address only. Step by step: [docs/f2-chat.md](../../docs/f2-chat.md).
