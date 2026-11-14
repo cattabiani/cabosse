@@ -136,7 +136,7 @@ struct Driver {
     card.poke(card::kWrapPcimHostHi, static_cast<uint32_t>(page.phys >> 32));
     card.poke(card::kWrapPcimDone, 0);
     if (!reads_back(card::kWrapPcimBytes, static_cast<uint32_t>(now.size()))) {
-      disarm("this wrapper has no PCIM (its build predates it)", true);
+      disarm("PCIM_BYTES does not read back: this wrapper has no PCIM", true);
       return;
     }
     std::ranges::copy(now, page.bytes.begin());

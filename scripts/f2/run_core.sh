@@ -116,7 +116,8 @@ echo "steps with an error: $errors"
 echo "CABOSSE-END plan"
 bench_status=0
 if [ -n "$BENCH" ]; then
-  # After the plan: the clock is set and no driver runs. It overwrites card memory.
+  # After the plan: the clock is set and no driver runs. It overwrites card
+  # memory at address 0: the chat after it loads every weight again (Runtime.open).
   echo "CABOSSE-BEGIN bench"
   /root/cabosse/platforms/f2/host/pcis_bench 196608 9 $BENCH_PLANS | tee /root/pcis_bench.jsonl
   bench_status=${PIPESTATUS[0]}

@@ -65,6 +65,10 @@ inline bool supported(Load load) {
 #endif
 }
 
+/// @brief Whether this machine can run the plan: its loads, 1 to
+/// kMaxReadThreads threads.
+inline bool valid(ReadPlan p) { return supported(p.load) && p.threads >= 1 && p.threads <= kMaxReadThreads; }
+
 /// @brief A plan from "LOAD[:THREADS]" (LOAD memcpy, load32 or stream32;
 /// THREADS 1 to kMaxReadThreads, default 1).
 /// @return none if the text is not one, or the loads are not supported here.
@@ -86,7 +90,7 @@ inline std::optional<ReadPlan> parse_plan(std::string_view text) {
     if (n.empty() || n.find_first_not_of("0123456789") != std::string::npos || n.size() > 3) return std::nullopt;
     p.threads = static_cast<unsigned>(std::stoul(n));
   }
-  if (p.threads < 1 || p.threads > kMaxReadThreads || !supported(p.load)) return std::nullopt;
+  if (!valid(p)) return std::nullopt;
   return p;
 }
 
@@ -135,28 +139,36 @@ inline void copy_lines(Load load, std::byte* out, const std::byte* in, uint64_t 
 /// between reads (made once, not a thread a read).
 class LineReader {
  public:
-  /// @throws std::invalid_argument if the plan's loads are not supported here.
+  /// @brief Start the plan's workers.
+  /// @param plan the loads and threads.
+  /// @throws std::invalid_argument if the plan is not valid() here; what
+  /// starting a thread throws, after stopping the ones started.
   explicit LineReader(ReadPlan plan) : plan_(plan), start_(plan.threads), end_(plan.threads) {
-    if (!supported(plan.load) || plan.threads < 1 || plan.threads > kMaxReadThreads) {
-      throw std::invalid_argument(std::format("read plan {}: not on this machine", to_string(plan)));
+    if (!valid(plan)) throw std::invalid_argument(std::format("read plan {}: not on this machine", to_string(plan)));
+    try {
+      for (unsigned k = 1; k < plan.threads; ++k) workers_.emplace_back([this, k] { work(k); });
+    } catch (...) {
+      // The workers not started never arrive: drop them, then stop the rest.
+      for (auto k = workers_.size() + 1; k < plan.threads; ++k) start_.arrive_and_drop();
+      stop();
+      throw;
     }
-    for (unsigned k = 1; k < plan.threads; ++k) workers_.emplace_back([this, k] { work(k); });
   }
-  ~LineReader() {
-    if (workers_.empty()) return;
-    stop_ = true;
-    start_.arrive_and_wait();
-  }
-  LineReader(const LineReader&) = delete;
-  LineReader& operator=(const LineReader&) = delete;
+  /// @brief Stop the workers (joined by their jthreads).
+  ~LineReader() { stop(); }
+  LineReader(const LineReader&) = delete;             ///< the workers hold `this`
+  LineReader& operator=(const LineReader&) = delete;  ///< the workers hold `this`
 
+  /// @brief The plan it reads with.
   ReadPlan plan() const { return plan_; }
 
   /// @brief Copy [in, in + n) to out.
   /// @param out the destination.
   /// @param in the source, line-aligned.
   /// @param n bytes, whole lines.
+  /// @throws std::invalid_argument if n is not whole lines.
   void read(std::byte* out, const std::byte* in, uint64_t n) {
+    if (n % kReadLine != 0) throw std::invalid_argument(std::format("a read of {} bytes: not whole lines", n));
     out_ = out;
     in_ = in;
     n_ = n;
@@ -174,6 +186,13 @@ class LineReader {
   const std::byte* in_ = nullptr;
   uint64_t n_ = 0;
   bool stop_ = false;
+
+  /// @brief Release the workers waiting for a read, to return.
+  void stop() {
+    if (workers_.empty()) return;
+    stop_ = true;
+    start_.arrive_and_wait();
+  }
 
   /// @brief Thread k's lines of the current read.
   void slice(unsigned k) {
