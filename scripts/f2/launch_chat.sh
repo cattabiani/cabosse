@@ -122,6 +122,6 @@ cat <<EOF
 Setup takes about 10 minutes (log: aws s3 cp $S3/cabosse.log - --profile $PROFILE).
   ssh -i $KEY_FILE -o StrictHostKeyChecking=accept-new $LOGIN@$addr
   tail -f /var/log/cabosse.log    # wait for CABOSSE-READY
-  cabosse-chat                    # an empty line ends a chat; it is saved to S3
+  cabosse-chat                    # /quit ends a chat; it is saved to S3
   sudo shutdown -h +MIN           # move the power-off; 'now' ends (terminates) the instance
 EOF

@@ -16,9 +16,11 @@ chat template adds after what the core already holds (an answer cut at
 --max-new is closed by the template's end token, fed with the next turn). A turn that would not fit
 the context with its answer starts a new conversation with that turn alone.
 Typed turns end at /quit or end of input (empty lines are skipped); after each answer a line
-gives its tokens and wall-clock tokens/s (not recorded in chat.cast).
+gives its tokens and wall-clock tokens/s (not recorded in chat.cast); the
+log's line a turn is printed only with --debug.
 
-Usage: python chat.py OUT_DIR [--golden] [--mhz MHZ] [--max-new N] [--interactive | TURN ...]
+Usage: python chat.py OUT_DIR [--golden] [--mhz MHZ] [--max-new N] [--debug]
+                      [--interactive | TURN ...]
   (--golden: the golden platform on the CPU, no card; slow, about 1.3 s a token)
 Environment: S3 and PROVENANCE (plan_log.py); CABOSSE_WEIGHTS (model/paths.py).
 """
@@ -194,6 +196,7 @@ def main() -> None:
     parser.add_argument("out", type=Path, help="the output directory")
     parser.add_argument("turns", nargs="*", default=TURNS, help="the user's turns")
     parser.add_argument("--interactive", action="store_true", help="type the turns")
+    parser.add_argument("--debug", action="store_true", help="print the log's line a turn")
     parser.add_argument("--golden", action="store_true", help="the golden platform, no card")
     parser.add_argument("--mhz", type=int, default=0, help="set the core clock first (F2)")
     parser.add_argument("--max-new", type=int, default=MAX_NEW, help="answer tokens a turn")
@@ -201,7 +204,7 @@ def main() -> None:
     from transformers import AutoTokenizer
 
     args.out.mkdir(parents=True, exist_ok=True)
-    log = Log(str(args.out / "chat.jsonl"))
+    log = Log(str(args.out / "chat.jsonl"), echo=args.debug or not args.interactive)
     model = decoder.load(paths.SMOLLM2)
     if args.golden:
         from golden_platform import GoldenPlatform

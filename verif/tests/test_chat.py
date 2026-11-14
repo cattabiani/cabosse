@@ -55,7 +55,7 @@ def runtime(model: decoder.Model) -> Runtime:
 
 
 def run_chat(tmp_path, model, tok, max_new: int, turns=("hi", "yo"), typed=False) -> list[dict]:
-    log = Log(str(tmp_path / "chat.jsonl"))
+    log = Log(str(tmp_path / "chat.jsonl"), echo=not typed)
     chat.chat(log, runtime(model), tok, turns, max_new, tmp_path, typed=typed)
     return [json.loads(line) for line in (tmp_path / "chat.jsonl").read_text().splitlines()]
 
@@ -126,6 +126,7 @@ def test_a_full_context_starts_a_new_conversation(tmp_path, tiny_model, capsys) 
     out = capsys.readouterr().out
     assert "a new conversation" in out and "too long" in out and "tokens/s" in out
     assert "> " + a not in out  # typed: the terminal showed it already
+    assert "turn {" not in out  # the log's lines: --debug only
     text = (tmp_path / "chat.txt").read_text()
     assert all(f"user: {x}" in text for x in (a, b, "d"))
 
