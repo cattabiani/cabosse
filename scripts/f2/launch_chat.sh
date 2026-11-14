@@ -151,7 +151,7 @@ aws ec2 wait instance-running --instance-ids "$id"
 addr=$(aws ec2 describe-instances --instance-ids "$id" \
   --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
 cat <<EOF
-Setup takes about 5-10 minutes.
+Setup takes about 3-10 minutes.
   ssh -i $KEY_FILE -o StrictHostKeyChecking=accept-new $LOGIN@$addr
   tail -f /var/log/cabosse.log    # wait for CABOSSE-READY
   cabosse-chat                    # /quit ends a chat; saved in /home/ubuntu/chats (and S3, with BUCKET)
