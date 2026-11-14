@@ -42,7 +42,8 @@ MAX_MIN=1440                   # hard limit, extensions included (24 h; c6i.8xla
 WATCH_S=60                     # watchdog poll period
 S3=                            # s3://bucket/dcp/<build>: everything goes there (the role reads/writes dcp/ only)
 PLACE_WNS_MIN=-1.0             # ns: the build stops if placement ends below this (see "The watch")
-PHYS_WNS_MIN=-0.25             # ns: ... or phys_opt_design after it
+PHYS_WNS_MIN=-0.6              # ns: ... or phys_opt_design after it (D-074: build 9 was stopped at -0.317 by the old -0.25
+                               # gate although its floorplan routed; a small miss is accepted and the clock set below Fmax)
 RECIPES="--clock_recipe_a A1 --clock_recipe_b B0 --clock_recipe_c C0 --clock_recipe_hbm H0"
 
 shutdown -h +$MAX_MIN  # the watchdog (below) powers off at DEADLINE_MIN
@@ -160,7 +161,8 @@ fi
 # below PLACE_WNS_MIN after placement or PHYS_WNS_MIN after phys_opt_design
 # (each summary's first line; a later one comes inside route_design). Past
 # builds: bring-up 4 -0.674 placed, +0.001 phys_opt, +0.069 routed (met);
-# bring-up 3 -1.666, -1.195 (failed); core 2 -2.81, -2.706, -2.450. The
+# bring-up 3 -1.666, -1.195 (failed); core 2 -2.81, -2.706, -2.450; core 9
+# -0.596, -0.317 (routed, -0.682 at 4 ns). The
 # checkpoint of the step that stopped it is kept for the reports.
 abort= stop_dcp= linked=
 first_wns() {  # the first number after $1 in the Vivado log, without a trailing dot

@@ -52,3 +52,10 @@ def test_watchdog_deadline(tmp_path: Path, s3_text: str | None, minutes: int, mo
     assert out.count("deadline now") <= 1, out  # reported once, not every poll
     # SECONDS has 1 s resolution, so allow a second either way.
     assert minutes * MIN_S - 1 <= elapsed_s <= minutes * MIN_S + 1.5, elapsed_s
+
+
+def test_wns_gates() -> None:
+    """D-074: the build stops below -1.0 ns after placement and -0.6 ns after phys_opt."""
+    text = BUILD_CL.read_text()
+    assert re.search(r"^PLACE_WNS_MIN=-1\.0\s", text, re.M)
+    assert re.search(r"^PHYS_WNS_MIN=-0\.6\s", text, re.M)
