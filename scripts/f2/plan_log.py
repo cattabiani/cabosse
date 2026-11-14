@@ -20,8 +20,10 @@ UPLOAD_S = 30  # results to S3 at most this often, and at the end
 class Log:
     """The output file and the provenance of every line."""
 
-    def __init__(self, out: str) -> None:
+    def __init__(self, out: str, echo: bool = True) -> None:
+        """`echo`: print a line a step (its name, parameters, ok or error)."""
         self.out = out
+        self.echo = echo
         self.provenance = json.loads(os.environ.get("PROVENANCE", "{}"))
         self.s3 = os.environ.get("S3", "")
         self.uploaded = 0.0  # when the file last went to S3
@@ -40,5 +42,6 @@ class Log:
         with open(self.out, "a") as f:
             f.write(json.dumps(line) + "\n")
         self.upload()
-        print(step, json.dumps(params), "error" if "error" in result else "ok", flush=True)
+        if self.echo:
+            print(step, json.dumps(params), "error" if "error" in result else "ok", flush=True)
         return result
